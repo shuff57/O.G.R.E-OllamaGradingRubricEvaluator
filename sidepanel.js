@@ -70,6 +70,35 @@ function createLatexToolbar(textareaId) {
 
   // Insert toolbar before the textarea
   textarea.parentNode.insertBefore(toolbar, textarea);
+
+  // Handle backspace to delete math-field
+  textarea.addEventListener('keydown', (e) => {
+    if (e.key === 'Backspace') {
+      const selection = window.getSelection();
+      if (selection.rangeCount === 0) return;
+      const range = selection.getRangeAt(0);
+
+      if (range.collapsed) {
+        // Check if the cursor is immediately after a math-field
+        let previousNode = null;
+        
+        if (range.startContainer === textarea) {
+          // Cursor is directly in the editor div
+          if (range.startOffset > 0) {
+            previousNode = textarea.childNodes[range.startOffset - 1];
+          }
+        } else if (range.startContainer.nodeType === Node.TEXT_NODE && range.startOffset === 0) {
+          // Cursor is at the start of a text node
+          previousNode = range.startContainer.previousSibling;
+        }
+
+        if (previousNode && previousNode.tagName === 'MATH-FIELD') {
+          e.preventDefault();
+          previousNode.remove();
+        }
+      }
+    }
+  });
 }
 
 function insertMathField(editor) {
