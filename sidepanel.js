@@ -72,6 +72,30 @@ function createLatexToolbar(textareaId) {
   textarea.parentNode.insertBefore(toolbar, textarea);
 }
 
+function configureMathFieldMenu(mf, editor) {
+  // Get the default menu items and filter/customize them
+  const defaultMenuItems = mf.menuItems;
+  
+  // Customize menu: keep useful items and add custom ones
+  mf.menuItems = [
+    ...defaultMenuItems.filter(item => {
+      // Keep copy, paste, and basic editing commands
+      // Remove Compute Engine commands if not needed
+      return !item.id || !item.id.startsWith('ce-');
+    }),
+    {
+      type: 'divider'
+    },
+    {
+      label: 'Delete Math Box',
+      onMenuSelect: () => {
+        mf.remove();
+        editor.focus();
+      }
+    }
+  ];
+}
+
 function insertMathField(editor) {
   editor.focus();
   
@@ -120,6 +144,9 @@ function insertMathField(editor) {
       selection.removeAllRanges();
       selection.addRange(range);
       
+      // Configure menu after insertion into DOM
+      configureMathFieldMenu(mf, editor);
+      
       // Focus the new math field
       setTimeout(() => mf.focus(), 10);
     } else {
@@ -127,12 +154,20 @@ function insertMathField(editor) {
       editor.appendChild(mf);
       const spacer = document.createTextNode('\u00A0');
       editor.appendChild(spacer);
+      
+      // Configure menu after insertion into DOM
+      configureMathFieldMenu(mf, editor);
+      
       setTimeout(() => mf.focus(), 10);
     }
   } else {
     editor.appendChild(mf);
     const spacer = document.createTextNode('\u00A0');
     editor.appendChild(spacer);
+    
+    // Configure menu after insertion into DOM
+    configureMathFieldMenu(mf, editor);
+    
     setTimeout(() => mf.focus(), 10);
   }
 }
