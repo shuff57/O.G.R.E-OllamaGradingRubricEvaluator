@@ -1,5 +1,10 @@
 // --- 1. Initialization & Storage ---
 document.addEventListener('DOMContentLoaded', () => {
+  // Configure MathLive fonts
+  if (window.MathfieldElement) {
+    MathfieldElement.fontsDirectory = 'lib/fonts';
+  }
+
   // Load saved settings
   const apiUrl = localStorage.getItem('apiUrl');
   const apiKey = localStorage.getItem('apiKey');

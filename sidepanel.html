@@ -72,12 +72,13 @@
       width: auto;
       max-width: 100%;
       min-width: 20px;
-      padding: 2px;
+      padding: 4px 6px;
       margin: 0 2px;
       border: 1px solid transparent;
       background: rgba(0,0,0,0.03);
       border-radius: 3px;
       vertical-align: middle;
+      font-size: 1.1em; /* Increase size slightly to prevent clipping */
     }
     .rich-editor math-field:focus-within {
       background: white;
@@ -147,7 +148,7 @@
     <input type="text" id="apiUrl" value="https://ollama.com/api" placeholder="http://localhost:11434">
     <label>API Key (Optional)</label>
     <!-- NOT SECURE: Only do this for personal local extensions -->
-<input type="password" id="apiKey" placeholder="Enter API Key if required" value="5e3485f21fee43e1a171bbab89355911.MAFrpWVmAo2fdgyK99Q9Hat1">
+<input type="password" id="apiKey" placeholder="Enter API Key if required" >
     <label>Model Name (Must support vision for images)</label>
     <select id="modelName">
       <option value="gpt-oss:20b-cloud">gpt-oss:20b-cloud</option>
