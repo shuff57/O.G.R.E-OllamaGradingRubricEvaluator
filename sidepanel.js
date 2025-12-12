@@ -58,7 +58,7 @@ function createLatexToolbar(textareaId) {
   // Add Math Editor Button
   const mathBtn = document.createElement('button');
   mathBtn.className = 'latex-btn';
-  mathBtn.innerText = '🧮 Insert Math';
+  mathBtn.innerHTML = '<i class="bi bi-calculator"></i> Insert Math';
   mathBtn.title = 'Insert Math Equation';
   mathBtn.style.fontWeight = 'bold';
   mathBtn.style.width = '100%'; 
@@ -94,7 +94,13 @@ function createLatexToolbar(textareaId) {
 
         if (previousNode && previousNode.tagName === 'MATH-FIELD') {
           e.preventDefault();
-          previousNode.remove();
+          // Select the node and execute delete to preserve undo history
+          const range = document.createRange();
+          range.selectNode(previousNode);
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+          document.execCommand('delete');
         }
       }
     }
@@ -114,7 +120,13 @@ function insertMathField(editor) {
   mf.addEventListener('keydown', (ev) => {
     if ((ev.key === 'Backspace' || ev.key === 'Delete') && !mf.value) {
       ev.preventDefault();
-      mf.remove();
+      // Select the node and execute delete to preserve undo history
+      const range = document.createRange();
+      range.selectNode(mf);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      document.execCommand('delete');
       editor.focus();
     }
   });
@@ -230,18 +242,15 @@ document.getElementById('testConnection').addEventListener('click', async () => 
   }
 
   try {
-    // Try fetching the base URL (often returns "Ollama is running")
-    const response = await proxyFetch(apiUrl, { headers });
-    if (response.ok) {
+    // Try fetching /api/tags to verify API access and Auth
+    const tagsResponse = await proxyFetch(`${apiUrl}/api/tags`, { headers });
+    
+    if (tagsResponse.ok) {
       showStatus('Connection successful!', 'green');
+    } else if (tagsResponse.status === 401) {
+      showStatus('Connection failed: 401 Unauthorized. Check API Key.', 'red');
     } else {
-      // If base fails (e.g. 404), try /api/tags which is a common GET endpoint
-      const tagsResponse = await proxyFetch(`${apiUrl}/api/tags`, { headers });
-      if (tagsResponse.ok) {
-        showStatus('Connection successful!', 'green');
-      } else {
-        showStatus(`Connection failed: ${response.status} ${response.statusText}`, 'red');
-      }
+      showStatus(`Connection failed: ${tagsResponse.status} ${tagsResponse.statusText}`, 'red');
     }
   } catch (error) {
     if (error.message === 'Failed to fetch') {
@@ -254,6 +263,64 @@ document.getElementById('testConnection').addEventListener('click', async () => 
 
 // --- 2. Handling Rubric (File Upload) ---
 // Toggle between Text and Table mode
+let rubricImages = [];
+let studentImages = [];
+
+function addImage(target, base64) {
+  const container = document.getElementById(target === 'rubric' ? 'rubricImagesContainer' : 'studentImagesContainer');
+  const list = target === 'rubric' ? rubricImages : studentImages;
+  
+  list.push(base64);
+  renderImages(target);
+}
+
+function removeImage(target, index) {
+  const list = target === 'rubric' ? rubricImages : studentImages;
+  list.splice(index, 1);
+  renderImages(target);
+}
+
+function renderImages(target) {
+  const container = document.getElementById(target === 'rubric' ? 'rubricImagesContainer' : 'studentImagesContainer');
+  const list = target === 'rubric' ? rubricImages : studentImages;
+  
+  container.innerHTML = '';
+  list.forEach((base64, index) => {
+    const div = document.createElement('div');
+    div.style.position = 'relative';
+    div.style.width = '100px';
+    div.style.height = 'auto';
+    
+    const img = document.createElement('img');
+    img.src = base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`;
+    img.style.width = '100%';
+    img.style.border = '1px solid #ccc';
+    img.style.borderRadius = '4px';
+    
+    const btn = document.createElement('button');
+    btn.innerHTML = '&times;';
+    btn.style.position = 'absolute';
+    btn.style.top = '-5px';
+    btn.style.right = '-5px';
+    btn.style.background = 'red';
+    btn.style.color = 'white';
+    btn.style.border = 'none';
+    btn.style.borderRadius = '50%';
+    btn.style.width = '20px';
+    btn.style.height = '20px';
+    btn.style.cursor = 'pointer';
+    btn.style.fontSize = '12px';
+    btn.style.lineHeight = '1';
+    btn.style.padding = '0';
+    
+    btn.addEventListener('click', () => removeImage(target, index));
+    
+    div.appendChild(img);
+    div.appendChild(btn);
+    container.appendChild(div);
+  });
+}
+
 document.querySelectorAll('input[name="rubricMode"]').forEach(radio => {
   radio.addEventListener('change', (e) => {
     if (e.target.value === 'text') {
@@ -280,7 +347,7 @@ function addRubricRow() {
     <td style="border: 1px solid #ddd; padding: 0;"><input type="text" class="r-criteria" style="border:none; margin:0; width:100%;" placeholder="Criteria"></td>
     <td style="border: 1px solid #ddd; padding: 0;"><input type="text" class="r-desc" style="border:none; margin:0; width:100%;" placeholder="Description"></td>
     <td style="border: 1px solid #ddd; padding: 0;"><input type="number" class="r-pts" style="border:none; margin:0; width:100%;" placeholder="0"></td>
-    <td style="border: 1px solid #ddd; padding: 0; text-align:center;"><button class="btn-del" style="background:none; color:red; border:none; cursor:pointer; padding:0; margin:0; width:auto;">&times;</button></td>
+    <td style="border: 1px solid #ddd; padding: 0; text-align:center;"><button class="btn-del" style="background:none; color:red; border:none; cursor:pointer; padding:0; margin:0; width:auto;"><i class="bi bi-trash"></i></button></td>
   `;
   tr.querySelector('.btn-del').addEventListener('click', () => tr.remove());
   tbody.appendChild(tr);
@@ -301,19 +368,22 @@ function getRubricFromTable() {
 }
 
 document.getElementById('rubricUpload').addEventListener('change', (e) => {
-  const file = e.target.files[0];
-  if (file) {
-    const reader = new FileReader();
-    reader.onload = function(event) {
-      const base64Raw = event.target.result; 
-      document.getElementById('rubricPreview').src = base64Raw;
-      document.getElementById('rubricPreview').style.display = 'block';
-      // Strip header for Ollama (data:image/png;base64,...)
-      document.getElementById('rubricBase64').value = base64Raw.split(',')[1];
-    };
-    reader.readAsDataURL(file);
+  const files = e.target.files;
+  if (files && files.length > 0) {
+    Array.from(files).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const base64Raw = event.target.result; 
+        // Strip header for Ollama (data:image/png;base64,...)
+        // But keep full string for display
+        addImage('rubric', base64Raw);
+      };
+      reader.readAsDataURL(file);
+    });
   }
 });
+
+// REMOVED btnRubricScreenshot listener
 
 // --- Import Rubric from Highlight ---
 document.getElementById('btnImportRubric').addEventListener('click', async () => {
@@ -351,18 +421,7 @@ document.getElementById('btnImportRubric').addEventListener('click', async () =>
   const headers = { "Content-Type": "application/json" };
   if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
 
-  const prompt = `You are a data extraction assistant. 
-  Extract grading rubric criteria from the following text.
-  Return ONLY a valid JSON object with this structure:
-  {
-    "rubric": [
-      { "criteria": "Criteria Name", "description": "Description of criteria", "points": "Points value (number or string)" }
-    ]
-  }
-  Do not include markdown formatting or explanations.
-  
-  Text to parse:
-  ${selection}`;
+  const prompt = Prompts.getRubricExtractionPrompt(selection);
 
   try {
     const response = await proxyFetch(`${apiUrl}/api/generate`, {
@@ -376,7 +435,12 @@ document.getElementById('btnImportRubric').addEventListener('click', async () =>
       })
     });
 
-    if (!response.ok) throw new Error("API Error: " + response.status);
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error("401 Unauthorized. Please check your API Key.");
+      }
+      throw new Error("API Error: " + response.status);
+    }
 
     const data = await response.json();
     let jsonResponse = data.response;
@@ -397,7 +461,7 @@ document.getElementById('btnImportRubric').addEventListener('click', async () =>
           <td style="border: 1px solid #ddd; padding: 0;"><input type="text" class="r-criteria" style="border:none; margin:0; width:100%;" value="${item.criteria || ''}"></td>
           <td style="border: 1px solid #ddd; padding: 0;"><input type="text" class="r-desc" style="border:none; margin:0; width:100%;" value="${item.description || ''}"></td>
           <td style="border: 1px solid #ddd; padding: 0;"><input type="number" class="r-pts" style="border:none; margin:0; width:100%;" value="${item.points || 0}"></td>
-          <td style="border: 1px solid #ddd; padding: 0; text-align:center;"><button class="btn-del" style="background:none; color:red; border:none; cursor:pointer; padding:0; margin:0; width:auto;">&times;</button></td>
+          <td style="border: 1px solid #ddd; padding: 0; text-align:center;"><button class="btn-del" style="background:none; color:red; border:none; cursor:pointer; padding:0; margin:0; width:auto;"><i class="bi bi-trash"></i></button></td>
         `;
         tr.querySelector('.btn-del').addEventListener('click', () => tr.remove());
         tbody.appendChild(tr);
@@ -416,7 +480,92 @@ document.getElementById('btnImportRubric').addEventListener('click', async () =>
   }
 });
 
+// --- Import Rubric from Image ---
+document.getElementById('btnImportRubricImage').addEventListener('click', async () => {
+  if (rubricImages.length === 0) {
+    showStatus("Please take a screenshot or upload an image of the rubric first.", "orange");
+    return;
+  }
+
+  showStatus("Parsing rubric from image...", "blue");
+
+  // Prepare API Call
+  let apiUrl = document.getElementById('apiUrl').value.replace(/\/$/, "");
+  if (apiUrl.endsWith('/api')) {
+    apiUrl = apiUrl.slice(0, -4);
+  }
+  const apiKey = document.getElementById('apiKey').value;
+  const modelName = document.getElementById('modelName').value;
+
+  const headers = { "Content-Type": "application/json" };
+  if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+
+  const prompt = Prompts.getRubricExtractionFromImagePrompt();
+  
+  // Prepare images
+  const images = rubricImages.map(img => img.split(',')[1]);
+
+  try {
+    const response = await proxyFetch(`${apiUrl}/api/generate`, {
+      method: "POST",
+      headers: headers,
+      body: JSON.stringify({
+        model: "qwen3-vl:235b-instruct-cloud", // Hardcoded for rubric extraction
+        prompt: prompt,
+        images: images,
+        stream: false,
+        format: "json"
+      })
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error("401 Unauthorized. Please check your API Key.");
+      }
+      throw new Error("API Error: " + response.status);
+    }
+
+    const data = await response.json();
+    let jsonResponse = data.response;
+    
+    // Clean up potential markdown code blocks
+    jsonResponse = jsonResponse.replace(/```json/g, "").replace(/```/g, "").trim();
+    
+    const parsed = JSON.parse(jsonResponse);
+    
+    if (parsed && parsed.rubric && Array.isArray(parsed.rubric)) {
+      // Populate Table
+      const tbody = document.querySelector('#rubricTable tbody');
+      tbody.innerHTML = ""; // Clear existing
+      
+      parsed.rubric.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td style="border: 1px solid #ddd; padding: 0;"><input type="text" class="r-criteria" style="border:none; margin:0; width:100%;" value="${item.criteria || ''}"></td>
+          <td style="border: 1px solid #ddd; padding: 0;"><input type="text" class="r-desc" style="border:none; margin:0; width:100%;" value="${item.description || ''}"></td>
+          <td style="border: 1px solid #ddd; padding: 0;"><input type="number" class="r-pts" style="border:none; margin:0; width:100%;" value="${item.points || 0}"></td>
+          <td style="border: 1px solid #ddd; padding: 0; text-align:center;"><button class="btn-del" style="background:none; color:red; border:none; cursor:pointer; padding:0; margin:0; width:auto;"><i class="bi bi-trash"></i></button></td>
+        `;
+        tr.querySelector('.btn-del').addEventListener('click', () => tr.remove());
+        tbody.appendChild(tr);
+      });
+
+      // Switch to table mode
+      document.querySelector('input[name="rubricMode"][value="table"]').click();
+      showStatus("Rubric imported from image successfully!", "green");
+    } else {
+      throw new Error("Invalid JSON structure returned");
+    }
+
+  } catch (err) {
+    console.error(err);
+    showStatus("Failed to parse rubric from image: " + err.message, "red");
+  }
+});
+
 // --- 3. Handling Student Work (Highlight & Screenshot) ---
+
+let currentCaptureTarget = null; // 'rubric' or 'student'
 
 // A. Get Highlighted Text
 document.getElementById('btnHighlight').addEventListener('click', async () => {
@@ -434,16 +583,63 @@ document.getElementById('btnHighlight').addEventListener('click', async () => {
   });
 });
 
-// B. Screenshot Visible Tab
-document.getElementById('btnScreenshot').addEventListener('click', () => {
+// B. Screenshot Visible Tab - REMOVED
+
+// C. Area Selection Logic
+document.getElementById('btnRubricArea').addEventListener('click', () => startAreaSelection('rubric'));
+document.getElementById('btnStudentArea').addEventListener('click', () => startAreaSelection('student'));
+
+async function startAreaSelection(target) {
+  currentCaptureTarget = target;
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  
+  // Inject the capture script
+  chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    files: ['capture_area.js']
+  });
+}
+
+// Listen for area selection from content script
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === "areaSelected" && currentCaptureTarget) {
+    processAreaCapture(request.area);
+  }
+});
+
+function processAreaCapture(area) {
+  // 1. Capture full visible tab
   chrome.runtime.sendMessage({ action: "captureVisibleTab" }, (response) => {
     if (response && response.dataUrl) {
-      document.getElementById('studentPreview').src = response.dataUrl;
-      document.getElementById('studentPreview').style.display = 'block';
-      document.getElementById('studentBase64').value = response.dataUrl.split(',')[1];
+      // 2. Crop image
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Handle device pixel ratio
+        const dpr = area.devicePixelRatio || 1;
+        
+        canvas.width = area.width * dpr;
+        canvas.height = area.height * dpr;
+        
+        ctx.drawImage(
+          img,
+          area.x * dpr, area.y * dpr, area.width * dpr, area.height * dpr,
+          0, 0, canvas.width, canvas.height
+        );
+        
+        const croppedDataUrl = canvas.toDataURL('image/png');
+        
+        // 3. Update UI
+        addImage(currentCaptureTarget, croppedDataUrl);
+        
+        currentCaptureTarget = null;
+      };
+      img.src = response.dataUrl;
     }
   });
-});
+}
 
 // --- 4. The Main Logic: Call Ollama ---
 document.getElementById('btnGrade').addEventListener('click', async () => {
@@ -465,11 +661,9 @@ document.getElementById('btnGrade').addEventListener('click', async () => {
     rubricText = getRichEditorContent('rubricText');
   }
 
-  const rubricImage = document.getElementById('rubricBase64').value;
   const studentText = getRichEditorContent('studentText');
-  const studentImage = document.getElementById('studentBase64').value;
 
-  if (!rubricText && !rubricImage) {
+  if (!rubricText && rubricImages.length === 0) {
     showStatus("Please provide a rubric or role.", "red");
     return;
   }
@@ -478,16 +672,16 @@ document.getElementById('btnGrade').addEventListener('click', async () => {
   document.getElementById('response').innerText = "";
 
   // Construct the prompt
-  const systemInstruction = `You are a strict grading assistant. 
-  Here is the rubric/role context: ${rubricText}
-  Analyze the student work provided below.`;
+  const systemInstruction = Prompts.getGradingSystemPrompt(rubricText);
 
   const userPrompt = `Student Submission: ${studentText}`;
 
   // Gather Images
   const images = [];
-  if (rubricImage) images.push(rubricImage);
-  if (studentImage) images.push(studentImage);
+  // Add rubric images (strip header)
+  rubricImages.forEach(img => images.push(img.split(',')[1]));
+  // Add student images (strip header)
+  studentImages.forEach(img => images.push(img.split(',')[1]));
 
   const headers = { "Content-Type": "application/json" };
   if (apiKey) {
@@ -546,7 +740,9 @@ document.getElementById('btnGrade').addEventListener('click', async () => {
     });
 
     if (!response.ok) {
-       // ... error handling ...
+       if (response.status === 401) {
+         throw new Error("401 Unauthorized. Please check your API Key.");
+       }
        throw new Error(`API Error: ${response.status}`);
     }
 

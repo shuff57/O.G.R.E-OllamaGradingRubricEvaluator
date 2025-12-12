@@ -3,6 +3,7 @@
 <head>
   <title>Ollama Grading Assistant</title>
   <link rel="stylesheet" href="lib/mathlive-static.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
   <style>
     body { font-family: sans-serif; padding: 10px; background: #f9f9f9; }
     .card { background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 15px; }
@@ -163,7 +164,7 @@
 <body>
 
   <div class="card">
-    <h3>⚙️ Config</h3>
+    <h3><i class="bi bi-gear-fill"></i> Config</h3>
     <label>Ollama URL</label>
     <input type="text" id="apiUrl" value="https://ollama.com/api" placeholder="http://localhost:11434">
     <label>API Key (Optional)</label>
@@ -210,7 +211,7 @@
   </div>
 
   <div class="card">
-    <h3>1. Define Role / Rubric</h3>
+    <h3><i class="bi bi-list-check"></i> 1. Define Role / Rubric</h3>
     <div style="margin-bottom: 10px; display: flex; gap: 10px;">
       <label style="display:inline-flex; align-items: center; font-weight: normal;">
         <input type="radio" name="rubricMode" value="text" checked style="width: auto; margin-right: 5px; margin-bottom: 0;"> Text
@@ -220,7 +221,8 @@
       </label>
     </div>
 
-    <button id="btnImportRubric" class="secondary" style="margin-bottom: 10px; font-size: 12px;">✨ Import Rubric from Highlighted Text</button>
+    <button id="btnImportRubric" class="secondary" style="margin-bottom: 5px; font-size: 12px;"><i class="bi bi-stars"></i> Import Rubric from Highlighted Text</button>
+    <button id="btnImportRubricImage" class="secondary" style="margin-bottom: 10px; font-size: 12px;"><i class="bi bi-file-image"></i> Import Rubric from Screenshot</button>
 
     <div id="rubricTextContainer">
       <div id="rubricText" class="rich-editor" contenteditable="true" placeholder="Paste rubric text here or upload image..."></div>
@@ -243,19 +245,18 @@
       <button id="btnAddRow" class="secondary" style="width: auto; padding: 5px 10px; font-size: 12px;">+ Add Row</button>
     </div>
 
-    <input type="file" id="rubricUpload" accept="image/*">
-    <img id="rubricPreview" class="preview">
-    <input type="hidden" id="rubricBase64">
+    <button id="btnRubricArea" class="secondary" style="margin-bottom: 10px; font-size: 12px;"><i class="bi bi-crop"></i> Screenshot Area</button>
+    <input type="file" id="rubricUpload" accept="image/*" multiple>
+    <div id="rubricImagesContainer" style="display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px;"></div>
   </div>
 
   <div class="card">
-    <h3>2. Student Work</h3>
+    <h3><i class="bi bi-person-workspace"></i> 2. Student Work</h3>
     <button id="btnHighlight" class="secondary">Get Highlighted Text</button>
-    <button id="btnScreenshot" class="secondary">Screenshot Visible Tab</button>
+    <button id="btnStudentArea" class="secondary" style="margin-bottom: 5px;"><i class="bi bi-crop"></i> Screenshot Area</button>
     
     <div id="studentText" class="rich-editor" contenteditable="true" placeholder="Student text will appear here..."></div>
-    <img id="studentPreview" class="preview">
-    <input type="hidden" id="studentBase64">
+    <div id="studentImagesContainer" style="display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px;"></div>
   </div>
 
   <div class="card">
@@ -264,7 +265,7 @@
   </div>
 
   <div class="card">
-    <h3>Result:</h3>
+    <h3><i class="bi bi-clipboard-check"></i> Result:</h3>
     <details id="thinkingContainer" style="display:none; background:#f0f0f0; padding:10px; border-radius:4px; margin-bottom:10px; font-size:12px; color:#555; border-left: 3px solid #999;">
       <summary style="cursor: pointer; font-weight: bold;">Show Thinking Process</summary>
       <div id="thinkingContent" style="white-space: pre-wrap; margin-top:5px;"></div>
@@ -273,6 +274,7 @@
   </div>
 
   <script src="lib/mathlive.min.js"></script>
+  <script src="prompts.js"></script>
   <script src="sidepanel.js"></script>
 </body>
 </html>
