@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Ollama Grading Assistant",
+  "version": "1.0",
+  "description": "AI Grading assistant using Ollama cloud.",
+  "permissions": [
+    "sidePanel",
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>" 
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "action": {
+    "default_title": "Open Grading Assistant"
+  }
+}
