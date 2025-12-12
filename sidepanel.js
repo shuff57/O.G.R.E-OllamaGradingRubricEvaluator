@@ -80,7 +80,8 @@ function configureMathFieldMenu(mf, editor) {
   mf.menuItems = [
     ...defaultMenuItems.filter(item => {
       // Keep copy, paste, and basic editing commands
-      // Remove Compute Engine commands if not needed
+      // Remove Compute Engine commands (items with id starting with 'ce-')
+      // These are advanced math evaluation features that may not be needed
       return !item.id || !item.id.startsWith('ce-');
     }),
     {
