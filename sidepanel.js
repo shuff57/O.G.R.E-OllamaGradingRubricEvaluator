@@ -552,7 +552,12 @@ document.getElementById('btnImportRubricImage').addEventListener('click', async 
 
       // Switch to table mode
       document.querySelector('input[name="rubricMode"][value="table"]').click();
-      showStatus("Rubric imported from image successfully!", "green");
+      
+      // Clear the images as they have been processed
+      rubricImages = [];
+      renderImages('rubric');
+      
+      showStatus("Rubric imported from image successfully! Images cleared.", "green");
     } else {
       throw new Error("Invalid JSON structure returned");
     }
@@ -740,10 +745,30 @@ document.getElementById('btnGrade').addEventListener('click', async () => {
     });
 
     if (!response.ok) {
-       if (response.status === 401) {
-         throw new Error("401 Unauthorized. Please check your API Key.");
-       }
-       throw new Error(`API Error: ${response.status}`);
+      let errorMessage = `API Error: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        if (errorData && errorData.error) {
+          errorMessage = `Ollama Error: ${errorData.error}`;
+        }
+      } catch (e) {
+        // Could not parse JSON error, try text
+        try {
+          const errorText = await response.text();
+          if (errorText) errorMessage = `API Error: ${errorText}`;
+        } catch (e2) {}
+      }
+
+      if (response.status === 401) {
+        throw new Error("401 Unauthorized. Please check your API Key.");
+      }
+      
+      // Common 400 error for non-vision models
+      if (response.status === 400 && images.length > 0) {
+        errorMessage += "\n\nTip: You are sending images. Ensure the selected model supports vision (e.g., qwen3-vl, gemini-3-pro).";
+      }
+
+      throw new Error(errorMessage);
     }
 
     const reader = response.body.getReader();
