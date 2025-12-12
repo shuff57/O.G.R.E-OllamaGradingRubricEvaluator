@@ -2,6 +2,7 @@
 <html>
 <head>
   <title>Ollama Grading Assistant</title>
+  <link rel="stylesheet" href="lib/mathlive-static.css" />
   <style>
     body { font-family: sans-serif; padding: 10px; background: #f9f9f9; }
     .card { background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 15px; }
@@ -70,16 +71,35 @@
     .rich-editor math-field {
       display: inline-block;
       width: auto;
-      max-width: 100%;
-      min-width: 20px;
-      padding: 4px 6px;
+      min-width: 110px; /* Increased to ensure icons are visible */
+      padding: 2px 4px;
+      padding-right: 0px; /* Reserve space for the two icons on the right */
+      box-sizing: border-box;
       margin: 0 2px;
       border: 1px solid transparent;
       background: rgba(0,0,0,0.03);
       border-radius: 3px;
       vertical-align: middle;
-      font-size: 1.1em; /* Increase size slightly to prevent clipping */
+      font-size: 1.1em;
     }
+    
+    /* Target the internal parts of the math-field to ensure icons are visible */
+    .rich-editor math-field::part(menu-toggle),
+    .rich-editor math-field::part(virtual-keyboard-toggle) {
+      color: #555;
+      opacity: 0.8;
+      padding: 2px;
+      display: flex !important; /* Force display */
+      visibility: visible !important;
+    }
+    
+    .rich-editor math-field::part(menu-toggle):hover,
+    .rich-editor math-field::part(virtual-keyboard-toggle):hover {
+      opacity: 1;
+      background-color: rgba(0,0,0,0.1);
+      border-radius: 4px;
+    }
+
     .rich-editor math-field:focus-within {
       background: white;
       border-color: #2563eb;

@@ -76,9 +76,10 @@ function insertMathField(editor) {
   editor.focus();
   
   const mf = new MathfieldElement();
+  mf.mathVirtualKeyboardPolicy = "manual"; // Ensure keyboard toggle is visible
   mf.style.display = 'inline-block';
   mf.style.width = 'auto';
-  mf.style.minWidth = '20px';
+  // Min-width handled by CSS class .rich-editor math-field
   
   // Allow deleting the box if empty and backspace is pressed
   mf.addEventListener('keydown', (ev) => {
