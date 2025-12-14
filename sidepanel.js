@@ -186,14 +186,13 @@ function openMathModal(textarea) { ... }
 */
 
 document.getElementById('saveConfig').addEventListener('click', () => {
-// ...existing code...
   const apiUrl = document.getElementById('apiUrl').value;
   const apiKey = document.getElementById('apiKey').value;
   const modelName = document.getElementById('modelName').value;
   localStorage.setItem('apiUrl', apiUrl);
   localStorage.setItem('apiKey', apiKey);
   localStorage.setItem('modelName', modelName);
-  showStatus('Settings saved!', 'green');
+  showConfigStatus('Settings saved!', 'green');
 });
 
 // Handle Model Change for Thinking Controls
@@ -234,7 +233,7 @@ document.getElementById('testConnection').addEventListener('click', async () => 
   }
   
   const apiKey = document.getElementById('apiKey').value;
-  showStatus('Testing connection...', 'blue');
+  showConfigStatus('Testing connection...', 'blue');
   
   const headers = {};
   if (apiKey) {
@@ -246,17 +245,17 @@ document.getElementById('testConnection').addEventListener('click', async () => 
     const tagsResponse = await proxyFetch(`${apiUrl}/api/tags`, { headers });
     
     if (tagsResponse.ok) {
-      showStatus('Connection successful!', 'green');
+      showConfigStatus('Connection successful!', 'green');
     } else if (tagsResponse.status === 401) {
-      showStatus('Connection failed: 401 Unauthorized. Check API Key.', 'red');
+      showConfigStatus('Connection failed: 401 Unauthorized. Check API Key.', 'red');
     } else {
-      showStatus(`Connection failed: ${tagsResponse.status} ${tagsResponse.statusText}`, 'red');
+      showConfigStatus(`Connection failed: ${tagsResponse.status} ${tagsResponse.statusText}`, 'red');
     }
   } catch (error) {
     if (error.message === 'Failed to fetch') {
-      showStatus('Connection failed. Check URL and ensure CORS is enabled if using localhost.', 'red');
+      showConfigStatus('Connection failed. Check URL and ensure CORS is enabled if using localhost.', 'red');
     } else {
-      showStatus(`Connection failed: ${error.message}`, 'red');
+      showConfigStatus(`Connection failed: ${error.message}`, 'red');
     }
   }
 });
@@ -272,12 +271,14 @@ function addImage(target, base64) {
   
   list.push(base64);
   renderImages(target);
+  if (target === 'rubric') saveState();
 }
 
 function removeImage(target, index) {
   const list = target === 'rubric' ? rubricImages : studentImages;
   list.splice(index, 1);
   renderImages(target);
+  if (target === 'rubric') saveState();
 }
 
 function renderImages(target) {
@@ -340,16 +341,19 @@ document.querySelectorAll('input[name="rubricMode"]').forEach(radio => {
 
 document.getElementById('btnAddRow').addEventListener('click', addRubricRow);
 
-function addRubricRow() {
+function addRubricRow(criteria = '', desc = '', pts = '') {
   const tbody = document.querySelector('#rubricTable tbody');
   const tr = document.createElement('tr');
   tr.innerHTML = `
-    <td style="border: 1px solid #ddd; padding: 0;"><input type="text" class="r-criteria" style="border:none; margin:0; width:100%;" placeholder="Criteria"></td>
-    <td style="border: 1px solid #ddd; padding: 0;"><input type="text" class="r-desc" style="border:none; margin:0; width:100%;" placeholder="Description"></td>
-    <td style="border: 1px solid #ddd; padding: 0;"><input type="number" class="r-pts" style="border:none; margin:0; width:100%;" placeholder="0"></td>
+    <td style="border: 1px solid #ddd; padding: 0;"><input type="text" class="r-criteria" style="border:none; margin:0; width:100%;" placeholder="Criteria" value="${criteria}"></td>
+    <td style="border: 1px solid #ddd; padding: 0;"><input type="text" class="r-desc" style="border:none; margin:0; width:100%;" placeholder="Description" value="${desc}"></td>
+    <td style="border: 1px solid #ddd; padding: 0;"><input type="number" class="r-pts" style="border:none; margin:0; width:100%;" placeholder="0" value="${pts}"></td>
     <td style="border: 1px solid #ddd; padding: 0; text-align:center;"><button class="btn-del" style="background:none; color:red; border:none; cursor:pointer; padding:0; margin:0; width:auto;"><i class="bi bi-trash"></i></button></td>
   `;
-  tr.querySelector('.btn-del').addEventListener('click', () => tr.remove());
+  tr.querySelector('.btn-del').addEventListener('click', () => {
+    tr.remove();
+    saveState();
+  });
   tbody.appendChild(tr);
 }
 
@@ -386,6 +390,70 @@ document.getElementById('rubricUpload').addEventListener('change', (e) => {
 // REMOVED btnRubricScreenshot listener
 
 // --- Import Rubric from Highlight ---
+function showRubricStatus(text, type = 'loading') {
+  const el = document.getElementById('rubricStatus');
+  const txt = document.getElementById('rubricStatusText');
+  const spinner = el.querySelector('.spinner');
+  
+  el.style.display = 'flex';
+  txt.innerText = text;
+  
+  if (type === 'loading') {
+    el.style.background = '#e0f2fe';
+    el.style.borderColor = '#bae6fd';
+    el.style.color = '#0369a1';
+    spinner.style.display = 'block';
+    spinner.style.borderColor = '#0369a1';
+    spinner.style.borderTopColor = 'transparent';
+  } else if (type === 'success') {
+    el.style.background = '#dcfce7';
+    el.style.borderColor = '#bbf7d0';
+    el.style.color = '#15803d';
+    spinner.style.display = 'none';
+    setTimeout(() => { el.style.display = 'none'; }, 3000);
+  } else if (type === 'error') {
+    el.style.background = '#fee2e2';
+    el.style.borderColor = '#fecaca';
+    el.style.color = '#b91c1c';
+    spinner.style.display = 'none';
+  }
+}
+
+document.getElementById('btnGetRubricText').addEventListener('click', async () => {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    
+    chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => window.getSelection().toString()
+    }, (results) => {
+      if (chrome.runtime.lastError) {
+        showRubricStatus("Error: Please refresh the web page and try again.", "error");
+        return;
+      }
+      
+      if (results && results[0] && results[0].result) {
+        // Switch to text mode
+        document.querySelector('input[name="rubricMode"][value="text"]').click();
+        
+        const editor = document.getElementById('rubricText');
+        const text = results[0].result;
+        
+        if (editor.innerText.trim()) {
+          editor.innerText += "\n\n" + text;
+        } else {
+          editor.innerText = text;
+        }
+        saveState();
+      } else {
+        showRubricStatus("No text selected on page.", "error");
+      }
+    });
+  } catch (e) {
+    showRubricStatus("Error: " + e.message, "error");
+  }
+});
+
 document.getElementById('btnImportRubric').addEventListener('click', async () => {
   // 1. Get Highlighted Text
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -399,16 +467,18 @@ document.getElementById('btnImportRubric').addEventListener('click', async () =>
       selection = results[0].result;
     }
   } catch (e) {
-    showStatus("Could not get selection: " + e.message, "red");
+    showRubricStatus("Could not get selection: " + e.message, "error");
     return;
   }
 
   if (!selection || selection.trim() === "") {
-    showStatus("Please highlight rubric text on the page first.", "orange");
+    showRubricStatus("Please highlight rubric text on the page first.", "error");
     return;
   }
 
-  showStatus("Parsing rubric...", "blue");
+  showRubricStatus("Parsing rubric from text...", "loading");
+  const btn = document.getElementById('btnImportRubric');
+  btn.disabled = true;
 
   // 2. Prepare API Call
   let apiUrl = document.getElementById('apiUrl').value.replace(/\/$/, "");
@@ -469,25 +539,34 @@ document.getElementById('btnImportRubric').addEventListener('click', async () =>
 
       // Switch to table mode
       document.querySelector('input[name="rubricMode"][value="table"]').click();
-      showStatus("Rubric imported successfully!", "green");
+      showRubricStatus("Rubric imported successfully!", "success");
+      
+      // Clear rubric images after successful import
+      rubricImages = [];
+      renderImages('rubric');
+      saveState();
     } else {
       throw new Error("Invalid JSON structure returned");
     }
 
   } catch (err) {
     console.error(err);
-    showStatus("Failed to parse rubric: " + err.message, "red");
+    showRubricStatus("Failed to parse rubric: " + err.message, "error");
+  } finally {
+    btn.disabled = false;
   }
 });
 
 // --- Import Rubric from Image ---
 document.getElementById('btnImportRubricImage').addEventListener('click', async () => {
   if (rubricImages.length === 0) {
-    showStatus("Please take a screenshot or upload an image of the rubric first.", "orange");
+    showRubricStatus("Please take a screenshot or upload an image of the rubric first.", "error");
     return;
   }
 
-  showStatus("Parsing rubric from image...", "blue");
+  showRubricStatus("Parsing rubric from image...", "loading");
+  const btn = document.getElementById('btnImportRubricImage');
+  btn.disabled = true;
 
   // Prepare API Call
   let apiUrl = document.getElementById('apiUrl').value.replace(/\/$/, "");
@@ -552,19 +631,21 @@ document.getElementById('btnImportRubricImage').addEventListener('click', async 
 
       // Switch to table mode
       document.querySelector('input[name="rubricMode"][value="table"]').click();
+      showRubricStatus("Rubric imported successfully!", "success");
       
-      // Clear the images as they have been processed
+      // Clear rubric images after successful import
       rubricImages = [];
       renderImages('rubric');
-      
-      showStatus("Rubric imported from image successfully! Images cleared.", "green");
+      saveState();
     } else {
       throw new Error("Invalid JSON structure returned");
     }
 
   } catch (err) {
     console.error(err);
-    showStatus("Failed to parse rubric from image: " + err.message, "red");
+    showRubricStatus("Failed to parse rubric: " + err.message, "error");
+  } finally {
+    btn.disabled = false;
   }
 });
 
@@ -574,18 +655,27 @@ let currentCaptureTarget = null; // 'rubric' or 'student'
 
 // A. Get Highlighted Text
 document.getElementById('btnHighlight').addEventListener('click', async () => {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  
-  chrome.scripting.executeScript({
-    target: { tabId: tab.id },
-    func: () => window.getSelection().toString()
-  }, (results) => {
-    if (results && results[0] && results[0].result) {
-      setRichEditorContent('studentText', results[0].result);
-    } else {
-      showStatus("No text selected on page.", "orange");
-    }
-  });
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    
+    chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => window.getSelection().toString()
+    }, (results) => {
+      if (chrome.runtime.lastError) {
+        showStatus("Error: Please refresh the web page and try again.", "red");
+        return;
+      }
+
+      if (results && results[0] && results[0].result) {
+        setRichEditorContent('studentText', results[0].result);
+      } else {
+        showStatus("No text selected on page.", "orange");
+      }
+    });
+  } catch (e) {
+    showStatus("Error: " + e.message, "red");
+  }
 });
 
 // B. Screenshot Visible Tab - REMOVED
@@ -655,7 +745,18 @@ document.getElementById('btnGrade').addEventListener('click', async () => {
   }
 
   const apiKey = document.getElementById('apiKey').value;
-  const modelName = document.getElementById('modelName').value;
+  let modelName = document.getElementById('modelName').value;
+  
+  // Auto-switch model if images are present
+  if (studentImages.length > 0 || rubricImages.length > 0) {
+    const visionModel = "qwen3-vl:235b-instruct-cloud"; // Or just "qwen3-vl" depending on your preference
+    if (modelName !== visionModel) {
+      modelName = visionModel;
+      document.getElementById('modelName').value = visionModel;
+      updateThinkingControls(); // Update UI controls for the new model
+      showStatus(`Auto-switched to ${visionModel} for image analysis.`, "blue");
+    }
+  }
   
   let rubricText = "";
   const rubricMode = document.querySelector('input[name="rubricMode"]:checked').value;
@@ -800,11 +901,12 @@ document.getElementById('btnGrade').addEventListener('click', async () => {
           // Handle Content
           if (json.response) {
             responseText += json.response;
-            document.getElementById('response').innerText = responseText;
+            // document.getElementById('response').innerText = responseText; // Don't show raw JSON stream
           }
           
           if (json.done) {
             showStatus("Done.", "green");
+            renderGradingResponse(responseText);
           }
         } catch (e) {
           console.error("Error parsing chunk", e);
@@ -818,10 +920,78 @@ document.getElementById('btnGrade').addEventListener('click', async () => {
   }
 });
 
+function renderGradingResponse(text) {
+  const container = document.getElementById('response');
+  container.innerHTML = '';
+
+  try {
+    // Clean up potential markdown code blocks
+    let jsonStr = text.replace(/```json/g, "").replace(/```/g, "").trim();
+    const data = JSON.parse(jsonStr);
+
+    if (data && data.grading && Array.isArray(data.grading)) {
+      const table = document.createElement('table');
+      table.style.width = '100%';
+      table.style.borderCollapse = 'collapse';
+      table.style.fontSize = '13px';
+      
+      const thead = document.createElement('thead');
+      thead.innerHTML = `
+        <tr style="background: #f1f1f1; text-align: left;">
+          <th style="border: 1px solid #ddd; padding: 8px;">Criteria</th>
+          <th style="border: 1px solid #ddd; padding: 8px;">Status</th>
+          <th style="border: 1px solid #ddd; padding: 8px;">Evidence & Comment</th>
+        </tr>
+      `;
+      table.appendChild(thead);
+
+      const tbody = document.createElement('tbody');
+      data.grading.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td style="border: 1px solid #ddd; padding: 8px; font-weight: bold; vertical-align: top; width: 20%;">${item.criteria}</td>
+          <td style="border: 1px solid #ddd; padding: 8px; text-align: center; vertical-align: top; width: 10%; font-size: 1.2em;">${item.status}</td>
+          <td style="border: 1px solid #ddd; padding: 8px; vertical-align: top;">
+            <div style="font-style: italic; color: #555; margin-bottom: 4px; border-left: 2px solid #ccc; padding-left: 6px;">"${item.excerpt}"</div>
+            <div>${item.comment}</div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      container.appendChild(table);
+    } else {
+      // Fallback if JSON structure doesn't match
+      container.innerText = text;
+    }
+  } catch (e) {
+    // Fallback if not valid JSON
+    container.innerText = text;
+  }
+}
+
 function showStatus(text, color) {
   const el = document.getElementById('status');
   el.innerText = text;
   el.style.color = color || 'black';
+}
+
+let configStatusTimeout;
+function showConfigStatus(text, color) {
+  const el = document.getElementById('configStatus');
+  if (el) {
+    el.innerText = text;
+    el.style.color = color || 'black';
+    el.style.display = 'block';
+    el.style.marginTop = '5px';
+    
+    if (configStatusTimeout) clearTimeout(configStatusTimeout);
+    configStatusTimeout = setTimeout(() => {
+      el.innerText = '';
+      el.style.display = 'none';
+      el.style.marginTop = '0';
+    }, 3000);
+  }
 }
 
 function proxyFetch(url, options = {}) {
@@ -852,3 +1022,89 @@ function proxyFetch(url, options = {}) {
     });
   });
 }
+
+// --- Persistence Logic ---
+function saveState() {
+  const state = {
+    apiUrl: document.getElementById('apiUrl').value,
+    apiKey: document.getElementById('apiKey').value,
+    modelName: document.getElementById('modelName').value,
+    rubricMode: document.querySelector('input[name="rubricMode"]:checked').value,
+    rubricText: document.getElementById('rubricText').innerHTML,
+    rubricTable: getRubricTableData(),
+    rubricImages: rubricImages
+  };
+  chrome.storage.local.set(state, () => {
+    console.log('State saved');
+  });
+}
+
+function loadState() {
+  chrome.storage.local.get([
+    'apiUrl', 'apiKey', 'modelName', 
+    'rubricMode', 'rubricText', 'rubricTable', 'rubricImages'
+  ], (result) => {
+    if (result.apiUrl) document.getElementById('apiUrl').value = result.apiUrl;
+    if (result.apiKey) document.getElementById('apiKey').value = result.apiKey;
+    if (result.modelName) {
+      document.getElementById('modelName').value = result.modelName;
+      updateThinkingControls();
+    }
+    
+    if (result.rubricMode) {
+      const radio = document.querySelector(`input[name="rubricMode"][value="${result.rubricMode}"]`);
+      if (radio) {
+        radio.checked = true;
+        radio.dispatchEvent(new Event('change'));
+      }
+    }
+
+    if (result.rubricText) {
+      document.getElementById('rubricText').innerHTML = result.rubricText;
+    }
+
+    if (result.rubricTable && Array.isArray(result.rubricTable)) {
+      const tbody = document.querySelector('#rubricTable tbody');
+      tbody.innerHTML = "";
+      result.rubricTable.forEach(item => {
+        addRubricRow(item.criteria, item.description, item.points);
+      });
+    }
+
+    if (result.rubricImages && Array.isArray(result.rubricImages)) {
+      rubricImages = result.rubricImages;
+      renderImages('rubric');
+    }
+  });
+}
+
+function getRubricTableData() {
+  const rows = document.querySelectorAll('#rubricTable tbody tr');
+  const data = [];
+  rows.forEach(row => {
+    data.push({
+      criteria: row.querySelector('.r-criteria').value,
+      description: row.querySelector('.r-desc').value,
+      points: row.querySelector('.r-pts').value
+    });
+  });
+  return data;
+}
+
+// Auto-save on changes
+document.getElementById('apiUrl').addEventListener('change', saveState);
+document.getElementById('apiKey').addEventListener('change', saveState);
+document.getElementById('modelName').addEventListener('change', saveState);
+document.querySelectorAll('input[name="rubricMode"]').forEach(r => r.addEventListener('change', saveState));
+document.getElementById('rubricText').addEventListener('input', saveState);
+// For table inputs, we need to delegate since rows are dynamic
+document.querySelector('#rubricTable').addEventListener('input', saveState);
+// For images, we'll call saveState() inside addImage/removeImage
+
+// Load on startup
+loadState();
+
+document.getElementById('saveConfig').addEventListener('click', () => {
+  saveState();
+  showStatus('Settings and Rubric saved!', 'green');
+});

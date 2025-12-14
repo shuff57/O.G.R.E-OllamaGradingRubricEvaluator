@@ -43,6 +43,19 @@ const Prompts = {
   getGradingSystemPrompt: (rubricText) => {
     return `You are a strict grading assistant. 
   Here is the rubric/role context: ${rubricText}
-  Analyze the student work provided below.`;
+  Analyze the student work provided below.
+  
+  Return ONLY a valid JSON object with this structure:
+  {
+    "grading": [
+      {
+        "criteria": "Criteria Name from rubric",
+        "excerpt": "Exact excerpt from student work that relates to this criteria",
+        "status": "✅" or "❌",
+        "comment": "Justification for the pass/fail based on the student work"
+      }
+    ]
+  }
+  Do not include markdown formatting or explanations outside the JSON.`;
   }
 };
