@@ -947,10 +947,17 @@ function renderGradingResponse(text) {
 
       const tbody = document.createElement('tbody');
       data.grading.forEach(item => {
+        let statusIcon = item.status;
+        if (item.status.toLowerCase() === 'pass') {
+          statusIcon = '<i class="bi bi-check-circle-fill" style="color: #198754;"></i>';
+        } else if (item.status.toLowerCase() === 'fail') {
+          statusIcon = '<i class="bi bi-x-circle-fill" style="color: #dc3545;"></i>';
+        }
+
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td style="border: 1px solid #ddd; padding: 8px; font-weight: bold; vertical-align: top; width: 20%;">${item.criteria}</td>
-          <td style="border: 1px solid #ddd; padding: 8px; text-align: center; vertical-align: top; width: 10%; font-size: 1.2em;">${item.status}</td>
+          <td style="border: 1px solid #ddd; padding: 8px; text-align: center; vertical-align: top; width: 10%; font-size: 1.2em;">${statusIcon}</td>
           <td style="border: 1px solid #ddd; padding: 8px; vertical-align: top;">
             <div style="font-style: italic; color: #555; margin-bottom: 4px; border-left: 2px solid #ccc; padding-left: 6px;">"${item.excerpt}"</div>
             <div>${item.comment}</div>

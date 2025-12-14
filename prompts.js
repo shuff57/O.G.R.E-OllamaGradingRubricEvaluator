@@ -49,9 +49,9 @@ const Prompts = {
   {
     "grading": [
       {
-        "criteria": "Criteria Name from rubric",
+        "criteria": "Summarized Criteria Name (max 5 words)",
         "excerpt": "Exact excerpt from student work that relates to this criteria",
-        "status": "✅" or "❌",
+        "status": "Pass" or "Fail",
         "comment": "Justification for the pass/fail based on the student work"
       }
     ]
