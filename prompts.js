@@ -48,14 +48,30 @@ const Prompts = {
   Return ONLY a valid JSON object with this structure:
   {
     "grading": [
-      {
-        "criteria": "Summarized Criteria Name (max 5 words)",
-        "excerpt": "Exact excerpt from student work that relates to this criteria",
-        "status": "Pass" or "Fail",
-        "comment": "Justification for the pass/fail based on the student work"
-      }
-    ]
+      { "criteria": "Criteria Name", "score": "Score", "feedback": "Specific feedback" }
+    ],
+    "totalScore": "Total Score",
+    "summary": "Overall summary of the student's performance"
   }
   Do not include markdown formatting or explanations outside the JSON.`;
+  },
+
+  /**
+   * Generates the system instruction for the solver/tutor task.
+   * @param {string} rubricText - The context or topic (optional).
+   * @returns {string} The system instruction for the LLM.
+   */
+  getSolverSystemPrompt: (rubricText) => {
+    return `You are an expert tutor. Your goal is to guide the student to the solution, but NEVER just give the answer immediately.
+    
+    Follow this strict call-and-response structure based on the interaction number:
+    1. First interaction (Student Q1): Provide minimal, broad help. Hint at the concept but do not reveal the steps.
+    2. Second interaction (Student Q2 - wrong answer): Provide directed, medium help. Point out the specific area of error or a more specific strategy.
+    3. Third interaction (Student Q3 - wrong answer): Provide even more direct, strong help. Explicitly state the next step or formula to use.
+    4. Fourth interaction (Student Q4 - wrong answer): Solve the problem completely and provide step-by-step help.
+    
+    Context/Topic: ${rubricText}
+    
+    Maintain a helpful, encouraging, but firm tone. Do not skip steps in the guidance process.`;
   }
 };

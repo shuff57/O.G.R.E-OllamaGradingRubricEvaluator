@@ -22,6 +22,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // setupLivePreview('studentText', 'studentMathPreview');
 });
 
+let conversationHistory = [];
+
 // Helper to get content from rich editor (text + latex)
 function getRichEditorContent(elementId) {
   const el = document.getElementById(elementId);
@@ -387,6 +389,20 @@ document.getElementById('rubricUpload').addEventListener('change', (e) => {
   }
 });
 
+document.getElementById('studentUpload').addEventListener('change', (e) => {
+  const files = e.target.files;
+  if (files && files.length > 0) {
+    Array.from(files).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const base64Raw = event.target.result; 
+        addImage('student', base64Raw);
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+});
+
 // REMOVED btnRubricScreenshot listener
 
 // --- Import Rubric from Highlight ---
@@ -654,7 +670,7 @@ document.getElementById('btnImportRubricImage').addEventListener('click', async 
 let currentCaptureTarget = null; // 'rubric' or 'student'
 
 // A. Get Highlighted Text
-document.getElementById('btnHighlight').addEventListener('click', async () => {
+document.getElementById('btnGetStudentText').addEventListener('click', async () => {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     
@@ -676,6 +692,39 @@ document.getElementById('btnHighlight').addEventListener('click', async () => {
   } catch (e) {
     showStatus("Error: " + e.message, "red");
   }
+});
+
+// B. Import Student Work (Text)
+document.getElementById('btnImportStudent').addEventListener('click', async () => {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => window.getSelection().toString()
+    }, async (results) => {
+      if (chrome.runtime.lastError) {
+        showStatus("Error: Please refresh the web page.", "red");
+        return;
+      }
+      if (results && results[0] && results[0].result) {
+        const text = results[0].result;
+        showStatus("Processing student text...", "blue");
+        // Just set it for now, or we could add an LLM call to 'clean' it
+        setRichEditorContent('studentText', text);
+        showStatus("Student text imported.", "green");
+      } else {
+        showStatus("No text selected.", "orange");
+      }
+    });
+  } catch (e) {
+    showStatus("Error: " + e.message, "red");
+  }
+});
+
+// C. Import Student Work (Image)
+document.getElementById('btnImportStudentImage').addEventListener('click', () => {
+  // We reuse the area selection logic but set a flag to process it differently
+  startAreaSelection('student-import');
 });
 
 // B. Screenshot Visible Tab - REMOVED
@@ -727,7 +776,17 @@ function processAreaCapture(area) {
         const croppedDataUrl = canvas.toDataURL('image/png');
         
         // 3. Update UI
-        addImage(currentCaptureTarget, croppedDataUrl);
+        if (currentCaptureTarget === 'rubric-import') {
+          extractRubricFromImage(croppedDataUrl);
+        } else if (currentCaptureTarget === 'student-import') {
+          // For now, just add the image, but we could add OCR logic here later
+          // Or we can try to extract text using a vision model if the user wants
+          // For now, let's treat it as adding an image to the student section
+          addImage('student', croppedDataUrl);
+          showStatus("Student work image added.", "green");
+        } else {
+          addImage(currentCaptureTarget, croppedDataUrl);
+        }
         
         currentCaptureTarget = null;
       };
@@ -737,6 +796,56 @@ function processAreaCapture(area) {
 }
 
 // --- 4. The Main Logic: Call Ollama ---
+let solverTurn = 0;
+
+// Toggle UI based on mode
+document.getElementById('modeSwitch').addEventListener('change', (e) => {
+  const isSolver = e.target.checked;
+  const btnGrade = document.getElementById('btnGrade');
+  const studentText = document.getElementById('studentText');
+  const chatSection = document.getElementById('chatSection');
+  const responseContainer = document.getElementById('response');
+  const rubricCard = document.getElementById('rubricCard');
+  const studentWorkTitle = document.getElementById('studentWorkTitle');
+  const btnImportStudent = document.getElementById('btnImportStudent');
+  const btnImportStudentImage = document.getElementById('btnImportStudentImage');
+  
+  if (isSolver) {
+    rubricCard.style.display = 'none';
+    studentWorkTitle.innerHTML = '<i class="bi bi-chat-dots"></i> Solver Chat';
+    btnImportStudent.innerHTML = '<i class="bi bi-stars"></i> Import from Text (AI)';
+    btnImportStudentImage.innerHTML = '<i class="bi bi-file-image"></i> Import from Screenshot (AI)';
+    btnGrade.innerText = "Send";
+    studentText.setAttribute('placeholder', "Ask a question...");
+    chatSection.style.display = 'none'; // Hide separate chat input
+    responseContainer.innerHTML = ''; // Clear previous results
+    responseContainer.style.display = 'flex';
+    responseContainer.style.flexDirection = 'column';
+    responseContainer.style.gap = '10px';
+    responseContainer.style.maxHeight = '400px';
+    responseContainer.style.overflowY = 'auto';
+    responseContainer.style.padding = '10px';
+    responseContainer.style.border = '1px solid #eee';
+    responseContainer.style.borderRadius = '4px';
+    responseContainer.style.background = '#f9f9f9';
+  } else {
+    rubricCard.style.display = 'block';
+    studentWorkTitle.innerHTML = '<i class="bi bi-person-workspace"></i> 2. Student Work';
+    btnImportStudent.innerHTML = '<i class="bi bi-stars"></i> Import Student Work from Text';
+    btnImportStudentImage.innerHTML = '<i class="bi bi-file-image"></i> Import Student Work from Screenshot';
+    btnGrade.innerText = "Run Assessment";
+    studentText.setAttribute('placeholder', "Student text will appear here...");
+    // chatSection will be shown after grading
+    responseContainer.innerHTML = '';
+    responseContainer.style.display = 'block';
+    responseContainer.style.maxHeight = 'none';
+    responseContainer.style.overflowY = 'visible';
+    responseContainer.style.padding = '0';
+    responseContainer.style.border = 'none';
+    responseContainer.style.background = 'transparent';
+  }
+});
+
 document.getElementById('btnGrade').addEventListener('click', async () => {
   let apiUrl = document.getElementById('apiUrl').value.replace(/\/$/, ""); // remove trailing slash
   // If the user included /api at the end, remove it so we can append it correctly later
@@ -746,6 +855,7 @@ document.getElementById('btnGrade').addEventListener('click', async () => {
 
   const apiKey = document.getElementById('apiKey').value;
   let modelName = document.getElementById('modelName').value;
+  const isSolver = document.getElementById('modeSwitch').checked;
   
   // Auto-switch model if images are present
   if (studentImages.length > 0 || rubricImages.length > 0) {
@@ -769,18 +879,20 @@ document.getElementById('btnGrade').addEventListener('click', async () => {
 
   const studentText = getRichEditorContent('studentText');
 
-  if (!rubricText && rubricImages.length === 0) {
+  if (!isSolver && !rubricText && rubricImages.length === 0) {
     showStatus("Please provide a rubric or role.", "red");
     return;
   }
   
   showStatus("Thinking...", "blue");
-  document.getElementById('response').innerText = "";
+  // document.getElementById('response').innerText = ""; // Don't clear in Solver mode
+  document.getElementById('chatSection').style.display = 'none';
+  document.getElementById('chatHistory').innerHTML = '';
 
-  // Construct the prompt
-  const systemInstruction = Prompts.getGradingSystemPrompt(rubricText);
-
-  const userPrompt = `Student Submission: ${studentText}`;
+  // Check Mode
+  // const isSolver = document.getElementById('modeSwitch').checked; // Moved up
+  let systemInstruction;
+  let userPrompt;
 
   // Gather Images
   const images = [];
@@ -789,16 +901,119 @@ document.getElementById('btnGrade').addEventListener('click', async () => {
   // Add student images (strip header)
   studentImages.forEach(img => images.push(img.split(',')[1]));
 
-  const headers = { "Content-Type": "application/json" };
-  if (apiKey) {
-    headers['Authorization'] = `Bearer ${apiKey}`;
+  if (isSolver) {
+    // If it's the first turn or a reset
+    if (solverTurn === 0 || solverTurn >= 4) {
+        solverTurn = 1;
+        document.getElementById('response').innerHTML = ''; // Clear history for new problem
+        systemInstruction = Prompts.getSolverSystemPrompt(rubricText);
+        userPrompt = `Student Question (Interaction 1/4): ${studentText}`;
+        
+        // Initialize History
+        conversationHistory = [
+            { role: "system", content: systemInstruction },
+            { role: "user", content: userPrompt, images: images.length > 0 ? images : undefined }
+        ];
+    } else {
+        // Continuation
+        solverTurn++;
+        userPrompt = `Student Follow-up (Interaction ${solverTurn}/4): ${studentText}`;
+        conversationHistory.push({ role: "user", content: userPrompt, images: images.length > 0 ? images : undefined });
+    }
+
+    // Render User Bubble in Response Container
+    const responseContainer = document.getElementById('response');
+    const userBubble = document.createElement('div');
+    userBubble.style.alignSelf = 'flex-end';
+    userBubble.style.background = '#e3f2fd';
+    userBubble.style.padding = '8px 12px';
+    userBubble.style.borderRadius = '15px 15px 0 15px';
+    userBubble.style.maxWidth = '80%';
+    userBubble.innerText = studentText; // Show raw text to user
+    responseContainer.appendChild(userBubble);
+    
+    // Clear Input
+    document.getElementById('studentText').innerText = '';
+    studentImages = []; // Clear images after sending? Maybe keep them? Usually chat clears input.
+    renderImages('student');
+
+    await streamChat(conversationHistory, 'solver'); // Use new 'solver' mode
+    return;
+  } else {
+    document.getElementById('response').innerText = ""; // Clear for Grader
+    systemInstruction = Prompts.getGradingSystemPrompt(rubricText);
+    userPrompt = `Student Submission: ${studentText}`;
   }
+
+  // Initialize Conversation History (Grader Mode)
+  conversationHistory = [
+    { role: "system", content: systemInstruction },
+    { role: "user", content: userPrompt, images: images.length > 0 ? images : undefined }
+  ];
+
+  await streamChat(conversationHistory, 'grading');
+});
+
+// --- Chat Logic ---
+document.getElementById('btnSendChat').addEventListener('click', async () => {
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text) return;
+
+  const isSolver = document.getElementById('modeSwitch').checked;
+  const chatHistory = document.getElementById('chatHistory');
+
+  if (isSolver) {
+    if (solverTurn >= 4) {
+      // Reset Cycle
+      solverTurn = 1;
+      chatHistory.innerHTML = ''; // Clear UI for new cycle
+      
+      // Reset context, keeping system prompt
+      const systemMsg = conversationHistory[0];
+      conversationHistory = [systemMsg];
+      
+      // Add new Q1
+      conversationHistory.push({ role: "user", content: `Student Question (Interaction 1/4): ${text}` });
+    } else {
+      solverTurn++;
+      // Add follow-up
+      conversationHistory.push({ role: "user", content: `Student Follow-up (Interaction ${solverTurn}/4): ${text}` });
+    }
+  } else {
+    // Grader mode - just push text
+    conversationHistory.push({ role: "user", content: text });
+  }
+  
+  // Add user bubble to UI
+  const userBubble = document.createElement('div');
+  userBubble.style.alignSelf = 'flex-end';
+  userBubble.style.background = '#e3f2fd';
+  userBubble.style.padding = '8px 12px';
+  userBubble.style.borderRadius = '15px 15px 0 15px';
+  userBubble.style.maxWidth = '80%';
+  userBubble.innerText = text;
+  chatHistory.appendChild(userBubble);
+  
+  input.value = '';
+  chatHistory.scrollTop = chatHistory.scrollHeight;
+
+  await streamChat(conversationHistory, 'chat');
+});
+
+async function streamChat(messages, mode) {
+  let apiUrl = document.getElementById('apiUrl').value.replace(/\/$/, "");
+  if (apiUrl.endsWith('/api')) apiUrl = apiUrl.slice(0, -4);
+  const apiKey = document.getElementById('apiKey').value;
+  const modelName = document.getElementById('modelName').value;
+
+  const headers = { "Content-Type": "application/json" };
+  if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
 
   const requestBody = {
     model: modelName,
-    prompt: `${systemInstruction}\n\n${userPrompt}`,
-    images: images.length > 0 ? images : undefined,
-    stream: true, // Enable streaming
+    messages: messages,
+    stream: true,
     options: {}
   };
 
@@ -818,28 +1033,42 @@ document.getElementById('btnGrade').addEventListener('click', async () => {
     }
   }
 
-  console.log("Sending request to Ollama:", requestBody);
-
-  // Reset UI
+  // Reset UI for Thinking
   const thinkingContainer = document.getElementById('thinkingContainer');
-  thinkingContainer.style.display = 'none';
-  thinkingContainer.removeAttribute('open'); // Collapse the details
-  document.getElementById('thinkingContent').innerText = '';
-  document.getElementById('response').innerText = '';
+  if (mode === 'grading') {
+    thinkingContainer.style.display = 'none';
+    thinkingContainer.removeAttribute('open');
+    document.getElementById('thinkingContent').innerText = '';
+  }
+
+  // Prepare Chat Bubble for Assistant if in chat mode
+  let assistantBubble;
+  if (mode === 'chat') {
+    const chatHistory = document.getElementById('chatHistory');
+    assistantBubble = document.createElement('div');
+    assistantBubble.style.alignSelf = 'flex-start';
+    assistantBubble.style.background = '#fff';
+    assistantBubble.style.border = '1px solid #ddd';
+    assistantBubble.style.padding = '8px 12px';
+    assistantBubble.style.borderRadius = '15px 15px 15px 0';
+    assistantBubble.style.maxWidth = '80%';
+    chatHistory.appendChild(assistantBubble);
+    chatHistory.scrollTop = chatHistory.scrollHeight;
+  } else if (mode === 'solver') {
+    const responseContainer = document.getElementById('response');
+    assistantBubble = document.createElement('div');
+    assistantBubble.style.alignSelf = 'flex-start';
+    assistantBubble.style.background = '#fff';
+    assistantBubble.style.border = '1px solid #ddd';
+    assistantBubble.style.padding = '8px 12px';
+    assistantBubble.style.borderRadius = '15px 15px 15px 0';
+    assistantBubble.style.maxWidth = '80%';
+    responseContainer.appendChild(assistantBubble);
+    responseContainer.scrollTop = responseContainer.scrollHeight;
+  }
 
   try {
-    // We need to use a custom fetch implementation that supports streaming
-    // Since proxyFetch in background.js might not support streaming well, 
-    // we will try to use the direct fetch if possible (if CORS allows), 
-    // otherwise we need to update proxyFetch to support streaming or use a different approach.
-    // For now, let's assume we can use the proxyFetch but we need to handle the stream in the background.
-    // However, standard chrome.runtime.sendMessage does not support streaming responses easily.
-    // A better approach for streaming in extensions is using a long-lived connection (port).
-    
-    // Let's try to use the direct fetch first, as we fixed the CORS issue on the server side.
-    // If that fails, we might need a more complex proxy setup.
-    
-    const response = await fetch(`${apiUrl}/api/generate`, {
+    const response = await fetch(`${apiUrl}/api/chat`, {
       method: "POST",
       headers: headers,
       body: JSON.stringify(requestBody)
@@ -849,26 +1078,17 @@ document.getElementById('btnGrade').addEventListener('click', async () => {
       let errorMessage = `API Error: ${response.status}`;
       try {
         const errorData = await response.json();
-        if (errorData && errorData.error) {
-          errorMessage = `Ollama Error: ${errorData.error}`;
-        }
+        if (errorData && errorData.error) errorMessage = `Ollama Error: ${errorData.error}`;
       } catch (e) {
-        // Could not parse JSON error, try text
         try {
           const errorText = await response.text();
           if (errorText) errorMessage = `API Error: ${errorText}`;
         } catch (e2) {}
       }
-
-      if (response.status === 401) {
-        throw new Error("401 Unauthorized. Please check your API Key.");
+      if (response.status === 401) throw new Error("401 Unauthorized. Please check your API Key.");
+      if (response.status === 400 && messages.some(m => m.images)) {
+        errorMessage += "\n\nTip: You are sending images. Ensure the selected model supports vision.";
       }
-      
-      // Common 400 error for non-vision models
-      if (response.status === 400 && images.length > 0) {
-        errorMessage += "\n\nTip: You are sending images. Ensure the selected model supports vision (e.g., qwen3-vl, gemini-3-pro).";
-      }
-
       throw new Error(errorMessage);
     }
 
@@ -882,8 +1102,6 @@ document.getElementById('btnGrade').addEventListener('click', async () => {
       const { value, done: doneReading } = await reader.read();
       done = doneReading;
       const chunkValue = decoder.decode(value, { stream: true });
-      
-      // Ollama sends multiple JSON objects in one chunk sometimes
       const lines = chunkValue.split('\n');
       
       for (const line of lines) {
@@ -893,32 +1111,48 @@ document.getElementById('btnGrade').addEventListener('click', async () => {
           
           // Handle Thinking
           if (json.thinking) {
-            document.getElementById('thinkingContainer').style.display = 'block';
-            thinkingText += json.thinking;
-            document.getElementById('thinkingContent').innerText = thinkingText;
+             if (mode === 'grading') {
+               thinkingContainer.style.display = 'block';
+               thinkingText += json.thinking;
+               document.getElementById('thinkingContent').innerText = thinkingText;
+             }
           }
           
           // Handle Content
-          if (json.response) {
-            responseText += json.response;
-            // document.getElementById('response').innerText = responseText; // Don't show raw JSON stream
+          if (json.message && json.message.content) {
+            responseText += json.message.content;
+            if (mode === 'chat' || mode === 'solver') {
+              assistantBubble.innerText = responseText;
+              const container = mode === 'chat' ? document.getElementById('chatHistory') : document.getElementById('response');
+              container.scrollTop = container.scrollHeight;
+            }
           }
           
           if (json.done) {
-            showStatus("Done.", "green");
-            renderGradingResponse(responseText);
+            if (mode === 'grading') {
+              showStatus("Done.", "green");
+              renderGradingResponse(responseText);
+              document.getElementById('chatSection').style.display = 'block';
+            } else if (mode === 'solver') {
+               showStatus(`Interaction ${solverTurn}/4 Complete.`, "green");
+            }
+            // Add to history
+            conversationHistory.push({ role: "assistant", content: responseText });
           }
         } catch (e) {
           console.error("Error parsing chunk", e);
         }
       }
     }
-
   } catch (err) {
     console.error(err);
     showStatus(`Error connecting to Ollama: ${err.message}`, "red");
+    if ((mode === 'chat' || mode === 'solver') && assistantBubble) {
+      assistantBubble.innerText += `\n[Error: ${err.message}]`;
+      assistantBubble.style.color = 'red';
+    }
   }
-});
+}
 
 function renderGradingResponse(text) {
   const container = document.getElementById('response');
