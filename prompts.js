@@ -55,7 +55,7 @@ const Prompts = {
         "comment": "Specific feedback explaining the status" 
       }
     ],
-    "totalScore": "Total Score / total number of criteria (if applicable)",
+    "totalScore": "Total Score / number of criteria (if applicable)",
   }
   Do not include markdown formatting or explanations outside the JSON.`;
   },

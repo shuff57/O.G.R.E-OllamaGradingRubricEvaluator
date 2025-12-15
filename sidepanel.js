@@ -1126,11 +1126,6 @@ async function streamChat(messages, mode) {
             if (mode === 'chat' || mode === 'solver') {
               contentContainer.innerHTML = marked.parse(responseText);
               chatHistoryDisplay.scrollTop = chatHistoryDisplay.scrollHeight;
-            } else if (mode === 'grading') {
-               // For grading, we show the raw JSON accumulating (or a loading state)
-               // until it's done, then we render the table.
-               // To make it look cleaner, we can show a "Streaming..." indicator or the raw text.
-               contentContainer.innerHTML = '<div style="color:#666; font-style:italic;">Analyzing...</div>';
             }
           }
           
@@ -1159,79 +1154,62 @@ async function streamChat(messages, mode) {
   }
 }
 
-function renderGradingResponse(text, container) {
-  container.innerHTML = '';
-
+function renderGradingResponse(jsonString, container) {
   try {
-    // Clean up potential markdown code blocks
-    let jsonStr = text.replace(/```json/g, "").replace(/```/g, "").trim();
-    const data = JSON.parse(jsonStr);
-
-    if (data && data.grading && Array.isArray(data.grading)) {
-      const table = document.createElement('table');
-      table.style.width = '100%';
-      table.style.borderCollapse = 'collapse';
-      table.style.fontSize = '13px';
-      
-      const thead = document.createElement('thead');
-      thead.innerHTML = `
-        <tr style="background: #f1f1f1; text-align: left;">
-          <th style="border: 1px solid #ddd; padding: 8px;">Criteria</th>
-          <th style="border: 1px solid #ddd; padding: 8px;">Status</th>
-          <th style="border: 1px solid #ddd; padding: 8px;">Evidence & Comment</th>
-        </tr>
-      `;
-      table.appendChild(thead);
-
-      const tbody = document.createElement('tbody');
-      data.grading.forEach(item => {
-        let statusIcon = item.status;
-        if (item.status.toLowerCase().includes('pass')) {
-          statusIcon = '<i class="bi bi-check-circle-fill" style="color: #198754;"></i>';
-        } else if (item.status.toLowerCase().includes('fail')) {
-          statusIcon = '<i class="bi bi-x-circle-fill" style="color: #dc3545;"></i>';
-        }
-
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td style="border: 1px solid #ddd; padding: 8px; font-weight: bold; vertical-align: top; width: 20%;">${item.criteria}</td>
-          <td style="border: 1px solid #ddd; padding: 8px; text-align: center; vertical-align: top; width: 10%; font-size: 1.2em;">${statusIcon}</td>
-          <td style="border: 1px solid #ddd; padding: 8px; vertical-align: top;">
-            <div style="font-style: italic; color: #555; margin-bottom: 4px; border-left: 2px solid #ccc; padding-left: 6px;">"${item.excerpt}"</div>
-            <div>${item.comment}</div>
-          </td>
-        `;
-        tbody.appendChild(tr);
-      });
-      table.appendChild(tbody);
-      container.appendChild(table);
-
-      // Add Summary and Score
-      if (data.totalScore || data.summary) {
-        const summaryDiv = document.createElement('div');
-        summaryDiv.style.marginTop = '15px';
-        summaryDiv.style.padding = '10px';
-        summaryDiv.style.background = '#f8f9fa';
-        summaryDiv.style.borderRadius = '4px';
-        summaryDiv.style.border = '1px solid #eee';
-        
-        let summaryHtml = '';
-        if (data.totalScore) {
-            summaryHtml += `<div style="font-weight: bold; margin-bottom: 5px; color: #0f172a;">Total Score: ${data.totalScore}</div>`;
-        }
-        if (data.summary) {
-            summaryHtml += `<div>${data.summary}</div>`;
-        }
-        summaryDiv.innerHTML = summaryHtml;
-        container.appendChild(summaryDiv);
-      }
-    } else {
-      // Fallback if JSON structure doesn't match
-      container.innerHTML = marked.parse(text);
+    // Attempt to find JSON if wrapped in markdown code blocks
+    let cleanJson = jsonString;
+    const jsonMatch = jsonString.match(/```json\s*([\s\S]*?)\s*```/) || jsonString.match(/```\s*([\s\S]*?)\s*```/);
+    if (jsonMatch) {
+      cleanJson = jsonMatch[1];
     }
+
+    const data = JSON.parse(cleanJson);
+    
+    let html = '';
+    
+    // Summary
+    if (data.summary) {
+      html += `<div style="margin-bottom: 15px; font-style: italic;">${marked.parse(data.summary)}</div>`;
+    }
+
+    // Table
+    if (data.grading && Array.isArray(data.grading)) {
+      html += `<table style="width:100%; border-collapse: collapse; font-size: 13px; margin-bottom: 15px;">`;
+      html += `<thead>
+        <tr style="background: #f1f1f1;">
+          <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Criteria</th>
+          <th style="border: 1px solid #ddd; padding: 8px; text-align: center; width: 60px;">Score</th>
+          <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Feedback</th>
+          <th style="border: 1px solid #ddd; padding: 8px; text-align: center; width: 80px;">Status</th>
+        </tr>
+      </thead><tbody>`;
+
+      data.grading.forEach(item => {
+        const isPass = item.pass === true || (typeof item.pass === 'string' && item.pass.toLowerCase().includes('true'));
+        const statusIcon = isPass 
+          ? '<i class="bi bi-check-circle-fill" style="color: #198754;"></i> Pass' 
+          : '<i class="bi bi-x-circle-fill" style="color: #dc3545;"></i> Fail';
+        
+        html += `<tr>
+          <td style="border: 1px solid #ddd; padding: 8px;"><strong>${item.criteria}</strong></td>
+          <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${item.score}</td>
+          <td style="border: 1px solid #ddd; padding: 8px;">${marked.parse(item.feedback || '')}</td>
+          <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${statusIcon}</td>
+        </tr>`;
+      });
+      html += `</tbody></table>`;
+    }
+
+    // Total Score
+    if (data.totalScore !== undefined) {
+      html += `<div style="font-weight: bold; font-size: 1.1em; margin-top: 10px;">Total Score: ${data.totalScore}</div>`;
+    }
+
+    container.innerHTML = html;
+
   } catch (e) {
-    // Fallback if not valid JSON
-    container.innerHTML = marked.parse(text);
+    console.error("Error parsing grading JSON", e);
+    container.innerHTML = `<div style="color: red;">Error parsing grading response. Raw output below:</div><hr/>` + marked.parse(jsonString);
   }
 }
 
