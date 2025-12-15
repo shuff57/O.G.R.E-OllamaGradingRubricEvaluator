@@ -277,13 +277,15 @@
     .integrated-input-container {
       display: flex;
       flex-direction: column;
-      border: 1px solid #ddd;
-      border-radius: 4px;
       background: white;
-      margin-bottom: 10px;
       padding: 5px;
       min-height: 80px;
       transition: outline 0.1s;
+      
+      /* Integrated Style */
+      border: none;
+      border-radius: 0;
+      margin-bottom: 0;
     }
     .integrated-input-container:focus-within {
       outline: 2px solid #16a34a;
@@ -355,6 +357,13 @@
     /* Chat Interface Wrapper */
     #chatInterfaceWrapper {
       transition: all 0.2s;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      background: white;
+      overflow: hidden;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+      display: flex;
+      flex-direction: column;
     }
     
     /* Solver Chat History Base Styles */
@@ -365,13 +374,18 @@
       max-height: 300px;
       overflow-y: auto;
       padding: 10px;
-      border: 1px solid #eee;
-      border-radius: 4px;
       background: #f9f9f9;
-      margin-bottom: 10px;
+      
+      /* Integrated Style */
+      border: none;
+      border-radius: 0;
+      margin-bottom: 0;
+      border-bottom: 1px solid #eee;
+      flex-grow: 1;
     }
 
-    /* Solver Mode Integration Styles */
+    /* Solver Mode Integration Styles - REMOVED (Now Default) */
+    /*
     body.solver-mode #chatInterfaceWrapper {
       border: 1px solid #ddd;
       border-radius: 6px;
@@ -387,7 +401,7 @@
       border-radius: 0 !important;
       margin-bottom: 0 !important;
       border-bottom: 1px solid #eee !important;
-      background: #f8fafc; /* Slightly different bg for chat area */
+      background: #f8fafc; 
       flex-grow: 1;
     }
     
@@ -397,6 +411,12 @@
       margin-bottom: 0 !important;
       background: white;
       box-shadow: none !important;
+    }
+    */
+    
+    /* Keep background color change for Solver Mode */
+    body.solver-mode .solver-chat-history {
+      background: #f8fafc;
     }
     
     /* Focus ring around the whole wrapper in solver mode */
