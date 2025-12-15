@@ -54,24 +54,21 @@ function createLatexToolbar(textareaId) {
   const textarea = document.getElementById(textareaId);
   if (!textarea) return;
 
-  const toolbar = document.createElement('div');
-  toolbar.className = 'latex-toolbar';
-
-  // Add Math Editor Button
+  // Add Math Editor Button directly (no toolbar wrapper)
   const mathBtn = document.createElement('button');
-  mathBtn.className = 'latex-btn';
+  mathBtn.className = 'secondary';
   mathBtn.innerHTML = '<i class="bi bi-calculator"></i> Insert Math';
   mathBtn.title = 'Insert Math Equation';
-  mathBtn.style.fontWeight = 'bold';
   mathBtn.style.width = '100%'; 
+  mathBtn.style.marginBottom = '5px';
+  mathBtn.style.fontSize = '12px';
   mathBtn.type = 'button';
   mathBtn.addEventListener('click', () => {
     insertMathField(textarea);
   });
-  toolbar.appendChild(mathBtn);
 
-  // Insert toolbar before the textarea
-  textarea.parentNode.insertBefore(toolbar, textarea);
+  // Insert button before the textarea
+  textarea.parentNode.insertBefore(mathBtn, textarea);
 
   // Handle backspace to delete math-field
   textarea.addEventListener('keydown', (e) => {
@@ -806,12 +803,15 @@ document.getElementById('modeSwitch').addEventListener('change', (e) => {
   const chatSection = document.getElementById('chatSection');
   const responseContainer = document.getElementById('response');
   const rubricCard = document.getElementById('rubricCard');
+  const rubricTitle = document.getElementById('rubricTitle');
   const studentWorkTitle = document.getElementById('studentWorkTitle');
   const btnImportStudent = document.getElementById('btnImportStudent');
   const btnImportStudentImage = document.getElementById('btnImportStudentImage');
   
   if (isSolver) {
-    rubricCard.style.display = 'none';
+    document.body.classList.add('solver-mode');
+    rubricCard.style.display = 'block';
+    rubricTitle.innerHTML = '<i class="bi bi-list-check"></i> Question Setup';
     studentWorkTitle.innerHTML = '<i class="bi bi-chat-dots"></i> Solver Chat';
     btnImportStudent.innerHTML = '<i class="bi bi-stars"></i> Import from Text (AI)';
     btnImportStudentImage.innerHTML = '<i class="bi bi-file-image"></i> Import from Screenshot (AI)';
@@ -829,7 +829,9 @@ document.getElementById('modeSwitch').addEventListener('change', (e) => {
     responseContainer.style.borderRadius = '4px';
     responseContainer.style.background = '#f9f9f9';
   } else {
+    document.body.classList.remove('solver-mode');
     rubricCard.style.display = 'block';
+    rubricTitle.innerHTML = '<i class="bi bi-list-check"></i> 1. Define Role / Rubric';
     studentWorkTitle.innerHTML = '<i class="bi bi-person-workspace"></i> 2. Student Work';
     btnImportStudent.innerHTML = '<i class="bi bi-stars"></i> Import Student Work from Text';
     btnImportStudentImage.innerHTML = '<i class="bi bi-file-image"></i> Import Student Work from Screenshot';
@@ -843,6 +845,11 @@ document.getElementById('modeSwitch').addEventListener('change', (e) => {
     responseContainer.style.padding = '0';
     responseContainer.style.border = 'none';
     responseContainer.style.background = 'transparent';
+    
+    // Reset chat section visibility for Grader mode
+    chatSection.style.display = 'none';
+    document.getElementById('chatHistory').style.display = 'flex';
+    chatSection.querySelector('h4').style.display = 'block';
   }
 });
 
@@ -937,6 +944,14 @@ document.getElementById('btnGrade').addEventListener('click', async () => {
     studentImages = []; // Clear images after sending? Maybe keep them? Usually chat clears input.
     renderImages('student');
 
+    // Show chat input for follow-up
+    const chatSection = document.getElementById('chatSection');
+    chatSection.style.display = 'block';
+    // Hide the history part of chatSection since we use #response
+    document.getElementById('chatHistory').style.display = 'none';
+    // Hide the header
+    chatSection.querySelector('h4').style.display = 'none';
+
     await streamChat(conversationHistory, 'solver'); // Use new 'solver' mode
     return;
   } else {
@@ -962,12 +977,16 @@ document.getElementById('btnSendChat').addEventListener('click', async () => {
 
   const isSolver = document.getElementById('modeSwitch').checked;
   const chatHistory = document.getElementById('chatHistory');
+  const responseContainer = document.getElementById('response');
+  
+  // Determine container
+  const container = isSolver ? responseContainer : chatHistory;
 
   if (isSolver) {
     if (solverTurn >= 4) {
       // Reset Cycle
       solverTurn = 1;
-      chatHistory.innerHTML = ''; // Clear UI for new cycle
+      container.innerHTML = ''; // Clear UI for new cycle
       
       // Reset context, keeping system prompt
       const systemMsg = conversationHistory[0];
@@ -993,12 +1012,12 @@ document.getElementById('btnSendChat').addEventListener('click', async () => {
   userBubble.style.borderRadius = '15px 15px 0 15px';
   userBubble.style.maxWidth = '80%';
   userBubble.innerText = text;
-  chatHistory.appendChild(userBubble);
+  container.appendChild(userBubble);
   
   input.value = '';
-  chatHistory.scrollTop = chatHistory.scrollHeight;
+  container.scrollTop = container.scrollHeight;
 
-  await streamChat(conversationHistory, 'chat');
+  await streamChat(conversationHistory, isSolver ? 'solver' : 'chat');
 });
 
 async function streamChat(messages, mode) {

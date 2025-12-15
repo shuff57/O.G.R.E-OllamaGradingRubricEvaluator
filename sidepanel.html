@@ -12,10 +12,21 @@
     h3 { margin-top: 0; font-size: 14px; color: #333; }
     label { font-size: 12px; font-weight: bold; color: #555; display: block; margin-bottom: 5px; }
     input, textarea, select { width: 100%; padding: 8px; box-sizing: border-box; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px; }
-    button { width: 100%; background: #2563eb; color: white; border: none; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold; margin-bottom: 5px; }
-    button:hover { background: #1d4ed8; }
+    
+    /* Default (Grader) - Green Theme */
+    button { width: 100%; background: #16a34a; color: white; border: none; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold; margin-bottom: 5px; transition: background-color 0.3s; }
+    button:hover { background: #15803d; }
+    
+    /* Solver Mode - Blue Theme */
+    body.solver-mode button { background: #2563eb; }
+    body.solver-mode button:hover { background: #1d4ed8; }
+
     button.secondary { background: #e5e7eb; color: #333; }
     button.secondary:hover { background: #d1d5db; }
+    /* Ensure secondary buttons stay gray in solver mode */
+    body.solver-mode button.secondary { background: #e5e7eb; color: #333; }
+    body.solver-mode button.secondary:hover { background: #d1d5db; }
+
     .preview { max-width: 100%; height: auto; border: 1px solid #ccc; margin-top: 5px; display: none; }
     #status { font-size: 12px; color: #666; margin-top: 10px; }
     #response { white-space: pre-wrap; font-size: 13px; line-height: 1.4; }
@@ -61,8 +72,11 @@
       white-space: pre-wrap;
     }
     .rich-editor:focus {
-      outline: 2px solid #2563eb;
+      outline: 2px solid #16a34a;
       border-color: transparent;
+    }
+    body.solver-mode .rich-editor:focus {
+      outline: 2px solid #2563eb;
     }
     /* Placeholder simulation */
     .rich-editor:empty:before {
@@ -105,6 +119,10 @@
 
     .rich-editor math-field:focus-within {
       background: white;
+      border-color: #16a34a;
+      box-shadow: 0 0 0 1px #16a34a;
+    }
+    body.solver-mode .rich-editor math-field:focus-within {
       border-color: #2563eb;
       box-shadow: 0 0 0 1px #2563eb;
     }
@@ -174,7 +192,7 @@
     .toggle-label {
       display: flex;
       align-items: center;
-      background-color: #e0e0e0;
+      background-color: #dcfce7;
       border-radius: 20px;
       padding: 2px;
       cursor: pointer;
@@ -183,6 +201,7 @@
       height: 24px;
       user-select: none;
       box-sizing: border-box;
+      transition: background-color 0.4s ease;
     }
     .toggle-slider {
       position: absolute;
@@ -192,7 +211,7 @@
       height: 20px;
       background-color: white;
       border-radius: 18px;
-      transition: left 0.3s ease;
+      transition: left 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
       box-shadow: 0 1px 3px rgba(0,0,0,0.2);
       z-index: 1;
     }
@@ -205,15 +224,18 @@
       color: #777;
       transition: color 0.3s;
     }
+    .toggle-checkbox:checked + .toggle-label {
+      background-color: #dbeafe;
+    }
     .toggle-checkbox:checked + .toggle-label .toggle-slider {
       left: calc(50% + 2px);
       transform: none;
     }
     .toggle-checkbox:not(:checked) + .toggle-label .text-grader {
-      color: #333;
+      color: #15803d;
     }
     .toggle-checkbox:checked + .toggle-label .text-solver {
-      color: #333;
+      color: #2563eb;
     }
   </style>
 </head>
@@ -284,7 +306,7 @@
   </div>
 
   <div class="card" id="rubricCard">
-    <h3><i class="bi bi-list-check"></i> 1. Define Role / Rubric</h3>
+    <h3 id="rubricTitle"><i class="bi bi-list-check"></i> 1. Define Role / Rubric</h3>
     <div style="margin-bottom: 10px; display: flex; gap: 10px;">
       <label style="display:inline-flex; align-items: center; font-weight: normal;">
         <input type="radio" name="rubricMode" value="text" checked style="width: auto; margin-right: 5px; margin-bottom: 0;"> Text
