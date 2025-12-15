@@ -812,6 +812,8 @@ document.getElementById('modeSwitch').addEventListener('change', (e) => {
   const rubricText = document.getElementById('rubricText');
   const solverChatHistory = document.getElementById('solverChatHistory');
   
+  const btnSolverSend = document.getElementById('btnSolverSend');
+  
   if (isSolver) {
     document.body.classList.add('solver-mode');
     rubricCard.style.display = 'block';
@@ -826,7 +828,10 @@ document.getElementById('modeSwitch').addEventListener('change', (e) => {
     btnImportStudent.innerHTML = '<i class="bi bi-stars"></i> Import from Highlighted Text (AI)';
     btnImportStudentImage.innerHTML = '<i class="bi bi-file-image"></i> Import from Screenshot (AI)';
 
-    btnGrade.innerText = "Send";
+    // btnGrade.innerText = "Send"; // No longer needed
+    btnGrade.style.display = 'none'; // Hide main grade button
+    btnSolverSend.style.display = 'block'; // Show inline send button
+
     studentText.setAttribute('placeholder', "Ask a question...");
     rubricText.setAttribute('placeholder', "Paste question text here or upload image...");
     
@@ -850,6 +855,9 @@ document.getElementById('modeSwitch').addEventListener('change', (e) => {
     btnImportStudentImage.innerHTML = '<i class="bi bi-file-image"></i> Import Student Work from Screenshot (AI)';
 
     btnGrade.innerText = "Run Assessment";
+    btnGrade.style.display = 'block'; // Show main grade button
+    btnSolverSend.style.display = 'none'; // Hide inline send button
+
     studentText.setAttribute('placeholder', "Student text will appear here...");
     rubricText.setAttribute('placeholder', "Paste rubric text here or upload image...");
     
@@ -1156,6 +1164,8 @@ async function streamChat(messages, mode) {
               document.getElementById('chatSection').style.display = 'block';
             } else if (mode === 'solver') {
                showStatus(`Interaction ${solverTurn}/4 Complete.`, "green");
+               // Refocus input for next message
+               document.getElementById('studentText').focus();
             }
             // Add to history
             conversationHistory.push({ role: "assistant", content: responseText });
@@ -1369,4 +1379,18 @@ loadState();
 document.getElementById('saveConfig').addEventListener('click', () => {
   saveState();
   showStatus('Settings and Rubric saved!', 'green');
+});
+
+// Add Enter key listener for studentText in Solver mode
+document.getElementById('studentText').addEventListener('keydown', (e) => {
+  const isSolver = document.getElementById('modeSwitch').checked;
+  if (isSolver && e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    document.getElementById('btnGrade').click();
+  }
+});
+
+// Add listener for the new inline send button
+document.getElementById('btnSolverSend').addEventListener('click', () => {
+  document.getElementById('btnGrade').click();
 });
