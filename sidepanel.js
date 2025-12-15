@@ -15,7 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Initialize LaTeX Toolbars
   createLatexToolbar('rubricText');
-  createLatexToolbar('studentText');
+  createLatexToolbar('studentText', 'studentControls');
 
   // Initialize Live Previews - REMOVED as we now use inline editing
   // setupLivePreview('rubricText', 'rubricMathPreview');
@@ -50,7 +50,7 @@ function setRichEditorContent(elementId, text) {
   if (el) el.innerText = text;
 }
 
-function createLatexToolbar(textareaId) {
+function createLatexToolbar(textareaId, containerId) {
   const textarea = document.getElementById(textareaId);
   if (!textarea) return;
 
@@ -67,8 +67,16 @@ function createLatexToolbar(textareaId) {
     insertMathField(textarea);
   });
 
-  // Insert button before the textarea
-  textarea.parentNode.insertBefore(mathBtn, textarea);
+  if (containerId) {
+    const container = document.getElementById(containerId);
+    if (container) {
+      // Insert at the top of the container
+      container.insertBefore(mathBtn, container.firstChild);
+    }
+  } else {
+    // Insert button before the textarea
+    textarea.parentNode.insertBefore(mathBtn, textarea);
+  }
 
   // Handle backspace to delete math-field
   textarea.addEventListener('keydown', (e) => {
