@@ -57,11 +57,21 @@ function createLatexToolbar(textareaId, containerId) {
   // Add Math Editor Button directly (no toolbar wrapper)
   const mathBtn = document.createElement('button');
   mathBtn.className = 'secondary';
-  mathBtn.innerHTML = '<i class="bi bi-calculator"></i> Insert Math';
+  
+  if (containerId) {
+      // Icon-only style for inline controls
+      mathBtn.innerHTML = '<i class="bi bi-calculator"></i>';
+      // Styles are now handled by CSS class .integrated-controls button
+      mathBtn.removeAttribute('style'); // Clear inline styles to let CSS take over
+  } else {
+      // Full button style for rubric
+      mathBtn.innerHTML = '<i class="bi bi-calculator"></i> Insert Math';
+      mathBtn.style.width = '100%'; 
+      mathBtn.style.marginBottom = '5px';
+      mathBtn.style.fontSize = '12px';
+  }
+  
   mathBtn.title = 'Insert Math Equation';
-  mathBtn.style.width = '100%'; 
-  mathBtn.style.marginBottom = '5px';
-  mathBtn.style.fontSize = '12px';
   mathBtn.type = 'button';
   mathBtn.addEventListener('click', () => {
     insertMathField(textarea);
@@ -838,7 +848,9 @@ document.getElementById('modeSwitch').addEventListener('change', (e) => {
 
     // btnGrade.innerText = "Send"; // No longer needed
     btnGrade.style.display = 'none'; // Hide main grade button
-    btnSolverSend.style.display = 'block'; // Show inline send button
+    btnSolverSend.style.display = 'flex'; // Show inline send button
+    // Ensure it has the correct class for styling
+    btnSolverSend.className = 'primary-action';
 
     studentText.setAttribute('placeholder', "Ask a question...");
     rubricText.setAttribute('placeholder', "Paste question text here or upload image...");
