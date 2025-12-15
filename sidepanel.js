@@ -367,7 +367,7 @@ function addRubricRow(criteria = '', desc = '', pts = '') {
   tr.innerHTML = `
     <td style="border: 1px solid #ddd; padding: 0;"><input type="text" class="r-criteria" style="border:none; margin:0; width:100%;" placeholder="Criteria" value="${criteria}"></td>
     <td style="border: 1px solid #ddd; padding: 0;"><input type="text" class="r-desc" style="border:none; margin:0; width:100%;" placeholder="Description" value="${desc}"></td>
-    <td style="border: 1px solid #ddd; padding: 0;"><input type="number" class="r-pts" style="border:none; margin:0; width:100%;" placeholder="0" value="${pts}"></td>
+    <td style="border: 1px solid #ddd; padding: 0;"><input type="text" class="r-pts" style="border:none; margin:0; width:100%;" placeholder="0" value="${pts}"></td>
     <td style="border: 1px solid #ddd; padding: 0; text-align:center;"><button class="btn-del" style="background:none; color:red; border:none; cursor:pointer; padding:0; margin:0; width:auto;"><i class="bi bi-trash"></i></button></td>
   `;
   tr.querySelector('.btn-del').addEventListener('click', () => {
@@ -564,7 +564,7 @@ document.getElementById('btnImportRubric').addEventListener('click', async () =>
         tr.innerHTML = `
           <td style="border: 1px solid #ddd; padding: 0;"><input type="text" class="r-criteria" style="border:none; margin:0; width:100%;" value="${item.criteria || ''}"></td>
           <td style="border: 1px solid #ddd; padding: 0;"><input type="text" class="r-desc" style="border:none; margin:0; width:100%;" value="${item.description || ''}"></td>
-          <td style="border: 1px solid #ddd; padding: 0;"><input type="number" class="r-pts" style="border:none; margin:0; width:100%;" value="${item.points || 0}"></td>
+          <td style="border: 1px solid #ddd; padding: 0;"><input type="text" class="r-pts" style="border:none; margin:0; width:100%;" value="${item.points || 0}"></td>
           <td style="border: 1px solid #ddd; padding: 0; text-align:center;"><button class="btn-del" style="background:none; color:red; border:none; cursor:pointer; padding:0; margin:0; width:auto;"><i class="bi bi-trash"></i></button></td>
         `;
         tr.querySelector('.btn-del').addEventListener('click', () => tr.remove());
@@ -656,7 +656,7 @@ document.getElementById('btnImportRubricImage').addEventListener('click', async 
         tr.innerHTML = `
           <td style="border: 1px solid #ddd; padding: 0;"><input type="text" class="r-criteria" style="border:none; margin:0; width:100%;" value="${item.criteria || ''}"></td>
           <td style="border: 1px solid #ddd; padding: 0;"><input type="text" class="r-desc" style="border:none; margin:0; width:100%;" value="${item.description || ''}"></td>
-          <td style="border: 1px solid #ddd; padding: 0;"><input type="number" class="r-pts" style="border:none; margin:0; width:100%;" value="${item.points || 0}"></td>
+          <td style="border: 1px solid #ddd; padding: 0;"><input type="text" class="r-pts" style="border:none; margin:0; width:100%;" value="${item.points || 0}"></td>
           <td style="border: 1px solid #ddd; padding: 0; text-align:center;"><button class="btn-del" style="background:none; color:red; border:none; cursor:pointer; padding:0; margin:0; width:auto;"><i class="bi bi-trash"></i></button></td>
         `;
         tr.querySelector('.btn-del').addEventListener('click', () => tr.remove());

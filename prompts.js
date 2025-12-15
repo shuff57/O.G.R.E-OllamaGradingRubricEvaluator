@@ -57,7 +57,7 @@ const Prompts = {
     ],
     "totalScore": "Total Score / number of criteria (if applicable)",
   }
-  Do not include markdown formatting or explanations outside the JSON.`;
+  Do include markdown formatting for the JSON but no explanations outside the JSON.`;
   },
 
   /**
