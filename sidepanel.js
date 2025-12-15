@@ -1178,23 +1178,28 @@ function renderGradingResponse(jsonString, container) {
       html += `<thead>
         <tr style="background: #f1f1f1;">
           <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Criteria</th>
-          <th style="border: 1px solid #ddd; padding: 8px; text-align: center; width: 60px;">Score</th>
-          <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Feedback</th>
           <th style="border: 1px solid #ddd; padding: 8px; text-align: center; width: 80px;">Status</th>
+          <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Evidence & Feedback</th>
         </tr>
       </thead><tbody>`;
 
       data.grading.forEach(item => {
-        const isPass = item.pass === true || (typeof item.pass === 'string' && item.pass.toLowerCase().includes('true'));
-        const statusIcon = isPass 
-          ? '<i class="bi bi-check-circle-fill" style="color: #198754;"></i> Pass' 
-          : '<i class="bi bi-x-circle-fill" style="color: #dc3545;"></i> Fail';
+        const statusText = item.status ? item.status.toLowerCase() : '';
+        let statusIcon = item.status || '';
         
+        if (statusText.includes('pass')) {
+          statusIcon = '<i class="bi bi-check-circle-fill" style="color: #198754;"></i> Pass';
+        } else if (statusText.includes('fail')) {
+          statusIcon = '<i class="bi bi-x-circle-fill" style="color: #dc3545;"></i> Fail';
+        }
+
         html += `<tr>
-          <td style="border: 1px solid #ddd; padding: 8px;"><strong>${item.criteria}</strong></td>
-          <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${item.score}</td>
-          <td style="border: 1px solid #ddd; padding: 8px;">${marked.parse(item.feedback || '')}</td>
-          <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${statusIcon}</td>
+          <td style="border: 1px solid #ddd; padding: 8px; vertical-align: top;"><strong>${item.criteria}</strong></td>
+          <td style="border: 1px solid #ddd; padding: 8px; text-align: center; vertical-align: top;">${statusIcon}</td>
+          <td style="border: 1px solid #ddd; padding: 8px; vertical-align: top;">
+            <div style="font-style: italic; color: #555; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px dashed #eee;">"${item.excerpt || ''}"</div>
+            <div>${marked.parse(item.comment || '')}</div>
+          </td>
         </tr>`;
       });
       html += `</tbody></table>`;
