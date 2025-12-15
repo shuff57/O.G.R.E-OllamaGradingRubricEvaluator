@@ -810,6 +810,7 @@ document.getElementById('modeSwitch').addEventListener('change', (e) => {
   const btnImportRubric = document.getElementById('btnImportRubric');
   const btnImportRubricImage = document.getElementById('btnImportRubricImage');
   const rubricText = document.getElementById('rubricText');
+  const solverChatHistory = document.getElementById('solverChatHistory');
   
   if (isSolver) {
     document.body.classList.add('solver-mode');
@@ -821,24 +822,19 @@ document.getElementById('modeSwitch').addEventListener('change', (e) => {
     btnImportRubric.innerHTML = '<i class="bi bi-stars"></i> Import Question for Highlighted Text (AI)';
     btnImportRubricImage.innerHTML = '<i class="bi bi-file-image"></i> Import Question from Screenshot (AI)';
 
-    // Update Solver Chat buttons (optional, keeping previous change or adjusting)
+    // Update Solver Chat buttons
     btnImportStudent.innerHTML = '<i class="bi bi-stars"></i> Import from Highlighted Text (AI)';
     btnImportStudentImage.innerHTML = '<i class="bi bi-file-image"></i> Import from Screenshot (AI)';
 
     btnGrade.innerText = "Send";
     studentText.setAttribute('placeholder', "Ask a question...");
     rubricText.setAttribute('placeholder', "Paste question text here or upload image...");
-    chatSection.style.display = 'none'; // Hide separate chat input
-    responseContainer.innerHTML = ''; // Clear previous results
-    responseContainer.style.display = 'flex';
-    responseContainer.style.flexDirection = 'column';
-    responseContainer.style.gap = '10px';
-    responseContainer.style.maxHeight = '400px';
-    responseContainer.style.overflowY = 'auto';
-    responseContainer.style.padding = '10px';
-    responseContainer.style.border = '1px solid #eee';
-    responseContainer.style.borderRadius = '4px';
-    responseContainer.style.background = '#f9f9f9';
+    
+    // Chat UI Setup
+    chatSection.style.display = 'none'; // Hide bottom chat input
+    responseContainer.style.display = 'none'; // Hide result container
+    solverChatHistory.style.display = 'flex'; // Show solver chat history
+    
   } else {
     document.body.classList.remove('solver-mode');
     rubricCard.style.display = 'block';
@@ -856,7 +852,8 @@ document.getElementById('modeSwitch').addEventListener('change', (e) => {
     btnGrade.innerText = "Run Assessment";
     studentText.setAttribute('placeholder', "Student text will appear here...");
     rubricText.setAttribute('placeholder', "Paste rubric text here or upload image...");
-    // chatSection will be shown after grading
+    
+    // Reset UI
     responseContainer.innerHTML = '';
     responseContainer.style.display = 'block';
     responseContainer.style.maxHeight = 'none';
@@ -864,6 +861,8 @@ document.getElementById('modeSwitch').addEventListener('change', (e) => {
     responseContainer.style.padding = '0';
     responseContainer.style.border = 'none';
     responseContainer.style.background = 'transparent';
+    
+    solverChatHistory.style.display = 'none';
     
     // Reset chat section visibility for Grader mode
     chatSection.style.display = 'none';
@@ -931,7 +930,7 @@ document.getElementById('btnGrade').addEventListener('click', async () => {
     // If it's the first turn or a reset
     if (solverTurn === 0 || solverTurn >= 4) {
         solverTurn = 1;
-        document.getElementById('response').innerHTML = ''; // Clear history for new problem
+        document.getElementById('solverChatHistory').innerHTML = ''; // Clear history for new problem
         systemInstruction = Prompts.getSolverSystemPrompt(rubricText);
         userPrompt = `Student Question (Interaction 1/4): ${studentText}`;
         
@@ -947,29 +946,18 @@ document.getElementById('btnGrade').addEventListener('click', async () => {
         conversationHistory.push({ role: "user", content: userPrompt, images: images.length > 0 ? images : undefined });
     }
 
-    // Render User Bubble in Response Container
-    const responseContainer = document.getElementById('response');
+    // Render User Bubble in Solver Chat History
+    const solverChatHistory = document.getElementById('solverChatHistory');
     const userBubble = document.createElement('div');
-    userBubble.style.alignSelf = 'flex-end';
-    userBubble.style.background = '#e3f2fd';
-    userBubble.style.padding = '8px 12px';
-    userBubble.style.borderRadius = '15px 15px 0 15px';
-    userBubble.style.maxWidth = '80%';
+    userBubble.className = 'chat-message user-message';
     userBubble.innerText = studentText; // Show raw text to user
-    responseContainer.appendChild(userBubble);
+    solverChatHistory.appendChild(userBubble);
+    solverChatHistory.scrollTop = solverChatHistory.scrollHeight;
     
     // Clear Input
     document.getElementById('studentText').innerText = '';
-    studentImages = []; // Clear images after sending? Maybe keep them? Usually chat clears input.
+    studentImages = []; // Clear images after sending
     renderImages('student');
-
-    // Show chat input for follow-up
-    const chatSection = document.getElementById('chatSection');
-    chatSection.style.display = 'block';
-    // Hide the history part of chatSection since we use #response
-    document.getElementById('chatHistory').style.display = 'none';
-    // Hide the header
-    chatSection.querySelector('h4').style.display = 'none';
 
     await streamChat(conversationHistory, 'solver'); // Use new 'solver' mode
     return;
@@ -1093,16 +1081,11 @@ async function streamChat(messages, mode) {
     chatHistory.appendChild(assistantBubble);
     chatHistory.scrollTop = chatHistory.scrollHeight;
   } else if (mode === 'solver') {
-    const responseContainer = document.getElementById('response');
+    const solverChatHistory = document.getElementById('solverChatHistory');
     assistantBubble = document.createElement('div');
-    assistantBubble.style.alignSelf = 'flex-start';
-    assistantBubble.style.background = '#fff';
-    assistantBubble.style.border = '1px solid #ddd';
-    assistantBubble.style.padding = '8px 12px';
-    assistantBubble.style.borderRadius = '15px 15px 15px 0';
-    assistantBubble.style.maxWidth = '80%';
-    responseContainer.appendChild(assistantBubble);
-    responseContainer.scrollTop = responseContainer.scrollHeight;
+    assistantBubble.className = 'chat-message assistant-message';
+    solverChatHistory.appendChild(assistantBubble);
+    solverChatHistory.scrollTop = solverChatHistory.scrollHeight;
   }
 
   try {
@@ -1160,8 +1143,8 @@ async function streamChat(messages, mode) {
           if (json.message && json.message.content) {
             responseText += json.message.content;
             if (mode === 'chat' || mode === 'solver') {
-              assistantBubble.innerText = responseText;
-              const container = mode === 'chat' ? document.getElementById('chatHistory') : document.getElementById('response');
+              assistantBubble.innerHTML = marked.parse(responseText);
+              const container = mode === 'chat' ? document.getElementById('chatHistory') : document.getElementById('solverChatHistory');
               container.scrollTop = container.scrollHeight;
             }
           }

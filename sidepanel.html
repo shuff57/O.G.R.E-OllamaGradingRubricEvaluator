@@ -237,6 +237,41 @@
     .toggle-checkbox:checked + .toggle-label .text-solver {
       color: #2563eb;
     }
+
+    /* Chat Bubbles */
+    .chat-message {
+      padding: 8px 12px;
+      border-radius: 15px;
+      max-width: 80%;
+      margin-bottom: 8px;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .user-message {
+      align-self: flex-end;
+      background: #e3f2fd; /* Light Blue */
+      border-radius: 15px 15px 0 15px;
+      margin-left: auto;
+    }
+    .assistant-message {
+      align-self: flex-start;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 15px 15px 15px 0;
+      margin-right: auto;
+    }
+    #solverChatHistory {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: 300px;
+      overflow-y: auto;
+      padding: 10px;
+      border: 1px solid #eee;
+      border-radius: 4px;
+      background: #f9f9f9;
+      margin-bottom: 10px;
+    }
   </style>
 </head>
 <body>
@@ -369,6 +404,8 @@
       <button id="btnImportStudentImage" class="secondary" style="margin-bottom: 0; font-size: 12px; flex: 1;"><i class="bi bi-file-image"></i> Import Student Work from Screenshot (AI)</button>
     </div>
     
+    <div id="solverChatHistory" style="display:none; flex-direction: column; gap: 10px; max-height: 300px; overflow-y: auto; margin-bottom: 10px; padding: 10px; border: 1px solid #eee; border-radius: 4px; background: #f9f9f9;"></div>
+
     <div id="studentText" class="rich-editor" contenteditable="true" placeholder="Student text will appear here..."></div>
     <input type="file" id="studentUpload" accept="image/*" multiple>
     <div id="studentImagesContainer" style="display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px;"></div>
