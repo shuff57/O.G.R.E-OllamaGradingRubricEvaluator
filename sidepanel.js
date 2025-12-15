@@ -813,8 +813,8 @@ document.getElementById('modeSwitch').addEventListener('change', (e) => {
     rubricCard.style.display = 'block';
     rubricTitle.innerHTML = '<i class="bi bi-list-check"></i> Question Setup';
     studentWorkTitle.innerHTML = '<i class="bi bi-chat-dots"></i> Solver Chat';
-    btnImportStudent.innerHTML = '<i class="bi bi-stars"></i> Import from Text (AI)';
-    btnImportStudentImage.innerHTML = '<i class="bi bi-file-image"></i> Import from Screenshot (AI)';
+    btnImportStudent.innerHTML = '<i class="bi bi-stars"></i> Import Question for Highlighted Text (AI)';
+    btnImportStudentImage.innerHTML = '<i class="bi bi-file-image"></i> Import Question from Screenshot (AI)';
     btnGrade.innerText = "Send";
     studentText.setAttribute('placeholder', "Ask a question...");
     chatSection.style.display = 'none'; // Hide separate chat input
