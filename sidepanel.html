@@ -337,10 +337,18 @@
     }
     /* Active/Primary buttons in controls (like Send) */
     .integrated-controls button.primary-action {
-      color: #2563eb !important;
+      color: #16a34a !important; /* Green (Grader default) */
       margin-left: auto !important; /* Push to right */
     }
     .integrated-controls button.primary-action:hover {
+      background: #f0fdf4 !important;
+    }
+    
+    /* Solver Mode Override for Primary Button */
+    body.solver-mode .integrated-controls button.primary-action {
+      color: #2563eb !important; /* Blue */
+    }
+    body.solver-mode .integrated-controls button.primary-action:hover {
       background: #eff6ff !important;
     }
 
@@ -351,7 +359,7 @@
     
     /* Solver Chat History Base Styles */
     .solver-chat-history {
-      display: none; /* Toggled by JS */
+      display: flex; /* Always visible now */
       flex-direction: column;
       gap: 10px;
       max-height: 300px;
@@ -493,8 +501,14 @@
       <span id="rubricStatusText">Processing...</span>
     </div>
 
-    <div id="rubricTextContainer">
+    <div id="rubricTextContainer" class="integrated-input-container">
       <div id="rubricText" class="rich-editor" contenteditable="true" placeholder="Paste rubric text here or upload image..."></div>
+      <div id="rubricControls" class="integrated-controls">
+        <!-- Math button will be inserted here by JS -->
+        <label for="rubricUpload" class="button" title="Upload Image">
+            <i class="bi bi-image"></i>
+        </label>
+      </div>
     </div>
 
     <div id="rubricTableContainer" style="display:none;">
@@ -514,7 +528,7 @@
       <button id="btnAddRow" class="secondary" style="width: auto; padding: 5px 10px; font-size: 12px;">+ Add Row</button>
     </div>
 
-    <input type="file" id="rubricUpload" accept="image/*" multiple>
+    <input type="file" id="rubricUpload" accept="image/*" multiple style="display: none;">
     <div id="rubricImagesContainer" style="display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px;"></div>
   </div>
 
@@ -532,7 +546,7 @@
     </div>
     
     <div id="chatInterfaceWrapper">
-      <div id="solverChatHistory" class="solver-chat-history"></div>
+      <div id="chatHistoryDisplay" class="solver-chat-history"></div>
 
       <div class="integrated-input-container">
         <div id="studentText" class="rich-editor" contenteditable="true" placeholder="Student text will appear here..."></div>
@@ -542,7 +556,7 @@
           <label for="studentUpload" class="button" title="Upload Image">
               <i class="bi bi-image"></i>
           </label>
-          <button id="btnSolverSend" class="primary-action" style="display: none;" title="Send"><i class="bi bi-send-fill"></i></button>
+          <button id="btnSolverSend" class="primary-action" title="Send"><i class="bi bi-send-fill"></i></button>
         </div>
       </div>
     </div>
@@ -552,28 +566,12 @@
   </div>
 
   <div class="card">
-    <button id="btnGrade">Run Assessment</button>
+    <button id="btnGrade" style="display: none;">Run Assessment</button>
     <div id="status"></div>
   </div>
 
-  <div class="card">
-    <h3><i class="bi bi-clipboard-check"></i> Result:</h3>
-    <details id="thinkingContainer" style="display:none; background:#f0f0f0; padding:10px; border-radius:4px; margin-bottom:10px; font-size:12px; color:#555; border-left: 3px solid #999;">
-      <summary style="cursor: pointer; font-weight: bold;">Show Thinking Process</summary>
-      <div id="thinkingContent" style="white-space: pre-wrap; margin-top:5px;"></div>
-    </details>
-    <div id="response"></div>
-    
-    <!-- Chat Section -->
-    <div id="chatSection" style="display:none; margin-top: 15px; border-top: 1px solid #eee; padding-top: 10px;">
-      <h4 style="margin-top: 0; margin-bottom: 10px; font-size: 14px;"><i class="bi bi-chat-dots"></i> Follow-up Chat</h4>
-      <div id="chatHistory" style="max-height: 300px; overflow-y: auto; margin-bottom: 10px; border: 1px solid #eee; padding: 10px; border-radius: 4px; background: #f9f9f9; display: flex; flex-direction: column; gap: 10px;"></div>
-      <div style="display: flex; gap: 5px;">
-        <textarea id="chatInput" placeholder="Ask a question about the grading..." style="min-height: 40px; margin-bottom: 0; resize: vertical; font-family: sans-serif;"></textarea>
-        <button id="btnSendChat" class="secondary" style="width: auto; padding: 0 15px;"><i class="bi bi-send"></i></button>
-      </div>
-    </div>
-  </div>
+  <!-- Result Card Removed - Integrated into Chat -->
+  <!-- <div class="card"> ... </div> -->
 
   <script src="lib/mathlive.min.js"></script>
   <script src="lib/marked.min.js"></script>

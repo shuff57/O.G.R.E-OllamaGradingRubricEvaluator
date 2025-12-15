@@ -14,12 +14,15 @@ document.addEventListener('DOMContentLoaded', () => {
   if (modelName) document.getElementById('modelName').value = modelName;
 
   // Initialize LaTeX Toolbars
-  createLatexToolbar('rubricText');
+  createLatexToolbar('rubricText', 'rubricControls');
   createLatexToolbar('studentText', 'studentControls');
 
   // Initialize Live Previews - REMOVED as we now use inline editing
   // setupLivePreview('rubricText', 'rubricMathPreview');
   // setupLivePreview('studentText', 'studentMathPreview');
+
+  // Trigger initial UI state
+  document.getElementById('modeSwitch').dispatchEvent(new Event('change'));
 });
 
 let conversationHistory = [];
@@ -816,10 +819,7 @@ let solverTurn = 0;
 // Toggle UI based on mode
 document.getElementById('modeSwitch').addEventListener('change', (e) => {
   const isSolver = e.target.checked;
-  const btnGrade = document.getElementById('btnGrade');
   const studentText = document.getElementById('studentText');
-  const chatSection = document.getElementById('chatSection');
-  const responseContainer = document.getElementById('response');
   const rubricCard = document.getElementById('rubricCard');
   const rubricTitle = document.getElementById('rubricTitle');
   const studentWorkTitle = document.getElementById('studentWorkTitle');
@@ -828,9 +828,12 @@ document.getElementById('modeSwitch').addEventListener('change', (e) => {
   const btnImportRubric = document.getElementById('btnImportRubric');
   const btnImportRubricImage = document.getElementById('btnImportRubricImage');
   const rubricText = document.getElementById('rubricText');
-  const solverChatHistory = document.getElementById('solverChatHistory');
+  const chatHistoryDisplay = document.getElementById('chatHistoryDisplay');
   
-  const btnSolverSend = document.getElementById('btnSolverSend');
+  // Reset History and State
+  chatHistoryDisplay.innerHTML = '';
+  conversationHistory = [];
+  solverTurn = 0;
   
   if (isSolver) {
     document.body.classList.add('solver-mode');
@@ -846,19 +849,8 @@ document.getElementById('modeSwitch').addEventListener('change', (e) => {
     btnImportStudent.innerHTML = '<i class="bi bi-stars"></i> Import from Highlighted Text (AI)';
     btnImportStudentImage.innerHTML = '<i class="bi bi-file-image"></i> Import from Screenshot (AI)';
 
-    // btnGrade.innerText = "Send"; // No longer needed
-    btnGrade.style.display = 'none'; // Hide main grade button
-    btnSolverSend.style.display = 'flex'; // Show inline send button
-    // Ensure it has the correct class for styling
-    btnSolverSend.className = 'primary-action';
-
     studentText.setAttribute('placeholder', "Ask a question...");
     rubricText.setAttribute('placeholder', "Paste question text here or upload image...");
-    
-    // Chat UI Setup
-    chatSection.style.display = 'none'; // Hide bottom chat input
-    responseContainer.style.display = 'none'; // Hide result container
-    solverChatHistory.style.display = 'flex'; // Show solver chat history
     
   } else {
     document.body.classList.remove('solver-mode');
@@ -874,28 +866,17 @@ document.getElementById('modeSwitch').addEventListener('change', (e) => {
     btnImportStudent.innerHTML = '<i class="bi bi-stars"></i> Import Student Work from Text (AI)';
     btnImportStudentImage.innerHTML = '<i class="bi bi-file-image"></i> Import Student Work from Screenshot (AI)';
 
-    btnGrade.innerText = "Run Assessment";
-    btnGrade.style.display = 'block'; // Show main grade button
-    btnSolverSend.style.display = 'none'; // Hide inline send button
-
     studentText.setAttribute('placeholder', "Student text will appear here...");
     rubricText.setAttribute('placeholder', "Paste rubric text here or upload image...");
     
-    // Reset UI
-    responseContainer.innerHTML = '';
-    responseContainer.style.display = 'block';
-    responseContainer.style.maxHeight = 'none';
-    responseContainer.style.overflowY = 'visible';
-    responseContainer.style.padding = '0';
-    responseContainer.style.border = 'none';
-    responseContainer.style.background = 'transparent';
-    
-    solverChatHistory.style.display = 'none';
-    
-    // Reset chat section visibility for Grader mode
-    chatSection.style.display = 'none';
-    document.getElementById('chatHistory').style.display = 'flex';
-    chatSection.querySelector('h4').style.display = 'block';
+    // Add placeholder message for Grader
+    const placeholder = document.createElement('div');
+    placeholder.style.color = '#888';
+    placeholder.style.fontStyle = 'italic';
+    placeholder.style.textAlign = 'center';
+    placeholder.style.padding = '20px';
+    placeholder.innerText = 'Enter student work below and click Send to grade.';
+    chatHistoryDisplay.appendChild(placeholder);
   }
 });
 
@@ -937,15 +918,12 @@ document.getElementById('btnGrade').addEventListener('click', async () => {
     return;
   }
   
-  showStatus("Thinking...", "blue");
-  // document.getElementById('response').innerText = ""; // Don't clear in Solver mode
-  document.getElementById('chatSection').style.display = 'none';
-  document.getElementById('chatHistory').innerHTML = '';
+  if (!studentText && studentImages.length === 0) {
+    showStatus("Please provide text or images.", "red");
+    return;
+  }
 
-  // Check Mode
-  // const isSolver = document.getElementById('modeSwitch').checked; // Moved up
-  let systemInstruction;
-  let userPrompt;
+  showStatus("Thinking...", "blue");
 
   // Gather Images
   const images = [];
@@ -954,11 +932,34 @@ document.getElementById('btnGrade').addEventListener('click', async () => {
   // Add student images (strip header)
   studentImages.forEach(img => images.push(img.split(',')[1]));
 
+  // Add User Bubble to Chat History
+  const chatHistoryDisplay = document.getElementById('chatHistoryDisplay');
+  
+  // Clear placeholder if first message in Grader mode
+  if (!isSolver && conversationHistory.length === 0) {
+      chatHistoryDisplay.innerHTML = '';
+  }
+
+  const userBubble = document.createElement('div');
+  userBubble.className = 'chat-message user-message';
+  userBubble.innerText = studentText; // Show raw text to user
+  chatHistoryDisplay.appendChild(userBubble);
+  chatHistoryDisplay.scrollTop = chatHistoryDisplay.scrollHeight;
+
+  // Clear Input
+  setRichEditorContent('studentText', '');
+  studentImages = []; // Clear images after sending
+  renderImages('student');
+
+  let systemInstruction;
+  let userPrompt;
+  let mode = 'chat';
+
   if (isSolver) {
     // If it's the first turn or a reset
     if (solverTurn === 0 || solverTurn >= 4) {
         solverTurn = 1;
-        document.getElementById('solverChatHistory').innerHTML = ''; // Clear history for new problem
+        // chatHistoryDisplay.innerHTML = ''; // Don't clear history here, let user see previous
         systemInstruction = Prompts.getSolverSystemPrompt(rubricText);
         userPrompt = `Student Question (Interaction 1/4): ${studentText}`;
         
@@ -967,93 +968,38 @@ document.getElementById('btnGrade').addEventListener('click', async () => {
             { role: "system", content: systemInstruction },
             { role: "user", content: userPrompt, images: images.length > 0 ? images : undefined }
         ];
+        mode = 'solver';
     } else {
         // Continuation
         solverTurn++;
         userPrompt = `Student Follow-up (Interaction ${solverTurn}/4): ${studentText}`;
         conversationHistory.push({ role: "user", content: userPrompt, images: images.length > 0 ? images : undefined });
+        mode = 'solver';
     }
-
-    // Render User Bubble in Solver Chat History
-    const solverChatHistory = document.getElementById('solverChatHistory');
-    const userBubble = document.createElement('div');
-    userBubble.className = 'chat-message user-message';
-    userBubble.innerText = studentText; // Show raw text to user
-    solverChatHistory.appendChild(userBubble);
-    solverChatHistory.scrollTop = solverChatHistory.scrollHeight;
-    
-    // Clear Input
-    document.getElementById('studentText').innerText = '';
-    studentImages = []; // Clear images after sending
-    renderImages('student');
-
-    await streamChat(conversationHistory, 'solver'); // Use new 'solver' mode
-    return;
   } else {
-    document.getElementById('response').innerText = ""; // Clear for Grader
-    systemInstruction = Prompts.getGradingSystemPrompt(rubricText);
-    userPrompt = `Student Submission: ${studentText}`;
+    // Grader Mode
+    if (conversationHistory.length === 0) {
+        // First Run (Grading)
+        systemInstruction = Prompts.getGradingSystemPrompt(rubricText);
+        userPrompt = `Student Submission: ${studentText}`;
+        conversationHistory = [
+            { role: "system", content: systemInstruction },
+            { role: "user", content: userPrompt, images: images.length > 0 ? images : undefined }
+        ];
+        mode = 'grading';
+    } else {
+        // Follow-up Chat
+        userPrompt = studentText;
+        conversationHistory.push({ role: "user", content: userPrompt, images: images.length > 0 ? images : undefined });
+        mode = 'chat';
+    }
   }
 
-  // Initialize Conversation History (Grader Mode)
-  conversationHistory = [
-    { role: "system", content: systemInstruction },
-    { role: "user", content: userPrompt, images: images.length > 0 ? images : undefined }
-  ];
-
-  await streamChat(conversationHistory, 'grading');
+  await streamChat(conversationHistory, mode);
 });
 
 // --- Chat Logic ---
-document.getElementById('btnSendChat').addEventListener('click', async () => {
-  const input = document.getElementById('chatInput');
-  const text = input.value.trim();
-  if (!text) return;
-
-  const isSolver = document.getElementById('modeSwitch').checked;
-  const chatHistory = document.getElementById('chatHistory');
-  const responseContainer = document.getElementById('response');
-  
-  // Determine container
-  const container = isSolver ? responseContainer : chatHistory;
-
-  if (isSolver) {
-    if (solverTurn >= 4) {
-      // Reset Cycle
-      solverTurn = 1;
-      container.innerHTML = ''; // Clear UI for new cycle
-      
-      // Reset context, keeping system prompt
-      const systemMsg = conversationHistory[0];
-      conversationHistory = [systemMsg];
-      
-      // Add new Q1
-      conversationHistory.push({ role: "user", content: `Student Question (Interaction 1/4): ${text}` });
-    } else {
-      solverTurn++;
-      // Add follow-up
-      conversationHistory.push({ role: "user", content: `Student Follow-up (Interaction ${solverTurn}/4): ${text}` });
-    }
-  } else {
-    // Grader mode - just push text
-    conversationHistory.push({ role: "user", content: text });
-  }
-  
-  // Add user bubble to UI
-  const userBubble = document.createElement('div');
-  userBubble.style.alignSelf = 'flex-end';
-  userBubble.style.background = '#e3f2fd';
-  userBubble.style.padding = '8px 12px';
-  userBubble.style.borderRadius = '15px 15px 0 15px';
-  userBubble.style.maxWidth = '80%';
-  userBubble.innerText = text;
-  container.appendChild(userBubble);
-  
-  input.value = '';
-  container.scrollTop = container.scrollHeight;
-
-  await streamChat(conversationHistory, isSolver ? 'solver' : 'chat');
-});
+// Removed btnSendChat listener as it's now integrated into btnGrade/btnSolverSend
 
 async function streamChat(messages, mode) {
   let apiUrl = document.getElementById('apiUrl').value.replace(/\/$/, "");
@@ -1087,33 +1033,41 @@ async function streamChat(messages, mode) {
     }
   }
 
-  // Reset UI for Thinking
-  const thinkingContainer = document.getElementById('thinkingContainer');
-  if (mode === 'grading') {
-    thinkingContainer.style.display = 'none';
-    thinkingContainer.removeAttribute('open');
-    document.getElementById('thinkingContent').innerText = '';
-  }
+  // Prepare Chat Bubble for Assistant
+  const chatHistoryDisplay = document.getElementById('chatHistoryDisplay');
+  const assistantBubble = document.createElement('div');
+  assistantBubble.className = 'chat-message assistant-message';
+  chatHistoryDisplay.appendChild(assistantBubble);
+  chatHistoryDisplay.scrollTop = chatHistoryDisplay.scrollHeight;
 
-  // Prepare Chat Bubble for Assistant if in chat mode
-  let assistantBubble;
-  if (mode === 'chat') {
-    const chatHistory = document.getElementById('chatHistory');
-    assistantBubble = document.createElement('div');
-    assistantBubble.style.alignSelf = 'flex-start';
-    assistantBubble.style.background = '#fff';
-    assistantBubble.style.border = '1px solid #ddd';
-    assistantBubble.style.padding = '8px 12px';
-    assistantBubble.style.borderRadius = '15px 15px 15px 0';
-    assistantBubble.style.maxWidth = '80%';
-    chatHistory.appendChild(assistantBubble);
-    chatHistory.scrollTop = chatHistory.scrollHeight;
-  } else if (mode === 'solver') {
-    const solverChatHistory = document.getElementById('solverChatHistory');
-    assistantBubble = document.createElement('div');
-    assistantBubble.className = 'chat-message assistant-message';
-    solverChatHistory.appendChild(assistantBubble);
-    solverChatHistory.scrollTop = solverChatHistory.scrollHeight;
+  // Thinking Container inside Bubble
+  const thinkingDetails = document.createElement('details');
+  thinkingDetails.style.display = 'none';
+  thinkingDetails.style.marginBottom = '10px';
+  thinkingDetails.style.fontSize = '12px';
+  thinkingDetails.style.color = '#666';
+  thinkingDetails.style.borderLeft = '2px solid #ccc';
+  thinkingDetails.style.paddingLeft = '8px';
+  
+  const thinkingSummary = document.createElement('summary');
+  thinkingSummary.innerText = 'Thinking Process';
+  thinkingSummary.style.cursor = 'pointer';
+  thinkingSummary.style.fontWeight = 'bold';
+  
+  const thinkingContent = document.createElement('div');
+  thinkingContent.style.whiteSpace = 'pre-wrap';
+  thinkingContent.style.marginTop = '5px';
+  
+  thinkingDetails.appendChild(thinkingSummary);
+  thinkingDetails.appendChild(thinkingContent);
+  assistantBubble.appendChild(thinkingDetails);
+
+  // Content Container
+  const contentContainer = document.createElement('div');
+  assistantBubble.appendChild(contentContainer);
+
+  if (mode === 'grading') {
+      contentContainer.innerHTML = '<em>Generating Assessment...</em>';
   }
 
   try {
@@ -1160,28 +1114,25 @@ async function streamChat(messages, mode) {
           
           // Handle Thinking
           if (json.thinking) {
-             if (mode === 'grading') {
-               thinkingContainer.style.display = 'block';
-               thinkingText += json.thinking;
-               document.getElementById('thinkingContent').innerText = thinkingText;
-             }
+             thinkingDetails.style.display = 'block';
+             thinkingText += json.thinking;
+             thinkingContent.innerText = thinkingText;
           }
           
           // Handle Content
           if (json.message && json.message.content) {
             responseText += json.message.content;
+            
             if (mode === 'chat' || mode === 'solver') {
-              assistantBubble.innerHTML = marked.parse(responseText);
-              const container = mode === 'chat' ? document.getElementById('chatHistory') : document.getElementById('solverChatHistory');
-              container.scrollTop = container.scrollHeight;
+              contentContainer.innerHTML = marked.parse(responseText);
+              chatHistoryDisplay.scrollTop = chatHistoryDisplay.scrollHeight;
             }
           }
           
           if (json.done) {
             if (mode === 'grading') {
               showStatus("Done.", "green");
-              renderGradingResponse(responseText);
-              document.getElementById('chatSection').style.display = 'block';
+              renderGradingResponse(responseText, contentContainer);
             } else if (mode === 'solver') {
                showStatus(`Interaction ${solverTurn}/4 Complete.`, "green");
                // Refocus input for next message
@@ -1198,15 +1149,12 @@ async function streamChat(messages, mode) {
   } catch (err) {
     console.error(err);
     showStatus(`Error connecting to Ollama: ${err.message}`, "red");
-    if ((mode === 'chat' || mode === 'solver') && assistantBubble) {
-      assistantBubble.innerText += `\n[Error: ${err.message}]`;
-      assistantBubble.style.color = 'red';
-    }
+    contentContainer.innerText += `\n[Error: ${err.message}]`;
+    contentContainer.style.color = 'red';
   }
 }
 
-function renderGradingResponse(text) {
-  const container = document.getElementById('response');
+function renderGradingResponse(text, container) {
   container.innerHTML = '';
 
   try {
@@ -1254,11 +1202,11 @@ function renderGradingResponse(text) {
       container.appendChild(table);
     } else {
       // Fallback if JSON structure doesn't match
-      container.innerText = text;
+      container.innerHTML = marked.parse(text);
     }
   } catch (e) {
     // Fallback if not valid JSON
-    container.innerText = text;
+    container.innerHTML = marked.parse(text);
   }
 }
 
