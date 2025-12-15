@@ -1364,3 +1364,66 @@ document.getElementById('studentText').addEventListener('keydown', (e) => {
 document.getElementById('btnSolverSend').addEventListener('click', () => {
   document.getElementById('btnGrade').click();
 });
+
+// --- Model Info Popover Logic ---
+const modelDefinitions = [
+  { name: "Gemma3-12b", strength: "Excellent all-rounder. Good default choice.", weakness: "Average speed.", cost: "Medium" },
+  { name: "Gemma3-4b", strength: "Quick and efficient.", weakness: "Limited knowledge base.", cost: "Low" },
+  { name: "Gemma3-27b", strength: "High intelligence for a medium model.", weakness: "Higher cost than 12b.", cost: "Medium-High" },
+  { name: "ChatGPT-20b", strength: "Fast and reliable for standard tasks.", weakness: "Not the smartest for complex logic.", cost: "Low" },
+  { name: "ChatGPT-120b", strength: "Very smart, good at reasoning.", weakness: "Slower and more expensive.", cost: "High" },
+  { name: "Qwen3-Vision", strength: "Can see and analyze images/screenshots.", weakness: "Very large and slow.", cost: "Very High" },
+  { name: "Ministral-3-3b", strength: "Extremely fast and cheap.", weakness: "Basic intelligence only.", cost: "Very Low" },
+  { name: "Ministral-3-8b", strength: "Good balance for simple queries.", weakness: "Can struggle with nuance.", cost: "Low" },
+  { name: "Ministral-3-14b", strength: "Smart compact model.", weakness: "Slower than smaller versions.", cost: "Medium" },
+  { name: "Deepseek-v3.1", strength: "Top-tier reasoning and coding.", weakness: "Overkill for simple tasks.", cost: "High" },
+  { name: "Deepseek-v3.2", strength: "Latest version, improved logic.", weakness: "High cost.", cost: "High" },
+  { name: "Gemini-3-Pro", strength: "Massive knowledge, great at creative tasks.", weakness: "Preview version may vary.", cost: "High" },
+  { name: "Kimi-K2", strength: "Huge context window (remembers a lot).", weakness: "Can be slow.", cost: "High" },
+  { name: "Kimi-K2-Thinking", strength: "Thinks before speaking. Great for math.", weakness: "Takes longer to reply.", cost: "High" },
+  { name: "Cogito-2.1", strength: "Strong reasoning capabilities.", weakness: "Less common, specialized.", cost: "High" },
+  { name: "Qwen3-Next", strength: "Next-gen capabilities.", weakness: "Newer, less tested.", cost: "High" },
+  { name: "Rnj-1", strength: "Specialized lightweight model.", weakness: "Niche use cases.", cost: "Low" },
+  { name: "Mistral-Large-3", strength: "Enterprise-grade intelligence.", weakness: "Expensive.", cost: "Very High" }
+];
+
+document.getElementById('btnModelInfo').addEventListener('click', () => {
+    const list = document.getElementById('modelInfoList');
+    list.innerHTML = '';
+    
+    modelDefinitions.forEach(m => {
+        const item = document.createElement('div');
+        item.style.marginBottom = '12px';
+        item.style.paddingBottom = '12px';
+        item.style.borderBottom = '1px solid #eee';
+        
+        let costColor = 'green';
+        if(m.cost.toLowerCase().includes('high')) costColor = 'red';
+        else if(m.cost.toLowerCase().includes('medium')) costColor = 'orange';
+
+        item.innerHTML = `
+            <div style="font-weight:bold; color:#333; display:flex; justify-content:space-between;">
+                <span>${m.name}</span>
+                <span style="color:${costColor}; font-size:11px; border:1px solid ${costColor}; padding:1px 4px; border-radius:4px;">${m.cost}</span>
+            </div>
+            <div style="font-size:12px; color:#666; margin-top:2px;">
+                <span style="color:#16a34a;">&#10003; ${m.strength}</span><br>
+                <span style="color:#dc3545;">&#10007; ${m.weakness}</span>
+            </div>
+        `;
+        list.appendChild(item);
+    });
+    
+    document.getElementById('modelInfoModal').style.display = 'block';
+});
+
+document.querySelector('.close-model-info').addEventListener('click', () => {
+    document.getElementById('modelInfoModal').style.display = 'none';
+});
+
+// Close on click outside (merging with existing window click logic if any, but safe to add listener)
+window.addEventListener('click', (event) => {
+    if (event.target == document.getElementById('modelInfoModal')) {
+        document.getElementById('modelInfoModal').style.display = 'none';
+    }
+});
