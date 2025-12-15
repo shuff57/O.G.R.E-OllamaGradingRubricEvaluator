@@ -1067,7 +1067,7 @@ async function streamChat(messages, mode) {
   assistantBubble.appendChild(contentContainer);
 
   if (mode === 'grading') {
-      contentContainer.innerHTML = '<em>Generating Assessment...</em>';
+      // contentContainer.innerHTML = '<em>Generating Assessment...</em>'; // Removed to allow immediate streaming
   }
 
   try {
@@ -1123,7 +1123,7 @@ async function streamChat(messages, mode) {
           if (json.message && json.message.content) {
             responseText += json.message.content;
             
-            if (mode === 'chat' || mode === 'solver') {
+            if (mode === 'chat' || mode === 'solver' || mode === 'grading') {
               contentContainer.innerHTML = marked.parse(responseText);
               chatHistoryDisplay.scrollTop = chatHistoryDisplay.scrollHeight;
             }
@@ -1132,7 +1132,7 @@ async function streamChat(messages, mode) {
           if (json.done) {
             if (mode === 'grading') {
               showStatus("Done.", "green");
-              renderGradingResponse(responseText, contentContainer);
+              // renderGradingResponse(responseText, contentContainer); // No longer needed as we stream markdown
             } else if (mode === 'solver') {
                showStatus(`Interaction ${solverTurn}/4 Complete.`, "green");
                // Refocus input for next message

@@ -45,15 +45,11 @@ const Prompts = {
   Here is the rubric/role context: ${rubricText}
   Analyze the student work provided below.
   
-  Return ONLY a valid JSON object with this structure:
-  {
-    "grading": [
-      { "criteria": "Criteria Name", "score": "Score", "feedback": "Specific feedback" }
-    ],
-    "totalScore": "Total Score",
-    "summary": "Overall summary of the student's performance"
-  }
-  Do not include markdown formatting or explanations outside the JSON.`;
+  Provide a structured assessment in Markdown format.
+  Use a Markdown table for the criteria, with columns for Criteria, Status (Pass/Fail/Score), and Feedback.
+  Follow the table with a brief summary.
+  
+  Do not use JSON. Output clean Markdown.`;
   },
 
   /**
