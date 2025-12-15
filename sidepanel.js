@@ -822,7 +822,7 @@ document.getElementById('modeSwitch').addEventListener('change', (e) => {
     btnImportRubricImage.innerHTML = '<i class="bi bi-file-image"></i> Import Question from Screenshot (AI)';
 
     // Update Solver Chat buttons (optional, keeping previous change or adjusting)
-    btnImportStudent.innerHTML = '<i class="bi bi-stars"></i> Import from Text (AI)';
+    btnImportStudent.innerHTML = '<i class="bi bi-stars"></i> Import from Highlighted Text (AI)';
     btnImportStudentImage.innerHTML = '<i class="bi bi-file-image"></i> Import from Screenshot (AI)';
 
     btnGrade.innerText = "Send";
@@ -846,12 +846,12 @@ document.getElementById('modeSwitch').addEventListener('change', (e) => {
     studentWorkTitle.innerHTML = '<i class="bi bi-person-workspace"></i> 2. Student Work';
     
     // Reset Question Setup buttons
-    btnImportRubric.innerHTML = '<i class="bi bi-stars"></i> Import Rubric from Highlighted Text';
-    btnImportRubricImage.innerHTML = '<i class="bi bi-file-image"></i> Import Rubric from Screenshot';
+    btnImportRubric.innerHTML = '<i class="bi bi-stars"></i> Import Rubric from Highlighted Text (AI)';
+    btnImportRubricImage.innerHTML = '<i class="bi bi-file-image"></i> Import Rubric from Screenshot (AI)';
 
     // Reset Student Work buttons
-    btnImportStudent.innerHTML = '<i class="bi bi-stars"></i> Import Student Work from Text';
-    btnImportStudentImage.innerHTML = '<i class="bi bi-file-image"></i> Import Student Work from Screenshot';
+    btnImportStudent.innerHTML = '<i class="bi bi-stars"></i> Import Student Work from Text (AI)';
+    btnImportStudentImage.innerHTML = '<i class="bi bi-file-image"></i> Import Student Work from Screenshot (AI)';
 
     btnGrade.innerText = "Run Assessment";
     studentText.setAttribute('placeholder', "Student text will appear here...");

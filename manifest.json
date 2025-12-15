@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Ollama Grading Assistant",
+  "name": "O.G.R.E-OllamaGradingRubricEvaluator",
   "version": "1.0",
   "description": "AI Grading assistant using Ollama cloud.",
   "permissions": [
