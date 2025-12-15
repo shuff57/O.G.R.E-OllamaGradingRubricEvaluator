@@ -1067,7 +1067,7 @@ async function streamChat(messages, mode) {
   assistantBubble.appendChild(contentContainer);
 
   if (mode === 'grading') {
-      // contentContainer.innerHTML = '<em>Generating Assessment...</em>'; // Removed to allow immediate streaming
+      contentContainer.innerHTML = '<em>Generating Assessment...</em>';
   }
 
   try {
@@ -1123,16 +1123,21 @@ async function streamChat(messages, mode) {
           if (json.message && json.message.content) {
             responseText += json.message.content;
             
-            if (mode === 'chat' || mode === 'solver' || mode === 'grading') {
+            if (mode === 'chat' || mode === 'solver') {
               contentContainer.innerHTML = marked.parse(responseText);
               chatHistoryDisplay.scrollTop = chatHistoryDisplay.scrollHeight;
+            } else if (mode === 'grading') {
+               // For grading, we show the raw JSON accumulating (or a loading state)
+               // until it's done, then we render the table.
+               // To make it look cleaner, we can show a "Streaming..." indicator or the raw text.
+               contentContainer.innerHTML = '<div style="color:#666; font-style:italic;">Analyzing...</div>';
             }
           }
           
           if (json.done) {
             if (mode === 'grading') {
               showStatus("Done.", "green");
-              // renderGradingResponse(responseText, contentContainer); // No longer needed as we stream markdown
+              renderGradingResponse(responseText, contentContainer);
             } else if (mode === 'solver') {
                showStatus(`Interaction ${solverTurn}/4 Complete.`, "green");
                // Refocus input for next message
@@ -1181,9 +1186,9 @@ function renderGradingResponse(text, container) {
       const tbody = document.createElement('tbody');
       data.grading.forEach(item => {
         let statusIcon = item.status;
-        if (item.status.toLowerCase() === 'pass') {
+        if (item.status.toLowerCase().includes('pass')) {
           statusIcon = '<i class="bi bi-check-circle-fill" style="color: #198754;"></i>';
-        } else if (item.status.toLowerCase() === 'fail') {
+        } else if (item.status.toLowerCase().includes('fail')) {
           statusIcon = '<i class="bi bi-x-circle-fill" style="color: #dc3545;"></i>';
         }
 
@@ -1200,6 +1205,26 @@ function renderGradingResponse(text, container) {
       });
       table.appendChild(tbody);
       container.appendChild(table);
+
+      // Add Summary and Score
+      if (data.totalScore || data.summary) {
+        const summaryDiv = document.createElement('div');
+        summaryDiv.style.marginTop = '15px';
+        summaryDiv.style.padding = '10px';
+        summaryDiv.style.background = '#f8f9fa';
+        summaryDiv.style.borderRadius = '4px';
+        summaryDiv.style.border = '1px solid #eee';
+        
+        let summaryHtml = '';
+        if (data.totalScore) {
+            summaryHtml += `<div style="font-weight: bold; margin-bottom: 5px; color: #0f172a;">Total Score: ${data.totalScore}</div>`;
+        }
+        if (data.summary) {
+            summaryHtml += `<div>${data.summary}</div>`;
+        }
+        summaryDiv.innerHTML = summaryHtml;
+        container.appendChild(summaryDiv);
+      }
     } else {
       // Fallback if JSON structure doesn't match
       container.innerHTML = marked.parse(text);
