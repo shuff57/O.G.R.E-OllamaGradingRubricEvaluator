@@ -870,13 +870,7 @@ document.getElementById('modeSwitch').addEventListener('change', (e) => {
     rubricText.setAttribute('placeholder', "Paste rubric text here or upload image...");
     
     // Add placeholder message for Grader
-    const placeholder = document.createElement('div');
-    placeholder.style.color = '#888';
-    placeholder.style.fontStyle = 'italic';
-    placeholder.style.textAlign = 'center';
-    placeholder.style.padding = '20px';
-    placeholder.innerText = 'Enter student work below and click Send to grade.';
-    chatHistoryDisplay.appendChild(placeholder);
+    // Removed placeholder message as requested
   }
 });
 
