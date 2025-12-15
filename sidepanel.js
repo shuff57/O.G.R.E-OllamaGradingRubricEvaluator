@@ -807,16 +807,27 @@ document.getElementById('modeSwitch').addEventListener('change', (e) => {
   const studentWorkTitle = document.getElementById('studentWorkTitle');
   const btnImportStudent = document.getElementById('btnImportStudent');
   const btnImportStudentImage = document.getElementById('btnImportStudentImage');
+  const btnImportRubric = document.getElementById('btnImportRubric');
+  const btnImportRubricImage = document.getElementById('btnImportRubricImage');
+  const rubricText = document.getElementById('rubricText');
   
   if (isSolver) {
     document.body.classList.add('solver-mode');
     rubricCard.style.display = 'block';
     rubricTitle.innerHTML = '<i class="bi bi-list-check"></i> Question Setup';
     studentWorkTitle.innerHTML = '<i class="bi bi-chat-dots"></i> Solver Chat';
-    btnImportStudent.innerHTML = '<i class="bi bi-stars"></i> Import Question for Highlighted Text (AI)';
-    btnImportStudentImage.innerHTML = '<i class="bi bi-file-image"></i> Import Question from Screenshot (AI)';
+    
+    // Update Question Setup buttons
+    btnImportRubric.innerHTML = '<i class="bi bi-stars"></i> Import Question for Highlighted Text (AI)';
+    btnImportRubricImage.innerHTML = '<i class="bi bi-file-image"></i> Import Question from Screenshot (AI)';
+
+    // Update Solver Chat buttons (optional, keeping previous change or adjusting)
+    btnImportStudent.innerHTML = '<i class="bi bi-stars"></i> Import from Text (AI)';
+    btnImportStudentImage.innerHTML = '<i class="bi bi-file-image"></i> Import from Screenshot (AI)';
+
     btnGrade.innerText = "Send";
     studentText.setAttribute('placeholder', "Ask a question...");
+    rubricText.setAttribute('placeholder', "Paste question text here or upload image...");
     chatSection.style.display = 'none'; // Hide separate chat input
     responseContainer.innerHTML = ''; // Clear previous results
     responseContainer.style.display = 'flex';
@@ -833,10 +844,18 @@ document.getElementById('modeSwitch').addEventListener('change', (e) => {
     rubricCard.style.display = 'block';
     rubricTitle.innerHTML = '<i class="bi bi-list-check"></i> 1. Define Role / Rubric';
     studentWorkTitle.innerHTML = '<i class="bi bi-person-workspace"></i> 2. Student Work';
+    
+    // Reset Question Setup buttons
+    btnImportRubric.innerHTML = '<i class="bi bi-stars"></i> Import Rubric from Highlighted Text';
+    btnImportRubricImage.innerHTML = '<i class="bi bi-file-image"></i> Import Rubric from Screenshot';
+
+    // Reset Student Work buttons
     btnImportStudent.innerHTML = '<i class="bi bi-stars"></i> Import Student Work from Text';
     btnImportStudentImage.innerHTML = '<i class="bi bi-file-image"></i> Import Student Work from Screenshot';
+
     btnGrade.innerText = "Run Assessment";
     studentText.setAttribute('placeholder', "Student text will appear here...");
+    rubricText.setAttribute('placeholder', "Paste rubric text here or upload image...");
     // chatSection will be shown after grading
     responseContainer.innerHTML = '';
     responseContainer.style.display = 'block';
