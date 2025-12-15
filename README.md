@@ -1,6 +1,7 @@
 # O.G.R.E - Ollama Grading Review Evaluator
 
-A Chrome extension that uses AI models via the Ollama API (Cloud) to assist with grading and reviewing student work directly in your browser side panel.
+## About
+**O.G.R.E** (Ollama Grading Review Evaluator) is a Chrome extension designed to streamline the grading process for educators. By leveraging the power of AI models via the Ollama API (Cloud), it allows teachers to grade student work, including text and images (like math problems or diagrams), directly within the browser side panel. It supports custom rubrics, which can be imported via text or screenshot, and provides detailed feedback based on the selected AI model.
 
 ## Prerequisites
 
