@@ -972,21 +972,16 @@ document.getElementById('btnGrade').addEventListener('click', async () => {
     }
   } else {
     // Grader Mode
-    if (conversationHistory.length === 0) {
-        // First Run (Grading)
-        systemInstruction = Prompts.getGradingSystemPrompt(rubricText);
-        userPrompt = `Student Submission: ${studentText}`;
-        conversationHistory = [
-            { role: "system", content: systemInstruction },
-            { role: "user", content: userPrompt, images: images.length > 0 ? images : undefined }
-        ];
-        mode = 'grading';
-    } else {
-        // Follow-up Chat
-        userPrompt = studentText;
-        conversationHistory.push({ role: "user", content: userPrompt, images: images.length > 0 ? images : undefined });
-        mode = 'chat';
-    }
+    // Always treat as a new grading task to ensure consistent formatting
+    systemInstruction = Prompts.getGradingSystemPrompt(rubricText);
+    userPrompt = `Student Submission: ${studentText}`;
+    
+    // Reset history for each grading run to prevent context pollution and ensure JSON output
+    conversationHistory = [
+        { role: "system", content: systemInstruction },
+        { role: "user", content: userPrompt, images: images.length > 0 ? images : undefined }
+    ];
+    mode = 'grading';
   }
 
   await streamChat(conversationHistory, mode);
