@@ -1362,24 +1362,27 @@ document.getElementById('btnSolverSend').addEventListener('click', () => {
 
 // --- Model Info Popover Logic ---
 const modelDefinitions = [
-  { name: "Gemma3-12b", strength: "Excellent all-rounder. Good default choice.", weakness: "Average speed.", cost: "Medium" },
-  { name: "Gemma3-4b", strength: "Quick and efficient.", weakness: "Limited knowledge base.", cost: "Low" },
-  { name: "Gemma3-27b", strength: "High intelligence for a medium model.", weakness: "Higher cost than 12b.", cost: "Medium-High" },
-  { name: "ChatGPT-20b", strength: "Fast and reliable for standard tasks.", weakness: "Not the smartest for complex logic.", cost: "Low" },
-  { name: "ChatGPT-120b", strength: "Very smart, good at reasoning.", weakness: "Slower and more expensive.", cost: "High" },
-  { name: "Qwen3-Vision", strength: "Can see and analyze images/screenshots.", weakness: "Very large and slow.", cost: "Very High" },
-  { name: "Ministral-3-3b", strength: "Extremely fast and cheap.", weakness: "Basic intelligence only.", cost: "Very Low" },
-  { name: "Ministral-3-8b", strength: "Good balance for simple queries.", weakness: "Can struggle with nuance.", cost: "Low" },
-  { name: "Ministral-3-14b", strength: "Smart compact model.", weakness: "Slower than smaller versions.", cost: "Medium" },
-  { name: "Deepseek-v3.1", strength: "Top-tier reasoning and coding.", weakness: "Overkill for simple tasks.", cost: "High" },
-  { name: "Deepseek-v3.2", strength: "Latest version, improved logic.", weakness: "High cost.", cost: "High" },
-  { name: "Gemini-3-Pro", strength: "Massive knowledge, great at creative tasks.", weakness: "Preview version may vary.", cost: "High" },
-  { name: "Kimi-K2", strength: "Huge context window (remembers a lot).", weakness: "Can be slow.", cost: "High" },
-  { name: "Kimi-K2-Thinking", strength: "Thinks before speaking. Great for math.", weakness: "Takes longer to reply.", cost: "High" },
-  { name: "Cogito-2.1", strength: "Strong reasoning capabilities.", weakness: "Less common, specialized.", cost: "High" },
-  { name: "Qwen3-Next", strength: "Next-gen capabilities.", weakness: "Newer, less tested.", cost: "High" },
-  { name: "Rnj-1", strength: "Specialized lightweight model.", weakness: "Niche use cases.", cost: "Low" },
-  { name: "Mistral-Large-3", strength: "Enterprise-grade intelligence.", weakness: "Expensive.", cost: "Very High" }
+  { name: "Gemma3-12b", strength: "Excellent all-rounder. Good default choice.", weakness: "Average speed.", cost: "Medium", scores: { math: 8, science: 8, coding: 7, writing: 8 } },
+  { name: "Gemma3-4b", strength: "Quick and efficient.", weakness: "Limited knowledge base.", cost: "Low", scores: { math: 6, science: 6, coding: 5, writing: 7 } },
+  { name: "Gemma3-27b", strength: "High intelligence for a medium model.", weakness: "Higher cost than 12b.", cost: "Medium-High", scores: { math: 9, science: 9, coding: 8, writing: 9 } },
+  { name: "ChatGPT-20b", strength: "Fast and reliable for standard tasks.", weakness: "Not the smartest for complex logic.", cost: "Low", scores: { math: 7, science: 7, coding: 6, writing: 8 } },
+  { name: "ChatGPT-120b", strength: "Very smart, good at reasoning.", weakness: "Slower and more expensive.", cost: "High", scores: { math: 9, science: 9, coding: 8, writing: 9 } },
+  { name: "Qwen3-Vision", strength: "Can see and analyze images/screenshots.", weakness: "Very large and slow.", cost: "Very High", scores: { math: 8, science: 8, coding: 7, writing: 7 } },
+  { name: "Ministral-3-3b", strength: "Extremely fast and cheap.", weakness: "Basic intelligence only.", cost: "Very Low", scores: { math: 5, science: 5, coding: 4, writing: 6 } },
+  { name: "Ministral-3-8b", strength: "Good balance for simple queries.", weakness: "Can struggle with nuance.", cost: "Low", scores: { math: 7, science: 7, coding: 6, writing: 7 } },
+  { name: "Ministral-3-14b", strength: "Smart compact model.", weakness: "Slower than smaller versions.", cost: "Medium", scores: { math: 8, science: 8, coding: 7, writing: 8 } },
+  { name: "Deepseek-v3.1", strength: "Top-tier reasoning and coding.", weakness: "Overkill for simple tasks.", cost: "High", scores: { math: 9, science: 9, coding: 10, writing: 8 } },
+  { name: "Deepseek-v3.2", strength: "Latest version, improved logic.", weakness: "High cost.", cost: "High", scores: { math: 10, science: 10, coding: 10, writing: 9 } },
+  { name: "Gemini-3-Pro-preview", strength: "Massive knowledge, great at creative tasks.", weakness: "Preview version may vary.", cost: "High", scores: { math: 10, science: 10, coding: 9, writing: 10 } },
+  { name: "Gemini-3-Flash-preview", strength: "Extremely fast and low latency.", weakness: "Less capable than Pro version.", cost: "Low", scores: { math: 8, science: 8, coding: 7, writing: 8 } },
+  { name: "Kimi-K2", strength: "Huge context window (remembers a lot).", weakness: "Can be slow.", cost: "High", scores: { math: 8, science: 8, coding: 7, writing: 9 } },
+  { name: "Kimi-K2-Thinking", strength: "Thinks before speaking. Great for math.", weakness: "Takes longer to reply.", cost: "High", scores: { math: 10, science: 9, coding: 8, writing: 8 } },
+  { name: "Cogito-2.1", strength: "Strong reasoning capabilities.", weakness: "Less common, specialized.", cost: "High", scores: { math: 9, science: 9, coding: 8, writing: 8 } },
+  { name: "Qwen3-Next", strength: "Next-gen capabilities.", weakness: "Newer, less tested.", cost: "High", scores: { math: 9, science: 9, coding: 9, writing: 8 } },
+  { name: "Rnj-1", strength: "Specialized lightweight model.", weakness: "Niche use cases.", cost: "Low", scores: { math: 6, science: 6, coding: 5, writing: 6 } },
+  { name: "Mistral-Large-3", strength: "Enterprise-grade intelligence.", weakness: "Expensive.", cost: "Very High", scores: { math: 9, science: 9, coding: 9, writing: 9 } },
+  { name: "Minimax-M2", strength: "Good for creative writing and roleplay.", weakness: "Can be unpredictable.", cost: "Medium", scores: { math: 7, science: 7, coding: 6, writing: 9 } },
+  { name: "Nemotron-3-Nano", strength: "Highly efficient, compact model.", weakness: "Limited complex reasoning.", cost: "Low", scores: { math: 6, science: 6, coding: 5, writing: 6 } }
 ];
 
 document.getElementById('btnModelInfo').addEventListener('click', () => {
@@ -1404,6 +1407,12 @@ document.getElementById('btnModelInfo').addEventListener('click', () => {
             <div style="font-size:12px; color:#666; margin-top:2px;">
                 <span style="color:#16a34a;">&#10003; ${m.strength}</span><br>
                 <span style="color:#dc3545;">&#10007; ${m.weakness}</span>
+            </div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:4px; margin-top:8px; font-size:11px; background:#f9f9f9; padding:6px; border-radius:4px;">
+                <div>Math: <b>${m.scores.math}/10</b></div>
+                <div>Science: <b>${m.scores.science}/10</b></div>
+                <div>Coding: <b>${m.scores.coding}/10</b></div>
+                <div>Writing: <b>${m.scores.writing}/10</b></div>
             </div>
         `;
         list.appendChild(item);
