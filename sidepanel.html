@@ -630,6 +630,22 @@
       <div style="font-size: 13px; color: #555; margin-bottom: 15px;">
           <p style="margin: 0;"><strong>Cost Legend:</strong> <span style="color:green">Low</span> (Cheap/Fast) | <span style="color:orange">Medium</span> (Balanced) | <span style="color:red">High</span> (Smart/Slow)</p>
       </div>
+      
+      <div style="display:flex; gap:10px; margin-bottom:10px;">
+        <select id="modelSortBy" style="flex:1; padding:5px; font-size:12px; margin-bottom:0;">
+          <option value="default">Default Order</option>
+          <option value="cost">Cost</option>
+          <option value="math">Math Score</option>
+          <option value="science">Science Score</option>
+          <option value="coding">Coding Score</option>
+          <option value="writing">Writing Score</option>
+        </select>
+        <select id="modelSortOrder" style="flex:1; padding:5px; font-size:12px; margin-bottom:0;">
+          <option value="desc">High to Low (Best/Exp)</option>
+          <option value="asc">Low to High (Worst/Cheap)</option>
+        </select>
+      </div>
+
       <div id="modelInfoList" style="max-height: 400px; overflow-y: auto;">
           <!-- JS populates this -->
       </div>

@@ -1363,180 +1363,194 @@ document.getElementById('btnSolverSend').addEventListener('click', () => {
 // --- Model Info Popover Logic ---
 const modelDefinitions = [
   { 
-    name: "Gemma3-12b", 
-    desc: "Reliable all-rounder. Good default choice.", 
-    bestFor: "Everyday tasks, explanations, summaries.", 
+    name: "Gemini-3-Pro-preview", 
+    desc: "The smartest \"all-rounder\" that can read 1,000+ pages or hour-long videos at once.", 
     speed: "Medium", 
-    cost: "Medium", 
+    cost: "High (8/10)", 
+    scores: { math: 10, science: 10, coding: 10, writing: 8 } 
+  },
+  { 
+    name: "DeepSeek-v3.2", 
+    desc: "High-end genius-level logic for almost zero cost; great for heavy math/coding.", 
+    speed: "Slow", 
+    cost: "Very Low (1/10)", 
+    scores: { math: 10, science: 9, coding: 10, writing: 7 } 
+  },
+  { 
+    name: "Kimi-K2-Thinking", 
+    desc: "An \"independent worker\" that pauses to think and double-check facts before answering.", 
+    speed: "Medium", 
+    cost: "Medium (6/10)", 
+    scores: { math: 9, science: 9, coding: 8, writing: 10 } 
+  },
+  { 
+    name: "Mistral-Large-3", 
+    desc: "A powerful, reliable choice for businesses who want to keep their data private.", 
+    speed: "Slow", 
+    cost: "High (7/10)", 
+    scores: { math: 8, science: 9, coding: 9, writing: 9 } 
+  },
+  { 
+    name: "DeepSeek-v3.1", 
+    desc: "A very fast, very cheap version of DeepSeek for standard daily questions.", 
+    speed: "Medium", 
+    cost: "Very Low (1/10)", 
+    scores: { math: 9, science: 8, coding: 9, writing: 7 } 
+  },
+  { 
+    name: "Kimi-K2", 
+    desc: "The best \"creative partner\" for writing emails, stories, or blogs that sound human.", 
+    speed: "Medium", 
+    cost: "Medium (5/10)", 
+    scores: { math: 8, science: 8, coding: 8, writing: 10 } 
+  },
+  { 
+    name: "Qwen3-Vision", 
+    desc: "The best \"pair of eyes\"; it can read messy charts, diagrams, and maps perfectly.", 
+    speed: "Slow", 
+    cost: "Low (3/10)", 
+    scores: { math: 8, science: 10, coding: 7, writing: 6 } 
+  },
+  { 
+    name: "Cogito-2.1", 
+    desc: "Great for students; it explains how it got an answer step-by-step to help you learn.", 
+    speed: "Medium", 
+    cost: "Low (4/10)", 
+    scores: { math: 8, science: 9, coding: 8, writing: 8 } 
+  },
+  { 
+    name: "Qwen3-Next", 
+    desc: "A super-fast \"speed reader\" that gives high-quality answers in a split second.", 
+    speed: "Medium", 
+    cost: "Very Low (2/10)", 
+    scores: { math: 9, science: 8, coding: 8, writing: 7 } 
+  },
+  { 
+    name: "Minimax-M2", 
+    desc: "A \"pro planner\" that is excellent at organizing schedules and complex multi-step tasks.", 
+    speed: "Medium", 
+    cost: "Low (3/10)", 
     scores: { math: 8, science: 8, coding: 7, writing: 8 } 
   },
   { 
-    name: "Gemma3-4b", 
-    desc: "Lightweight and snappy.", 
-    bestFor: "Simple questions, quick translations.", 
-    speed: "Fast", 
-    cost: "Low", 
-    scores: { math: 6, science: 6, coding: 5, writing: 7 } 
+    name: "Gemini-3-Flash-preview", 
+    desc: "The fastest model on the list; gives you high-quality help almost instantly.", 
+    speed: "Very Fast", 
+    cost: "Very Low (1/10)", 
+    scores: { math: 8, science: 7, coding: 8, writing: 7 } 
   },
   { 
-    name: "Gemma3-27b", 
-    desc: "Higher intelligence tier.", 
-    bestFor: "Complex instructions, nuance.", 
-    speed: "Medium", 
-    cost: "Medium-High", 
-    scores: { math: 9, science: 9, coding: 8, writing: 9 } 
+    name: "ChatGPT-120b", 
+    desc: "A friendly, reliable digital assistant that is easy to talk to and very versatile.", 
+    speed: "Slow", 
+    cost: "Very Low (2/10)", 
+    scores: { math: 7, science: 7, coding: 8, writing: 8 } 
   },
   { 
     name: "ChatGPT-20b", 
     desc: "Standard reliable assistant.", 
-    bestFor: "General knowledge, chat.", 
     speed: "Fast", 
-    cost: "Low", 
-    scores: { math: 7, science: 7, coding: 6, writing: 8 } 
+    cost: "Very Low (1/10)", 
+    scores: { math: 6, science: 6, coding: 7, writing: 7 } 
   },
   { 
-    name: "ChatGPT-120b", 
-    desc: "High-reasoning capability.", 
-    bestFor: "Complex logic, detailed answers.", 
-    speed: "Slow", 
-    cost: "High", 
-    scores: { math: 9, science: 9, coding: 8, writing: 9 } 
-  },
-  { 
-    name: "Qwen3-Vision", 
-    desc: "Visual analysis expert.", 
-    bestFor: "Describing images, reading screenshots.", 
-    speed: "Slow", 
-    cost: "Very High", 
-    scores: { math: 8, science: 8, coding: 7, writing: 7 } 
-  },
-  { 
-    name: "Ministral-3-3b", 
-    desc: "Ultra-fast and efficient.", 
-    bestFor: "Simple commands, formatting.", 
-    speed: "Very Fast", 
-    cost: "Very Low", 
-    scores: { math: 5, science: 5, coding: 4, writing: 6 } 
-  },
-  { 
-    name: "Ministral-3-8b", 
-    desc: "Balanced compact model.", 
-    bestFor: "Drafting text, basic queries.", 
-    speed: "Fast", 
-    cost: "Low", 
-    scores: { math: 7, science: 7, coding: 6, writing: 7 } 
+    name: "Gemma3-27b", 
+    desc: "A strong, safe choice you can run on your own computer without an internet connection.", 
+    speed: "Medium", 
+    cost: "Very Low (1/10)", 
+    scores: { math: 7, science: 7, coding: 7, writing: 7 } 
   },
   { 
     name: "Ministral-3-14b", 
-    desc: "Smart but compact.", 
-    bestFor: "Reasoning on a budget.", 
+    desc: "A compact \"math tutor\" that fits on a laptop but thinks like a much larger model.", 
     speed: "Medium", 
-    cost: "Medium", 
-    scores: { math: 8, science: 8, coding: 7, writing: 8 } 
+    cost: "Very Low (2/10)", 
+    scores: { math: 8, science: 7, coding: 7, writing: 6 } 
   },
   { 
-    name: "Deepseek-v3.1", 
-    desc: "Coding specialist.", 
-    bestFor: "Programming, debugging, math.", 
+    name: "Gemma3-12b", 
+    desc: "A lightweight helper for quick summaries and fixing grammar on your phone.", 
     speed: "Medium", 
-    cost: "High", 
-    scores: { math: 9, science: 9, coding: 10, writing: 8 } 
-  },
-  { 
-    name: "Deepseek-v3.2", 
-    desc: "Advanced logic engine.", 
-    bestFor: "Hard math, complex coding.", 
-    speed: "Slow", 
-    cost: "High", 
-    scores: { math: 10, science: 10, coding: 10, writing: 9 } 
-  },
-  { 
-    name: "Gemini-3-Pro-preview", 
-    desc: "Multimodal powerhouse.", 
-    bestFor: "Creative writing, deep analysis.", 
-    speed: "Medium", 
-    cost: "High", 
-    scores: { math: 10, science: 10, coding: 9, writing: 10 } 
-  },
-  { 
-    name: "Gemini-3-Flash-preview", 
-    desc: "Speed-optimized Pro.", 
-    bestFor: "High-volume tasks, quick answers.", 
-    speed: "Very Fast", 
-    cost: "Low", 
-    scores: { math: 8, science: 8, coding: 7, writing: 8 } 
-  },
-  { 
-    name: "Kimi-K2", 
-    desc: "Massive memory.", 
-    bestFor: "Reading long documents, history.", 
-    speed: "Medium", 
-    cost: "High", 
-    scores: { math: 8, science: 8, coding: 7, writing: 9 } 
-  },
-  { 
-    name: "Kimi-K2-Thinking", 
-    desc: "Deliberate reasoner.", 
-    bestFor: "Step-by-step math, logic puzzles.", 
-    speed: "Very Slow", 
-    cost: "High", 
-    scores: { math: 10, science: 9, coding: 8, writing: 8 } 
-  },
-  { 
-    name: "Cogito-2.1", 
-    desc: "Strong reasoner.", 
-    bestFor: "Analytical tasks.", 
-    speed: "Medium", 
-    cost: "High", 
-    scores: { math: 9, science: 9, coding: 8, writing: 8 } 
-  },
-  { 
-    name: "Qwen3-Next", 
-    desc: "Next-gen experimental.", 
-    bestFor: "Testing new capabilities.", 
-    speed: "Medium", 
-    cost: "High", 
-    scores: { math: 9, science: 9, coding: 9, writing: 8 } 
+    cost: "Very Low (1/10)", 
+    scores: { math: 6, science: 6, coding: 6, writing: 7 } 
   },
   { 
     name: "Rnj-1", 
-    desc: "Niche lightweight.", 
-    bestFor: "Specific simple tasks.", 
+    desc: "A tiny \"coding specialist\" that is surprisingly good at fixing computer bugs.", 
     speed: "Fast", 
-    cost: "Low", 
-    scores: { math: 6, science: 6, coding: 5, writing: 6 } 
+    cost: "Very Low (1/10)", 
+    scores: { math: 7, science: 6, coding: 8, writing: 6 } 
   },
   { 
-    name: "Mistral-Large-3", 
-    desc: "Top-tier intelligence.", 
-    bestFor: "Enterprise-grade reasoning.", 
-    speed: "Slow", 
-    cost: "Very High", 
-    scores: { math: 9, science: 9, coding: 9, writing: 9 } 
-  },
-  { 
-    name: "Minimax-M2", 
-    desc: "Creative storyteller.", 
-    bestFor: "Roleplay, fiction writing.", 
-    speed: "Medium", 
-    cost: "Medium", 
-    scores: { math: 7, science: 7, coding: 6, writing: 9 } 
+    name: "Ministral-3-8b", 
+    desc: "A basic, speedy tool for sorting emails or simple \"yes/no\" tasks.", 
+    speed: "Fast", 
+    cost: "Very Low (1/10)", 
+    scores: { math: 6, science: 5, coding: 5, writing: 6 } 
   },
   { 
     name: "Nemotron-3-Nano", 
-    desc: "Tiny but mighty.", 
-    bestFor: "Edge-device style tasks.", 
-    speed: "Fast", 
-    cost: "Low", 
+    desc: "Designed by NVIDIA to be extremely fast at following simple, repetitive rules.", 
+    speed: "Very Fast", 
+    cost: "Very Low (1/10)", 
     scores: { math: 6, science: 6, coding: 5, writing: 6 } 
+  },
+  { 
+    name: "Ministral-3-3b", 
+    desc: "A very small model meant for the simplest tasks, like reformatting a list.", 
+    speed: "Very Fast", 
+    cost: "Very Low (1/10)", 
+    scores: { math: 4, science: 3, coding: 3, writing: 5 } 
+  },
+  { 
+    name: "Gemma3-4b", 
+    desc: "Google’s smallest model, built to run smoothly even on older smartphones.", 
+    speed: "Fast", 
+    cost: "Very Low (1/10)", 
+    scores: { math: 5, science: 4, coding: 4, writing: 6 } 
   }
 ];
 
-document.getElementById('btnModelInfo').addEventListener('click', () => {
+function getCostValue(costStr) {
+    const match = costStr.match(/\((\d+)\/10\)/);
+    return match ? parseInt(match[1]) : 0;
+}
+
+function renderModelList() {
     const list = document.getElementById('modelInfoList');
+    const sortBy = document.getElementById('modelSortBy').value;
+    const sortOrder = document.getElementById('modelSortOrder').value;
+    
     list.innerHTML = '';
     
-    modelDefinitions.forEach(m => {
+    let models = [...modelDefinitions];
+    
+    if (sortBy !== 'default') {
+        models.sort((a, b) => {
+            let valA, valB;
+            
+            if (sortBy === 'cost') {
+                valA = getCostValue(a.cost);
+                valB = getCostValue(b.cost);
+            } else {
+                // math, science, coding, writing
+                // Map 'science' to 'science' (key matches value)
+                // Map 'coding' to 'coding'
+                // Map 'writing' to 'writing'
+                // Map 'math' to 'math'
+                valA = a.scores[sortBy];
+                valB = b.scores[sortBy];
+            }
+            
+            if (sortOrder === 'asc') {
+                return valA - valB;
+            } else {
+                return valB - valA;
+            }
+        });
+    }
+    
+    models.forEach(m => {
         const item = document.createElement('div');
         item.style.marginBottom = '12px';
         item.style.paddingBottom = '12px';
@@ -1551,25 +1565,28 @@ document.getElementById('btnModelInfo').addEventListener('click', () => {
                 <span style="font-size:14px;">${m.name}</span>
                 <span style="color:${costColor}; font-size:10px; border:1px solid ${costColor}; padding:1px 5px; border-radius:10px; text-transform:uppercase;">${m.cost} Cost</span>
             </div>
-            <div style="font-size:12px; color:#555; margin: 4px 0; font-style:italic;">
+            <div style="font-size:12px; color:#555; margin: 6px 0; font-style:italic; line-height: 1.4;">
                 "${m.desc}"
-            </div>
-            <div style="font-size:11px; color:#444; margin-bottom:6px;">
-                <strong>Best For:</strong> ${m.bestFor}
             </div>
             <div style="display:flex; gap:10px; font-size:11px; color:#666; margin-bottom:6px;">
                 <span>⏱️ Speed: <b>${m.speed}</b></span>
             </div>
             <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:2px; margin-top:6px; background:#f5f5f5; padding:6px; border-radius:6px;">
-                <div style="text-align:center;"><div style="font-size:9px; color:#888;">MATH</div><div style="font-weight:bold; color:#2563eb;">${m.scores.math}</div></div>
-                <div style="text-align:center;"><div style="font-size:9px; color:#888;">SCI</div><div style="font-weight:bold; color:#16a34a;">${m.scores.science}</div></div>
-                <div style="text-align:center;"><div style="font-size:9px; color:#888;">CODE</div><div style="font-weight:bold; color:#9333ea;">${m.scores.coding}</div></div>
-                <div style="text-align:center;"><div style="font-size:9px; color:#888;">WRITE</div><div style="font-weight:bold; color:#ea580c;">${m.scores.writing}</div></div>
+                <div style="text-align:center;"><div style="font-size:9px; color:#888;">MATH</div><div style="font-weight:bold; color:black;">${m.scores.math}</div></div>
+                <div style="text-align:center;"><div style="font-size:9px; color:#888;">SCI</div><div style="font-weight:bold; color:black;">${m.scores.science}</div></div>
+                <div style="text-align:center;"><div style="font-size:9px; color:#888;">CODE</div><div style="font-weight:bold; color:black;">${m.scores.coding}</div></div>
+                <div style="text-align:center;"><div style="font-size:9px; color:#888;">WRITE</div><div style="font-weight:bold; color:black;">${m.scores.writing}</div></div>
             </div>
         `;
         list.appendChild(item);
     });
-    
+}
+
+document.getElementById('modelSortBy').addEventListener('change', renderModelList);
+document.getElementById('modelSortOrder').addEventListener('change', renderModelList);
+
+document.getElementById('btnModelInfo').addEventListener('click', () => {
+    renderModelList();
     document.getElementById('modelInfoModal').style.display = 'block';
 });
 
