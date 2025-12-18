@@ -1362,27 +1362,174 @@ document.getElementById('btnSolverSend').addEventListener('click', () => {
 
 // --- Model Info Popover Logic ---
 const modelDefinitions = [
-  { name: "Gemma3-12b", strength: "Excellent all-rounder. Good default choice.", weakness: "Average speed.", cost: "Medium", scores: { math: 8, science: 8, coding: 7, writing: 8 } },
-  { name: "Gemma3-4b", strength: "Quick and efficient.", weakness: "Limited knowledge base.", cost: "Low", scores: { math: 6, science: 6, coding: 5, writing: 7 } },
-  { name: "Gemma3-27b", strength: "High intelligence for a medium model.", weakness: "Higher cost than 12b.", cost: "Medium-High", scores: { math: 9, science: 9, coding: 8, writing: 9 } },
-  { name: "ChatGPT-20b", strength: "Fast and reliable for standard tasks.", weakness: "Not the smartest for complex logic.", cost: "Low", scores: { math: 7, science: 7, coding: 6, writing: 8 } },
-  { name: "ChatGPT-120b", strength: "Very smart, good at reasoning.", weakness: "Slower and more expensive.", cost: "High", scores: { math: 9, science: 9, coding: 8, writing: 9 } },
-  { name: "Qwen3-Vision", strength: "Can see and analyze images/screenshots.", weakness: "Very large and slow.", cost: "Very High", scores: { math: 8, science: 8, coding: 7, writing: 7 } },
-  { name: "Ministral-3-3b", strength: "Extremely fast and cheap.", weakness: "Basic intelligence only.", cost: "Very Low", scores: { math: 5, science: 5, coding: 4, writing: 6 } },
-  { name: "Ministral-3-8b", strength: "Good balance for simple queries.", weakness: "Can struggle with nuance.", cost: "Low", scores: { math: 7, science: 7, coding: 6, writing: 7 } },
-  { name: "Ministral-3-14b", strength: "Smart compact model.", weakness: "Slower than smaller versions.", cost: "Medium", scores: { math: 8, science: 8, coding: 7, writing: 8 } },
-  { name: "Deepseek-v3.1", strength: "Top-tier reasoning and coding.", weakness: "Overkill for simple tasks.", cost: "High", scores: { math: 9, science: 9, coding: 10, writing: 8 } },
-  { name: "Deepseek-v3.2", strength: "Latest version, improved logic.", weakness: "High cost.", cost: "High", scores: { math: 10, science: 10, coding: 10, writing: 9 } },
-  { name: "Gemini-3-Pro-preview", strength: "Massive knowledge, great at creative tasks.", weakness: "Preview version may vary.", cost: "High", scores: { math: 10, science: 10, coding: 9, writing: 10 } },
-  { name: "Gemini-3-Flash-preview", strength: "Extremely fast and low latency.", weakness: "Less capable than Pro version.", cost: "Low", scores: { math: 8, science: 8, coding: 7, writing: 8 } },
-  { name: "Kimi-K2", strength: "Huge context window (remembers a lot).", weakness: "Can be slow.", cost: "High", scores: { math: 8, science: 8, coding: 7, writing: 9 } },
-  { name: "Kimi-K2-Thinking", strength: "Thinks before speaking. Great for math.", weakness: "Takes longer to reply.", cost: "High", scores: { math: 10, science: 9, coding: 8, writing: 8 } },
-  { name: "Cogito-2.1", strength: "Strong reasoning capabilities.", weakness: "Less common, specialized.", cost: "High", scores: { math: 9, science: 9, coding: 8, writing: 8 } },
-  { name: "Qwen3-Next", strength: "Next-gen capabilities.", weakness: "Newer, less tested.", cost: "High", scores: { math: 9, science: 9, coding: 9, writing: 8 } },
-  { name: "Rnj-1", strength: "Specialized lightweight model.", weakness: "Niche use cases.", cost: "Low", scores: { math: 6, science: 6, coding: 5, writing: 6 } },
-  { name: "Mistral-Large-3", strength: "Enterprise-grade intelligence.", weakness: "Expensive.", cost: "Very High", scores: { math: 9, science: 9, coding: 9, writing: 9 } },
-  { name: "Minimax-M2", strength: "Good for creative writing and roleplay.", weakness: "Can be unpredictable.", cost: "Medium", scores: { math: 7, science: 7, coding: 6, writing: 9 } },
-  { name: "Nemotron-3-Nano", strength: "Highly efficient, compact model.", weakness: "Limited complex reasoning.", cost: "Low", scores: { math: 6, science: 6, coding: 5, writing: 6 } }
+  { 
+    name: "Gemma3-12b", 
+    desc: "Reliable all-rounder. Good default choice.", 
+    bestFor: "Everyday tasks, explanations, summaries.", 
+    speed: "Medium", 
+    cost: "Medium", 
+    scores: { math: 8, science: 8, coding: 7, writing: 8 } 
+  },
+  { 
+    name: "Gemma3-4b", 
+    desc: "Lightweight and snappy.", 
+    bestFor: "Simple questions, quick translations.", 
+    speed: "Fast", 
+    cost: "Low", 
+    scores: { math: 6, science: 6, coding: 5, writing: 7 } 
+  },
+  { 
+    name: "Gemma3-27b", 
+    desc: "Higher intelligence tier.", 
+    bestFor: "Complex instructions, nuance.", 
+    speed: "Medium", 
+    cost: "Medium-High", 
+    scores: { math: 9, science: 9, coding: 8, writing: 9 } 
+  },
+  { 
+    name: "ChatGPT-20b", 
+    desc: "Standard reliable assistant.", 
+    bestFor: "General knowledge, chat.", 
+    speed: "Fast", 
+    cost: "Low", 
+    scores: { math: 7, science: 7, coding: 6, writing: 8 } 
+  },
+  { 
+    name: "ChatGPT-120b", 
+    desc: "High-reasoning capability.", 
+    bestFor: "Complex logic, detailed answers.", 
+    speed: "Slow", 
+    cost: "High", 
+    scores: { math: 9, science: 9, coding: 8, writing: 9 } 
+  },
+  { 
+    name: "Qwen3-Vision", 
+    desc: "Visual analysis expert.", 
+    bestFor: "Describing images, reading screenshots.", 
+    speed: "Slow", 
+    cost: "Very High", 
+    scores: { math: 8, science: 8, coding: 7, writing: 7 } 
+  },
+  { 
+    name: "Ministral-3-3b", 
+    desc: "Ultra-fast and efficient.", 
+    bestFor: "Simple commands, formatting.", 
+    speed: "Very Fast", 
+    cost: "Very Low", 
+    scores: { math: 5, science: 5, coding: 4, writing: 6 } 
+  },
+  { 
+    name: "Ministral-3-8b", 
+    desc: "Balanced compact model.", 
+    bestFor: "Drafting text, basic queries.", 
+    speed: "Fast", 
+    cost: "Low", 
+    scores: { math: 7, science: 7, coding: 6, writing: 7 } 
+  },
+  { 
+    name: "Ministral-3-14b", 
+    desc: "Smart but compact.", 
+    bestFor: "Reasoning on a budget.", 
+    speed: "Medium", 
+    cost: "Medium", 
+    scores: { math: 8, science: 8, coding: 7, writing: 8 } 
+  },
+  { 
+    name: "Deepseek-v3.1", 
+    desc: "Coding specialist.", 
+    bestFor: "Programming, debugging, math.", 
+    speed: "Medium", 
+    cost: "High", 
+    scores: { math: 9, science: 9, coding: 10, writing: 8 } 
+  },
+  { 
+    name: "Deepseek-v3.2", 
+    desc: "Advanced logic engine.", 
+    bestFor: "Hard math, complex coding.", 
+    speed: "Slow", 
+    cost: "High", 
+    scores: { math: 10, science: 10, coding: 10, writing: 9 } 
+  },
+  { 
+    name: "Gemini-3-Pro-preview", 
+    desc: "Multimodal powerhouse.", 
+    bestFor: "Creative writing, deep analysis.", 
+    speed: "Medium", 
+    cost: "High", 
+    scores: { math: 10, science: 10, coding: 9, writing: 10 } 
+  },
+  { 
+    name: "Gemini-3-Flash-preview", 
+    desc: "Speed-optimized Pro.", 
+    bestFor: "High-volume tasks, quick answers.", 
+    speed: "Very Fast", 
+    cost: "Low", 
+    scores: { math: 8, science: 8, coding: 7, writing: 8 } 
+  },
+  { 
+    name: "Kimi-K2", 
+    desc: "Massive memory.", 
+    bestFor: "Reading long documents, history.", 
+    speed: "Medium", 
+    cost: "High", 
+    scores: { math: 8, science: 8, coding: 7, writing: 9 } 
+  },
+  { 
+    name: "Kimi-K2-Thinking", 
+    desc: "Deliberate reasoner.", 
+    bestFor: "Step-by-step math, logic puzzles.", 
+    speed: "Very Slow", 
+    cost: "High", 
+    scores: { math: 10, science: 9, coding: 8, writing: 8 } 
+  },
+  { 
+    name: "Cogito-2.1", 
+    desc: "Strong reasoner.", 
+    bestFor: "Analytical tasks.", 
+    speed: "Medium", 
+    cost: "High", 
+    scores: { math: 9, science: 9, coding: 8, writing: 8 } 
+  },
+  { 
+    name: "Qwen3-Next", 
+    desc: "Next-gen experimental.", 
+    bestFor: "Testing new capabilities.", 
+    speed: "Medium", 
+    cost: "High", 
+    scores: { math: 9, science: 9, coding: 9, writing: 8 } 
+  },
+  { 
+    name: "Rnj-1", 
+    desc: "Niche lightweight.", 
+    bestFor: "Specific simple tasks.", 
+    speed: "Fast", 
+    cost: "Low", 
+    scores: { math: 6, science: 6, coding: 5, writing: 6 } 
+  },
+  { 
+    name: "Mistral-Large-3", 
+    desc: "Top-tier intelligence.", 
+    bestFor: "Enterprise-grade reasoning.", 
+    speed: "Slow", 
+    cost: "Very High", 
+    scores: { math: 9, science: 9, coding: 9, writing: 9 } 
+  },
+  { 
+    name: "Minimax-M2", 
+    desc: "Creative storyteller.", 
+    bestFor: "Roleplay, fiction writing.", 
+    speed: "Medium", 
+    cost: "Medium", 
+    scores: { math: 7, science: 7, coding: 6, writing: 9 } 
+  },
+  { 
+    name: "Nemotron-3-Nano", 
+    desc: "Tiny but mighty.", 
+    bestFor: "Edge-device style tasks.", 
+    speed: "Fast", 
+    cost: "Low", 
+    scores: { math: 6, science: 6, coding: 5, writing: 6 } 
+  }
 ];
 
 document.getElementById('btnModelInfo').addEventListener('click', () => {
@@ -1400,19 +1547,24 @@ document.getElementById('btnModelInfo').addEventListener('click', () => {
         else if(m.cost.toLowerCase().includes('medium')) costColor = 'orange';
 
         item.innerHTML = `
-            <div style="font-weight:bold; color:#333; display:flex; justify-content:space-between;">
-                <span>${m.name}</span>
-                <span style="color:${costColor}; font-size:11px; border:1px solid ${costColor}; padding:1px 4px; border-radius:4px;">${m.cost}</span>
+            <div style="font-weight:bold; color:#333; display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-size:14px;">${m.name}</span>
+                <span style="color:${costColor}; font-size:10px; border:1px solid ${costColor}; padding:1px 5px; border-radius:10px; text-transform:uppercase;">${m.cost} Cost</span>
             </div>
-            <div style="font-size:12px; color:#666; margin-top:2px;">
-                <span style="color:#16a34a;">&#10003; ${m.strength}</span><br>
-                <span style="color:#dc3545;">&#10007; ${m.weakness}</span>
+            <div style="font-size:12px; color:#555; margin: 4px 0; font-style:italic;">
+                "${m.desc}"
             </div>
-            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:4px; margin-top:8px; font-size:11px; background:#f9f9f9; padding:6px; border-radius:4px;">
-                <div>Math: <b>${m.scores.math}/10</b></div>
-                <div>Science: <b>${m.scores.science}/10</b></div>
-                <div>Coding: <b>${m.scores.coding}/10</b></div>
-                <div>Writing: <b>${m.scores.writing}/10</b></div>
+            <div style="font-size:11px; color:#444; margin-bottom:6px;">
+                <strong>Best For:</strong> ${m.bestFor}
+            </div>
+            <div style="display:flex; gap:10px; font-size:11px; color:#666; margin-bottom:6px;">
+                <span>⏱️ Speed: <b>${m.speed}</b></span>
+            </div>
+            <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:2px; margin-top:6px; background:#f5f5f5; padding:6px; border-radius:6px;">
+                <div style="text-align:center;"><div style="font-size:9px; color:#888;">MATH</div><div style="font-weight:bold; color:#2563eb;">${m.scores.math}</div></div>
+                <div style="text-align:center;"><div style="font-size:9px; color:#888;">SCI</div><div style="font-weight:bold; color:#16a34a;">${m.scores.science}</div></div>
+                <div style="text-align:center;"><div style="font-size:9px; color:#888;">CODE</div><div style="font-weight:bold; color:#9333ea;">${m.scores.coding}</div></div>
+                <div style="text-align:center;"><div style="font-size:9px; color:#888;">WRITE</div><div style="font-weight:bold; color:#ea580c;">${m.scores.writing}</div></div>
             </div>
         `;
         list.appendChild(item);
