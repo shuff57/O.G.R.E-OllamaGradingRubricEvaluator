@@ -1516,6 +1516,14 @@ function getCostValue(costStr) {
     return match ? parseInt(match[1]) : 0;
 }
 
+function getSpeedValue(speedStr) {
+    const s = speedStr.toLowerCase();
+    if (s.includes('very fast')) return 4;
+    if (s.includes('fast')) return 3;
+    if (s.includes('medium')) return 2;
+    return 1; // Slow
+}
+
 function renderModelList() {
     const list = document.getElementById('modelInfoList');
     const sortBy = document.getElementById('modelSortBy').value;
@@ -1532,6 +1540,9 @@ function renderModelList() {
             if (sortBy === 'cost') {
                 valA = getCostValue(a.cost);
                 valB = getCostValue(b.cost);
+            } else if (sortBy === 'speed') {
+                valA = getSpeedValue(a.speed);
+                valB = getSpeedValue(b.speed);
             } else {
                 // math, science, coding, writing
                 // Map 'science' to 'science' (key matches value)
