@@ -631,20 +631,39 @@
           <p style="margin: 0;"><strong>Cost Legend:</strong> <span style="color:green">Low</span> (Cheap/Fast) | <span style="color:orange">Medium</span> (Balanced) | <span style="color:red">High</span> (Smart/Slow)</p>
       </div>
       
-      <div style="display:flex; gap:10px; margin-bottom:10px;">
-        <select id="modelSortBy" style="flex:1; padding:5px; font-size:12px; margin-bottom:0;">
-          <option value="default">Default Order</option>
-          <option value="cost">Cost</option>
-          <option value="speed">Speed</option>
-          <option value="math">Math</option>
-          <option value="science">Science</option>
-          <option value="coding">Coding</option>
-          <option value="writing">Writing</option>
-        </select>
-        <select id="modelSortOrder" style="flex:1; padding:5px; font-size:12px; margin-bottom:0;">
-          <option value="desc">High to Low (Best/Exp)</option>
-          <option value="asc">Low to High (Worst/Cheap)</option>
-        </select>
+      <div style="margin-bottom:10px;">
+        <div style="display:flex; gap:5px; margin-bottom:5px; align-items:center;">
+            <span style="font-size:11px; font-weight:bold; width:50px;">Sort By:</span>
+            <select id="modelSortBy" style="flex:1; padding:4px; font-size:11px; margin-bottom:0;">
+              <option value="default">Default</option>
+              <option value="cost">Cost</option>
+              <option value="speed">Speed</option>
+              <option value="math">Math Score</option>
+              <option value="science">Science Score</option>
+              <option value="coding">Coding Score</option>
+              <option value="writing">Writing Score</option>
+            </select>
+            <select id="modelSortOrder" style="width:90px; padding:4px; font-size:11px; margin-bottom:0;">
+              <option value="desc">High to Low</option>
+              <option value="asc">Low to High</option>
+            </select>
+        </div>
+        <div style="display:flex; gap:5px; margin-bottom:0; align-items:center;">
+            <span style="font-size:11px; font-weight:bold; width:50px;">Then By:</span>
+            <select id="modelSortBySecondary" style="flex:1; padding:4px; font-size:11px; margin-bottom:0;">
+              <option value="none">None</option>
+              <option value="cost">Cost</option>
+              <option value="speed">Speed</option>
+              <option value="math">Math Score</option>
+              <option value="science">Science Score</option>
+              <option value="coding">Coding Score</option>
+              <option value="writing">Writing Score</option>
+            </select>
+            <select id="modelSortOrderSecondary" style="width:90px; padding:4px; font-size:11px; margin-bottom:0;">
+              <option value="desc">High to Low</option>
+              <option value="asc">Low to High</option>
+            </select>
+        </div>
       </div>
 
       <div id="modelInfoList" style="max-height: 400px; overflow-y: auto;">

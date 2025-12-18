@@ -1528,36 +1528,43 @@ function renderModelList() {
     const list = document.getElementById('modelInfoList');
     const sortBy = document.getElementById('modelSortBy').value;
     const sortOrder = document.getElementById('modelSortOrder').value;
+    const sortBySecondary = document.getElementById('modelSortBySecondary').value;
+    const sortOrderSecondary = document.getElementById('modelSortOrderSecondary').value;
     
     list.innerHTML = '';
     
     let models = [...modelDefinitions];
     
+    const compare = (a, b, criteria, order) => {
+        let valA, valB;
+        if (criteria === 'cost') {
+            valA = getCostValue(a.cost);
+            valB = getCostValue(b.cost);
+        } else if (criteria === 'speed') {
+            valA = getSpeedValue(a.speed);
+            valB = getSpeedValue(b.speed);
+        } else {
+            valA = a.scores[criteria];
+            valB = b.scores[criteria];
+        }
+        
+        if (order === 'asc') {
+            return valA - valB;
+        } else {
+            return valB - valA;
+        }
+    };
+
     if (sortBy !== 'default') {
         models.sort((a, b) => {
-            let valA, valB;
+            const primaryDiff = compare(a, b, sortBy, sortOrder);
+            if (primaryDiff !== 0) return primaryDiff;
             
-            if (sortBy === 'cost') {
-                valA = getCostValue(a.cost);
-                valB = getCostValue(b.cost);
-            } else if (sortBy === 'speed') {
-                valA = getSpeedValue(a.speed);
-                valB = getSpeedValue(b.speed);
-            } else {
-                // math, science, coding, writing
-                // Map 'science' to 'science' (key matches value)
-                // Map 'coding' to 'coding'
-                // Map 'writing' to 'writing'
-                // Map 'math' to 'math'
-                valA = a.scores[sortBy];
-                valB = b.scores[sortBy];
+            if (sortBySecondary !== 'none') {
+                return compare(a, b, sortBySecondary, sortOrderSecondary);
             }
             
-            if (sortOrder === 'asc') {
-                return valA - valB;
-            } else {
-                return valB - valA;
-            }
+            return 0;
         });
     }
     
@@ -1595,6 +1602,8 @@ function renderModelList() {
 
 document.getElementById('modelSortBy').addEventListener('change', renderModelList);
 document.getElementById('modelSortOrder').addEventListener('change', renderModelList);
+document.getElementById('modelSortBySecondary').addEventListener('change', renderModelList);
+document.getElementById('modelSortOrderSecondary').addEventListener('change', renderModelList);
 
 document.getElementById('btnModelInfo').addEventListener('click', () => {
     renderModelList();
