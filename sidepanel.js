@@ -238,7 +238,10 @@ function updateThinkingControls() {
     model.includes('qwen3') || 
     model.includes('deepseek-v3.1') || 
     model.includes('deepseek-r1') ||
-    model.includes('kimi-k2-thinking')
+    model.includes('kimi-k2-thinking') ||
+    model.includes('kimi-k2.5') ||
+    model.includes('glm-4.6') ||
+    model.includes('glm-4.7')
   ) {
     thinkingControls.style.display = 'block';
     otherThinking.style.display = 'block';
@@ -1089,35 +1092,47 @@ async function streamChat(messages, mode) {
     let done = false;
     let thinkingText = '';
     let responseText = '';
+    let buffer = ''; // Buffer for incomplete JSON lines
 
     while (!done) {
       const { value, done: doneReading } = await reader.read();
       done = doneReading;
       const chunkValue = decoder.decode(value, { stream: true });
-      const lines = chunkValue.split('\n');
-      
+
+      // Prepend any buffered incomplete line from previous chunk
+      const fullChunk = buffer + chunkValue;
+      const lines = fullChunk.split('\n');
+
+      // The last element might be incomplete, so save it for next iteration
+      // Unless we're done reading, in which case process everything
+      if (!done && lines.length > 0) {
+        buffer = lines.pop(); // Remove and save the last (possibly incomplete) line
+      } else {
+        buffer = '';
+      }
+
       for (const line of lines) {
         if (!line.trim()) continue;
         try {
           const json = JSON.parse(line);
-          
+
           // Handle Thinking
           if (json.thinking) {
              thinkingDetails.style.display = 'block';
              thinkingText += json.thinking;
              thinkingContent.innerText = thinkingText;
           }
-          
+
           // Handle Content
           if (json.message && json.message.content) {
             responseText += json.message.content;
-            
+
             if (mode === 'chat' || mode === 'solver') {
               contentContainer.innerHTML = marked.parse(responseText);
               chatHistoryDisplay.scrollTop = chatHistoryDisplay.scrollHeight;
             }
           }
-          
+
           if (json.done) {
             if (mode === 'grading') {
               showStatus("Done.", "green");
@@ -1131,8 +1146,23 @@ async function streamChat(messages, mode) {
             conversationHistory.push({ role: "assistant", content: responseText });
           }
         } catch (e) {
-          console.error("Error parsing chunk", e);
+          // Only log if it's not an empty or whitespace line
+          if (line.trim()) {
+            console.warn("Error parsing chunk (may be incomplete, will retry):", line.substring(0, 50) + "...");
+          }
         }
+      }
+    }
+
+    // Process any remaining buffer content
+    if (buffer.trim()) {
+      try {
+        const json = JSON.parse(buffer);
+        if (json.message && json.message.content) {
+          responseText += json.message.content;
+        }
+      } catch (e) {
+        console.warn("Could not parse final buffer:", buffer.substring(0, 50));
       }
     }
   } catch (err) {
@@ -1237,17 +1267,26 @@ function proxyFetch(url, options = {}) {
       reject(new Error("Extension API not found. Please open this via the extension icon, not as a file."));
       return;
     }
+
+    // Client-side timeout safety net (130s - slightly more than background timeout)
+    const timeoutId = setTimeout(() => {
+      reject(new Error('Request timed out - the API did not respond in time'));
+    }, 130000);
+
     chrome.runtime.sendMessage({
       action: "proxyFetch",
       url: url,
       options: options
     }, (response) => {
+      clearTimeout(timeoutId);
+
       if (chrome.runtime.lastError) {
         reject(new Error(chrome.runtime.lastError.message));
+      } else if (!response) {
+        reject(new Error('No response from background service worker'));
       } else if (response.error) {
         reject(new Error(response.error));
       } else {
-        // Mimic the fetch response object slightly for compatibility
         resolve({
           ok: response.ok,
           status: response.status,
@@ -1377,11 +1416,32 @@ const modelDefinitions = [
     scores: { math: 10, science: 9, coding: 10, writing: 7 } 
   },
   { 
+    name: "GLM-4.7", 
+    desc: "Upgraded agentic coding with stronger reasoning and tool use.", 
+    speed: "Medium", 
+    cost: "Medium (5/10)", 
+    scores: { math: 9, science: 9, coding: 10, writing: 7 } 
+  },
+  { 
+    name: "GLM-4.6", 
+    desc: "Agentic, reasoning, and coding focused with strong tool use.", 
+    speed: "Medium", 
+    cost: "Medium (5/10)", 
+    scores: { math: 8, science: 8, coding: 9, writing: 7 } 
+  },
+  { 
     name: "Kimi-K2-Thinking", 
     desc: "An \"independent worker\" that pauses to think and double-check facts before answering.", 
     speed: "Medium", 
     cost: "Medium (6/10)", 
     scores: { math: 9, science: 9, coding: 8, writing: 10 } 
+  },
+  { 
+    name: "Kimi-K2.5", 
+    desc: "Multimodal agentic model with vision plus instant or thinking modes.", 
+    speed: "Medium", 
+    cost: "Medium (6/10)", 
+    scores: { math: 9, science: 9, coding: 9, writing: 9 } 
   },
   { 
     name: "Mistral-Large-3", 
@@ -1433,6 +1493,13 @@ const modelDefinitions = [
     scores: { math: 8, science: 8, coding: 7, writing: 8 } 
   },
   { 
+    name: "Minimax-M2.1", 
+    desc: "Upgraded M2 with better multilingual coding and cleaner responses.", 
+    speed: "Medium", 
+    cost: "Low (3/10)", 
+    scores: { math: 9, science: 8, coding: 9, writing: 8 } 
+  },
+  { 
     name: "Gemini-3-Flash-preview", 
     desc: "The fastest model on the list; gives you high-quality help almost instantly.", 
     speed: "Very Fast", 
@@ -1480,6 +1547,20 @@ const modelDefinitions = [
     speed: "Fast", 
     cost: "Very Low (1/10)", 
     scores: { math: 7, science: 6, coding: 8, writing: 6 } 
+  },
+  { 
+    name: "Devstral-2", 
+    desc: "Agentic coding model for deep codebase exploration and tooling.", 
+    speed: "Slow", 
+    cost: "High (7/10)", 
+    scores: { math: 8, science: 7, coding: 10, writing: 6 } 
+  },
+  { 
+    name: "Devstral-Small-2", 
+    desc: "Smaller agentic coding model with vision support.", 
+    speed: "Medium", 
+    cost: "Medium (4/10)", 
+    scores: { math: 7, science: 7, coding: 9, writing: 6 } 
   },
   { 
     name: "Ministral-3-8b", 
@@ -1620,3 +1701,4 @@ window.addEventListener('click', (event) => {
         document.getElementById('modelInfoModal').style.display = 'none';
     }
 });
+

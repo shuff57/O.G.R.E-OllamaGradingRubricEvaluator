@@ -435,6 +435,7 @@
     body.solver-mode .integrated-input-container:focus-within {
       outline: none !important;
     }
+
   </style>
 </head>
 <body>
@@ -455,9 +456,16 @@
       <option value="gpt-oss:20b-cloud">ChatGPT-20b</option>
       <option value="gpt-oss:120b-cloud">ChatGPT-120b</option>
       <option value="qwen3-vl:235b-instruct-cloud">Qwen3-Vision</option>
+      <option value="qwen3-next:80b-cloud">Qwen3-Next</option>
+      <option value="kimi-k2:1t-cloud">Kimi-K2</option>
+      <option value="kimi-k2-thinking:cloud">Kimi-K2-Thinking</option>
+      <option value="kimi-k2.5:cloud">Kimi-K2.5</option>
       <option value="ministral-3:3b-cloud">Ministral-3-3b</option>
       <option value="ministral-3:8b-cloud">Ministral-3-8b</option>
       <option value="ministral-3:14b-cloud">Ministral-3-14b</option>
+      <option value="devstral-2:123b-cloud">Devstral-2</option>
+      <option value="devstral-small-2:24b-cloud">Devstral-Small-2</option>
+      <option value="mistral-large-3:675b-cloud">Mistral-Large-3</option>
       <option value="gemma3:4b-cloud">Gemma3-4b</option>
       <option value="gemma3:12b-cloud" selected>Gemma3-12b</option>
       <option value="gemma3:27b-cloud">Gemma3-27b</option>
@@ -465,14 +473,13 @@
       <option value="deepseek-v3.2:cloud">Deepseek-v3.2</option>
       <option value="gemini-3-pro-preview:latest">Gemini-3-Pro-preview</option>
       <option value="gemini-3-flash-preview:cloud">Gemini-3-Flash-preview</option>
-      <option value="kimi-k2:1t-cloud">Kimi-K2</option>
-      <option value="kimi-k2-thinking:cloud">Kimi-K2-Thinking</option>
-      <option value="cogito-2.1:671b-cloud">Cogito-2.1</option>
-      <option value="qwen3-next:80b-cloud">Qwen3-Next</option>
-      <option value="rnj-1:8b-cloud">Rnj-1</option>
-      <option value="mistral-large-3:675b-cloud">Mistral-Large-3</option>
+      <option value="glm-4.6:cloud">GLM-4.6</option>
+      <option value="glm-4.7:cloud">GLM-4.7</option>
       <option value="minimax-m2:cloud">Minimax-M2</option>
-       <option value="nemotron-3-nano:30b-cloud">Nemotron-3-Nano</option>
+      <option value="minimax-m2.1:cloud">Minimax-M2.1</option>
+      <option value="cogito-2.1:671b-cloud">Cogito-2.1</option>
+      <option value="rnj-1:8b-cloud">Rnj-1</option>
+      <option value="nemotron-3-nano:30b-cloud">Nemotron-3-Nano</option>
     </select>
 
     <div id="thinkingControls" style="margin-bottom: 10px; display: none;">
@@ -507,6 +514,7 @@
         </label>
       </div>
     </div>
+
   </div>
 
   <div class="card" id="rubricCard">

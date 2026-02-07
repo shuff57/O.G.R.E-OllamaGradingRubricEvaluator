@@ -13,12 +13,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         sendResponse({ dataUrl: dataUrl });
       }
     );
-    return true; // Keep the message channel open for async response
+    return true;
   }
 
   if (request.action === "proxyFetch") {
-    fetch(request.url, request.options)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000);
+
+    const fetchOptions = {
+      ...request.options,
+      signal: controller.signal
+    };
+
+    fetch(request.url, fetchOptions)
       .then(async (response) => {
+        clearTimeout(timeoutId);
         const text = await response.text();
         sendResponse({
           ok: response.ok,
@@ -28,11 +37,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         });
       })
       .catch((error) => {
+        clearTimeout(timeoutId);
         sendResponse({
           ok: false,
-          error: error.message
+          error: error.name === 'AbortError' ? 'Request timed out after 120 seconds' : error.message
         });
       });
-    return true; // Keep the message channel open for async response
+    return true;
   }
 });
