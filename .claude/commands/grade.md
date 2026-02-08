@@ -9,21 +9,14 @@ Grade student work on web-based grading pages. The agent asks the user for the g
 
 Currently supported: **MyOpenMath** (`gradeallq2.php` pages). See [grade-selectors.md](grade-selectors.md) for platform-specific DOM selectors.
 
-> **Multi-tool compatibility:** This skill works with Claude Code, OpenCode, or any agent that has a browser automation MCP (e.g., Playwriter) and file read/write access. Platform-specific notes are called out inline.
-
 ## Browser Automation Setup
 
-**Before starting**, the skill auto-detects available browser automation:
+**Single tool for all environments:**
+- **Playwriter MCP** — works in Claude Code, OpenCode, or any MCP-compatible agent
+- **Chrome browser** with Playwriter extension installed and enabled on the grading tab
+- Direct DOM access for extracting rubrics and filling scores
 
-| Environment | Tool Used | Setup Required |
-|-------------|-----------|----------------|
-| **OpenCode/Agents** | Playwriter MCP | User must enable Playwriter extension on the grading tab |
-| **Claude Code** | Playwright MCP | Built-in (no setup) |
-| **Anthropic API** | Computer Use | Built-in (no setup) |
-
-**Detection order**: Playwriter → Playwright → Computer Use (first available is used).
-
-If no tool is available, the skill reports: "No browser automation detected. Please enable Playwriter on the grading tab or use an environment with browser support."
+No environment-specific detection needed. Just Playwriter.
 
 ## Grading Philosophy
 
@@ -68,39 +61,15 @@ If no tool is available, the skill reports: "No browser automation detected. Ple
 - **No state file entry (or file doesn't exist):**
   > "Starting fresh. I'll grade all ungraded students."
 
-**1d. Detect and configure browser automation.**
+**1d. Navigate with Playwriter.**
+1. Use the default page or create a dedicated page: `state.gradePage = page` (or `await context.newPage()` if you need isolation)
+2. Navigate to the URL: `await state.gradePage.goto(url, { waitUntil: 'domcontentloaded' })`
+3. Wait for page load: `await waitForPageLoad({ page: state.gradePage, timeout: 5000 })`
+4. Identify the platform (e.g., MyOpenMath if URL contains `myopenmath`) and load selectors from [grade-selectors.md](grade-selectors.md)
 
-Detect which browser automation tool is available. Try in order:
+### Step 2: Batch Extract Everything (ONE Playwriter call)
 
-1. **Playwriter MCP** (preferred for OpenCode/agents):
-   ```javascript
-   // Test availability
-   typeof page !== 'undefined' && typeof context !== 'undefined'
-   // If available: use playwriter_execute() with page object
-   ```
-
-2. **Playwright MCP** (Claude Code):
-   ```javascript
-   // Check for playwright skill availability
-   // Use skill_mcp(mcp_name="playwright", tool_name="...")
-   ```
-
-3. **Computer Use API** (Anthropic):
-   ```javascript
-   // Use computer() tool for browser control
-   ```
-
-Once detected, store the selected tool for the session. Report to user: "Using [tool name] for browser automation."
-
-**1e. Navigate.**
-1. Create a new page (if using playwriter: `state.gradePage = await context.newPage()`)
-2. Navigate to the provided URL
-3. Wait for the page to load completely (`waitForLoadState('domcontentloaded')`)
-4. Identify the platform (e.g., MyOpenMath if URL contains `myopenmath`) and load the appropriate selectors from [grade-selectors.md](grade-selectors.md)
-
-### Step 2: Batch Extract Everything (ONE browser call)
-
-Run a single browser evaluation to extract all data at once. See [grade-selectors.md](grade-selectors.md) for exact DOM selectors and extraction code.
+Run a single `playwriter_execute()` call to extract all data at once. Use `state.gradePage` as the page reference. See [grade-selectors.md](grade-selectors.md) for exact DOM selectors and extraction code.
 
 Extract from each student section (`div[data-lastchange]`):
 - Student name, current score, whether feedback already exists
@@ -116,7 +85,7 @@ Store all data locally. Report:
 - **No resume point:** "Found X students. Y already graded (skipping), Z need grading. Max score: N."
 - **With resume point:** "Resuming after [NAME]. Found X students total, skipping Y (already graded or before resume point), Z need grading. Max score: N."
 
-**CRITICAL: After extraction, make ZERO additional browser calls until Step 4.** All rubric data, student names, scores, feedback status, and full responses are in context. Grade entirely from what you have.
+**CRITICAL: After extraction, make ZERO additional Playwriter calls until Step 4.** All rubric data, student names, scores, feedback status, and full responses are in context. Grade entirely from what you have.
 
 ### Step 3: Grade Each Student (Agent evaluates directly)
 
@@ -137,9 +106,9 @@ Grading approach:
 
 Grade all students in a batch mentally, then proceed to filling.
 
-### Step 4: Fill Scores in Batches of 5 (ONE browser call per batch)
+### Step 4: Fill Scores in Batches of 5 (ONE Playwriter call per batch)
 
-Pass the batch of graded students into a single browser call. For each student in the batch:
+Pass the batch of graded students into a single `playwriter_execute()` call. For each student in the batch:
 1. Scroll to the student section (user sees the page move)
 2. Fill the score input
 3. Set feedback on BOTH the contenteditable div AND the hidden input — see [grade-selectors.md](grade-selectors.md) for the TinyMCE pattern
@@ -196,33 +165,18 @@ Grading consumes context window proportional to student count. To prevent contex
 
 | Problem | Action |
 |---------|--------|
-| No browser automation available | Report available tools, ask user to enable one (e.g., "Enable Playwriter extension on the tab") |
+| Playwriter not available | Ask user to enable Playwriter extension on the grading tab and ensure Chrome is running |
 | User hasn't provided URL | Ask "What is the grading page URL?" before proceeding |
 | Unsupported platform | Inform user; currently only MyOpenMath is supported |
 | Cannot evaluate a response | Skip student, continue with next |
 | Empty response | Score 0, feedback "No response submitted." |
-| Connection stale | Reset browser connection (playwriter: `playwriter_reset()`) |
+| Connection stale | Reset: `playwriter_reset()` |
 | DOM mismatch | Take accessibility snapshot to diagnose, ask user for help |
 
-## Browser Automation Tool Abstraction
-
-The skill auto-detects available browser automation and uses the appropriate API:
-
-| Tool | Detection | Page Reference | Execute Pattern |
-|------|-----------|----------------|-----------------|
-| **Playwriter MCP** | `typeof page !== 'undefined'` | `state.gradePage` or `page` | `playwriter_execute({ code: '...', timeout: 20000 })` |
-| **Playwright MCP** | Check skill availability | Via skill_mcp | `skill_mcp(mcp_name="playwright", tool_name="navigate", ...)` |
-| **Computer Use** | Anthropic API check | N/A (screenshot-based) | `computer(action="...")` |
-
-**Implementation notes:**
-- **Playwriter**: Store page in `state.gradePage` to isolate from other sessions
-- **All tools**: Use 20-second timeout for data-heavy extraction calls
-- **Never close browser/context** — page cleanup is automatic
-
-## Important Notes
+## Implementation Notes
 
 - The agent IS the grader — no external API calls needed
-- Browser automation is auto-detected on first use
+- Use Playwriter MCP for all browser automation (works across Claude Code, OpenCode, agents)
 - Rubric `<details>` elements are collapsed but content is accessible via DOM queries
 - TinyMCE inline editors require setting both the visible div and the hidden input — see [grade-selectors.md](grade-selectors.md)
-- Works in Claude Code, OpenCode, or any agent with browser automation access
+- Use `state.gradePage` to reference the grading page consistently
