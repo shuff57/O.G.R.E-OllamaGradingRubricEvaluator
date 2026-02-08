@@ -1,0 +1,27 @@
+{
+  "name": "o.g.r.e-ollamagradingreviewevaluator",
+  "version": "1.0.0",
+  "description": "**O.G.R.E** is a collection of AI-powered grading tools for educators:",
+  "main": "background.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "scripts": {
+    "test": "vitest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shuff57/O.G.R.E-OllamaGradingRubricEvaluator.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/shuff57/O.G.R.E-OllamaGradingRubricEvaluator/issues"
+  },
+  "homepage": "https://github.com/shuff57/O.G.R.E-OllamaGradingRubricEvaluator#readme",
+  "devDependencies": {
+    "vitest": "^4.0.18"
+  }
+}
