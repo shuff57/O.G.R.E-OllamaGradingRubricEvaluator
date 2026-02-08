@@ -1,9 +1,12 @@
 import { PROVIDERS, getActiveProvider, setActiveProvider } from './providers.js';
+import BatchGrader from './batch-grader.js';
 
 // --- 1. Initialization & Storage ---
 let currentProviderId = 'ollama-cloud';
 let providerConfigs = {};
 let availableModels = []; // Cache models
+let currentMode = 'grader';
+let batchAbortController = null; // For cancelling batch
 
 document.addEventListener('DOMContentLoaded', async () => {
   // Configure MathLive fonts
@@ -19,10 +22,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   createLatexToolbar('studentText', 'studentControls');
 
   // Trigger initial UI state
-  document.getElementById('modeSwitch').dispatchEvent(new Event('change'));
-
+  document.querySelectorAll('input[name="appMode"]').forEach(radio => {
+    radio.addEventListener('change', (e) => switchMode(e.target.value));
+  });
+  
   // Setup UI Listeners
   setupListeners();
+  
+  // Restore mode from storage if available, else default
+  const savedMode = await chrome.storage.local.get('appMode');
+  const initialMode = savedMode.appMode || 'grader';
+  const modeRadio = document.querySelector(`input[name="appMode"][value="${initialMode}"]`);
+  if (modeRadio) {
+      modeRadio.checked = true;
+      switchMode(initialMode);
+  } else {
+      switchMode('grader');
+  }
 });
 
 function setupListeners() {
@@ -794,13 +810,22 @@ function processAreaCapture(area) {
 // --- 4. The Main Logic: Call Ollama ---
 let solverTurn = 0;
 
-// Toggle UI based on mode
-document.getElementById('modeSwitch').addEventListener('change', (e) => {
-  const isSolver = e.target.checked;
+async function switchMode(mode) {
+  currentMode = mode;
+  document.body.className = ''; // Reset classes
+  
   const studentText = document.getElementById('studentText');
   const rubricCard = document.getElementById('rubricCard');
+  // Find the student card by looking for the title's parent card
+  const studentWorkCard = document.getElementById('studentWorkTitle').closest('.card');
+  const batchGradeCard = document.getElementById('batchGradeCard');
+  // runAssessmentCard might be null if not strictly defined with ID in previous steps, 
+  // but I added ID="runAssessmentCard" in the HTML edit.
+  const runAssessmentCard = document.getElementById('runAssessmentCard') || document.getElementById('btnGrade').closest('.card');
+  
   const rubricTitle = document.getElementById('rubricTitle');
   const studentWorkTitle = document.getElementById('studentWorkTitle');
+  
   const btnImportStudent = document.getElementById('btnImportStudent');
   const btnImportStudentImage = document.getElementById('btnImportStudentImage');
   const btnImportRubric = document.getElementById('btnImportRubric');
@@ -813,44 +838,90 @@ document.getElementById('modeSwitch').addEventListener('change', (e) => {
   conversationHistory = [];
   solverTurn = 0;
   
-  if (isSolver) {
+  // Default Visibility (Grader/Solver)
+  rubricCard.style.display = 'block';
+  studentWorkCard.style.display = 'block';
+  runAssessmentCard.style.display = 'block';
+  batchGradeCard.style.display = 'none';
+
+  if (mode === 'solver') {
     document.body.classList.add('solver-mode');
-    rubricCard.style.display = 'block';
     rubricTitle.innerHTML = '<i class="bi bi-list-check"></i> Question Setup';
     studentWorkTitle.innerHTML = '<i class="bi bi-chat-dots"></i> Solver Chat';
     
-    // Update Question Setup buttons
     btnImportRubric.innerHTML = '<i class="bi bi-stars"></i> Import Question for Highlighted Text (AI)';
     btnImportRubricImage.innerHTML = '<i class="bi bi-file-image"></i> Import Question from Screenshot (AI)';
 
-    // Update Solver Chat buttons
     btnImportStudent.innerHTML = '<i class="bi bi-stars"></i> Import from Highlighted Text (AI)';
     btnImportStudentImage.innerHTML = '<i class="bi bi-file-image"></i> Import from Screenshot (AI)';
 
     studentText.setAttribute('placeholder', "Ask a question...");
     rubricText.setAttribute('placeholder', "Paste question text here or upload image...");
+
+  } else if (mode === 'batch') {
+    document.body.classList.add('batch-mode');
     
+    rubricCard.style.display = 'none';
+    studentWorkCard.style.display = 'none';
+    runAssessmentCard.style.display = 'none';
+    batchGradeCard.style.display = 'block';
+    
+    checkBatchPageStatus();
+
   } else {
-    document.body.classList.remove('solver-mode');
-    rubricCard.style.display = 'block';
+    // Grader (Default)
     rubricTitle.innerHTML = '<i class="bi bi-list-check"></i> 1. Define Role / Rubric';
     studentWorkTitle.innerHTML = '<i class="bi bi-person-workspace"></i> 2. Student Work';
     
-    // Reset Question Setup buttons
     btnImportRubric.innerHTML = '<i class="bi bi-stars"></i> Import Rubric from Highlighted Text (AI)';
     btnImportRubricImage.innerHTML = '<i class="bi bi-file-image"></i> Import Rubric from Screenshot (AI)';
 
-    // Reset Student Work buttons
     btnImportStudent.innerHTML = '<i class="bi bi-stars"></i> Import Student Work from Text (AI)';
     btnImportStudentImage.innerHTML = '<i class="bi bi-file-image"></i> Import Student Work from Screenshot (AI)';
 
     studentText.setAttribute('placeholder', "Student text will appear here...");
     rubricText.setAttribute('placeholder', "Paste rubric text here or upload image...");
-    
-    // Add placeholder message for Grader
-    // Removed placeholder message as requested
   }
+  saveState();
+}
+
+// Check if current page is supported for batch grading
+async function checkBatchPageStatus() {
+  const statusEl = document.getElementById('batchPageStatus');
+  const statusText = document.getElementById('batchPageStatusText');
+  const btnStart = document.getElementById('btnStartBatch');
+  
+  statusText.innerText = "Checking page compatibility...";
+  statusEl.style.background = '#eee';
+  statusEl.style.color = '#333';
+  btnStart.disabled = true;
+
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab || !tab.url) return;
+
+    // Simple URL check first
+    if (tab.url.includes('gradeallq2.php')) { // MyOpenMath specific
+       statusText.innerText = "Supported grading page detected!";
+       statusEl.style.background = '#dcfce7';
+       statusEl.style.color = '#15803d';
+       btnStart.disabled = false;
+    } else {
+       statusText.innerText = "Navigate to a MyOpenMath 'Grade All' page to use this feature.";
+       statusEl.style.background = '#fee2e2';
+       statusEl.style.color = '#b91c1c';
+    }
+  } catch (e) {
+    statusText.innerText = "Error checking page.";
+  }
+}
+
+// Toggle UI based on mode - REMOVED (Replaced by switchMode)
+/*
+document.getElementById('modeSwitch').addEventListener('change', (e) => {
+   // ...
 });
+*/
 
 document.getElementById('btnGrade').addEventListener('click', async () => {
   let modelName = document.getElementById('modelName').value;
@@ -1421,7 +1492,8 @@ function saveState() {
     rubricMode: document.querySelector('input[name="rubricMode"]:checked').value,
     rubricText: document.getElementById('rubricText').innerHTML,
     rubricTable: getRubricTableData(),
-    rubricImages: rubricImages
+    rubricImages: rubricImages,
+    appMode: document.querySelector('input[name="appMode"]:checked')?.value || 'grader'
   };
   chrome.storage.local.set(state, () => {
     console.log('State saved');
@@ -1834,4 +1906,160 @@ window.addEventListener('click', (event) => {
         document.getElementById('modelInfoModal').style.display = 'none';
     }
 });
+
+
+// --- Batch Grading Logic ---
+let isBatchRunning = false;
+
+document.getElementById('btnStartBatch').addEventListener('click', startBatchGrading);
+document.getElementById('btnStopBatch').addEventListener('click', stopBatchGrading);
+
+async function startBatchGrading() {
+  if (isBatchRunning) return;
+  
+  const provider = PROVIDERS[currentProviderId];
+  if (!provider) {
+    showStatus("No provider selected.", "red");
+    return;
+  }
+  
+  const model = document.getElementById('modelName').value;
+  // Use getRichEditorContent for div
+  const customInstructions = getRichEditorContent('batchInstructions'); 
+  const resumeAfter = document.getElementById('resumeStudent').value;
+  
+  // UI State
+  isBatchRunning = true;
+  document.getElementById('btnStartBatch').style.display = 'none';
+  document.getElementById('btnStopBatch').style.display = 'block';
+  document.getElementById('batchProgress').style.display = 'block';
+  document.getElementById('batchResults').style.display = 'block';
+  document.getElementById('batchResults').innerHTML = '';
+  
+  const progressBar = document.getElementById('batchProgressBar');
+  const progressText = document.getElementById('batchProgressText');
+  const progressPercent = document.getElementById('batchProgressPercent');
+  
+  progressBar.style.width = '0%';
+  progressText.innerText = 'Initializing...';
+  
+  try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      
+      // 1. Extract Rubric
+      logBatch("Extracting rubric...");
+      const rubric = await BatchGrader.extractRubric(tab.id);
+      logBatch("Rubric extracted.");
+      
+      // 2. Extract Students
+      logBatch("Extracting students...");
+      const allStudents = await BatchGrader.extractStudents(tab.id);
+      
+      // 3. Filter & Resume Logic
+      let startIndex = 0;
+      if (resumeAfter) {
+          const resumeLower = resumeAfter.toLowerCase();
+          const resumeLastName = resumeLower.split(',')[0].trim();
+          const foundIndex = allStudents.findIndex(s => {
+             const nameLower = s.name.toLowerCase();
+             return nameLower === resumeLower || nameLower.startsWith(resumeLastName);
+          });
+          if (foundIndex >= 0) {
+              startIndex = foundIndex + 1;
+              logBatch(`Resuming after ${allStudents[foundIndex].name}`);
+          }
+      }
+      
+      const toGrade = allStudents.slice(startIndex).filter(s => !s.hasFeedback);
+      const total = toGrade.length;
+      
+      if (total === 0) {
+          logBatch("No ungraded students found.", "green");
+          stopBatchGrading();
+          return;
+      }
+      
+      logBatch(`Found ${total} students to grade.`);
+      
+      // 4. Grading Loop
+      for (let i = 0; i < total; i++) {
+          if (!isBatchRunning) {
+              logBatch("Batch grading cancelled.", "orange");
+              break;
+          }
+          
+          const student = toGrade[i];
+          progressText.innerText = `${i + 1}/${total}`;
+          const pct = Math.round(((i + 1) / total) * 100);
+          progressBar.style.width = `${pct}%`;
+          progressPercent.innerText = `${pct}%`;
+          
+          logBatch(`Grading ${student.name}...`);
+          
+          try {
+              // Grade
+              const result = await BatchGrader.gradeStudent(
+                  provider, 
+                  model, 
+                  rubric, 
+                  student.name, 
+                  student.response, 
+                  customInstructions
+              );
+              
+              // Fill
+              if (isBatchRunning) {
+                   await BatchGrader.fillGrade(tab.id, student.index, result.score, result.feedback);
+                   logBatch(`✓ ${student.name}: ${result.score}/${rubric.maxScore}`, "green");
+                   
+                   // Save every 5
+                   if ((i + 1) % 5 === 0) {
+                       logBatch("Auto-saving...");
+                       await BatchGrader.clickQuickSave(tab.id);
+                       // Wait a bit
+                       await new Promise(r => setTimeout(r, 1500));
+                   }
+              }
+          } catch (err) {
+              console.error(err);
+              logBatch(`Error grading ${student.name}: ${err.message}`, "red");
+          }
+          
+          // Delay
+          await new Promise(r => setTimeout(r, 1000));
+      }
+      
+      // Final Save
+      if (isBatchRunning) {
+          logBatch("Final save...");
+          await BatchGrader.clickQuickSave(tab.id);
+          logBatch("Batch grading complete!", "green");
+      }
+      
+  } catch (e) {
+      logBatch(`Fatal Error: ${e.message}`, "red");
+  } finally {
+      stopBatchGrading();
+  }
+}
+
+function stopBatchGrading() {
+  isBatchRunning = false;
+  document.getElementById('btnStartBatch').style.display = 'block';
+  document.getElementById('btnStopBatch').style.display = 'none';
+  // Check page status again to re-enable/disable correctly
+  checkBatchPageStatus();
+}
+
+function logBatch(msg, color = 'black') {
+    const div = document.getElementById('batchResults');
+    const line = document.createElement('div');
+    line.innerText = msg;
+    line.style.color = color;
+    line.style.borderBottom = '1px solid #eee';
+    line.style.padding = '2px 0';
+    div.appendChild(line);
+    div.scrollTop = div.scrollHeight;
+}
+
 

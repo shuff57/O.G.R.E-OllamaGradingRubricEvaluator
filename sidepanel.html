@@ -185,58 +185,45 @@
       100% { transform: rotate(360deg); }
     }
 
-    /* Toggle Switch */
-    .toggle-checkbox {
+    /* Toggle Switch - REPLACED WITH 3-WAY */
+    .mode-selector {
+      display: flex;
+      background: #eee;
+      padding: 3px;
+      border-radius: 6px;
+      margin-top: 10px;
+      border-top: none; /* Removed the line from container */
+    }
+    .mode-selector input {
       display: none;
     }
-    .toggle-label {
-      display: flex;
-      align-items: center;
-      background-color: #dcfce7;
-      border-radius: 20px;
-      padding: 2px;
-      cursor: pointer;
-      position: relative;
-      width: 100%;
-      height: 24px;
-      user-select: none;
-      box-sizing: border-box;
-      transition: background-color 0.4s ease;
-    }
-    .toggle-slider {
-      position: absolute;
-      top: 2px;
-      left: 2px;
-      width: calc(50% - 4px);
-      height: 20px;
-      background-color: white;
-      border-radius: 18px;
-      transition: left 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-      z-index: 1;
-    }
-    .toggle-text {
+    .mode-selector label {
       flex: 1;
       text-align: center;
-      font-size: 11px;
+      padding: 6px 0;
+      font-size: 12px;
+      cursor: pointer;
+      border-radius: 4px;
+      color: #666;
       font-weight: bold;
-      z-index: 2;
-      color: #777;
-      transition: color 0.3s;
+      transition: all 0.2s;
+      margin-bottom: 0;
     }
-    .toggle-checkbox:checked + .toggle-label {
-      background-color: #dbeafe;
+    .mode-selector input:checked + label {
+      background: white;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      color: #333;
     }
-    .toggle-checkbox:checked + .toggle-label .toggle-slider {
-      left: calc(50% + 2px);
-      transform: none;
-    }
-    .toggle-checkbox:not(:checked) + .toggle-label .text-grader {
-      color: #15803d;
-    }
-    .toggle-checkbox:checked + .toggle-label .text-solver {
-      color: #2563eb;
-    }
+    /* Mode Specific Colors */
+    .mode-selector input#modeGrader:checked + label { color: #16a34a; }
+    .mode-selector input#modeSolver:checked + label { color: #2563eb; }
+    .mode-selector input#modeBatch:checked + label { color: #d97706; } /* Amber/Orange for Batch */
+
+    /* Batch Mode Styles */
+    body.batch-mode button.primary-action { color: #d97706 !important; }
+    body.batch-mode button.primary-action:hover { background: #fffbeb !important; }
+    body.batch-mode #batchGradeCard button#btnStartBatch { background: #d97706; }
+    body.batch-mode #batchGradeCard button#btnStartBatch:hover { background: #b45309; }
 
     /* Chat Bubbles */
     .chat-message {
@@ -514,14 +501,16 @@
     </div>
     <div id="configStatus" style="margin-top: 0; font-size: 0.9em; text-align: center; display: none;"></div>
 
-    <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #eee; display: flex;">
-      <div class="mode-toggle-wrapper" style="width: 100%;">
-        <input type="checkbox" id="modeSwitch" class="toggle-checkbox">
-        <label for="modeSwitch" class="toggle-label">
-          <div class="toggle-slider"></div>
-          <span class="toggle-text text-grader">Grader</span>
-          <span class="toggle-text text-solver">Solver</span>
-        </label>
+    <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #eee;">
+      <div class="mode-selector">
+        <input type="radio" name="appMode" id="modeGrader" value="grader" checked>
+        <label for="modeGrader">Grader</label>
+        
+        <input type="radio" name="appMode" id="modeSolver" value="solver">
+        <label for="modeSolver">Solver</label>
+        
+        <input type="radio" name="appMode" id="modeBatch" value="batch">
+        <label for="modeBatch">Batch</label>
       </div>
     </div>
 
@@ -617,8 +606,71 @@
     <div id="studentImagesContainer" style="display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px;"></div>
   </div>
 
-  <div class="card">
-    <button id="btnGrade" style="display: none;">Run Assessment</button>
+  <div class="card" id="batchGradeCard" style="display: none;">
+    <h3><i class="bi bi-collection-fill"></i> 3. Batch Grading</h3>
+    
+    <div id="batchPageStatus" style="padding: 10px; background: #eee; border-radius: 4px; margin-bottom: 10px; font-size: 12px; display: flex; align-items: center; gap: 8px;">
+      <i class="bi bi-search"></i> <span id="batchPageStatusText">Checking page...</span>
+    </div>
+
+    <!-- Grading Instructions (Collapsible) -->
+    <details id="gradingInstructionsContainer" style="margin-bottom: 15px; border: 1px solid #ddd; border-radius: 4px; padding: 0; background: white;">
+      <summary style="padding: 8px 10px; cursor: pointer; background: #f9fafb; font-size: 12px; font-weight: bold; color: #555; display: flex; align-items: center; justify-content: space-between;">
+        <span><i class="bi bi-card-text"></i> Grading Instructions</span>
+        <i class="bi bi-chevron-down" style="font-size: 10px;"></i>
+      </summary>
+      <div style="padding: 10px; border-top: 1px solid #ddd;">
+        <div style="display: flex; gap: 5px; margin-bottom: 8px;">
+          <button id="btnPresetNonZero" class="secondary" style="font-size: 10px; padding: 4px 6px; width: auto; margin-bottom: 0;">Non-Zero Only</button>
+          <button id="btnPresetLenient" class="secondary" style="font-size: 10px; padding: 4px 6px; width: auto; margin-bottom: 0;">Lenient</button>
+          <button id="btnPresetStrict" class="secondary" style="font-size: 10px; padding: 4px 6px; width: auto; margin-bottom: 0;">Strict</button>
+        </div>
+        <textarea id="customInstructions" rows="4" placeholder="Enter specific instructions for the AI grader here..." style="font-size: 12px; resize: vertical; margin-bottom: 0; width: 100%; border: 1px solid #ddd; border-radius: 4px; padding: 8px;"></textarea>
+      </div>
+    </details>
+
+    <!-- Resume Prompt (shown when state exists) -->
+    <div id="resumePrompt" style="display: none; margin-bottom: 10px; padding: 10px; background: #fffbeb; border: 1px solid #fbbf24; border-radius: 4px;">
+      <div style="font-size: 12px; margin-bottom: 8px;">
+        <i class="bi bi-clock-history"></i> <strong>Previous session found</strong><br>
+        <span id="resumePromptText" style="color: #666;"></span>
+      </div>
+      <div style="display: flex; gap: 5px;">
+        <button id="btnResumeSession" class="secondary" style="flex: 1; font-size: 11px; padding: 6px; margin-bottom: 0; background: #fbbf24; color: #78350f;">
+          <i class="bi bi-play-fill"></i> Resume
+        </button>
+        <button id="btnStartFresh" class="secondary" style="flex: 1; font-size: 11px; padding: 6px; margin-bottom: 0;">
+          <i class="bi bi-arrow-clockwise"></i> Start Fresh
+        </button>
+      </div>
+    </div>
+
+    <div style="margin-bottom: 10px; display: flex; align-items: center; gap: 5px;">
+       <label for="resumeStudent" style="width: auto; margin-bottom: 0;">Resume After:</label>
+       <input type="text" id="resumeStudent" placeholder="Student Name (optional)" style="margin-bottom: 0; flex: 1;">
+    </div>
+
+    <div id="batchProgress" style="display: none; margin-bottom: 10px;">
+      <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
+        <span id="batchProgressText">0/0</span>
+        <span id="batchProgressPercent">0%</span>
+      </div>
+      <div style="width: 100%; background: #eee; height: 8px; border-radius: 4px; overflow: hidden;">
+        <div id="batchProgressBar" style="width: 0%; background: #d97706; height: 100%; transition: width 0.3s;"></div>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 5px;">
+      <button id="btnStartBatch" style="flex: 1;" disabled><i class="bi bi-play-fill"></i> Start Batch</button>
+      <button id="btnStopBatch" class="secondary" style="flex: 0 0 auto; display: none; background: #fee2e2; color: #b91c1c;"><i class="bi bi-stop-fill"></i></button>
+    </div>
+
+    <div id="batchResults" style="margin-top: 10px; max-height: 200px; overflow-y: auto; font-size: 11px; border: 1px solid #eee; border-radius: 4px; padding: 5px; display: none; background: #f9f9f9;">
+      <!-- Results log -->
+    </div>
+  </div>
+
+  <div class="card" id="runAssessmentCard">
     <div id="status"></div>
   </div>
 
