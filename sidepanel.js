@@ -5,13 +5,8 @@ document.addEventListener('DOMContentLoaded', () => {
     MathfieldElement.fontsDirectory = 'lib/fonts';
   }
 
-  // Load saved settings
-  const apiUrl = localStorage.getItem('apiUrl');
-  const apiKey = localStorage.getItem('apiKey');
-  const modelName = localStorage.getItem('modelName');
-  if (apiUrl) document.getElementById('apiUrl').value = apiUrl;
-  if (apiKey) document.getElementById('apiKey').value = apiKey;
-  if (modelName) document.getElementById('modelName').value = modelName;
+  // Load saved settings from chrome.storage.local
+  loadState();
 
   // Initialize LaTeX Toolbars
   createLatexToolbar('rubricText', 'rubricControls');
@@ -206,12 +201,7 @@ function openMathModal(textarea) { ... }
 */
 
 document.getElementById('saveConfig').addEventListener('click', () => {
-  const apiUrl = document.getElementById('apiUrl').value;
-  const apiKey = document.getElementById('apiKey').value;
-  const modelName = document.getElementById('modelName').value;
-  localStorage.setItem('apiUrl', apiUrl);
-  localStorage.setItem('apiKey', apiKey);
-  localStorage.setItem('modelName', modelName);
+  saveState();
   showConfigStatus('Settings saved!', 'green');
 });
 
