@@ -107,9 +107,20 @@ const ollamaCloud = {
     const headers = { 'Content-Type': 'application/json' };
     if (config.apiKey) headers['Authorization'] = `Bearer ${config.apiKey}`;
 
+    // Transform messages to strip Data URL headers from images (Ollama expects raw base64)
+    const formattedMessages = messages.map(m => {
+      if (m.images && m.images.length > 0) {
+        return {
+          ...m,
+          images: m.images.map(img => img.replace(/^data:image\/[a-z]+;base64,/, ''))
+        };
+      }
+      return m;
+    });
+
     const body = {
       model: config.model,
-      messages,
+      messages: formattedMessages,
       stream: options.stream ?? true,
       options: options.modelOptions || {},
     };
@@ -155,9 +166,20 @@ const ollamaLocal = {
     const base = normalizeBaseUrl(config.apiUrl || 'http://localhost:11434');
     const headers = { 'Content-Type': 'application/json' };
 
+    // Transform messages to strip Data URL headers from images (Ollama expects raw base64)
+    const formattedMessages = messages.map(m => {
+      if (m.images && m.images.length > 0) {
+        return {
+          ...m,
+          images: m.images.map(img => img.replace(/^data:image\/[a-z]+;base64,/, ''))
+        };
+      }
+      return m;
+    });
+
     const body = {
       model: config.model,
-      messages,
+      messages: formattedMessages,
       stream: options.stream ?? true,
       options: options.modelOptions || {},
     };
@@ -210,9 +232,28 @@ const openai = {
       'Authorization': `Bearer ${config.apiKey}`,
     };
 
+    // Transform messages to OpenAI vision format if images are present
+    const formattedMessages = messages.map(m => {
+      if (m.images && m.images.length > 0) {
+        return {
+          role: m.role,
+          content: [
+            { type: 'text', text: m.content },
+            ...m.images.map(img => ({ 
+              type: 'image_url', 
+              image_url: { url: img.startsWith('data:') ? img : `data:image/jpeg;base64,${img}` } 
+            }))
+          ]
+        };
+      }
+      // Remove images property if it exists but is empty, or return as is
+      const { images, ...rest } = m;
+      return rest;
+    });
+
     const body = {
       model: config.model,
-      messages,
+      messages: formattedMessages,
       stream: options.stream ?? true,
     };
     if (options.temperature !== undefined) body.temperature = options.temperature;
@@ -268,9 +309,28 @@ const githubModels = {
       'Authorization': `Bearer ${config.apiKey}`,
     };
 
+    // Transform messages to OpenAI vision format if images are present
+    const formattedMessages = messages.map(m => {
+      if (m.images && m.images.length > 0) {
+        return {
+          role: m.role,
+          content: [
+            { type: 'text', text: m.content },
+            ...m.images.map(img => ({ 
+              type: 'image_url', 
+              image_url: { url: img.startsWith('data:') ? img : `data:image/jpeg;base64,${img}` } 
+            }))
+          ]
+        };
+      }
+      // Remove images property if it exists but is empty, or return as is
+      const { images, ...rest } = m;
+      return rest;
+    });
+
     const body = {
       model: config.model,
-      messages,
+      messages: formattedMessages,
       stream: options.stream ?? true,
     };
     if (options.temperature !== undefined) body.temperature = options.temperature;

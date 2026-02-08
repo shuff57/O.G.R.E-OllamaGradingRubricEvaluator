@@ -1,24 +1,41 @@
+import { PROVIDERS, getActiveProvider, setActiveProvider } from './providers.js';
+
 // --- 1. Initialization & Storage ---
-document.addEventListener('DOMContentLoaded', () => {
+let currentProviderId = 'ollama-cloud';
+let providerConfigs = {};
+let availableModels = []; // Cache models
+
+document.addEventListener('DOMContentLoaded', async () => {
   // Configure MathLive fonts
   if (window.MathfieldElement) {
     MathfieldElement.fontsDirectory = 'lib/fonts';
   }
 
   // Load saved settings from chrome.storage.local
-  loadState();
+  await loadState();
 
   // Initialize LaTeX Toolbars
   createLatexToolbar('rubricText', 'rubricControls');
   createLatexToolbar('studentText', 'studentControls');
 
-  // Initialize Live Previews - REMOVED as we now use inline editing
-  // setupLivePreview('rubricText', 'rubricMathPreview');
-  // setupLivePreview('studentText', 'studentMathPreview');
-
   // Trigger initial UI state
   document.getElementById('modeSwitch').dispatchEvent(new Event('change'));
+
+  // Setup UI Listeners
+  setupListeners();
 });
+
+function setupListeners() {
+  document.getElementById('btnRefreshModels').addEventListener('click', refreshModels);
+  
+  // Tab Switching
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      switchProvider(e.target.dataset.provider);
+    });
+  });
+}
+
 
 let conversationHistory = [];
 
@@ -239,37 +256,19 @@ function updateThinkingControls() {
 }
 
 document.getElementById('testConnection').addEventListener('click', async () => {
-  let apiUrl = document.getElementById('apiUrl').value.replace(/\/$/, "");
-  // If the user included /api at the end, remove it so we can append it correctly later
-  if (apiUrl.endsWith('/api')) {
-    apiUrl = apiUrl.slice(0, -4);
-  }
+  const provider = PROVIDERS[currentProviderId];
+  if (!provider) return;
+
+  const config = getProviderConfigFromUI(currentProviderId);
   
-  const apiKey = document.getElementById('apiKey').value;
   showConfigStatus('Testing connection...', 'blue');
   
-  const headers = {};
-  if (apiKey) {
-    headers['Authorization'] = `Bearer ${apiKey}`;
-  }
-
-  try {
-    // Try fetching /api/tags to verify API access and Auth
-    const tagsResponse = await proxyFetch(`${apiUrl}/api/tags`, { headers });
-    
-    if (tagsResponse.ok) {
-      showConfigStatus('Connection successful!', 'green');
-    } else if (tagsResponse.status === 401) {
-      showConfigStatus('Connection failed: 401 Unauthorized. Check API Key.', 'red');
-    } else {
-      showConfigStatus(`Connection failed: ${tagsResponse.status} ${tagsResponse.statusText}`, 'red');
-    }
-  } catch (error) {
-    if (error.message === 'Failed to fetch') {
-      showConfigStatus('Connection failed. Check URL and ensure CORS is enabled if using localhost.', 'red');
-    } else {
-      showConfigStatus(`Connection failed: ${error.message}`, 'red');
-    }
+  const result = await provider.testConnection(config);
+  
+  if (result.ok) {
+    showConfigStatus('Connection successful!', 'green');
+  } else {
+    showConfigStatus(`Connection failed: ${result.error}`, 'red');
   }
 });
 
@@ -507,50 +506,47 @@ document.getElementById('btnImportRubric').addEventListener('click', async () =>
   const btn = document.getElementById('btnImportRubric');
   btn.disabled = true;
 
-  // 2. Prepare API Call
-  let apiUrl = document.getElementById('apiUrl').value.replace(/\/$/, "");
-  if (apiUrl.endsWith('/api')) {
-    apiUrl = apiUrl.slice(0, -4);
-  }
-  const apiKey = document.getElementById('apiKey').value;
-  const modelName = document.getElementById('modelName').value;
-
-  const headers = { "Content-Type": "application/json" };
-  if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
-
-  const prompt = Prompts.getRubricExtractionPrompt(selection);
-
   try {
-    const response = await proxyFetch(`${apiUrl}/api/generate`, {
+    const provider = PROVIDERS[currentProviderId];
+    if (!provider) throw new Error("No provider selected");
+    
+    const config = getProviderConfigFromUI(currentProviderId);
+    config.model = document.getElementById('modelName').value;
+
+    const prompt = Prompts.getRubricExtractionPrompt(selection);
+    const messages = [{ role: "user", content: prompt }];
+    
+    // Use buildChatRequest but disable streaming
+    const req = provider.buildChatRequest(config, messages, { stream: false });
+
+    const response = await fetch(req.url, {
       method: "POST",
-      headers: headers,
-      body: JSON.stringify({
-        model: modelName,
-        prompt: prompt,
-        stream: false,
-        format: "json"
-      })
+      headers: req.headers,
+      body: JSON.stringify(req.body)
     });
 
     if (!response.ok) {
-      if (response.status === 401) {
-        throw new Error("401 Unauthorized. Please check your API Key.");
-      }
-      throw new Error("API Error: " + response.status);
+      if (response.status === 401) throw new Error("401 Unauthorized. Check API Key.");
+      throw new Error(`API Error: ${response.status}`);
     }
 
     const data = await response.json();
-    let jsonResponse = data.response;
+    let content = "";
     
-    // Clean up potential markdown code blocks
-    jsonResponse = jsonResponse.replace(/```json/g, "").replace(/```/g, "").trim();
+    // Normalize Response
+    if (data.message && data.message.content) content = data.message.content; // Ollama Chat
+    else if (data.choices && data.choices[0] && data.choices[0].message) content = data.choices[0].message.content; // OpenAI/GitHub
+    else if (data.response) content = data.response; // Legacy Ollama Generate
     
-    const parsed = JSON.parse(jsonResponse);
+    // Clean JSON
+    content = content.replace(/```json/g, "").replace(/```/g, "").trim();
+    
+    const parsed = JSON.parse(content);
     
     if (parsed && parsed.rubric && Array.isArray(parsed.rubric)) {
       // 3. Populate Table
       const tbody = document.querySelector('#rubricTable tbody');
-      tbody.innerHTML = ""; // Clear existing
+      tbody.innerHTML = ""; 
       
       parsed.rubric.forEach(item => {
         const tr = document.createElement('tr');
@@ -564,11 +560,8 @@ document.getElementById('btnImportRubric').addEventListener('click', async () =>
         tbody.appendChild(tr);
       });
 
-      // Switch to table mode
       document.querySelector('input[name="rubricMode"][value="table"]').click();
       showRubricStatus("Rubric imported successfully!", "success");
-      
-      // Clear rubric images after successful import
       rubricImages = [];
       renderImages('rubric');
       saveState();
@@ -595,54 +588,49 @@ document.getElementById('btnImportRubricImage').addEventListener('click', async 
   const btn = document.getElementById('btnImportRubricImage');
   btn.disabled = true;
 
-  // Prepare API Call
-  let apiUrl = document.getElementById('apiUrl').value.replace(/\/$/, "");
-  if (apiUrl.endsWith('/api')) {
-    apiUrl = apiUrl.slice(0, -4);
-  }
-  const apiKey = document.getElementById('apiKey').value;
-  const modelName = document.getElementById('modelName').value;
-
-  const headers = { "Content-Type": "application/json" };
-  if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
-
-  const prompt = Prompts.getRubricExtractionFromImagePrompt();
-  
-  // Prepare images
-  const images = rubricImages.map(img => img.split(',')[1]);
-
   try {
-    const response = await proxyFetch(`${apiUrl}/api/generate`, {
+    const provider = PROVIDERS[currentProviderId];
+    if (!provider) throw new Error("No provider selected");
+    
+    const config = getProviderConfigFromUI(currentProviderId);
+    config.model = document.getElementById('modelName').value;
+
+    const prompt = Prompts.getRubricExtractionFromImagePrompt();
+    const images = rubricImages.map(img => img.split(',')[1]);
+
+    // Construct message with images (Ollama style - provider adapter will transform for OpenAI/GitHub)
+    const messages = [{
+      role: "user",
+      content: prompt,
+      images: images
+    }];
+
+    const req = provider.buildChatRequest(config, messages, { stream: false });
+
+    const response = await fetch(req.url, {
       method: "POST",
-      headers: headers,
-      body: JSON.stringify({
-        model: "qwen3-vl:235b-instruct-cloud", // Hardcoded for rubric extraction
-        prompt: prompt,
-        images: images,
-        stream: false,
-        format: "json"
-      })
+      headers: req.headers,
+      body: JSON.stringify(req.body)
     });
 
     if (!response.ok) {
-      if (response.status === 401) {
-        throw new Error("401 Unauthorized. Please check your API Key.");
-      }
-      throw new Error("API Error: " + response.status);
+      if (response.status === 401) throw new Error("401 Unauthorized. Check API Key.");
+      throw new Error(`API Error: ${response.status}`);
     }
 
     const data = await response.json();
-    let jsonResponse = data.response;
+    let content = "";
     
-    // Clean up potential markdown code blocks
-    jsonResponse = jsonResponse.replace(/```json/g, "").replace(/```/g, "").trim();
-    
-    const parsed = JSON.parse(jsonResponse);
+    if (data.message && data.message.content) content = data.message.content;
+    else if (data.choices && data.choices[0] && data.choices[0].message) content = data.choices[0].message.content;
+    else if (data.response) content = data.response;
+
+    content = content.replace(/```json/g, "").replace(/```/g, "").trim();
+    const parsed = JSON.parse(content);
     
     if (parsed && parsed.rubric && Array.isArray(parsed.rubric)) {
-      // Populate Table
       const tbody = document.querySelector('#rubricTable tbody');
-      tbody.innerHTML = ""; // Clear existing
+      tbody.innerHTML = "";
       
       parsed.rubric.forEach(item => {
         const tr = document.createElement('tr');
@@ -656,11 +644,8 @@ document.getElementById('btnImportRubricImage').addEventListener('click', async 
         tbody.appendChild(tr);
       });
 
-      // Switch to table mode
       document.querySelector('input[name="rubricMode"][value="table"]').click();
       showRubricStatus("Rubric imported successfully!", "success");
-      
-      // Clear rubric images after successful import
       rubricImages = [];
       renderImages('rubric');
       saveState();
@@ -868,13 +853,6 @@ document.getElementById('modeSwitch').addEventListener('change', (e) => {
 });
 
 document.getElementById('btnGrade').addEventListener('click', async () => {
-  let apiUrl = document.getElementById('apiUrl').value.replace(/\/$/, ""); // remove trailing slash
-  // If the user included /api at the end, remove it so we can append it correctly later
-  if (apiUrl.endsWith('/api')) {
-    apiUrl = apiUrl.slice(0, -4);
-  }
-
-  const apiKey = document.getElementById('apiKey').value;
   let modelName = document.getElementById('modelName').value;
   const isSolver = document.getElementById('modeSwitch').checked;
   
@@ -914,10 +892,10 @@ document.getElementById('btnGrade').addEventListener('click', async () => {
 
   // Gather Images
   const images = [];
-  // Add rubric images (strip header)
-  rubricImages.forEach(img => images.push(img.split(',')[1]));
-  // Add student images (strip header)
-  studentImages.forEach(img => images.push(img.split(',')[1]));
+  // Add rubric images (Keep full Data URL for provider adapter to handle)
+  rubricImages.forEach(img => images.push(img));
+  // Add student images (Keep full Data URL for provider adapter to handle)
+  studentImages.forEach(img => images.push(img));
 
   // Add User Bubble to Chat History
   const chatHistoryDisplay = document.getElementById('chatHistoryDisplay');
@@ -984,36 +962,15 @@ document.getElementById('btnGrade').addEventListener('click', async () => {
 // Removed btnSendChat listener as it's now integrated into btnGrade/btnSolverSend
 
 async function streamChat(messages, mode) {
-  let apiUrl = document.getElementById('apiUrl').value.replace(/\/$/, "");
-  if (apiUrl.endsWith('/api')) apiUrl = apiUrl.slice(0, -4);
-  const apiKey = document.getElementById('apiKey').value;
-  const modelName = document.getElementById('modelName').value;
-
-  const headers = { "Content-Type": "application/json" };
-  if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
-
-  const requestBody = {
-    model: modelName,
-    messages: messages,
-    stream: true,
-    options: {}
-  };
-
-  // Add Thinking Parameters
-  if (modelName.includes('gpt-oss')) {
-    const level = document.getElementById('thinkLevel').value;
-    requestBody.options.think_level = level;
-  } else if (
-    modelName.includes('qwen3') || 
-    modelName.includes('deepseek-v3.1') || 
-    modelName.includes('deepseek-r1') ||
-    modelName.includes('kimi-k2-thinking')
-  ) {
-    const thinkingEnabled = document.getElementById('thinkingMode').checked;
-    if (thinkingEnabled) {
-      requestBody.options.thinking_mode = true; 
-    }
+  const provider = PROVIDERS[currentProviderId];
+  if (!provider) {
+    showStatus("Error: No provider selected", "red");
+    return;
   }
+
+  const config = getProviderConfigFromUI(currentProviderId);
+  const modelName = document.getElementById('modelName').value;
+  config.model = modelName;
 
   // Prepare Chat Bubble for Assistant
   const chatHistoryDisplay = document.getElementById('chatHistoryDisplay');
@@ -1053,17 +1010,38 @@ async function streamChat(messages, mode) {
   }
 
   try {
-    const response = await fetch(`${apiUrl}/api/chat`, {
+    // Add Thinking Options if supported (Ollama legacy specific, but might apply elsewhere)
+    const options = { stream: true, modelOptions: {} };
+    
+    // Legacy Thinking Parameters support for Ollama
+    if (modelName.includes('gpt-oss')) {
+      const level = document.getElementById('thinkLevel').value;
+      options.modelOptions.think_level = level;
+    } else if (
+      modelName.includes('qwen3') || 
+      modelName.includes('deepseek-v3.1') || 
+      modelName.includes('deepseek-r1') ||
+      modelName.includes('kimi-k2-thinking')
+    ) {
+      const thinkingEnabled = document.getElementById('thinkingMode').checked;
+      if (thinkingEnabled) {
+        options.modelOptions.thinking_mode = true; 
+      }
+    }
+
+    const req = provider.buildChatRequest(config, messages, options);
+
+    const response = await fetch(req.url, {
       method: "POST",
-      headers: headers,
-      body: JSON.stringify(requestBody)
+      headers: req.headers,
+      body: JSON.stringify(req.body)
     });
 
     if (!response.ok) {
       let errorMessage = `API Error: ${response.status}`;
       try {
         const errorData = await response.json();
-        if (errorData && errorData.error) errorMessage = `Ollama Error: ${errorData.error}`;
+        if (errorData && errorData.error) errorMessage = `${provider.name} Error: ${errorData.error.message || errorData.error}`;
       } catch (e) {
         try {
           const errorText = await response.text();
@@ -1071,9 +1049,6 @@ async function streamChat(messages, mode) {
         } catch (e2) {}
       }
       if (response.status === 401) throw new Error("401 Unauthorized. Please check your API Key.");
-      if (response.status === 400 && messages.some(m => m.images)) {
-        errorMessage += "\n\nTip: You are sending images. Ensure the selected model supports vision.";
-      }
       throw new Error(errorMessage);
     }
 
@@ -1082,82 +1057,99 @@ async function streamChat(messages, mode) {
     let done = false;
     let thinkingText = '';
     let responseText = '';
-    let buffer = ''; // Buffer for incomplete JSON lines
+    let buffer = ''; // Buffer for incomplete lines
 
     while (!done) {
       const { value, done: doneReading } = await reader.read();
       done = doneReading;
       const chunkValue = decoder.decode(value, { stream: true });
 
-      // Prepend any buffered incomplete line from previous chunk
       const fullChunk = buffer + chunkValue;
       const lines = fullChunk.split('\n');
 
-      // The last element might be incomplete, so save it for next iteration
-      // Unless we're done reading, in which case process everything
       if (!done && lines.length > 0) {
-        buffer = lines.pop(); // Remove and save the last (possibly incomplete) line
+        buffer = lines.pop();
       } else {
         buffer = '';
       }
 
       for (const line of lines) {
-        if (!line.trim()) continue;
+        let cleanLine = line.trim();
+        if (!cleanLine) continue;
+        
+        // Handle SSE data prefix
+        if (cleanLine.startsWith('data: ')) {
+            cleanLine = cleanLine.slice(6);
+        }
+        if (cleanLine === '[DONE]') continue;
+
         try {
-          const json = JSON.parse(line);
+          const json = JSON.parse(cleanLine);
+          let chunkContent = '';
+          let chunkThinking = '';
+
+          // Normalize Response Formats
+          if (json.message && json.message.content) {
+             // Ollama format
+             chunkContent = json.message.content;
+             chunkThinking = json.thinking; 
+          } else if (json.choices && json.choices[0] && json.choices[0].delta) {
+             // OpenAI/GitHub format
+             chunkContent = json.choices[0].delta.content || '';
+             // Check for DeepSeek-R1 style reasoning_content in delta
+             if (json.choices[0].delta.reasoning_content) {
+                 chunkThinking = json.choices[0].delta.reasoning_content;
+             }
+          }
 
           // Handle Thinking
-          if (json.thinking) {
+          if (chunkThinking) {
              thinkingDetails.style.display = 'block';
-             thinkingText += json.thinking;
+             thinkingText += chunkThinking;
              thinkingContent.innerText = thinkingText;
           }
 
           // Handle Content
-          if (json.message && json.message.content) {
-            responseText += json.message.content;
+          if (chunkContent) {
+            responseText += chunkContent;
 
             if (mode === 'chat' || mode === 'solver') {
               contentContainer.innerHTML = marked.parse(responseText);
               chatHistoryDisplay.scrollTop = chatHistoryDisplay.scrollHeight;
             }
           }
-
-          if (json.done) {
-            if (mode === 'grading') {
-              showStatus("Done.", "green");
-              renderGradingResponse(responseText, contentContainer);
-            } else if (mode === 'solver') {
-               showStatus(`Interaction ${solverTurn}/4 Complete.`, "green");
-               // Refocus input for next message
-               document.getElementById('studentText').focus();
-            }
-            // Add to history
-            conversationHistory.push({ role: "assistant", content: responseText });
-          }
         } catch (e) {
-          // Only log if it's not an empty or whitespace line
-          if (line.trim()) {
-            console.warn("Error parsing chunk (may be incomplete, will retry):", line.substring(0, 50) + "...");
-          }
+          // Ignore parse errors for keepalives/empty lines
         }
       }
     }
 
-    // Process any remaining buffer content
+    // Process final buffer if any
     if (buffer.trim()) {
-      try {
-        const json = JSON.parse(buffer);
-        if (json.message && json.message.content) {
-          responseText += json.message.content;
-        }
-      } catch (e) {
-        console.warn("Could not parse final buffer:", buffer.substring(0, 50));
-      }
+        try {
+            // Try one last parse (unlikely for SSE but possible for NDJSON)
+            const json = JSON.parse(buffer);
+             if (json.message && json.message.content) {
+                responseText += json.message.content;
+             }
+        } catch(e) {}
     }
+
+    // Finalize
+    if (mode === 'grading') {
+      showStatus("Done.", "green");
+      renderGradingResponse(responseText, contentContainer);
+    } else if (mode === 'solver') {
+       showStatus(`Interaction ${solverTurn}/4 Complete.`, "green");
+       document.getElementById('studentText').focus();
+    }
+    
+    // Add to history
+    conversationHistory.push({ role: "assistant", content: responseText });
+
   } catch (err) {
     console.error(err);
-    showStatus(`Error connecting to Ollama: ${err.message}`, "red");
+    showStatus(`Error connecting to AI: ${err.message}`, "red");
     contentContainer.innerText += `\n[Error: ${err.message}]`;
     contentContainer.style.color = 'red';
   }
@@ -1290,10 +1282,141 @@ function proxyFetch(url, options = {}) {
 }
 
 // --- Persistence Logic ---
+
+function renderProviderConfig(providerId) {
+  const container = document.getElementById('providerConfigContainer');
+  container.innerHTML = '';
+  
+  const provider = PROVIDERS[providerId];
+  if (!provider) return;
+
+  const configDef = provider.getConfig();
+  const currentConfig = providerConfigs[providerId] || {};
+
+  configDef.fields.forEach(field => {
+    const div = document.createElement('div');
+    div.className = 'provider-field-group';
+    
+    const label = document.createElement('label');
+    label.innerText = field.label;
+    div.appendChild(label);
+    
+    const input = document.createElement('input');
+    input.type = field.type;
+    input.id = `cfg_${providerId}_${field.key}`; // Unique ID
+    input.value = currentConfig[field.key] || field.default || '';
+    input.placeholder = field.placeholder || '';
+    if (field.required) input.required = true;
+    
+    // Auto-save on change
+    input.addEventListener('change', saveState);
+    
+    div.appendChild(input);
+    container.appendChild(div);
+  });
+}
+
+async function switchProvider(providerId) {
+  currentProviderId = providerId;
+  await setActiveProvider(providerId);
+  
+  // Update Tabs
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.provider === providerId);
+  });
+  
+  // Render Config
+  renderProviderConfig(providerId);
+  
+  // Refresh Models for this provider
+  refreshModels();
+  
+  saveState();
+}
+
+async function refreshModels() {
+  const modelSelect = document.getElementById('modelName');
+  modelSelect.innerHTML = '<option>Loading...</option>';
+  modelSelect.disabled = true;
+  
+  const btn = document.getElementById('btnRefreshModels');
+  btn.classList.add('spin-animation'); 
+
+  try {
+    const provider = PROVIDERS[currentProviderId];
+    const config = getProviderConfigFromUI(currentProviderId);
+    
+    const models = await provider.listModels(config);
+    availableModels = models;
+    
+    populateModelDropdown(models);
+    showConfigStatus(`Found ${models.length} models`, 'green');
+  } catch (err) {
+    console.error(err);
+    modelSelect.innerHTML = '<option value="">Error loading models</option>';
+    showConfigStatus('Error loading models', 'red');
+  } finally {
+    modelSelect.disabled = false;
+    btn.classList.remove('spin-animation');
+  }
+}
+
+function getProviderConfigFromUI(providerId) {
+  if (providerId === currentProviderId) {
+    const config = {};
+    const provider = PROVIDERS[providerId];
+    if (provider) {
+        provider.getConfig().fields.forEach(field => {
+            const el = document.getElementById(`cfg_${providerId}_${field.key}`);
+            if (el) config[field.key] = el.value;
+        });
+    }
+    // Update cache
+    providerConfigs[providerId] = config;
+    return config;
+  }
+  return providerConfigs[providerId] || {};
+}
+
+function populateModelDropdown(models) {
+  const select = document.getElementById('modelName');
+  select.innerHTML = '';
+  
+  if (!models || models.length === 0) {
+     const opt = document.createElement('option');
+     opt.text = "No models found";
+     select.add(opt);
+     return;
+  }
+  
+  let lastSelected = select.dataset.lastSelected;
+  let found = false;
+  
+  models.forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = m.id;
+    opt.text = m.name;
+    if (m.id === lastSelected) {
+        opt.selected = true;
+        found = true;
+    }
+    select.add(opt);
+  });
+  
+  if (!found && models.length > 0) {
+      select.value = models[0].id;
+  }
+  
+  updateThinkingControls();
+}
+
 function saveState() {
+  // Capture current visible config
+  getProviderConfigFromUI(currentProviderId);
+
   const state = {
-    apiUrl: document.getElementById('apiUrl').value,
-    apiKey: document.getElementById('apiKey').value,
+    activeProvider: currentProviderId,
+    providerConfigs: providerConfigs,
     modelName: document.getElementById('modelName').value,
     rubricMode: document.querySelector('input[name="rubricMode"]:checked').value,
     rubricText: document.getElementById('rubricText').innerHTML,
@@ -1305,43 +1428,67 @@ function saveState() {
   });
 }
 
-function loadState() {
-  chrome.storage.local.get([
-    'apiUrl', 'apiKey', 'modelName', 
-    'rubricMode', 'rubricText', 'rubricTable', 'rubricImages'
-  ], (result) => {
-    if (result.apiUrl) document.getElementById('apiUrl').value = result.apiUrl;
-    if (result.apiKey) document.getElementById('apiKey').value = result.apiKey;
-    if (result.modelName) {
-      document.getElementById('modelName').value = result.modelName;
-      updateThinkingControls();
-    }
-    
-    if (result.rubricMode) {
-      const radio = document.querySelector(`input[name="rubricMode"][value="${result.rubricMode}"]`);
-      if (radio) {
-        radio.checked = true;
-        radio.dispatchEvent(new Event('change'));
-      }
-    }
+async function loadState() {
+  const result = await chrome.storage.local.get([
+    'activeProvider', 'providerConfigs', 'modelName', 
+    'rubricMode', 'rubricText', 'rubricTable', 'rubricImages',
+    'apiUrl', 'apiKey' // Legacy
+  ]);
 
-    if (result.rubricText) {
-      document.getElementById('rubricText').innerHTML = result.rubricText;
-    }
+  // Load Provider Configs
+  if (result.providerConfigs) {
+    providerConfigs = result.providerConfigs;
+  } else {
+    // Migration
+    providerConfigs = {
+      'ollama-cloud': {
+        apiUrl: result.apiUrl || 'https://ollama.com/api',
+        apiKey: result.apiKey || ''
+      },
+      'ollama-local': { apiUrl: 'http://localhost:11434' },
+      'openai': { apiKey: '' },
+      'github-models': { apiKey: '' }
+    };
+  }
 
-    if (result.rubricTable && Array.isArray(result.rubricTable)) {
+  // Set Active Provider
+  currentProviderId = result.activeProvider || 'ollama-cloud';
+  await setActiveProvider(currentProviderId);
+  
+  // Update Tabs UI
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.provider === currentProviderId);
+  });
+
+  // Render Config
+  renderProviderConfig(currentProviderId);
+  
+  // Load Rubric State
+  if (result.rubricMode) {
+    const radio = document.querySelector(`input[name="rubricMode"][value="${result.rubricMode}"]`);
+    if (radio) {
+      radio.checked = true;
+      radio.dispatchEvent(new Event('change'));
+    }
+  }
+  if (result.rubricText) document.getElementById('rubricText').innerHTML = result.rubricText;
+  if (result.rubricTable) {
       const tbody = document.querySelector('#rubricTable tbody');
       tbody.innerHTML = "";
-      result.rubricTable.forEach(item => {
-        addRubricRow(item.criteria, item.description, item.points);
-      });
-    }
-
-    if (result.rubricImages && Array.isArray(result.rubricImages)) {
+      result.rubricTable.forEach(item => addRubricRow(item.criteria, item.description, item.points));
+  }
+  if (result.rubricImages) {
       rubricImages = result.rubricImages;
       renderImages('rubric');
-    }
-  });
+  }
+  
+  // Model
+  if (result.modelName) {
+      document.getElementById('modelName').dataset.lastSelected = result.modelName;
+  }
+  
+  // Initial Refresh
+  await refreshModels();
 }
 
 function getRubricTableData() {
@@ -1358,8 +1505,6 @@ function getRubricTableData() {
 }
 
 // Auto-save on changes
-document.getElementById('apiUrl').addEventListener('change', saveState);
-document.getElementById('apiKey').addEventListener('change', saveState);
 document.getElementById('modelName').addEventListener('change', saveState);
 document.querySelectorAll('input[name="rubricMode"]').forEach(r => r.addEventListener('change', saveState));
 document.getElementById('rubricText').addEventListener('input', saveState);
@@ -1367,8 +1512,6 @@ document.getElementById('rubricText').addEventListener('input', saveState);
 document.querySelector('#rubricTable').addEventListener('input', saveState);
 // For images, we'll call saveState() inside addImage/removeImage
 
-// Load on startup
-loadState();
 
 document.getElementById('saveConfig').addEventListener('click', () => {
   saveState();
