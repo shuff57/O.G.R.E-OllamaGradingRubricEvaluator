@@ -294,6 +294,7 @@ async function clickQuickSave(tabId) {
  * @param {object} provider - Provider object from PROVIDERS
  * @param {string} model - Model ID
  * @param {object} [options]
+ * @param {string} [options.pageUrl] - Grading page URL (for state persistence)
  * @param {string} [options.customInstructions] - Extra grading instructions
  * @param {string} [options.resumeAfter] - Student name to resume after (skip up to and including this student)
  * @param {number} [options.delayMs=1000] - Delay between grading requests (ms)
@@ -306,6 +307,7 @@ async function clickQuickSave(tabId) {
  */
 async function batchGrade(tabId, provider, model, options = {}) {
   const {
+    pageUrl = null,
     customInstructions = '',
     resumeAfter = null,
     delayMs = 1000,
@@ -394,6 +396,13 @@ async function batchGrade(tabId, provider, model, options = {}) {
       if (sinceLastSave >= saveEvery) {
         await clickQuickSave(tabId);
         sinceLastSave = 0;
+        
+        // Save state after Quick Save
+        if (pageUrl && graded.length > 0) {
+          const lastGraded = graded[graded.length - 1];
+          await saveBatchGradeState(pageUrl, lastGraded.name, graded.length);
+        }
+        
         if (onSave) {
           onSave(graded.length);
         }
@@ -417,12 +426,24 @@ async function batchGrade(tabId, provider, model, options = {}) {
   if (sinceLastSave > 0) {
     try {
       await clickQuickSave(tabId);
+      
+      // Save state after final Quick Save
+      if (pageUrl && graded.length > 0) {
+        const lastGraded = graded[graded.length - 1];
+        await saveBatchGradeState(pageUrl, lastGraded.name, graded.length);
+      }
+      
       if (onSave) {
         onSave(graded.length);
       }
     } catch (err) {
       errors.push({ name: '__quicksave__', error: `Final save failed: ${err.message}` });
     }
+  }
+
+  // Clear state on successful completion (all students graded)
+  if (pageUrl && total > 0 && errors.length === 0) {
+    await clearBatchGradeState(pageUrl);
   }
 
   const summary = { graded, skipped, errors };
@@ -432,6 +453,68 @@ async function batchGrade(tabId, provider, model, options = {}) {
   }
 
   return summary;
+}
+
+// ===========================================================================
+// Batch Grade State Management
+// ===========================================================================
+
+/**
+ * Load batch grade state from chrome.storage.local.
+ * @returns {Promise<object>} State object with URL keys
+ */
+async function loadBatchGradeState() {
+  try {
+    const result = await chrome.storage.local.get('batchGradeState');
+    return result.batchGradeState || {};
+  } catch (err) {
+    console.error('Failed to load batch grade state:', err);
+    return {};
+  }
+}
+
+/**
+ * Save batch grade state to chrome.storage.local.
+ * @param {string} url - Grading page URL
+ * @param {string} lastStudent - Last graded student name
+ * @param {number} count - Number of students graded
+ */
+async function saveBatchGradeState(url, lastStudent, count) {
+  try {
+    const state = await loadBatchGradeState();
+    state[url] = {
+      lastStudent,
+      count,
+      timestamp: new Date().toISOString()
+    };
+    await chrome.storage.local.set({ batchGradeState: state });
+  } catch (err) {
+    console.error('Failed to save batch grade state:', err);
+  }
+}
+
+/**
+ * Clear batch grade state for a specific URL.
+ * @param {string} url - Grading page URL
+ */
+async function clearBatchGradeState(url) {
+  try {
+    const state = await loadBatchGradeState();
+    delete state[url];
+    await chrome.storage.local.set({ batchGradeState: state });
+  } catch (err) {
+    console.error('Failed to clear batch grade state:', err);
+  }
+}
+
+/**
+ * Get batch grade state for a specific URL.
+ * @param {string} url - Grading page URL
+ * @returns {Promise<object|null>} State object or null if not found
+ */
+async function getBatchGradeState(url) {
+  const state = await loadBatchGradeState();
+  return state[url] || null;
 }
 
 // ===========================================================================
@@ -623,6 +706,11 @@ const BatchGrader = {
   fillGrade,
   clickQuickSave,
   batchGrade,
+  // State management
+  loadBatchGradeState,
+  saveBatchGradeState,
+  clearBatchGradeState,
+  getBatchGradeState,
   // Expose internals for testing
   _parseGradingResponse: parseGradingResponse,
   _buildGradingSystemPrompt: buildGradingSystemPrompt,
@@ -643,6 +731,10 @@ export {
   fillGrade,
   clickQuickSave,
   batchGrade,
+  loadBatchGradeState,
+  saveBatchGradeState,
+  clearBatchGradeState,
+  getBatchGradeState,
 };
 
 export default BatchGrader;

@@ -41,6 +41,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
+const presets = {
+  nonZero: "Only provide feedback for students with non-zero scores. If the score is 0, leave the feedback blank.",
+  lenient: "Grade very leniently. Give partial credit for any attempt that is vaguely correct.",
+  strict: "Grade strictly according to the rubric. Deduct points for minor errors."
+};
+
 function setupListeners() {
   document.getElementById('btnRefreshModels').addEventListener('click', refreshModels);
   
@@ -50,6 +56,25 @@ function setupListeners() {
       switchProvider(e.target.dataset.provider);
     });
   });
+
+  // Preset Buttons for Grading Instructions
+  document.getElementById('btnPresetNonZero')?.addEventListener('click', () => {
+    document.getElementById('customInstructions').value = presets.nonZero;
+    saveState();
+  });
+  
+  document.getElementById('btnPresetLenient')?.addEventListener('click', () => {
+    document.getElementById('customInstructions').value = presets.lenient;
+    saveState();
+  });
+  
+  document.getElementById('btnPresetStrict')?.addEventListener('click', () => {
+    document.getElementById('customInstructions').value = presets.strict;
+    saveState();
+  });
+
+  // Auto-save on manual input
+  document.getElementById('customInstructions')?.addEventListener('input', saveState);
 }
 
 
@@ -890,11 +915,13 @@ async function checkBatchPageStatus() {
   const statusEl = document.getElementById('batchPageStatus');
   const statusText = document.getElementById('batchPageStatusText');
   const btnStart = document.getElementById('btnStartBatch');
+  const resumePrompt = document.getElementById('resumePrompt');
   
   statusText.innerText = "Checking page compatibility...";
   statusEl.style.background = '#eee';
   statusEl.style.color = '#333';
   btnStart.disabled = true;
+  resumePrompt.style.display = 'none';
 
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -906,6 +933,9 @@ async function checkBatchPageStatus() {
        statusEl.style.background = '#dcfce7';
        statusEl.style.color = '#15803d';
        btnStart.disabled = false;
+       
+       // Check for saved state
+       await checkResumeState(tab.url);
     } else {
        statusText.innerText = "Navigate to a MyOpenMath 'Grade All' page to use this feature.";
        statusEl.style.background = '#fee2e2';
@@ -913,6 +943,33 @@ async function checkBatchPageStatus() {
     }
   } catch (e) {
     statusText.innerText = "Error checking page.";
+  }
+}
+
+async function checkResumeState(pageUrl) {
+  const resumePrompt = document.getElementById('resumePrompt');
+  const resumePromptText = document.getElementById('resumePromptText');
+  const resumeInput = document.getElementById('resumeStudent');
+  
+  try {
+    const state = await BatchGrader.getBatchGradeState(pageUrl);
+    
+    if (state && state.lastStudent) {
+      // Format timestamp
+      const date = new Date(state.timestamp);
+      const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      
+      resumePromptText.innerHTML = `Last graded: <strong>${state.lastStudent}</strong> (${state.count} students, ${dateStr})`;
+      resumePrompt.style.display = 'block';
+      
+      // Store state for resume button
+      resumePrompt.dataset.lastStudent = state.lastStudent;
+    } else {
+      resumePrompt.style.display = 'none';
+      resumeInput.value = '';
+    }
+  } catch (err) {
+    console.error('Failed to check resume state:', err);
   }
 }
 
@@ -1493,6 +1550,7 @@ function saveState() {
     rubricText: document.getElementById('rubricText').innerHTML,
     rubricTable: getRubricTableData(),
     rubricImages: rubricImages,
+    customInstructions: document.getElementById('customInstructions').value,
     appMode: document.querySelector('input[name="appMode"]:checked')?.value || 'grader'
   };
   chrome.storage.local.set(state, () => {
@@ -1503,7 +1561,7 @@ function saveState() {
 async function loadState() {
   const result = await chrome.storage.local.get([
     'activeProvider', 'providerConfigs', 'modelName', 
-    'rubricMode', 'rubricText', 'rubricTable', 'rubricImages',
+    'rubricMode', 'rubricText', 'rubricTable', 'rubricImages', 'customInstructions',
     'apiUrl', 'apiKey' // Legacy
   ]);
 
@@ -1552,6 +1610,10 @@ async function loadState() {
   if (result.rubricImages) {
       rubricImages = result.rubricImages;
       renderImages('rubric');
+  }
+  
+  if (result.customInstructions) {
+      document.getElementById('customInstructions').value = result.customInstructions;
   }
   
   // Model
@@ -1914,6 +1976,36 @@ let isBatchRunning = false;
 document.getElementById('btnStartBatch').addEventListener('click', startBatchGrading);
 document.getElementById('btnStopBatch').addEventListener('click', stopBatchGrading);
 
+// Resume prompt handlers
+document.getElementById('btnResumeSession').addEventListener('click', () => {
+  const resumePrompt = document.getElementById('resumePrompt');
+  const lastStudent = resumePrompt.dataset.lastStudent;
+  
+  if (lastStudent) {
+    document.getElementById('resumeStudent').value = lastStudent;
+    resumePrompt.style.display = 'none';
+  }
+});
+
+document.getElementById('btnStartFresh').addEventListener('click', async () => {
+  const resumePrompt = document.getElementById('resumePrompt');
+  const resumeInput = document.getElementById('resumeStudent');
+  
+  // Clear resume input and hide prompt
+  resumeInput.value = '';
+  resumePrompt.style.display = 'none';
+  
+  // Clear state
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab && tab.url) {
+      await BatchGrader.clearBatchGradeState(tab.url);
+    }
+  } catch (err) {
+    console.error('Failed to clear state:', err);
+  }
+});
+
 async function startBatchGrading() {
   if (isBatchRunning) return;
   
@@ -1924,8 +2016,7 @@ async function startBatchGrading() {
   }
   
   const model = document.getElementById('modelName').value;
-  // Use getRichEditorContent for div
-  const customInstructions = getRichEditorContent('batchInstructions'); 
+  const customInstructions = document.getElementById('customInstructions').value; 
   const resumeAfter = document.getElementById('resumeStudent').value;
   
   // UI State
@@ -1943,8 +2034,11 @@ async function startBatchGrading() {
   progressBar.style.width = '0%';
   progressText.innerText = 'Initializing...';
   
+  let gradedStudents = [];
+  
   try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const pageUrl = tab.url;
       
       // 1. Extract Rubric
       logBatch("Extracting rubric...");
@@ -1967,6 +2061,8 @@ async function startBatchGrading() {
           if (foundIndex >= 0) {
               startIndex = foundIndex + 1;
               logBatch(`Resuming after ${allStudents[foundIndex].name}`);
+          } else if (resumeAfter) {
+              logBatch(`Warning: Could not find student "${resumeAfter}" - starting from beginning`, "orange");
           }
       }
       
@@ -1975,6 +2071,8 @@ async function startBatchGrading() {
       
       if (total === 0) {
           logBatch("No ungraded students found.", "green");
+          // Clear state if all done
+          await BatchGrader.clearBatchGradeState(pageUrl);
           stopBatchGrading();
           return;
       }
@@ -2012,10 +2110,17 @@ async function startBatchGrading() {
                    await BatchGrader.fillGrade(tab.id, student.index, result.score, result.feedback);
                    logBatch(`✓ ${student.name}: ${result.score}/${rubric.maxScore}`, "green");
                    
+                   gradedStudents.push({ name: student.name, score: result.score });
+                   
                    // Save every 5
                    if ((i + 1) % 5 === 0) {
                        logBatch("Auto-saving...");
                        await BatchGrader.clickQuickSave(tab.id);
+                       
+                       // Save state after Quick Save
+                       const lastGraded = gradedStudents[gradedStudents.length - 1];
+                       await BatchGrader.saveBatchGradeState(pageUrl, lastGraded.name, gradedStudents.length);
+                       
                        // Wait a bit
                        await new Promise(r => setTimeout(r, 1500));
                    }
@@ -2030,10 +2135,20 @@ async function startBatchGrading() {
       }
       
       // Final Save
-      if (isBatchRunning) {
+      if (isBatchRunning && gradedStudents.length > 0) {
           logBatch("Final save...");
           await BatchGrader.clickQuickSave(tab.id);
+          
+          // Save final state
+          const lastGraded = gradedStudents[gradedStudents.length - 1];
+          await BatchGrader.saveBatchGradeState(pageUrl, lastGraded.name, gradedStudents.length);
+          
           logBatch("Batch grading complete!", "green");
+          
+          // Clear state if all students were graded
+          if (gradedStudents.length === total) {
+              await BatchGrader.clearBatchGradeState(pageUrl);
+          }
       }
       
   } catch (e) {
