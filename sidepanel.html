@@ -424,7 +424,7 @@
     }
 
     /* Tabbed Interface */
-    .tabs { display: flex; border-bottom: 1px solid #ddd; margin-bottom: 10px; }
+    .tabs { display: flex; border-bottom: 1px solid #ddd; margin-bottom: 10px; flex-wrap: wrap; }
     .tab-btn {
       padding: 8px 12px;
       cursor: pointer;
@@ -439,13 +439,44 @@
       width: auto !important; /* Override default button width */
       border-radius: 0 !important;
       margin-right: 2px;
+      position: relative;
     }
     .tab-btn:hover { color: #333; background: #f5f5f5; }
     .tab-btn.active { color: #16a34a; border-bottom-color: #16a34a; }
     body.solver-mode .tab-btn.active { color: #2563eb; border-bottom-color: #2563eb; }
     
+    /* Provider status indicator on tabs */
+    .tab-btn::after {
+      content: '';
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: transparent;
+    }
+    .tab-btn.status-connected::after { background: #22c55e; }
+    .tab-btn.status-error::after { background: #ef4444; }
+    .tab-btn.status-testing::after { 
+      background: #eab308;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    
     .provider-field-group { margin-bottom: 10px; animation: fadeIn 0.3s ease; }
+    .provider-status {
+      animation: slideIn 0.3s ease;
+    }
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes slideIn { 
+      from { opacity: 0; transform: translateY(-10px); } 
+      to { opacity: 1; transform: translateY(0); } 
+    }
 
   </style>
 </head>
@@ -460,6 +491,8 @@
       <button class="tab-btn active" data-provider="ollama-cloud">Ollama Cloud</button>
       <button class="tab-btn" data-provider="ollama-local">Local</button>
       <button class="tab-btn" data-provider="openai">OpenAI</button>
+      <button class="tab-btn" data-provider="anthropic">Claude</button>
+      <button class="tab-btn" data-provider="google-gemini">Gemini</button>
       <button class="tab-btn" data-provider="github-models">GitHub</button>
     </div>
 
@@ -514,6 +547,41 @@
       </div>
     </div>
 
+  </div>
+
+  <!-- GitHub Authentication Section -->
+  <div class="card">
+    <h3 style="display: flex; align-items: center; justify-content: space-between;">
+      <span><i class="bi bi-github"></i> GitHub Integration (Optional)</span>
+      <i class="bi bi-info-circle" id="btnGitHubInfo" style="cursor: pointer; color: #666; font-size: 14px;" title="Click for setup instructions"></i>
+    </h3>
+    <div id="githubAuthContainer">
+      <!-- Signed Out State -->
+      <div id="githubSignedOut" style="display: block;">
+        <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
+          Connect GitHub to enable repository features and API access.
+        </p>
+        <p style="font-size: 11px; color: #999; margin-bottom: 5px;">
+          <a href="https://github.com/settings/tokens/new" target="_blank" style="color: #2563eb;">Create Personal Access Token</a> (grant <code style="background: #f3f4f6; padding: 2px 4px; border-radius: 2px;">repo</code> and <code style="background: #f3f4f6; padding: 2px 4px; border-radius: 2px;">user</code> scopes)
+        </p>
+        <input type="password" id="githubTokenManual" placeholder="ghp_xxxxxxxxxxxx" style="margin-bottom: 5px; font-family: monospace; font-size: 11px;">
+        <button id="btnSaveToken" class="secondary"><i class="bi bi-shield-lock"></i> Save Token</button>
+      </div>
+
+      <!-- Signed In State -->
+      <div id="githubSignedIn" style="display: none;">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding: 8px; background: #f0fdf4; border: 1px solid #86efac; border-radius: 4px;">
+          <img id="githubAvatar" src="" alt="Avatar" style="width: 32px; height: 32px; border-radius: 50%; border: 2px solid #22c55e;">
+          <div style="flex: 1;">
+            <div id="githubUsername" style="font-weight: bold; font-size: 13px; color: #166534;"></div>
+            <div style="font-size: 11px; color: #15803d;">✓ Connected</div>
+          </div>
+        </div>
+        <button id="btnGitHubSignOut" class="secondary" style="font-size: 12px; padding: 8px;">
+          <i class="bi bi-box-arrow-right"></i> Sign Out
+        </button>
+      </div>
+    </div>
   </div>
 
   <div class="card" id="rubricCard">
@@ -742,9 +810,194 @@
     </div>
   </div>
 
+  <!-- GitHub Token Setup Modal -->
+  <div id="githubInfoModal" class="modal">
+    <div class="modal-content" style="max-width: 450px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+        <h3 style="margin:0;"><i class="bi bi-github"></i> GitHub Token Setup</h3>
+        <span class="close-github-info" style="cursor:pointer; font-size:24px;">&times;</span>
+      </div>
+      
+      <div style="font-size: 13px; color: #333; line-height: 1.6;">
+        <div style="background: #e0f2fe; border: 1px solid #38bdf8; border-radius: 4px; padding: 10px; margin-bottom: 15px;">
+          <div style="font-size: 12px; color: #0c4a6e;">
+            <i class="bi bi-info-circle" style="color: #0284c7;"></i>
+            <strong>Note:</strong> This token is for <strong>repository integration</strong> (accessing code, making commits, etc.). 
+            <strong>If you only want to use GitHub AI Models</strong>, configure that in the <strong>Config → GitHub tab</strong> instead (minimal scopes needed).
+          </div>
+        </div>
+        
+        <p style="margin-top: 0;"><strong>Follow these steps to create a GitHub Personal Access Token:</strong></p>
+        
+        <ol style="padding-left: 20px; margin: 0;">
+          <li style="margin-bottom: 12px;">
+            <strong>Visit GitHub Settings:</strong><br>
+            <a href="https://github.com/settings/tokens/new" target="_blank" style="color: #2563eb; text-decoration: none;">
+              https://github.com/settings/tokens/new
+              <i class="bi bi-box-arrow-up-right" style="font-size: 11px;"></i>
+            </a>
+          </li>
+          
+          <li style="margin-bottom: 12px;">
+            <strong>Fill in Token Details:</strong>
+            <ul style="margin: 5px 0; padding-left: 20px; font-size: 12px; color: #666;">
+              <li><strong>Note:</strong> <code style="background: #f3f4f6; padding: 2px 4px; border-radius: 2px;">O.G.R.E Repository Access</code></li>
+              <li><strong>Expiration:</strong> Choose your preference (30 days, 90 days, or no expiration)</li>
+            </ul>
+          </li>
+          
+          <li style="margin-bottom: 12px;">
+            <strong>Select Scopes (for repository features):</strong><br>
+            <span style="font-size: 12px; color: #666;">Check these two boxes:</span>
+            <div style="margin: 5px 0; padding-left: 10px;">
+              <div style="margin: 3px 0;">
+                <i class="bi bi-check-square" style="color: #16a34a;"></i>
+                <code style="background: #f3f4f6; padding: 2px 6px; border-radius: 2px;">repo</code>
+                <span style="font-size: 11px; color: #666;"> - Full control of repositories</span>
+              </div>
+              <div style="margin: 3px 0;">
+                <i class="bi bi-check-square" style="color: #16a34a;"></i>
+                <code style="background: #f3f4f6; padding: 2px 6px; border-radius: 2px;">user</code>
+                <span style="font-size: 11px; color: #666;"> - Read user profile data</span>
+              </div>
+            </div>
+          </li>
+          
+          <li style="margin-bottom: 12px;">
+            <strong>Generate Token:</strong><br>
+            <span style="font-size: 12px; color: #666;">Click the green "Generate token" button at the bottom of the page</span>
+          </li>
+          
+          <li style="margin-bottom: 12px;">
+            <strong>Copy Your Token:</strong><br>
+            <div style="background: #fef3c7; border: 1px solid #fbbf24; border-radius: 4px; padding: 8px; margin-top: 5px;">
+              <i class="bi bi-exclamation-triangle" style="color: #d97706;"></i>
+              <span style="font-size: 12px; color: #92400e;">
+                <strong>Important:</strong> Copy the token immediately! You won't be able to see it again.
+              </span>
+            </div>
+            <div style="font-size: 12px; color: #666; margin-top: 5px;">
+              Token format: <code style="background: #f3f4f6; padding: 2px 6px; border-radius: 2px;">ghp_xxxxxxxxxxxx</code>
+            </div>
+          </li>
+          
+          <li style="margin-bottom: 0;">
+            <strong>Paste in Extension:</strong><br>
+            <span style="font-size: 12px; color: #666;">Return to this extension and paste your token in the "GitHub Integration" section below</span>
+          </li>
+        </ol>
+        
+        <div style="background: #eff6ff; border: 1px solid #93c5fd; border-radius: 4px; padding: 10px; margin-top: 15px;">
+          <div style="font-size: 12px; color: #1e40af;">
+            <i class="bi bi-shield-check" style="color: #2563eb;"></i>
+            <strong>Security:</strong> Your token is stored locally in Chrome's encrypted storage and never leaves your computer.
+          </div>
+        </div>
+      </div>
+      
+      <div class="modal-actions" style="margin-top: 15px;">
+        <button class="close-github-info secondary" style="padding: 8px 16px; font-size: 12px;">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script src="lib/mathlive.min.js"></script>
   <script src="lib/marked.min.js"></script>
+  <script src="github-auth.js"></script>
   <script src="prompts.js"></script>
+  <script type="module" src="oauth-client.js"></script>
   <script type="module" src="sidepanel.js"></script>
+  
+  <!-- GitHub Auth UI Logic -->
+  <script>
+  // GitHub Auth Integration
+  (function() {
+    const githubAuth = new GitHubAuth();
+    
+    // UI Elements
+    const signedOutDiv = document.getElementById('githubSignedOut');
+    const signedInDiv = document.getElementById('githubSignedIn');
+    const btnSaveToken = document.getElementById('btnSaveToken');
+    const btnSignOut = document.getElementById('btnGitHubSignOut');
+    const tokenInput = document.getElementById('githubTokenManual');
+    const avatarImg = document.getElementById('githubAvatar');
+    const usernameDiv = document.getElementById('githubUsername');
+
+    // Update UI based on auth state
+    async function updateUI() {
+      const { token, user } = await githubAuth.loadFromStorage();
+      
+      if (token && user) {
+        signedOutDiv.style.display = 'none';
+        signedInDiv.style.display = 'block';
+        avatarImg.src = user.avatar_url;
+        usernameDiv.textContent = user.login;
+      } else {
+        signedOutDiv.style.display = 'block';
+        signedInDiv.style.display = 'none';
+      }
+    }
+
+    // Manual token save
+    btnSaveToken.addEventListener('click', async () => {
+      const token = tokenInput.value.trim();
+      if (!token) {
+        alert('Please enter a valid GitHub token');
+        return;
+      }
+
+      if (!token.startsWith('ghp_') && !token.startsWith('github_pat_')) {
+        if (!confirm('Token format looks unusual. Continue anyway?')) {
+          return;
+        }
+      }
+
+      try {
+        const originalText = btnSaveToken.innerHTML;
+        btnSaveToken.innerHTML = '<i class="bi bi-hourglass-split"></i> Verifying...';
+        btnSaveToken.disabled = true;
+        
+        // Save token temporarily
+        await githubAuth.saveToStorage(token, null);
+        
+        // Fetch user info to verify token
+        const user = await githubAuth.getUserInfo();
+        
+        alert(`✅ Successfully signed in as ${user.login}`);
+        tokenInput.value = '';
+        await updateUI();
+      } catch (error) {
+        alert('Invalid token: ' + error.message);
+        await githubAuth.signOut();
+      } finally {
+        btnSaveToken.innerHTML = '<i class="bi bi-shield-lock"></i> Save Token';
+        btnSaveToken.disabled = false;
+      }
+    });
+
+    // Allow Enter key to save token
+    tokenInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        btnSaveToken.click();
+      }
+    });
+
+    // Sign out button
+    btnSignOut.addEventListener('click', async () => {
+      if (confirm('Sign out of GitHub?')) {
+        await githubAuth.signOut();
+        await updateUI();
+      }
+    });
+
+    // Initialize UI on load
+    updateUI();
+
+    // Make githubAuth available globally for other scripts
+    window.githubAuth = githubAuth;
+  })();
+  </script>
 </body>
 </html>

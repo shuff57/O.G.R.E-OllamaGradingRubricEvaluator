@@ -272,16 +272,18 @@ const githubModels = {
       id: 'github-models',
       name: 'GitHub Models',
       fields: [
-        { key: 'apiKey', label: 'GitHub Token', type: 'password', required: true, placeholder: 'ghp_...' },
+        { key: 'apiKey', label: 'GitHub Token', type: 'password', required: false, placeholder: 'ghp_...' },
+        { key: 'oauthToken', label: 'OAuth Token', type: 'hidden' },
       ],
     };
   },
 
   async listModels(config) {
+    const token = config.oauthToken || config.apiKey;
     const headers = {
-      'Authorization': `Bearer ${config.apiKey}`,
+      'Authorization': `Bearer ${token}`,
     };
-    const res = await proxyFetch('https://models.github.ai/api/models', { headers });
+    const res = await proxyFetch('https://models.inference.ai.azure.com/models', { headers });
     if (!res.ok) throw new Error(`Failed to list models: ${res.status} ${res.statusText}`);
     const data = await res.json();
     // GitHub Models returns an array directly or { value: [...] }
@@ -293,10 +295,11 @@ const githubModels = {
 
   async testConnection(config) {
     try {
-      const headers = { 'Authorization': `Bearer ${config.apiKey}` };
-      const res = await proxyFetch('https://models.github.ai/api/models', { headers });
+      const token = config.oauthToken || config.apiKey;
+      const headers = { 'Authorization': `Bearer ${token}` };
+      const res = await proxyFetch('https://models.inference.ai.azure.com/models', { headers });
       if (res.ok) return { ok: true };
-      if (res.status === 401) return { ok: false, error: '401 Unauthorized. Check your GitHub Token.' };
+      if (res.status === 401) return { ok: false, error: '401 Unauthorized. Check your GitHub Token or OAuth token.' };
       return { ok: false, error: `${res.status} ${res.statusText}` };
     } catch (err) {
       return { ok: false, error: err.message };
@@ -304,9 +307,10 @@ const githubModels = {
   },
 
   buildChatRequest(config, messages, options = {}) {
+    const token = config.oauthToken || config.apiKey;
     const headers = {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${config.apiKey}`,
+      'Authorization': `Bearer ${token}`,
     };
 
     // Transform messages to OpenAI vision format if images are present
@@ -336,7 +340,232 @@ const githubModels = {
     if (options.temperature !== undefined) body.temperature = options.temperature;
     if (options.max_tokens !== undefined) body.max_tokens = options.max_tokens;
 
-    return { url: 'https://models.github.ai/inference/chat/completions', headers, body };
+    return { url: 'https://models.inference.ai.azure.com/chat/completions', headers, body };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Provider: Anthropic Claude
+// ---------------------------------------------------------------------------
+const anthropic = {
+  getConfig() {
+    return {
+      id: 'anthropic',
+      name: 'Anthropic Claude',
+      fields: [
+        { key: 'apiKey', label: 'API Key', type: 'password', required: true, placeholder: 'sk-ant-...' },
+      ],
+    };
+  },
+
+  async listModels(config) {
+    // Anthropic doesn't have a models list endpoint, return hardcoded latest models
+    return [
+      { id: 'claude-opus-4-20250514', name: 'Claude Opus 4.5 (Latest)' },
+      { id: 'claude-opus-4-20250220', name: 'Claude Opus 4' },
+      { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4.5 (Latest)' },
+      { id: 'claude-sonnet-4-20250220', name: 'Claude Sonnet 4' },
+      { id: 'claude-3-7-sonnet-20250219', name: 'Claude 3.7 Sonnet' },
+      { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet' },
+      { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku' },
+      { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus' },
+    ];
+  },
+
+  async testConnection(config) {
+    try {
+      const headers = {
+        'Content-Type': 'application/json',
+        'x-api-key': config.apiKey,
+        'anthropic-version': '2023-06-01',
+      };
+      const body = {
+        model: 'claude-3-5-haiku-20241022',
+        max_tokens: 10,
+        messages: [{ role: 'user', content: 'Hi' }],
+      };
+      const res = await proxyFetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      });
+      if (res.ok) return { ok: true };
+      if (res.status === 401) return { ok: false, error: '401 Unauthorized. Check your API Key.' };
+      return { ok: false, error: `${res.status} ${res.statusText}` };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  },
+
+  buildChatRequest(config, messages, options = {}) {
+    const headers = {
+      'Content-Type': 'application/json',
+      'x-api-key': config.apiKey,
+      'anthropic-version': '2023-06-01',
+    };
+
+    // Anthropic uses different message format - extract system messages
+    let systemPrompt = '';
+    const anthropicMessages = [];
+    
+    for (const msg of messages) {
+      if (msg.role === 'system') {
+        systemPrompt = msg.content;
+      } else {
+        if (msg.images && msg.images.length > 0) {
+          // Anthropic vision format
+          const content = [{ type: 'text', text: msg.content }];
+          for (const img of msg.images) {
+            const base64Data = img.startsWith('data:') ? img.split(',')[1] : img;
+            const mediaType = img.startsWith('data:image/png') ? 'image/png' : 'image/jpeg';
+            content.push({
+              type: 'image',
+              source: { type: 'base64', media_type: mediaType, data: base64Data },
+            });
+          }
+          anthropicMessages.push({ role: msg.role, content });
+        } else {
+          anthropicMessages.push({ role: msg.role, content: msg.content });
+        }
+      }
+    }
+
+    const body = {
+      model: config.model,
+      messages: anthropicMessages,
+      max_tokens: options.max_tokens || 4096,
+      stream: options.stream ?? true,
+    };
+    if (systemPrompt) body.system = systemPrompt;
+    if (options.temperature !== undefined) body.temperature = options.temperature;
+
+    return { url: 'https://api.anthropic.com/v1/messages', headers, body };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Provider: Google Gemini
+// ---------------------------------------------------------------------------
+const googleGemini = {
+  getConfig() {
+    return {
+      id: 'google-gemini',
+      name: 'Google Gemini',
+      fields: [
+        { key: 'apiKey', label: 'API Key', type: 'password', required: false, placeholder: 'AIza...' },
+        { key: 'oauthToken', label: 'OAuth Token', type: 'hidden' },
+      ],
+    };
+  },
+
+  async listModels(config) {
+    try {
+      let url, fetchOptions;
+      if (config.oauthToken) {
+        url = 'https://generativelanguage.googleapis.com/v1beta/models';
+        fetchOptions = { headers: { 'Authorization': `Bearer ${config.oauthToken}` } };
+      } else {
+        url = `https://generativelanguage.googleapis.com/v1beta/models?key=${config.apiKey}`;
+        fetchOptions = {};
+      }
+      const res = await proxyFetch(url, fetchOptions);
+      if (!res.ok) throw new Error(`Failed to list models: ${res.status}`);
+      const data = await res.json();
+      return (data.models || [])
+        .filter(m => m.supportedGenerationMethods?.includes('generateContent'))
+        .map(m => {
+          const id = m.name.replace('models/', '');
+          return { id, name: id };
+        })
+        .sort((a, b) => a.name.localeCompare(b.name));
+    } catch {
+      // Fallback to hardcoded models if API call fails
+      return [
+        { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash (Experimental)' },
+        { id: 'gemini-exp-1206', name: 'Gemini Experimental 1206' },
+        { id: 'gemini-2.0-flash-thinking-exp-01-21', name: 'Gemini 2.0 Flash Thinking' },
+        { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
+        { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
+        { id: 'gemini-1.5-flash-8b', name: 'Gemini 1.5 Flash-8B' },
+      ];
+    }
+  },
+
+  async testConnection(config) {
+    try {
+      let url, fetchOptions;
+      if (config.oauthToken) {
+        url = 'https://generativelanguage.googleapis.com/v1beta/models';
+        fetchOptions = { headers: { 'Authorization': `Bearer ${config.oauthToken}` } };
+      } else {
+        url = `https://generativelanguage.googleapis.com/v1beta/models?key=${config.apiKey}`;
+        fetchOptions = {};
+      }
+      const res = await proxyFetch(url, fetchOptions);
+      if (res.ok) return { ok: true };
+      if (res.status === 401 || res.status === 403) return { ok: false, error: '401/403 Unauthorized. Check your API Key or OAuth token.' };
+      return { ok: false, error: `${res.status} ${res.statusText}` };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  },
+
+  buildChatRequest(config, messages, options = {}) {
+    const headers = { 'Content-Type': 'application/json' };
+
+    // If using OAuth token, authenticate via Bearer header instead of query param
+    if (config.oauthToken) {
+      headers['Authorization'] = `Bearer ${config.oauthToken}`;
+    }
+
+    // Gemini uses 'user' and 'model' roles, convert messages
+    const geminiMessages = [];
+    let systemInstruction = '';
+
+    for (const msg of messages) {
+      if (msg.role === 'system') {
+        systemInstruction = msg.content;
+      } else {
+        const role = msg.role === 'assistant' ? 'model' : 'user';
+        if (msg.images && msg.images.length > 0) {
+          // Gemini vision format
+          const parts = [{ text: msg.content }];
+          for (const img of msg.images) {
+            const base64Data = img.startsWith('data:') ? img.split(',')[1] : img;
+            const mimeType = img.startsWith('data:image/png') ? 'image/png' : 'image/jpeg';
+            parts.push({
+              inline_data: { mime_type: mimeType, data: base64Data },
+            });
+          }
+          geminiMessages.push({ role, parts });
+        } else {
+          geminiMessages.push({ role, parts: [{ text: msg.content }] });
+        }
+      }
+    }
+
+    const body = {
+      contents: geminiMessages,
+      generationConfig: {
+        temperature: options.temperature,
+        maxOutputTokens: options.max_tokens,
+      },
+    };
+    if (systemInstruction) body.systemInstruction = { parts: [{ text: systemInstruction }] };
+
+    const modelId = config.model || 'gemini-1.5-pro';
+    const action = options.stream ? 'streamGenerateContent' : 'generateContent';
+    let url;
+    if (config.oauthToken) {
+      // OAuth: no key param, use Bearer header (set above)
+      url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:${action}${options.stream ? '?alt=sse' : ''}`;
+    } else {
+      // API key: append key as query param (existing behavior)
+      const streamParam = options.stream ? '?alt=sse' : '';
+      url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:${action}${streamParam}&key=${config.apiKey}`;
+    }
+
+    return { url, headers, body };
   },
 };
 
@@ -347,6 +576,8 @@ export const PROVIDERS = {
   'ollama-cloud': ollamaCloud,
   'ollama-local': ollamaLocal,
   'openai': openai,
+  'anthropic': anthropic,
+  'google-gemini': googleGemini,
   'github-models': githubModels,
 };
 

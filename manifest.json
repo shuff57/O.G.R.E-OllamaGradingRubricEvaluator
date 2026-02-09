@@ -7,8 +7,10 @@
     "sidePanel",
     "activeTab",
     "scripting",
-    "storage"
+    "storage",
+    "identity"
   ],
+  "key": "YOUR_EXTENSION_PUBLIC_KEY_HERE",
   "host_permissions": [
     "<all_urls>" 
   ],

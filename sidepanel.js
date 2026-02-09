@@ -1,5 +1,6 @@
 import { PROVIDERS, getActiveProvider, setActiveProvider } from './providers.js';
 import BatchGrader from './batch-grader.js';
+import { signInWithGoogle, signInWithGitHub, signOut, getGoogleToken } from './oauth-client.js';
 
 // --- 1. Initialization & Storage ---
 let currentProviderId = 'ollama-cloud';
@@ -7,6 +8,56 @@ let providerConfigs = {};
 let availableModels = []; // Cache models
 let currentMode = 'grader';
 let batchAbortController = null; // For cancelling batch
+
+// Provider setup URLs for "Get API Key" links
+const PROVIDER_KEY_URLS = {
+  'anthropic': 'https://console.anthropic.com/settings/keys',
+  'openai': 'https://platform.openai.com/api-keys',
+  'google-gemini': 'https://aistudio.google.com/app/apikey',
+  'github-models': 'https://github.com/settings/tokens/new?description=O.G.R.E%20Extension&scopes=repo,user',
+  'ollama-cloud': null, // User provides their own endpoint
+  'ollama-local': null, // Local installation
+};
+
+const OAUTH_STORAGE_KEYS = {
+  GOOGLE_TOKEN: 'googleOAuthToken',
+  GOOGLE_REFRESH_TOKEN: 'googleRefreshToken',
+  GOOGLE_TOKEN_EXPIRY: 'googleTokenExpiry',
+  GITHUB_TOKEN: 'githubOAuthToken',
+};
+
+async function getStoredOAuthToken(providerId) {
+  if (providerId === 'google-gemini') {
+    try {
+      return await getGoogleToken();
+    } catch {
+      return null;
+    }
+  }
+
+  if (providerId === 'github-models') {
+    const stored = await chrome.storage.local.get(OAUTH_STORAGE_KEYS.GITHUB_TOKEN);
+    return stored[OAUTH_STORAGE_KEYS.GITHUB_TOKEN] || null;
+  }
+
+  return null;
+}
+
+async function attachOAuthToken(providerId, config) {
+  if (!['google-gemini', 'github-models'].includes(providerId)) return config;
+
+  if (!config.oauthToken) {
+    const token = await getStoredOAuthToken(providerId);
+    if (token) {
+      config.oauthToken = token;
+      providerConfigs[providerId] = { ...(providerConfigs[providerId] || {}), oauthToken: token };
+      const input = document.getElementById(`cfg_${providerId}_oauthToken`);
+      if (input) input.value = token;
+    }
+  }
+
+  return config;
+}
 
 document.addEventListener('DOMContentLoaded', async () => {
   // Configure MathLive fonts
@@ -300,7 +351,8 @@ document.getElementById('testConnection').addEventListener('click', async () => 
   const provider = PROVIDERS[currentProviderId];
   if (!provider) return;
 
-  const config = getProviderConfigFromUI(currentProviderId);
+    let config = getProviderConfigFromUI(currentProviderId);
+    config = await attachOAuthToken(currentProviderId, config);
   
   showConfigStatus('Testing connection...', 'blue');
   
@@ -551,7 +603,8 @@ document.getElementById('btnImportRubric').addEventListener('click', async () =>
     const provider = PROVIDERS[currentProviderId];
     if (!provider) throw new Error("No provider selected");
     
-    const config = getProviderConfigFromUI(currentProviderId);
+    let config = getProviderConfigFromUI(currentProviderId);
+    config = await attachOAuthToken(currentProviderId, config);
     config.model = document.getElementById('modelName').value;
 
     const prompt = Prompts.getRubricExtractionPrompt(selection);
@@ -633,7 +686,8 @@ document.getElementById('btnImportRubricImage').addEventListener('click', async 
     const provider = PROVIDERS[currentProviderId];
     if (!provider) throw new Error("No provider selected");
     
-    const config = getProviderConfigFromUI(currentProviderId);
+    let config = getProviderConfigFromUI(currentProviderId);
+    config = await attachOAuthToken(currentProviderId, config);
     config.model = document.getElementById('modelName').value;
 
     const prompt = Prompts.getRubricExtractionFromImagePrompt();
@@ -1096,11 +1150,11 @@ async function streamChat(messages, mode) {
     return;
   }
 
-  const config = getProviderConfigFromUI(currentProviderId);
-  const modelName = document.getElementById('modelName').value;
-  config.model = modelName;
+    let config = getProviderConfigFromUI(currentProviderId);
+    config = await attachOAuthToken(currentProviderId, config); // Attach token (Google/GitHub)
+    config.model = modelName;
 
-  // Prepare Chat Bubble for Assistant
+    // Prepare Chat Bubble for Assistant
   const chatHistoryDisplay = document.getElementById('chatHistoryDisplay');
   const assistantBubble = document.createElement('div');
   assistantBubble.className = 'chat-message assistant-message';
@@ -1421,27 +1475,238 @@ function renderProviderConfig(providerId) {
   const configDef = provider.getConfig();
   const currentConfig = providerConfigs[providerId] || {};
 
+  if (providerId === 'google-gemini' || providerId === 'github-models') {
+    const oauthWrapper = document.createElement('div');
+    oauthWrapper.className = 'oauth-section';
+    oauthWrapper.style.marginBottom = '12px';
+
+    const oauthTokenKey = providerId === 'google-gemini'
+      ? OAUTH_STORAGE_KEYS.GOOGLE_TOKEN
+      : OAUTH_STORAGE_KEYS.GITHUB_TOKEN;
+
+    const buttonLabel = providerId === 'google-gemini'
+      ? 'Sign in with Google'
+      : 'Sign in with GitHub';
+
+    const token = currentConfig.oauthToken;
+    if (token) {
+      const statusRow = document.createElement('div');
+      statusRow.style.display = 'flex';
+      statusRow.style.justifyContent = 'space-between';
+      statusRow.style.alignItems = 'center';
+      statusRow.style.fontSize = '13px';
+      statusRow.style.marginBottom = '6px';
+
+      const statusText = document.createElement('span');
+      statusText.textContent = '✅ Signed in';
+
+      const signOutBtn = document.createElement('button');
+      signOutBtn.textContent = 'Sign out';
+      signOutBtn.className = 'secondary';
+      signOutBtn.style.width = 'auto';
+      signOutBtn.style.padding = '6px 10px';
+      signOutBtn.style.margin = '0';
+      signOutBtn.addEventListener('click', async () => {
+        await signOut(providerId === 'google-gemini' ? 'google' : 'github');
+        await chrome.storage.local.remove([oauthTokenKey]);
+        providerConfigs[providerId] = { ...(providerConfigs[providerId] || {}), oauthToken: '' };
+        renderProviderConfig(providerId);
+        updateProviderTabStatus(providerId);
+      });
+
+      statusRow.appendChild(statusText);
+      statusRow.appendChild(signOutBtn);
+      oauthWrapper.appendChild(statusRow);
+    } else {
+      const oauthBtn = document.createElement('button');
+      oauthBtn.textContent = buttonLabel;
+      oauthBtn.style.marginBottom = '6px';
+      oauthBtn.addEventListener('click', async () => {
+        try {
+          updateProviderTabStatus(providerId, 'testing');
+          if (providerId === 'google-gemini') {
+            const newToken = await signInWithGoogle();
+            if (newToken) {
+              providerConfigs[providerId] = { ...(providerConfigs[providerId] || {}), oauthToken: newToken };
+            }
+          } else {
+            const newToken = await signInWithGitHub();
+            if (newToken) {
+              providerConfigs[providerId] = { ...(providerConfigs[providerId] || {}), oauthToken: newToken };
+            }
+          }
+          updateProviderTabStatus(providerId, 'connected');
+          renderProviderConfig(providerId);
+        } catch (err) {
+          updateProviderTabStatus(providerId, 'error');
+          showConfigStatus(err.message || 'OAuth sign-in failed', 'red');
+        }
+      });
+      oauthWrapper.appendChild(oauthBtn);
+    }
+
+    container.appendChild(oauthWrapper);
+  }
+
   configDef.fields.forEach(field => {
     const div = document.createElement('div');
     div.className = 'provider-field-group';
     
+    // Label with optional helper link
+    const labelRow = document.createElement('div');
+    labelRow.style.display = 'flex';
+    labelRow.style.justifyContent = 'space-between';
+    labelRow.style.alignItems = 'center';
+    labelRow.style.marginBottom = '5px';
+    
     const label = document.createElement('label');
     label.innerText = field.label;
-    div.appendChild(label);
+    labelRow.appendChild(label);
+    
+    // Add "Get API Key" link for API key fields
+    if (field.key === 'apiKey' && PROVIDER_KEY_URLS[providerId]) {
+      const helperLink = document.createElement('a');
+      helperLink.href = PROVIDER_KEY_URLS[providerId];
+      helperLink.target = '_blank';
+      helperLink.innerHTML = '🔗 Get API Key';
+      helperLink.style.fontSize = '12px';
+      helperLink.style.color = '#007bff';
+      helperLink.style.textDecoration = 'none';
+      helperLink.style.cursor = 'pointer';
+      helperLink.title = 'Opens in new tab';
+      helperLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        chrome.tabs.create({ url: PROVIDER_KEY_URLS[providerId] });
+      });
+      labelRow.appendChild(helperLink);
+    }
+    
+    div.appendChild(labelRow);
+    
+    // Input field with masking for passwords
+    const inputWrapper = document.createElement('div');
+    inputWrapper.style.position = 'relative';
     
     const input = document.createElement('input');
     input.type = field.type;
-    input.id = `cfg_${providerId}_${field.key}`; // Unique ID
+    input.id = `cfg_${providerId}_${field.key}`;
     input.value = currentConfig[field.key] || field.default || '';
     input.placeholder = field.placeholder || '';
     if (field.required) input.required = true;
     
+    // Mask API keys for security (show only prefix and suffix)
+    if (field.type === 'password' && input.value && input.value.length > 10) {
+      const maskedValue = maskApiKey(input.value);
+      input.setAttribute('data-real-value', input.value);
+      input.value = maskedValue;
+      input.setAttribute('data-masked', 'true');
+      
+      // Reveal on focus, re-mask on blur
+      input.addEventListener('focus', function() {
+        if (this.getAttribute('data-masked') === 'true') {
+          this.value = this.getAttribute('data-real-value') || '';
+          this.removeAttribute('data-masked');
+        }
+      });
+      
+      input.addEventListener('blur', function() {
+        if (this.value && this.value.length > 10) {
+          this.setAttribute('data-real-value', this.value);
+          this.value = maskApiKey(this.value);
+          this.setAttribute('data-masked', 'true');
+        }
+      });
+    }
+    
     // Auto-save on change
     input.addEventListener('change', saveState);
     
-    div.appendChild(input);
+    // Auto-test connection when API key is pasted/changed
+    if (field.key === 'apiKey') {
+      let testTimeout;
+      input.addEventListener('input', function() {
+        clearTimeout(testTimeout);
+        if (this.value && this.value.length > 10 && this.getAttribute('data-masked') !== 'true') {
+          testTimeout = setTimeout(() => testConnection(providerId), 1500);
+        }
+      });
+    }
+    
+    inputWrapper.appendChild(input);
+    div.appendChild(inputWrapper);
     container.appendChild(div);
   });
+  
+  // Add connection status indicator
+  const statusDiv = document.createElement('div');
+  statusDiv.id = `provider-status-${providerId}`;
+  statusDiv.className = 'provider-status';
+  statusDiv.style.marginTop = '10px';
+  statusDiv.style.padding = '8px';
+  statusDiv.style.borderRadius = '4px';
+  statusDiv.style.fontSize = '13px';
+  statusDiv.style.display = 'none';
+  container.appendChild(statusDiv);
+  
+  // Add manual test button
+  if (configDef.fields.some(f => f.key === 'apiKey' || f.key === 'apiUrl')) {
+    const testBtn = document.createElement('button');
+    testBtn.innerHTML = '🔄 Test Connection';
+    testBtn.style.marginTop = '10px';
+    testBtn.style.padding = '8px 16px';
+    testBtn.style.fontSize = '13px';
+    testBtn.style.cursor = 'pointer';
+    testBtn.addEventListener('click', () => testConnection(providerId));
+    container.appendChild(testBtn);
+  }
+}
+
+// Helper function to mask API keys
+function maskApiKey(key) {
+  if (!key || key.length < 8) return '●●●●●●●●';
+  const prefix = key.substring(0, Math.min(7, key.length - 3));
+  const suffix = key.slice(-3);
+  return `${prefix}${'●'.repeat(Math.max(8, key.length - 10))}${suffix}`;
+}
+
+// Test connection to provider
+async function testConnection(providerId) {
+  const statusDiv = document.getElementById(`provider-status-${providerId}`);
+  if (!statusDiv) return;
+  
+  // Update tab status
+  updateProviderTabStatus(providerId, 'testing');
+  
+  statusDiv.style.display = 'block';
+  statusDiv.style.backgroundColor = '#fff3cd';
+  statusDiv.style.color = '#856404';
+  statusDiv.innerHTML = '🔄 Testing connection...';
+  
+  try {
+    const provider = PROVIDERS[providerId];
+    let config = getProviderConfigFromUI(providerId);
+    config = await attachOAuthToken(providerId, config);
+    
+    const result = await provider.testConnection(config);
+    
+    if (result.ok) {
+      updateProviderTabStatus(providerId, 'connected');
+      statusDiv.style.backgroundColor = '#d4edda';
+      statusDiv.style.color = '#155724';
+      statusDiv.innerHTML = '✅ Connected successfully';
+      setTimeout(() => { statusDiv.style.display = 'none'; }, 3000);
+    } else {
+      updateProviderTabStatus(providerId, 'error');
+      statusDiv.style.backgroundColor = '#f8d7da';
+      statusDiv.style.color = '#721c24';
+      statusDiv.innerHTML = `❌ ${result.error || 'Connection failed'}`;
+    }
+  } catch (err) {
+    updateProviderTabStatus(providerId, 'error');
+    statusDiv.style.backgroundColor = '#f8d7da';
+    statusDiv.style.color = '#721c24';
+    statusDiv.innerHTML = `❌ ${err.message}`;
+  }
 }
 
 async function switchProvider(providerId) {
@@ -1456,10 +1721,33 @@ async function switchProvider(providerId) {
   // Render Config
   renderProviderConfig(providerId);
   
+  // Update status indicator for current provider
+  updateProviderTabStatus(providerId);
+  
   // Refresh Models for this provider
   refreshModels();
   
   saveState();
+}
+
+// Update provider tab status indicator
+function updateProviderTabStatus(providerId, status = null) {
+  const tab = document.querySelector(`.tab-btn[data-provider="${providerId}"]`);
+  if (!tab) return;
+  
+  // Remove existing status classes
+  tab.classList.remove('status-connected', 'status-error', 'status-testing');
+  
+  // If status provided, use it; otherwise check if configured
+  if (status) {
+    tab.classList.add(`status-${status}`);
+  } else {
+    const config = providerConfigs[providerId];
+    const hasConfig = config && (config.apiKey || config.apiUrl || config.oauthToken);
+    if (hasConfig) {
+      tab.classList.add('status-connected');
+    }
+  }
 }
 
 async function refreshModels() {
@@ -1472,7 +1760,8 @@ async function refreshModels() {
 
   try {
     const provider = PROVIDERS[currentProviderId];
-    const config = getProviderConfigFromUI(currentProviderId);
+    let config = getProviderConfigFromUI(currentProviderId);
+    config = await attachOAuthToken(currentProviderId, config);
     
     const models = await provider.listModels(config);
     availableModels = models;
@@ -1499,6 +1788,12 @@ function getProviderConfigFromUI(providerId) {
             if (el) config[field.key] = el.value;
         });
     }
+    
+    // Preserve OAuth token from cache if not in UI
+    if (providerConfigs[providerId] && providerConfigs[providerId].oauthToken) {
+        config.oauthToken = providerConfigs[providerId].oauthToken;
+    }
+
     // Update cache
     providerConfigs[providerId] = config;
     return config;
@@ -1581,6 +1876,26 @@ async function loadState() {
     };
   }
 
+  // Merge stored OAuth tokens into provider configs
+  const oauthStored = await chrome.storage.local.get([
+    OAUTH_STORAGE_KEYS.GOOGLE_TOKEN,
+    OAUTH_STORAGE_KEYS.GITHUB_TOKEN,
+  ]);
+
+  if (oauthStored[OAUTH_STORAGE_KEYS.GOOGLE_TOKEN]) {
+    providerConfigs['google-gemini'] = {
+      ...(providerConfigs['google-gemini'] || {}),
+      oauthToken: oauthStored[OAUTH_STORAGE_KEYS.GOOGLE_TOKEN],
+    };
+  }
+
+  if (oauthStored[OAUTH_STORAGE_KEYS.GITHUB_TOKEN]) {
+    providerConfigs['github-models'] = {
+      ...(providerConfigs['github-models'] || {}),
+      oauthToken: oauthStored[OAUTH_STORAGE_KEYS.GITHUB_TOKEN],
+    };
+  }
+
   // Set Active Provider
   currentProviderId = result.activeProvider || 'ollama-cloud';
   await setActiveProvider(currentProviderId);
@@ -1588,6 +1903,11 @@ async function loadState() {
   // Update Tabs UI
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.provider === currentProviderId);
+  });
+  
+  // Update status indicators for all providers
+  Object.keys(providerConfigs).forEach(providerId => {
+    updateProviderTabStatus(providerId);
   });
 
   // Render Config
@@ -1962,10 +2282,24 @@ document.querySelector('.close-model-info').addEventListener('click', () => {
     document.getElementById('modelInfoModal').style.display = 'none';
 });
 
+// GitHub Info Modal Handlers
+document.getElementById('btnGitHubInfo').addEventListener('click', () => {
+  document.getElementById('githubInfoModal').style.display = 'block';
+});
+
+document.querySelectorAll('.close-github-info').forEach(element => {
+  element.addEventListener('click', () => {
+    document.getElementById('githubInfoModal').style.display = 'none';
+  });
+});
+
 // Close on click outside (merging with existing window click logic if any, but safe to add listener)
 window.addEventListener('click', (event) => {
     if (event.target == document.getElementById('modelInfoModal')) {
         document.getElementById('modelInfoModal').style.display = 'none';
+    }
+    if (event.target == document.getElementById('githubInfoModal')) {
+        document.getElementById('githubInfoModal').style.display = 'none';
     }
 });
 
@@ -2095,6 +2429,10 @@ async function startBatchGrading() {
           logBatch(`Grading ${student.name}...`);
           
           try {
+              // Prepare config with OAuth token
+              let config = getProviderConfigFromUI(currentProviderId);
+              config = await attachOAuthToken(currentProviderId, config);
+
               // Grade
               const result = await BatchGrader.gradeStudent(
                   provider, 
@@ -2102,7 +2440,8 @@ async function startBatchGrading() {
                   rubric, 
                   student.name, 
                   student.response, 
-                  customInstructions
+                  customInstructions,
+                  config // Pass explicit config
               );
               
               // Fill

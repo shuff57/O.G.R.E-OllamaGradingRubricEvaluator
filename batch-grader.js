@@ -136,9 +136,10 @@ async function extractRubric(tabId) {
  * @param {string} studentName - Student's name
  * @param {string} response - Student's response text
  * @param {string} [customInstructions] - Additional grading instructions
+ * @param {object} [explicitConfig] - Optional pre-loaded config (including OAuth tokens)
  * @returns {Promise<{score: number, feedback: string}>}
  */
-async function gradeStudent(provider, model, rubric, studentName, response, customInstructions) {
+async function gradeStudent(provider, model, rubric, studentName, response, customInstructions, explicitConfig = null) {
   // Handle empty responses
   if (!response || response.trim().length === 0) {
     return { score: 0, feedback: 'No response submitted.' };
@@ -154,7 +155,7 @@ async function gradeStudent(provider, model, rubric, studentName, response, cust
   ];
 
   // Build the request using the provider's pattern
-  const config = await getProviderConfig(provider);
+  const config = explicitConfig || await getProviderConfig(provider);
   config.model = model;
   const request = provider.buildChatRequest(config, messages, { stream: false });
 

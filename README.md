@@ -15,13 +15,33 @@ This repository contains both tools. Choose the one that fits your workflow:
 ## Chrome Extension
 
 ### About
-The Chrome extension allows teachers to grade student work, including text and images (like math problems or diagrams), directly within the browser side panel. By leveraging the power of AI models via the Ollama API (Cloud), it supports custom rubrics, which can be imported via text or screenshot, and provides detailed feedback based on the selected AI model.
+The Chrome extension allows teachers to grade student work, including text and images (like math problems or diagrams), directly within the browser side panel. It supports multiple AI providers including Anthropic Claude, Google Gemini, OpenAI, and Ollama, with custom rubrics that can be imported via text or screenshot.
 
 ## Prerequisites
 
-1.  **API Access**: You will need access to an Ollama-compatible API endpoint (e.g., Ollama Cloud).
-2.  **API Key**: Ensure you have your API Key ready.
-3.  **No Local Setup Required**: You do **not** need to install Ollama locally or pull models manually. The extension uses remote cloud models.
+1.  **API Access**: Choose one or more AI providers:
+    - **Anthropic Claude**: API key at https://console.anthropic.com/
+    - **Google Gemini**: API key OR **OAuth sign-in** (see below)
+    - **OpenAI**: API key at https://platform.openai.com/api-keys
+    - **Ollama Cloud/Local**: Cloud endpoint or install locally from https://ollama.com/
+    - **GitHub Models**: Personal Access Token OR **OAuth sign-in** (see below)
+2.  **No Local Setup Required**: Cloud providers work immediately with just an API key or OAuth sign-in.
+
+### OAuth Sign-In (Google Gemini & GitHub Models)
+
+For Google Gemini and GitHub Models, you can use **"Sign in with Google/GitHub"** buttons instead of manually copying API keys:
+
+1. Click the **Gemini** or **GitHub** tab in the extension
+2. Click the **"Sign in with Google"** or **"Sign in with GitHub"** button
+3. Complete the OAuth flow in the popup window
+4. Once signed in, you'll see "Signed in" status — no API key needed!
+
+**Benefits of OAuth sign-in:**
+- No need to create or copy API keys
+- Tokens refresh automatically
+- Same Google/GitHub account you already use
+
+**Note:** OAuth sign-in requires the extension owner to set up OAuth apps. See [OAUTH_APP_SETUP.md](OAUTH_APP_SETUP.md) for details. API keys remain available as a fallback for all providers.
 
 ## Installation
 
@@ -36,9 +56,15 @@ The Chrome extension allows teachers to grade student work, including text and i
 
 1.  Click the extension icon in your browser toolbar (or open the Side Panel via the browser menu).
 2.  **Config**:
-    *   **Ollama URL**: Enter your Cloud API Endpoint (e.g., `https://api.ollama.com` or your provider's URL).
-    *   **API Key**: Enter your API Key in the designated field.
-    *   **Model**: Select a model from the dropdown (fetched from the cloud).
+    *   **Provider**: Select your AI provider from the tabs (Ollama Cloud, Local, OpenAI, Claude, Gemini, or GitHub)
+    *   **API Configuration**: Enter your provider-specific credentials:
+        - **Anthropic Claude**: API Key (sk-ant-...)
+        - **Google Gemini**: "Sign in with Google" button OR API Key (AIza...)
+        - **OpenAI**: API Key (sk-...)
+        - **Ollama Cloud**: API URL + API Key
+        - **Ollama Local**: Uses localhost:11434 (no key needed)
+        - **GitHub Models**: "Sign in with GitHub" button OR Personal Access Token (see [GITHUB_SETUP.md](GITHUB_SETUP.md))
+    *   **Model**: Select a model from the dropdown (fetched from your provider)
 3.  **Rubric**:
     *   **Text**: Paste rubric text directly.
     *   **Screenshot**: Click "Screenshot Area" to capture a rubric from your screen, then "Import Rubric from Screenshot" to parse it into the table automatically.
