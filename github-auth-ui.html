@@ -1,0 +1,126 @@
+<!-- GitHub Authentication Section -->
+<!-- Add this to your sidepanel.html where you want the GitHub sign-in button -->
+
+<div class="card">
+  <h3>🔐 GitHub Integration (Optional)</h3>
+  <div id="githubAuthContainer">
+    <!-- Signed Out State -->
+    <div id="githubSignedOut" style="display: block;">
+      <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
+        Sign in with GitHub to enable repository integration features.
+      </p>
+      <button id="btnGitHubSignIn" class="secondary">
+        <i class="bi bi-github"></i> Sign in with GitHub
+      </button>
+      <p style="font-size: 11px; color: #999; margin-top: 5px;">
+        Or manually enter token: <a href="https://github.com/settings/tokens/new" target="_blank">Create Token</a>
+      </p>
+      <input type="text" id="githubTokenManual" placeholder="ghp_xxxxxxxxxxxx (optional)" style="margin-top: 5px;">
+      <button id="btnSaveToken" class="secondary" style="font-size: 12px; padding: 6px;">Save Token</button>
+    </div>
+
+    <!-- Signed In State -->
+    <div id="githubSignedIn" style="display: none;">
+      <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+        <img id="githubAvatar" src="" alt="Avatar" style="width: 32px; height: 32px; border-radius: 50%;">
+        <div style="flex: 1;">
+          <div id="githubUsername" style="font-weight: bold; font-size: 13px;"></div>
+          <div style="font-size: 11px; color: #666;">Connected</div>
+        </div>
+      </div>
+      <button id="btnGitHubSignOut" class="secondary" style="font-size: 12px; padding: 6px;">
+        Sign Out
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+// GitHub Auth Integration
+(function() {
+  const githubAuth = new GitHubAuth();
+  
+  // UI Elements
+  const signedOutDiv = document.getElementById('githubSignedOut');
+  const signedInDiv = document.getElementById('githubSignedIn');
+  const btnSignIn = document.getElementById('btnGitHubSignIn');
+  const btnSignOut = document.getElementById('btnGitHubSignOut');
+  const btnSaveToken = document.getElementById('btnSaveToken');
+  const tokenInput = document.getElementById('githubTokenManual');
+  const avatarImg = document.getElementById('githubAvatar');
+  const usernameDiv = document.getElementById('githubUsername');
+
+  // Update UI based on auth state
+  async function updateUI() {
+    const { token, user } = await githubAuth.loadFromStorage();
+    
+    if (token && user) {
+      signedOutDiv.style.display = 'none';
+      signedInDiv.style.display = 'block';
+      avatarImg.src = user.avatar_url;
+      usernameDiv.textContent = user.login;
+    } else {
+      signedOutDiv.style.display = 'block';
+      signedInDiv.style.display = 'none';
+    }
+  }
+
+  // Sign in button
+  btnSignIn.addEventListener('click', async () => {
+    try {
+      btnSignIn.textContent = 'Opening browser...';
+      btnSignIn.disabled = true;
+      await githubAuth.signIn();
+    } catch (error) {
+      alert('Sign in failed: ' + error.message);
+    } finally {
+      btnSignIn.textContent = '🔓 Sign in with GitHub';
+      btnSignIn.disabled = false;
+    }
+  });
+
+  // Manual token save
+  btnSaveToken.addEventListener('click', async () => {
+    const token = tokenInput.value.trim();
+    if (!token) {
+      alert('Please enter a valid GitHub token');
+      return;
+    }
+
+    try {
+      btnSaveToken.textContent = 'Verifying...';
+      btnSaveToken.disabled = true;
+      
+      // Save token temporarily
+      await githubAuth.saveToStorage(token, null);
+      
+      // Fetch user info to verify token
+      const user = await githubAuth.getUserInfo();
+      
+      alert(`✅ Signed in as ${user.login}`);
+      tokenInput.value = '';
+      await updateUI();
+    } catch (error) {
+      alert('Invalid token: ' + error.message);
+      await githubAuth.signOut();
+    } finally {
+      btnSaveToken.textContent = 'Save Token';
+      btnSaveToken.disabled = false;
+    }
+  });
+
+  // Sign out button
+  btnSignOut.addEventListener('click', async () => {
+    if (confirm('Sign out of GitHub?')) {
+      await githubAuth.signOut();
+      await updateUI();
+    }
+  });
+
+  // Initialize UI on load
+  updateUI();
+
+  // Make githubAuth available globally for other scripts
+  window.githubAuth = githubAuth;
+})();
+</script>
