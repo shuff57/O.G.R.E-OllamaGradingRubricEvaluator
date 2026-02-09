@@ -47,6 +47,12 @@ The Chrome extension allows teachers to grade student work, including text and i
     *   **Text**: Highlight text on any webpage and click "Get Highlighted Text".
     *   **Images**: Click "Screenshot Area" to capture student work (diagrams, math, etc.).
 5.  Click **Run Assessment** to generate feedback based on the rubric.
+6.  **Batch Grading** (MyOpenMath):
+    *   Select **Batch** mode at the bottom of the config card.
+    *   Navigate to a "Grade All" page (e.g., `gradeallq2.php`).
+    *   **Grading Instructions**: Expand the "Grading Instructions" section to customize AI behavior (e.g., "Non-Zero Only", "Lenient"). These instructions are saved globally.
+    *   Click **Start Batch** to grade all students sequentially.
+    *   **Resume**: If a session is interrupted, the extension remembers the last graded student and offers a "Resume" button next time you visit the page.
 
 ## Troubleshooting
 
