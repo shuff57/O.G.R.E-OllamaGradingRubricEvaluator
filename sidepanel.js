@@ -846,7 +846,7 @@ async function switchMode(mode) {
   const batchGradeCard = document.getElementById('batchGradeCard');
   // runAssessmentCard might be null if not strictly defined with ID in previous steps, 
   // but I added ID="runAssessmentCard" in the HTML edit.
-  const runAssessmentCard = document.getElementById('runAssessmentCard') || document.getElementById('btnGrade').closest('.card');
+  const runAssessmentCard = document.getElementById('runAssessmentCard');
   
   const rubricTitle = document.getElementById('rubricTitle');
   const studentWorkTitle = document.getElementById('studentWorkTitle');
@@ -980,9 +980,9 @@ document.getElementById('modeSwitch').addEventListener('change', (e) => {
 });
 */
 
-document.getElementById('btnGrade').addEventListener('click', async () => {
+document.getElementById('btnSolverSend').addEventListener('click', async () => {
   let modelName = document.getElementById('modelName').value;
-  const isSolver = document.getElementById('modeSwitch').checked;
+  const isSolver = currentMode === 'solver';
   
   // Auto-switch model if images are present
   if (studentImages.length > 0 || rubricImages.length > 0) {
@@ -1087,7 +1087,7 @@ document.getElementById('btnGrade').addEventListener('click', async () => {
 });
 
 // --- Chat Logic ---
-// Removed btnSendChat listener as it's now integrated into btnGrade/btnSolverSend
+// Chat/Grade/Solver all use btnSolverSend click handler (line ~983)
 
 async function streamChat(messages, mode) {
   const provider = PROVIDERS[currentProviderId];
