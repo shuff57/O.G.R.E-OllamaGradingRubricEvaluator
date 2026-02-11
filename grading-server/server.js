@@ -238,8 +238,54 @@ app.post('/grade', async (c) => {
   }
 });
 
-// Startup banner
-console.log(`
+// Helper function: Wait for keypress before exiting (keeps window open on error)
+function waitForKeypress() {
+  console.log('\nPress any key to exit...');
+  
+  // Try to set raw mode (may not be available in all environments)
+  if (process.stdin.setRawMode) {
+    process.stdin.setRawMode(true);
+  }
+  
+  process.stdin.resume();
+  process.stdin.once('data', () => {
+    process.exit(1);
+  });
+  
+  // Fallback for non-TTY environments: keep process alive indefinitely
+  if (!process.stdin.isTTY) {
+    setTimeout(() => {}, 2147483647);
+  }
+}
+
+// Helper function: Show error in visible format
+function showError(title, details) {
+  console.error(`
+╔══════════════════════════════════════════════════════════════╗
+║  ERROR: ${title.padEnd(52)}║
+╚══════════════════════════════════════════════════════════════╝
+
+${details}
+`);
+  waitForKeypress();
+}
+
+// Global safety nets for uncaught errors
+process.on('uncaughtException', (err) => {
+  showError('Server crashed unexpectedly', err.message);
+});
+
+process.on('unhandledRejection', (err) => {
+  showError('Server crashed unexpectedly', err?.message || String(err));
+});
+
+// Start server with event-based error handling
+const server = serve({
+  fetch: app.fetch,
+  port: PORT,
+}, () => {
+  // SUCCESS callback - only runs if server binds successfully
+  console.log(`
 ╔═══════════════════════════════════════════════════════════════╗
 ║           O.G.R.E Grading Server v1.0.0                       ║
 ╠═══════════════════════════════════════════════════════════════╣
@@ -257,9 +303,37 @@ console.log(`
 
 Waiting for grading requests...
 `);
+});
 
-// Start server
-serve({
-  fetch: app.fetch,
-  port: PORT,
+// Handle server startup errors (e.g., port already in use)
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`
+╔══════════════════════════════════════════════════════════════╗
+║  ERROR: Port ${PORT} is already in use!                        ║
+╠══════════════════════════════════════════════════════════════╣
+║                                                              ║
+║  Another copy of this server may already be running.        ║
+║  Close the other window first, then try again.              ║
+║                                                              ║
+║  If that doesn't help, another program is using port ${PORT}.  ║
+║  Open Task Manager → find the program → close it.           ║
+║                                                              ║
+║  Still stuck? Restart your computer and try again.          ║
+║                                                              ║
+╚══════════════════════════════════════════════════════════════╝
+`);
+  } else {
+    console.error(`
+╔══════════════════════════════════════════════════════════════╗
+║  ERROR: Failed to start server                              ║
+╠══════════════════════════════════════════════════════════════╣
+║                                                              ║
+║  ${err.message.padEnd(60)}║
+║                                                              ║
+╚══════════════════════════════════════════════════════════════╝
+`);
+  }
+  
+  waitForKeypress();
 });
