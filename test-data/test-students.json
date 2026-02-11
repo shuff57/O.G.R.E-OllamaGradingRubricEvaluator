@@ -1,0 +1,42 @@
+[
+  {
+    "name": "Student A - Excellent",
+    "response": "The Central Limit Theorem states that as sample size n increases, the sampling distribution of the mean approaches normality with standard error σ/√n. This directly affects margin of error because MOE = z* × SE. When we increase n, the denominator √n gets larger, making SE smaller. Since margin of error is proportional to SE, it also decreases. For example, to cut the margin in half, we need to quadruple the sample size (because √4 = 2). This inverse square root relationship is fundamental to survey design - larger samples give more precise estimates with tighter confidence intervals."
+  },
+  {
+    "name": "Student B - Very Good",
+    "response": "Larger sample sizes reduce the margin of error. The Central Limit Theorem shows that the standard error equals σ/√n, so when n increases, SE decreases. Margin of error depends on standard error (MOE = critical value × SE), so smaller SE means smaller margin. That's why statisticians prefer large samples - they get more accurate estimates of population parameters. The relationship is inversely proportional to the square root of n."
+  },
+  {
+    "name": "Student C - Good",
+    "response": "Sample size affects margin of error through the Central Limit Theorem. When you have a bigger sample, your estimates are more accurate because the standard error gets smaller. The formula for standard error has √n in the denominator, so larger n makes it smaller. This makes the margin of error smaller too. That's why polls with 1000 people are more reliable than polls with 100 people."
+  },
+  {
+    "name": "Student D - Adequate",
+    "response": "Bigger samples mean smaller margin of error. The CLT says that sample means are normally distributed, and the spread of this distribution (standard error) decreases as sample size increases. Since margin of error uses standard error in its calculation, when SE goes down, margin goes down too."
+  },
+  {
+    "name": "Student E - Adequate with gaps",
+    "response": "The Central Limit Theorem explains that larger samples give better estimates. When you increase sample size, the margin of error decreases because there's less variability in your sample mean. This is why researchers try to get large samples - to reduce the margin of error and get more confident results."
+  },
+  {
+    "name": "Student F - Weak",
+    "response": "Larger samples reduce margin of error. When you have more data points, your average is closer to the true population mean. The Central Limit Theorem says sample means follow a normal distribution."
+  },
+  {
+    "name": "Student G - Weak with misconception",
+    "response": "Sample size is directly proportional to margin of error - as one increases, so does the other. The Central Limit Theorem proves that large samples produce normal distributions, which makes calculations easier. With a bigger sample, you have more certainty, so the margin increases to reflect this confidence."
+  },
+  {
+    "name": "Student H - Minimal",
+    "response": "Bigger samples are better. The CLT shows that things become normal with large n. This affects margin of error somehow."
+  },
+  {
+    "name": "Student I - Minimal with effort",
+    "response": "Sample size and margin of error are related. When statisticians collect data, they need to consider both. The Central Limit Theorem is important for understanding sampling distributions."
+  },
+  {
+    "name": "Student J - Empty",
+    "response": ""
+  }
+]

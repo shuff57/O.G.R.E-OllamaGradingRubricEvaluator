@@ -1,0 +1,53 @@
+{
+  "essayPrompt": "Explain the relationship between sample size and margin of error in statistical inference. Use the Central Limit Theorem to support your explanation.",
+  "checklistItems": [
+    {
+      "category": "Understanding of Sample Size Effect (3 points)",
+      "points": 3,
+      "items": [
+        "Explains that larger samples reduce margin of error",
+        "Mentions inverse relationship (as n increases, margin decreases)",
+        "Uses correct mathematical relationship (margin ∝ 1/√n)"
+      ]
+    },
+    {
+      "category": "Central Limit Theorem Connection (4 points)",
+      "points": 4,
+      "items": [
+        "States that CLT describes sampling distribution behavior",
+        "Explains that standard error decreases with sample size",
+        "Connects standard error to margin of error calculation"
+      ]
+    },
+    {
+      "category": "Mathematical Precision (2 points)",
+      "points": 2,
+      "items": [
+        "Uses correct notation (n, σ, standard error)",
+        "Shows formula or explains proportionality clearly"
+      ]
+    },
+    {
+      "category": "Clear Communication (1 point)",
+      "points": 1,
+      "items": [
+        "Response is organized and easy to follow",
+        "Uses appropriate statistical terminology"
+      ]
+    }
+  ],
+  "rubricItems": [
+    {
+      "category": "Key Concepts to Address",
+      "items": [
+        "Sample size (n) affects precision of estimates",
+        "Standard error = σ/√n",
+        "Margin of error = (critical value) × (standard error)",
+        "Larger n → smaller SE → smaller margin of error",
+        "CLT ensures normal sampling distribution for large n"
+      ]
+    }
+  ],
+  "modelText": "As sample size increases, the margin of error decreases because the standard error of the mean becomes smaller. The Central Limit Theorem tells us that the sampling distribution of the mean approaches a normal distribution as n grows, with standard error σ/√n. Since margin of error is calculated as z* × (σ/√n), increasing n reduces the standard error and thus shrinks the margin of error. This inverse relationship (proportional to 1/√n) means we need to quadruple the sample size to cut the margin in half.",
+  "maxScore": "10"
+}

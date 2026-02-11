@@ -1,0 +1,23 @@
+[package]
+name = "ogre-desktop"
+version = "0.1.0"
+description = "O.G.R.E Desktop - Grading Server Manager"
+authors = ["you"]
+license = ""
+repository = ""
+default-run = "ogre-desktop"
+edition = "2021"
+
+[lib]
+name = "ogre_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-shell = "2"
+tauri-plugin-sql = { version = "2", features = ["sqlite"] }
