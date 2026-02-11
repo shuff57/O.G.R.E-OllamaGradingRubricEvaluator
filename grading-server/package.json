@@ -6,7 +6,12 @@
   "scripts": {
     "start": "bun run server.js",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "build:windows": "bun build --compile --target=bun-windows-x64 ./server.js --outfile dist/grading-server-win.exe",
+    "build:mac": "bun build --compile --target=bun-darwin-x64 ./server.js --outfile dist/grading-server-mac",
+    "build:mac-arm": "bun build --compile --target=bun-darwin-arm64 ./server.js --outfile dist/grading-server-mac-arm",
+    "build:linux": "bun build --compile --target=bun-linux-x64 ./server.js --outfile dist/grading-server-linux",
+    "build": "bun run build:windows && bun run build:mac && bun run build:mac-arm && bun run build:linux"
   },
   "devDependencies": {
     "@types/bun": "latest",
