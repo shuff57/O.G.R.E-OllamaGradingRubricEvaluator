@@ -1,15 +1,21 @@
 // POST /api/auth/google/refresh — Exchange refresh token for new access token
 
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'chrome-extension://your-extension-id';
+const DESKTOP_ORIGINS = ['http://localhost:1420', 'tauri://localhost'];
 
-function setCorsHeaders(res) {
-  res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
+function setCorsHeaders(req, res) {
+  const origin = req.headers.origin;
+  if (origin && (origin === ALLOWED_ORIGIN || DESKTOP_ORIGINS.includes(origin))) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
+  }
   res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
 export default async function handler(req, res) {
-  setCorsHeaders(res);
+  setCorsHeaders(req, res);
 
   if (req.method === 'OPTIONS') {
     return res.status(204).end();

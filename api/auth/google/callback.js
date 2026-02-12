@@ -1,15 +1,21 @@
 // POST /api/auth/google/callback — Exchange authorization code for tokens
 
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'chrome-extension://your-extension-id';
+const DESKTOP_ORIGINS = ['http://localhost:1420', 'tauri://localhost'];
 
-function setCorsHeaders(res) {
-  res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
+function setCorsHeaders(req, res) {
+  const origin = req.headers.origin;
+  if (origin && (origin === ALLOWED_ORIGIN || DESKTOP_ORIGINS.includes(origin))) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
+  }
   res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
 export default async function handler(req, res) {
-  setCorsHeaders(res);
+  setCorsHeaders(req, res);
 
   if (req.method === 'OPTIONS') {
     return res.status(204).end();
@@ -19,7 +25,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ success: false, error: 'Method not allowed' });
   }
 
-  const { code } = req.body || {};
+  const { code, redirect_uri } = req.body || {};
 
   if (!code || typeof code !== 'string') {
     return res.status(400).json({ success: false, error: 'Missing or invalid "code" parameter' });
@@ -34,7 +40,7 @@ export default async function handler(req, res) {
         client_secret: process.env.GOOGLE_CLIENT_SECRET,
         code: code,
         grant_type: 'authorization_code',
-        redirect_uri: process.env.GOOGLE_REDIRECT_URI,
+        redirect_uri: redirect_uri || process.env.GOOGLE_REDIRECT_URI,
       }),
     });
 
