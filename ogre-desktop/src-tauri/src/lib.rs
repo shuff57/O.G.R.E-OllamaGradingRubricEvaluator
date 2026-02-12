@@ -3,10 +3,8 @@ use tauri::{Emitter, Manager};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, MenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton};
 use tauri_plugin_shell::ShellExt;
-use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_shell::process::CommandEvent;
 use tauri_plugin_sql::{Migration, MigrationKind};
-use rusqlite::{params, Connection};
 
 /// Holds the sidecar child process handle so we can kill it on exit.
 struct SidecarState {
@@ -80,31 +78,8 @@ fn spawn_sidecar(app_handle: &tauri::AppHandle, restart_count: Arc<Mutex<u32>>) 
                             // Emit event for frontend
                             let _ = handle_clone.emit("session-complete", &json);
 
-                            let app_handle = handle_clone.clone();
-                            
-                            // Persist to DB
-                            tauri::async_runtime::spawn_blocking(move || {
-                                if let Ok(app_dir) = app_handle.path().app_data_dir() {
-                                    // Ensure dir exists
-                                    let _ = std::fs::create_dir_all(&app_dir);
-                                    let db_path = app_dir.join("ogre.db");
-                                    
-                                    if let Ok(conn) = Connection::open(db_path) {
-                                        let _ = conn.execute(
-                                            "INSERT INTO grading_sessions (
-                                                provider_id, model, student_count, mean_score, 
-                                                min_score, max_score, median_score, max_possible_score, 
-                                                page_url, question_id, custom_instructions
-                                            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-                                            params![
-                                                provider_id, model, student_count, mean_score,
-                                                min_score, max_score, median_score, max_possible_score,
-                                                page_url, question_id, custom_instructions
-                                            ],
-                                        );
-                                    }
-                                }
-                            });
+                            // Emit event to frontend - frontend will handle DB persistence via TypeScript
+                            // This avoids database locking conflicts between Rust and TypeScript SQL plugin usage
                          }
                     }
                 }
@@ -194,12 +169,6 @@ fn spawn_sidecar(app_handle: &tauri::AppHandle, restart_count: Arc<Mutex<u32>>) 
     });
 }
 
-fn handle_uri_open(app_handle: &tauri::AppHandle, url: String) {
-    if url.starts_with("ogre://") {
-        let _ = app_handle.emit("oauth-callback", url);
-    }
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let migrations = vec![
@@ -271,7 +240,7 @@ INSERT OR IGNORE INTO app_settings (key, value) VALUES ('history_visible_columns
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_http::init())
         .plugin(
             tauri_plugin_sql::Builder::default()
                 .add_migrations("sqlite:ogre.db", migrations)
@@ -279,6 +248,14 @@ INSERT OR IGNORE INTO app_settings (key, value) VALUES ('history_visible_columns
         )
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // When second instance is launched, focus the existing window
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .manage(Mutex::new(SidecarState { child: None, status_item: None }))
         .setup(|app| {
             let handle = app.handle().clone();
@@ -372,32 +349,15 @@ INSERT OR IGNORE INTO app_settings (key, value) VALUES ('history_visible_columns
                         let _ = window_clone.hide();
                     }
                 });
-            }
-            
-            #[cfg(any(windows, target_os = "linux"))]
-            {
-                let handle_clone = handle.clone();
-                app.deep_link().on_open_url(move |event| {
-                    for url in event.urls() {
-                        handle_uri_open(&handle_clone, url.to_string());
-                    }
-                });
-            }
+             }
 
-            let restart_count = Arc::new(Mutex::new(0u32));
+             let restart_count = Arc::new(Mutex::new(0u32));
             spawn_sidecar(&handle, restart_count);
             Ok(())
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
-            #[cfg(target_os = "macos")]
-            if let tauri::RunEvent::Opened { urls } = &event {
-                for url in urls {
-                    handle_uri_open(app_handle, url.as_str().into());
-                }
-            }
-
             // Kill sidecar when the app exits
             if let tauri::RunEvent::Exit = event {
                 let state = app_handle.state::<Mutex<SidecarState>>();

@@ -31,9 +31,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "externalBin": [
-      "binaries/grading-server"
-    ],
+    "externalBin": [],
     "createUpdaterArtifacts": true
   },
   "plugins": {
