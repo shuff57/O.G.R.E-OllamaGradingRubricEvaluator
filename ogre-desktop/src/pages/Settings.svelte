@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getProviderConfigs, saveProviderConfig, deleteProviderConfig, getSetting, setSetting } from '../lib/db';
+  import { getProviderConfigs, saveProviderConfig, deleteProviderConfig, getSetting, setSetting, getOAuthToken } from '../lib/db';
   import type { ProviderConfig } from '../lib/db';
+  import { signInWithGoogle, signInWithGitHub, fetchAvailableModels, signOut } from '../lib/oauth';
 
   let providers: ProviderConfig[] = [];
   let editingProvider: string | null = null;
@@ -14,13 +15,21 @@
   let newProviderKey = '';
   let newProviderModel = '';
 
+  // OAuth State
+  let oauthStatus: Record<string, boolean> = {};
+  let fetchedModels: Record<string, string[]> = {};
+  let fetchingModels: Record<string, boolean> = {};
+  let modelFetchErrors: Record<string, string> = {};
+  let useApiKey: Record<string, boolean> = {}; // Track if user wants to use API key even if OAuth is available
+
   // Available providers
   const PROVIDER_OPTIONS = [
-    { id: 'ollama-cloud', name: 'Ollama Cloud', requiresUrl: true, requiresKey: true, defaultUrl: '' },
-    { id: 'ollama-local', name: 'Ollama Local', requiresUrl: true, requiresKey: false, defaultUrl: 'http://localhost:11434' },
-    { id: 'openai', name: 'OpenAI', requiresUrl: false, requiresKey: true, defaultUrl: '' },
-    { id: 'anthropic', name: 'Anthropic (Claude)', requiresUrl: false, requiresKey: true, defaultUrl: '' },
-    { id: 'gemini', name: 'Google Gemini', requiresUrl: false, requiresKey: true, defaultUrl: '' },
+    { id: 'ollama-cloud', name: 'Ollama Cloud', requiresUrl: true, requiresKey: true, defaultUrl: '', oauth: false },
+    { id: 'ollama-local', name: 'Ollama Local', requiresUrl: true, requiresKey: false, defaultUrl: 'http://localhost:11434', oauth: false },
+    { id: 'openai', name: 'OpenAI', requiresUrl: false, requiresKey: true, defaultUrl: '', oauth: false },
+    { id: 'anthropic', name: 'Anthropic (Claude)', requiresUrl: false, requiresKey: true, defaultUrl: '', oauth: false },
+    { id: 'google-gemini', name: 'Google Gemini', requiresUrl: false, requiresKey: true, defaultUrl: '', oauth: true },
+    { id: 'github-models', name: 'GitHub Models', requiresUrl: false, requiresKey: true, defaultUrl: '', oauth: true },
   ];
 
   // Available columns for history table
@@ -39,6 +48,7 @@
   onMount(async () => {
     await loadProviders();
     await loadColumnVisibility();
+    await checkOAuthStatus();
   });
 
   async function loadProviders() {
@@ -48,6 +58,65 @@
   async function loadColumnVisibility() {
     const columnsJson = await getSetting('history_visible_columns');
     visibleColumns = columnsJson ? JSON.parse(columnsJson) : ['timestamp', 'provider', 'model', 'studentCount', 'meanScore', 'pageUrl'];
+  }
+
+  async function checkOAuthStatus() {
+    for (const opt of PROVIDER_OPTIONS) {
+      if (opt.oauth) {
+        const providerId = opt.id === 'google-gemini' ? 'google' : (opt.id === 'github-models' ? 'github' : opt.id);
+        const token = await getOAuthToken(providerId);
+        oauthStatus[opt.id] = !!token;
+        if (token) {
+           // If we have a token, fetch models automatically
+           fetchModels(opt.id);
+        }
+      }
+    }
+  }
+
+  async function handleOAuthSignIn(providerId: string) {
+    try {
+      if (providerId === 'google-gemini') {
+        await signInWithGoogle();
+        oauthStatus['google-gemini'] = true;
+        fetchModels('google-gemini');
+      } else if (providerId === 'github-models') {
+        await signInWithGitHub();
+        oauthStatus['github-models'] = true;
+        fetchModels('github-models');
+      }
+    } catch (error) {
+      console.error('Sign in failed:', error);
+      alert('Sign in failed: ' + error);
+    }
+  }
+
+  async function handleSignOut(providerId: string) {
+    try {
+      const oauthProvider = providerId === 'google-gemini' ? 'google' : 'github';
+      await signOut(oauthProvider as 'google' | 'github');
+      oauthStatus[providerId] = false;
+      fetchedModels[providerId] = [];
+    } catch (error) {
+       console.error('Sign out failed:', error);
+       // Still update UI to reflect "signed out" locally
+       oauthStatus[providerId] = false;
+    }
+  }
+
+  async function fetchModels(providerId: string) {
+    fetchingModels[providerId] = true;
+    modelFetchErrors[providerId] = '';
+    try {
+      const oauthProvider = providerId === 'google-gemini' ? 'google' : 'github';
+      const models = await fetchAvailableModels(oauthProvider as 'google' | 'github');
+      fetchedModels[providerId] = models;
+    } catch (error) {
+      console.error('Failed to fetch models:', error);
+      modelFetchErrors[providerId] = error instanceof Error ? error.message : 'Unknown error';
+    } finally {
+      fetchingModels[providerId] = false;
+    }
   }
 
   async function saveProvider(config: ProviderConfig) {
@@ -72,8 +141,8 @@
     const option = PROVIDER_OPTIONS.find(p => p.id === provider.id);
     
     // Basic validation
-    if (option?.requiresKey && !provider.api_key) {
-      alert('API Key is required for this provider');
+    if (option?.requiresKey && !provider.api_key && !oauthStatus[provider.id]) {
+      alert('API Key is required for this provider (or sign in via OAuth)');
       return;
     }
     if (option?.requiresUrl && !provider.api_url) {
@@ -150,9 +219,10 @@
     {/if}
 
     {#each providers as provider}
+      {@const option = PROVIDER_OPTIONS.find(p => p.id === provider.id)}
       <div class="provider-card">
         <div class="provider-header">
-          <h4>{PROVIDER_OPTIONS.find(p => p.id === provider.id)?.name || provider.id}</h4>
+          <h4>{option?.name || provider.id}</h4>
           {#if editingProvider !== provider.id}
             <div class="actions">
               <button on:click={() => testConnection(provider)}>Test Connection</button>
@@ -165,27 +235,90 @@
         {#if editingProvider === provider.id}
           <!-- Edit form -->
           <div class="edit-form">
-            {#if PROVIDER_OPTIONS.find(p => p.id === provider.id)?.requiresUrl}
+            {#if option?.requiresUrl}
               <label>
                 API URL
                 <input type="text" bind:value={provider.api_url} placeholder="https://api.example.com" />
               </label>
             {/if}
             
-            {#if PROVIDER_OPTIONS.find(p => p.id === provider.id)?.requiresKey}
-              <label>
-                API Key
-                <input type="password" bind:value={provider.api_key} placeholder="sk-..." />
-              </label>
+            {#if option?.requiresKey}
+              {#if option.oauth}
+                 <div class="oauth-section">
+                   {#if oauthStatus[provider.id] && !useApiKey[provider.id]}
+                     <div class="oauth-status success">
+                        <span class="icon">✅</span> Signed in via OAuth
+                        <button class="small" on:click={() => handleSignOut(provider.id)}>Sign out</button>
+                     </div>
+                   {:else}
+                     <div class="oauth-actions">
+                        {#if !useApiKey[provider.id]}
+                           <button class="oauth-btn" on:click={() => handleOAuthSignIn(provider.id)}>
+                             Sign in with {option.name.includes('Google') ? 'Google' : 'GitHub'}
+                           </button>
+                           <div class="divider"><span>OR</span></div>
+                        {/if}
+                        
+                        {#if useApiKey[provider.id]}
+                           <label>
+                              API Key
+                              <input type="password" bind:value={provider.api_key} placeholder="sk-..." />
+                           </label>
+                           <button class="link-btn" on:click={() => useApiKey[provider.id] = false}>
+                             Use OAuth instead
+                           </button>
+                        {:else}
+                           <button class="link-btn" on:click={() => useApiKey[provider.id] = true}>
+                             Use API Key instead
+                           </button>
+                        {/if}
+                     </div>
+                   {/if}
+                 </div>
+              {:else}
+                <label>
+                  API Key
+                  <input type="password" bind:value={provider.api_key} placeholder="sk-..." />
+                </label>
+              {/if}
             {/if}
 
             <label>
               Model
-              <input type="text" bind:value={provider.model} placeholder="gpt-4o" />
+              {#if option?.oauth && oauthStatus[provider.id] && !useApiKey[provider.id]}
+                  <div class="model-select-container">
+                    {#if fetchingModels[provider.id]}
+                        <div class="loading">Loading models...</div>
+                    {:else if modelFetchErrors[provider.id]}
+                        <div class="error">
+                          Error: {modelFetchErrors[provider.id]}
+                          <button class="small" on:click={() => fetchModels(provider.id)}>Retry</button>
+                        </div>
+                        <input type="text" bind:value={provider.model} placeholder="gpt-4o" />
+                    {:else if fetchedModels[provider.id]?.length > 0}
+                        <div class="select-wrapper">
+                            <select bind:value={provider.model}>
+                                <option value="" disabled>Select a model</option>
+                                {#each fetchedModels[provider.id] as modelId}
+                                    <option value={modelId}>{modelId}</option>
+                                {/each}
+                            </select>
+                            <button class="icon-btn" title="Refresh Models" on:click={() => fetchModels(provider.id)}>
+                                🔄
+                            </button>
+                        </div>
+                    {:else}
+                        <input type="text" bind:value={provider.model} placeholder="gpt-4o" />
+                        <button class="small" on:click={() => fetchModels(provider.id)}>Fetch Models</button>
+                    {/if}
+                  </div>
+              {:else}
+                  <input type="text" bind:value={provider.model} placeholder="gpt-4o" />
+              {/if}
             </label>
 
             <label class="checkbox-label">
-              <input type="checkbox" bind:checked={provider.is_active} 
+              <input type="checkbox" checked={!!provider.is_active} 
                      on:change={(e) => provider.is_active = e.currentTarget.checked ? 1 : 0} />
               Active
             </label>
@@ -209,6 +342,12 @@
                 <span class="label">API Key:</span>
                 <span class="value">{'*'.repeat(20)}</span>
               </div>
+            {/if}
+            {#if option?.oauth && oauthStatus[provider.id]}
+               <div class="info-row">
+                 <span class="label">Auth:</span>
+                 <span class="value success">✅ OAuth Signed In</span>
+               </div>
             {/if}
             <div class="info-row">
               <span class="label">Model:</span>
@@ -247,18 +386,28 @@
           </label>
 
           {#if newProviderId}
-            {#if PROVIDER_OPTIONS.find(p => p.id === newProviderId)?.requiresUrl}
+            {@const newOption = PROVIDER_OPTIONS.find(p => p.id === newProviderId)}
+            {#if newOption?.requiresUrl}
               <label>
                 API URL
                 <input type="text" bind:value={newProviderUrl} placeholder="https://api.example.com" />
               </label>
             {/if}
 
-            {#if PROVIDER_OPTIONS.find(p => p.id === newProviderId)?.requiresKey}
-              <label>
-                API Key
-                <input type="password" bind:value={newProviderKey} placeholder="sk-..." />
-              </label>
+            {#if newOption?.requiresKey}
+               {#if newOption.oauth}
+                  <!-- Simple view for add form, detailed view in edit -->
+                  <p class="hint">You can sign in with OAuth after saving.</p>
+                  <label>
+                    API Key (Optional if using OAuth)
+                    <input type="password" bind:value={newProviderKey} placeholder="sk-..." />
+                  </label>
+               {:else}
+                  <label>
+                    API Key
+                    <input type="password" bind:value={newProviderKey} placeholder="sk-..." />
+                  </label>
+               {/if}
             {/if}
 
             <label>
@@ -543,5 +692,130 @@
     text-align: center;
     background: #f9f9f9;
     border-radius: 6px;
+  }
+
+  /* OAuth specific styles */
+  .oauth-section {
+    margin: 0.5rem 0;
+    padding: 0.5rem;
+    border: 1px solid #f0f0f0;
+    border-radius: 4px;
+    background: #fafafa;
+  }
+
+  .oauth-status {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    font-weight: 600;
+  }
+
+  .oauth-status.success {
+    color: #00796b;
+  }
+
+  .oauth-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .oauth-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: 0.75rem;
+    background: #24292e;
+    color: white;
+    border: none;
+    font-weight: 600;
+  }
+
+  .oauth-btn:hover {
+    background: #1b1f23;
+  }
+
+  .divider {
+    display: flex;
+    align-items: center;
+    text-align: center;
+    color: #999;
+    font-size: 0.8rem;
+    margin: 0.5rem 0;
+  }
+
+  .divider::before,
+  .divider::after {
+    content: '';
+    flex: 1;
+    border-bottom: 1px solid #eee;
+  }
+
+  .divider span {
+    padding: 0 0.5rem;
+  }
+
+  .link-btn {
+    background: none;
+    border: none;
+    color: #007acc;
+    text-decoration: underline;
+    padding: 0;
+    font-size: 0.85rem;
+    text-align: left;
+    width: auto;
+  }
+
+  .link-btn:hover {
+    background: none;
+    color: #005a9e;
+  }
+
+  .hint {
+    font-size: 0.85rem;
+    color: #888;
+    margin: 0;
+  }
+
+  .model-select-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .select-wrapper {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .icon-btn {
+    padding: 0.6rem;
+    width: auto;
+    flex-shrink: 0;
+  }
+
+  .loading {
+    color: #666;
+    font-style: italic;
+    font-size: 0.9rem;
+  }
+
+  .error {
+    color: #d32f2f;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  
+  button.small {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8rem;
+  }
+
+  .value.success {
+    color: #00796b;
+    font-weight: 600;
   }
 </style>
