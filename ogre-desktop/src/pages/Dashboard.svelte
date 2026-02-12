@@ -2,6 +2,9 @@
   import { onMount, onDestroy } from 'svelte';
   import { listenServerStatus } from '../lib/server';
   import { getProviderConfigs, getGradingSessions } from '../lib/db';
+
+  /** Incremented by App.svelte when a new grading session is recorded */
+  export let sessionVersion = 0;
   
   let serverStatus = 'starting...';
   let providerStatus = 'checking...';
@@ -12,6 +15,20 @@
   // Poll server health every 5 seconds
   let healthInterval: number;
   let unlistenServer: () => void;
+
+  async function loadStats() {
+    const sessions = await getGradingSessions();
+    totalSessions = sessions.length;
+    totalStudents = sessions.reduce((sum, s) => sum + (s.student_count || 0), 0);
+    if (sessions.length > 0) {
+      lastSessionDate = new Date(sessions[0].created_at).toLocaleString();
+    }
+  }
+
+  // Reactively reload stats when sessionVersion changes
+  $: if (sessionVersion >= 0) {
+    loadStats();
+  }
 
   onMount(async () => {
     // Listen to server status events
@@ -40,14 +57,6 @@
       providerStatus = `connected (${activeProvider.id})`;
     } else {
       providerStatus = 'not configured';
-    }
-
-    // Load quick stats
-    const sessions = await getGradingSessions();
-    totalSessions = sessions.length;
-    totalStudents = sessions.reduce((sum, s) => sum + (s.student_count || 0), 0);
-    if (sessions.length > 0) {
-      lastSessionDate = new Date(sessions[0].created_at).toLocaleString();
     }
   });
 

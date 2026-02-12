@@ -2,6 +2,22 @@ import { listen } from '@tauri-apps/api/event';
 
 export type ServerStatus = 'running' | 'stopped' | 'crashed' | 'failed';
 
+/** Shape of the session_complete payload emitted from the Rust sidecar handler. */
+export interface SessionCompletePayload {
+  type: 'session_complete';
+  provider_id: string;
+  model: string;
+  student_count: number;
+  mean_score: number;
+  min_score: number;
+  max_score: number;
+  median_score: number;
+  max_possible_score: number;
+  page_url: string;
+  question_id: string;
+  custom_instructions: string;
+}
+
 /**
  * Listen for real-time log lines from the grading server sidecar.
  * Returns an unlisten function to stop listening.
@@ -16,4 +32,14 @@ export function listenServerLogs(callback: (line: string) => void) {
  */
 export function listenServerStatus(callback: (status: ServerStatus) => void) {
   return listen<ServerStatus>('server-status', (event) => callback(event.payload));
+}
+
+/**
+ * Listen for session-complete events emitted by the sidecar handler
+ * when POST /session data is captured from stdout.
+ * The Rust side already inserts into SQLite — this is for UI refresh.
+ * Returns an unlisten function.
+ */
+export function listenSessionComplete(callback: (session: SessionCompletePayload) => void) {
+  return listen<SessionCompletePayload>('session-complete', (event) => callback(event.payload));
 }

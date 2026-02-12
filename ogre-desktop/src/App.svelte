@@ -1,15 +1,30 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import Dashboard from './pages/Dashboard.svelte';
   import History from './pages/History.svelte';
   import Logs from './pages/Logs.svelte';
   import Settings from './pages/Settings.svelte';
   import SetupWizard from './pages/SetupWizard.svelte';
+  import UpdateModal from './components/UpdateModal.svelte';
   import { getSetting } from './lib/db';
+  import { listenSessionComplete } from './lib/server';
+  import { checkForUpdates, type UpdateCheckResult } from './lib/updater';
+  import type { Update } from '@tauri-apps/plugin-updater';
 
   let currentPage = 'dashboard';
   let setupComplete = false;
   let loading = true;
+
+  // Update modal state
+  let showUpdateModal = false;
+  let updateVersion = '';
+  let updateNotes = '';
+  let pendingUpdate: Update | undefined = undefined;
+
+  // Session-complete event: incremented each time a new session is recorded
+  // Child components can react to this to refresh their data
+  let sessionVersion = 0;
+  let unlistenSession: (() => void) | undefined;
 
   onMount(async () => {
     try {
@@ -21,6 +36,26 @@
     } finally {
       loading = false;
     }
+
+    // Listen for session-complete events from the sidecar
+    // Rust side already persists to DB — this just triggers UI refresh
+    unlistenSession = await listenSessionComplete(() => {
+      sessionVersion += 1;
+    });
+
+    // Check for updates after app loads (non-blocking)
+    checkForUpdates().then((result: UpdateCheckResult) => {
+      if (result.available && result.update) {
+        updateVersion = result.version ?? '';
+        updateNotes = result.notes ?? '';
+        pendingUpdate = result.update;
+        showUpdateModal = true;
+      }
+    });
+  });
+
+  onDestroy(() => {
+    if (unlistenSession) unlistenSession();
   });
 
   function navigate(page: string) {
@@ -54,9 +89,9 @@
 
     <main class="content">
       {#if currentPage === 'dashboard'}
-        <Dashboard />
+        <Dashboard {sessionVersion} />
       {:else if currentPage === 'history'}
-        <History />
+        <History {sessionVersion} />
       {:else if currentPage === 'logs'}
         <Logs />
       {:else if currentPage === 'settings'}
@@ -65,6 +100,14 @@
     </main>
   </div>
 {/if}
+
+<UpdateModal
+  isOpen={showUpdateModal}
+  version={updateVersion}
+  notes={updateNotes}
+  update={pendingUpdate}
+  on:close={() => { showUpdateModal = false; }}
+/>
 
 <style>
   /* Global styles for the app container */

@@ -4,6 +4,9 @@
   import type { GradingSession } from "../lib/db";
   import { open } from "@tauri-apps/plugin-shell";
 
+  /** Incremented by App.svelte when a new grading session is recorded */
+  export let sessionVersion = 0;
+
   let sessions: GradingSession[] = [];
   let visibleColumns: string[] = [];
   let sortColumn: string | null = "created_at";
@@ -16,6 +19,11 @@
     currentPage * pageSize,
     (currentPage + 1) * pageSize
   );
+
+  // Reactively reload when sessionVersion changes (new session recorded)
+  $: if (sessionVersion >= 0) {
+    loadData();
+  }
 
   onMount(async () => {
     await loadData();
