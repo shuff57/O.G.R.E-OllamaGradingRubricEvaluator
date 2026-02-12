@@ -359,20 +359,23 @@
 
   h1, h2 {
     margin: 0;
-    color: #2c3e50;
+    color: #1a1a1a;
     text-align: center;
+    font-size: 1.75rem;
   }
 
   .subtitle {
     text-align: center;
-    color: #7f8c8d;
+    color: #555;
     margin: -0.5rem 0 0 0;
+    font-size: 1.05rem;
   }
 
   .description {
     text-align: center;
     line-height: 1.6;
-    color: #34495e;
+    color: #333;
+    font-size: 1rem;
   }
 
   /* Actions */
@@ -426,11 +429,17 @@
     gap: 1rem;
   }
 
-  .provider-card, .model-card {
+  .provider-card,   .model-card {
     border: 1px solid #ddd;
     border-radius: 6px;
     padding: 1rem;
     transition: border-color 0.2s;
+  }
+  
+  .model-card h3 {
+    margin: 0 0 0.75rem 0;
+    color: #1a1a1a;
+    font-size: 1.1rem;
   }
 
   .provider-card.enabled {
@@ -450,6 +459,11 @@
     cursor: pointer;
     font-weight: 500;
     font-size: 1.1rem;
+    color: #1a1a1a;
+  }
+  
+  .provider-name {
+    color: #1a1a1a;
   }
 
   .checkbox-label input {
@@ -474,8 +488,9 @@
   }
 
   .form-group label {
-    font-size: 0.9rem;
-    color: #7f8c8d;
+    font-size: 0.95rem;
+    color: #333;
+    font-weight: 500;
   }
 
   .form-group input {
@@ -506,8 +521,9 @@
   }
 
   .hint {
-    font-size: 0.8rem;
-    color: #95a5a6;
+    font-size: 0.85rem;
+    color: #666;
+    font-style: italic;
   }
 
   .summary-list {
@@ -525,6 +541,16 @@
 
   .summary-item:last-child {
     border-bottom: none;
+  }
+  
+  .summary-item .label {
+    color: #333;
+    font-weight: 500;
+  }
+  
+  .summary-item .value {
+    color: #1a1a1a;
+    font-family: 'Consolas', monospace;
   }
 
   .error-message {
