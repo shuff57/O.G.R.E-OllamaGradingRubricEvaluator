@@ -48,7 +48,7 @@ Build a desktop wrapper GUI for the O.G.R.E grading server so non-technical teac
 **Identified Gaps** (addressed):
 - **Server lacks GitHub Models**: Server's providers.js only has 4 adapters; extension has 6. Scoped out of v1 — server stays as-is.
 - **Frontend framework unspecified**: Locked to **Svelte** (lightweight, Tauri ecosystem standard, no over-engineering).
-- **OAuth in desktop app**: Deferred to v2. Desktop app uses API keys only — OAuth requires Chrome extension ID redirects.
+- **OAuth in desktop app**: NOW INCLUDED in v1. Uses Tauri deep links (custom URL scheme `ogre://oauth/callback`) for OAuth flow, similar to extension but with desktop redirect handling.
 - **110MB sidecar binary in git**: `.gitignore` the binary; build from source during `tauri build` or CI. Do NOT commit.
 - **Per-student drill-down**: Deferred to v2. v1 history is summary-level table.
 - **macOS distribution**: Deferred to v2. v1 = Windows only. macOS requires Apple Developer cert for signing.
@@ -90,10 +90,8 @@ Create a Tauri 2.0 desktop application in `ogre-desktop/` that launches the grad
 - "Press any key to close" error handling (inherited from server)
 
 ### Must NOT Have (Guardrails)
-- **No OAuth flows** — API keys only in v1 (OAuth requires Chrome extension redirect URIs)
 - **No per-student drill-down** in history — summary table only (v2)
 - **No charts/graphs** — HTML table with column sorting only (v2)
-- **No model list fetching** from providers — teacher types model name (v2)
 - **No dark mode** — single light theme (v2)
 - **No macOS build** — Windows only in v1 (v2)
 - **No GitHub Models** in server — server stays 4 providers, extension handles 6 (v2)
@@ -359,7 +357,7 @@ Wave 4 (After Wave 3):
 
 ---
 
-- [ ] 3. Sidecar Integration — Spawn/Kill Grading Server
+- [x] 3. Sidecar Integration — Spawn/Kill Grading Server
 
   **What to do**:
   - Build the grading server sidecar binary:
@@ -448,7 +446,105 @@ Wave 4 (After Wave 3):
 
 ---
 
-- [ ] 4. SQLite Schema + Migrations (Provider Config + History)
+- [ ] 3.5. Tauri Deep Link Handler for OAuth Callbacks
+
+  **What to do**:
+  - Register custom URL scheme `ogre://` in `tauri.conf.json` under `app.security.dangerousRemoteDomainIpcAccess`
+  - Add deep link protocol registration in Windows installer configuration (NSIS)
+  - In `lib.rs`, implement deep link handler using `tauri::App::handle_uri_open()`:
+    ```rust
+    app.handle_uri_open(|uri| {
+      if uri.starts_with("ogre://oauth/callback") {
+        // Parse query params (code, state, provider)
+        // Emit event to frontend with OAuth code
+        app.emit_all("oauth-callback", { code, state, provider });
+      }
+    });
+    ```
+  - In `src/lib/oauth.ts`, implement OAuth flow:
+    - `signInWithGoogle()`: Opens browser to Google OAuth consent screen with redirect_uri=`ogre://oauth/callback?provider=google`
+    - `signInWithGitHub()`: Opens browser to GitHub OAuth consent screen with redirect_uri=`ogre://oauth/callback?provider=github`
+    - Listen for `oauth-callback` event from Rust
+    - Exchange authorization code for access token via backend (same as extension: `https://ogre-oauth-backend.vercel.app/api/auth/{provider}/callback`)
+    - Store tokens in SQLite via `saveOAuthToken()`
+    - `fetchAvailableModels(providerId: string, token: string)`: Fetches model list from provider API
+      - For Google Gemini: GET `https://generativelanguage.googleapis.com/v1/models` with Bearer token
+      - For GitHub Models: GET `https://models.github.ai/catalog/models` with `Authorization: Bearer <token>` and `X-GitHub-Api-Version: 2022-11-28` header
+      - Returns array of `{ id: string, name: string, description?: string }` objects
+      - Store in component state (NOT SQLite - dynamic data that changes)
+  - Use `@tauri-apps/plugin-shell` `open()` to launch browser for OAuth consent screens
+  - Backend exchange logic identical to Chrome extension's `oauth-client.js`
+
+  **Must NOT do**:
+  - Do NOT implement OAuth backend server (reuse existing Vercel deployment from extension)
+  - Do NOT store OAuth secrets in desktop app (use existing backend for token exchange)
+  - Do NOT implement PKCE flow (use authorization code flow with backend like extension)
+
+  **Recommended Agent Profile**:
+  - **Category**: `deep`
+    - Reason: Custom protocol handling in Tauri, OAuth flow state management, cross-platform deep link registration
+  - **Skills**: []
+
+  **Parallelization**:
+  - **Can Run In Parallel**: NO
+  - **Blocked By**: Tasks 2, 3
+  - **Blocks**: Tasks 6, 7 (OAuth UI depends on this)
+
+  **References**:
+
+  **Pattern References**:
+  - `oauth-client.js:74-133` — GitHub OAuth flow with backend token exchange
+  - `oauth-client.js:143-201` — Google OAuth flow with refresh token handling
+  - `OAUTH_APP_SETUP.md` — OAuth app configuration and backend API
+  - `sidepanel.js:22-44` — OAuth token retrieval and storage patterns
+
+  **External References**:
+  - Tauri deep links: https://v2.tauri.app/develop/deep-links/
+  - Tauri URI handler: https://v2.tauri.app/reference/rust/tauri/trait.app/#method.handle_uri_open
+  - OAuth authorization code flow: https://oauth.net/2/grant-types/authorization-code/
+
+  **Acceptance Criteria**:
+
+  - [ ] Custom URL scheme `ogre://` registered in tauri.conf.json
+  - [ ] Deep link handler in lib.rs emits `oauth-callback` events to frontend
+  - [ ] `lib/oauth.ts` exports `signInWithGoogle()`, `signInWithGitHub()`, and `fetchAvailableModels()` functions
+  - [ ] OAuth flow opens browser, captures callback, exchanges code for token, stores in SQLite
+  - [ ] `fetchAvailableModels()` successfully retrieves model list from Google Gemini and GitHub Models APIs
+
+  **Agent-Executed QA Scenarios:**
+
+  ```
+  Scenario: OAuth deep link captures callback
+    Tool: Bash + Playwright
+    Preconditions: Tauri app running, OAuth backend deployed
+    Steps:
+      1. Simulate deep link callback: open "ogre://oauth/callback?code=test123&state=abc&provider=google"
+      2. Monitor frontend console for `oauth-callback` event emission
+      3. Assert: Event payload contains code="test123", provider="google"
+    Expected Result: Deep link handler emits event to frontend
+    Evidence: Console log captured
+
+  Scenario: OAuth token exchange and storage
+    Tool: Bash + SQLite
+    Preconditions: OAuth backend returns valid token
+    Steps:
+      1. Call signInWithGoogle() from frontend console
+      2. Intercept network request to backend /api/auth/google/callback
+      3. Wait for token storage
+      4. Query SQLite: SELECT * FROM oauth_tokens WHERE provider_id='google-gemini'
+      5. Assert: access_token exists, not empty
+    Expected Result: OAuth token stored in database after successful exchange
+    Evidence: SQLite query result captured
+  ```
+
+  **Commit**: YES
+  - Message: `feat(desktop): add Tauri deep link handler for OAuth callbacks`
+  - Files: `ogre-desktop/src-tauri/tauri.conf.json`, `ogre-desktop/src-tauri/src/lib.rs`, `ogre-desktop/src/lib/oauth.ts`
+  - Pre-commit: `cd ogre-desktop/src-tauri && cargo check`
+
+---
+
+- [x] 4. SQLite Schema + Migrations (Provider Config + History)
 
   **What to do**:
   - Define SQLite migrations in `ogre-desktop/src-tauri/src/lib.rs` (or separate `migrations.rs`):
@@ -482,7 +578,19 @@ Wave 4 (After Wave 3):
         created_at TEXT DEFAULT (datetime('now'))
       );
       ```
-    - **Migration 3**: `app_settings` table
+    - **Migration 3**: `oauth_tokens` table
+      ```sql
+      CREATE TABLE oauth_tokens (
+        provider_id TEXT PRIMARY KEY,    -- e.g. 'google-gemini', 'github-models'
+        access_token TEXT NOT NULL,
+        refresh_token TEXT,
+        token_expiry TEXT,               -- ISO 8601 datetime
+        token_type TEXT DEFAULT 'Bearer',
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
+      ```
+    - **Migration 4**: `app_settings` table
       ```sql
       CREATE TABLE app_settings (
         key TEXT PRIMARY KEY,
@@ -500,6 +608,9 @@ Wave 4 (After Wave 3):
     - `getGradingSessions(limit, offset)` — SELECT with pagination
     - `insertGradingSession(session)` — INSERT new session
     - `getSetting(key)` / `setSetting(key, value)` — app settings CRUD
+    - `saveOAuthToken(providerId, token)` — INSERT OR REPLACE oauth_tokens
+    - `getOAuthToken(providerId)` — SELECT token by provider
+    - `clearOAuthToken(providerId)` — DELETE token
   - Enable WAL mode for crash safety: `PRAGMA journal_mode=WAL;` in first migration
 
   **Must NOT do**:
@@ -533,8 +644,8 @@ Wave 4 (After Wave 3):
 
   **Acceptance Criteria**:
 
-  - [ ] Migrations defined in Rust with 3 tables: `provider_configs`, `grading_sessions`, `app_settings`
-  - [ ] `db.ts` exports CRUD functions for providers, sessions, and settings
+  - [ ] Migrations defined in Rust with 4 tables: `provider_configs`, `grading_sessions`, `oauth_tokens`, `app_settings`
+  - [ ] `db.ts` exports CRUD functions for providers, sessions, OAuth tokens, and settings
   - [ ] WAL mode enabled
 
   **Agent-Executed QA Scenarios:**
@@ -546,10 +657,10 @@ Wave 4 (After Wave 3):
     Steps:
       1. Find SQLite DB file in %APPDATA%/com.ogre.desktop/ (or Tauri app data dir)
       2. sqlite3 <db-path> ".tables"
-      3. Assert: output contains "provider_configs", "grading_sessions", "app_settings"
+      3. Assert: output contains "provider_configs", "grading_sessions", "oauth_tokens", "app_settings"
       4. sqlite3 <db-path> "SELECT value FROM app_settings WHERE key='setup_complete'"
       5. Assert: result is "false"
-    Expected Result: All 3 tables exist, defaults populated
+    Expected Result: All 4 tables exist, defaults populated
     Evidence: sqlite3 output captured
   ```
 
@@ -560,7 +671,7 @@ Wave 4 (After Wave 3):
 
 ---
 
-- [ ] 5. Dashboard Shell + Health Indicators
+- [x] 5. Dashboard Shell + Health Indicators
 
   **What to do**:
   - Create `ogre-desktop/src/routes/` with Svelte page routing (svelte-spa-router or simple conditional rendering)
@@ -649,17 +760,21 @@ Wave 4 (After Wave 3):
     - Ollama Local: API URL field (default: http://localhost:11434), auto-detect button that probes the URL
     - OpenAI: API Key field (sk-...)
     - Anthropic (Claude): API Key field (sk-ant-...)
-    - Google Gemini: API Key field (AIza...)
+    - Google Gemini: "Sign in with Google" OAuth button OR API Key field (AIza...)
+    - GitHub Models: "Sign in with GitHub" OAuth button OR Personal Access Token field
     - Allow configuring multiple providers (check which ones to enable)
-  - **Step 3: Model** — Text input for model name per provider (user types, no fetch)
+  - **Step 3: Model** — For each configured provider:
+    - **OAuth providers (Google Gemini, GitHub Models)**: After successful OAuth sign-in, automatically fetch available models using `fetchAvailableModels()` → display in `<select>` dropdown
+    - **API key providers**: Text input for model name (user types manually)
+    - Show loading spinner while fetching models
+    - If model fetch fails, fall back to text input with error message
   - **Step 4: Confirm** — Summary of configured providers, "Save & Start" button
   - On save: Insert provider configs into SQLite, set `setup_complete = 'true'`
   - Auto-detect Ollama: Probe `http://localhost:11434/api/tags` — if responds, show green checkmark and pre-fill
 
   **Must NOT do**:
-  - Do NOT add OAuth sign-in buttons (v2)
-  - Do NOT fetch model lists from provider APIs (v2) — user types model name
   - Do NOT add provider test connection in wizard (settings page handles that)
+  - Do NOT store fetched model lists in SQLite (store in component state only - dynamic data)
 
   **Recommended Agent Profile**:
   - **Category**: `visual-engineering`
@@ -682,12 +797,23 @@ Wave 4 (After Wave 3):
   - `providers.js:354-357` — Anthropic: `apiKey` (password, required, placeholder 'sk-ant-...')
   - `providers.js:452-456` — Gemini: `apiKey` (password, required, placeholder 'AIza...')
   - `sidepanel.js:13-20` — PROVIDER_KEY_URLS — setup URLs for "Get API Key" links
+  - `sidepanel.js:1478-1549` — OAuth button rendering logic for Google Gemini and GitHub Models
+  - `oauth-client.js:74-133` — GitHub OAuth flow implementation
+  - `oauth-client.js:143-201` — Google OAuth flow implementation
+
+  **External References**:
+  - OAuth App Setup Guide: `OAUTH_APP_SETUP.md` — Backend configuration for OAuth flows
+  - OAuth Backend API: https://ogre-oauth-backend.vercel.app/api/auth/{provider}/callback
 
   **Acceptance Criteria**:
 
   - [ ] Wizard appears on first launch (setup_complete = false)
   - [ ] Wizard does NOT appear after completion (setup_complete = true)
   - [ ] Each provider has correct form fields matching providers.js config
+  - [ ] OAuth sign-in flow completes and stores token in SQLite
+  - [ ] After OAuth sign-in, model dropdown appears with fetched models
+  - [ ] Model dropdown displays loading state while fetching
+  - [ ] Selected model (from dropdown or text input) saves to provider_configs table
   - [ ] Provider configs saved to SQLite after wizard completion
 
   **Agent-Executed QA Scenarios:**
@@ -725,7 +851,16 @@ Wave 4 (After Wave 3):
   **What to do**:
   - Create `src/pages/Settings.svelte` — editable provider configuration
   - Provider cards (one per configured provider):
-    - Show current values (API URL, API Key masked, model)
+    - **For Google Gemini and GitHub Models**: Show OAuth sign-in status
+      - If signed in: Display "✅ Signed in via OAuth" with "Sign out" button
+      - If not signed in: Display "Sign in with Google/GitHub" button OR API key input field
+      - OAuth button click: Calls `signInWithOAuth(providerId)` from `lib/oauth.ts` → opens browser for OAuth flow → Tauri deep link captures callback → stores token in SQLite
+      - **Model selection for OAuth providers**: 
+        - If signed in: Show model dropdown with "Refresh Models" button
+        - Clicking "Refresh Models" calls `fetchAvailableModels()` and updates dropdown
+        - Show loading spinner while fetching models
+        - If fetch fails, fall back to text input with error message
+    - **For other providers**: Show current values (API URL, API Key masked, model as text input)
     - Edit button to toggle inline editing
     - "Test Connection" button per provider: sends a minimal request through the sidecar (POST /grade with 1 dummy student) or calls health endpoint with provider info
     - Delete/remove provider button
@@ -741,6 +876,7 @@ Wave 4 (After Wave 3):
   - Do NOT add import/export settings
   - Do NOT add provider profiles or presets
   - Do NOT add API key encryption (v2)
+  - Do NOT store fetched model lists in SQLite (store in component state only - dynamic data)
 
   **Recommended Agent Profile**:
   - **Category**: `visual-engineering`
@@ -762,7 +898,14 @@ Wave 4 (After Wave 3):
   **Acceptance Criteria**:
 
   - [ ] Settings page lists all configured providers from SQLite
-  - [ ] Can edit API key and model for existing providers
+  - [ ] Google Gemini and GitHub Models show OAuth sign-in button when not authenticated
+  - [ ] OAuth sign-in flow launches browser and captures callback via Tauri deep link
+  - [ ] OAuth tokens stored in `oauth_tokens` table after successful authentication
+  - [ ] Signed-in OAuth providers show "✅ Signed in" status with sign-out button
+  - [ ] OAuth providers show model dropdown with "Refresh Models" button
+  - [ ] Model dropdown populates with fetched models from provider API
+  - [ ] "Refresh Models" button fetches latest model list and updates dropdown
+  - [ ] Can edit API key and model for existing providers (non-OAuth)
   - [ ] Can add new providers
   - [ ] Can delete providers
   - [ ] Column visibility toggles persist across page navigation
@@ -922,7 +1065,7 @@ Wave 4 (After Wave 3):
 
 ---
 
-- [ ] 10. System Tray Integration
+- [x] 10. System Tray Integration
 
   **What to do**:
   - In `ogre-desktop/src-tauri/src/lib.rs`, add system tray setup:
@@ -997,7 +1140,7 @@ Wave 4 (After Wave 3):
 
 ---
 
-- [ ] 11. Extension Integration — Bridge Stored Config to Server
+- [x] 11. Extension Integration — Bridge Stored Config to Server
 
   **What to do**:
   - The Chrome extension already sends `provider`, `apiUrl`, `apiKey`, `model` in the POST /grade body
@@ -1078,7 +1221,7 @@ Wave 4 (After Wave 3):
 
 ---
 
-- [ ] 12. Auto-Updater Setup
+- [x] 12. Auto-Updater Setup
 
   **What to do**:
   - Add `tauri-plugin-updater` to `src-tauri/Cargo.toml`:
@@ -1163,7 +1306,7 @@ Wave 4 (After Wave 3):
 
 ---
 
-- [ ] 13. End-to-End Integration Tests
+- [x] 13. End-to-End Integration Tests
 
   **What to do**:
   - Create `ogre-desktop/tests/e2e/` directory
@@ -1237,7 +1380,7 @@ Wave 4 (After Wave 3):
 
 ---
 
-- [ ] 14. Build Configuration + Windows Installer
+- [x] 14. Build Configuration + Windows Installer
 
   **What to do**:
   - Configure `ogre-desktop/src-tauri/tauri.conf.json` for production build:
@@ -1306,7 +1449,7 @@ Wave 4 (After Wave 3):
 
 ---
 
-- [ ] 15. CI/CD Workflow for GitHub Actions
+- [x] 15. CI/CD Workflow for GitHub Actions
 
   **What to do**:
   - Create `.github/workflows/desktop-build.yml`:
