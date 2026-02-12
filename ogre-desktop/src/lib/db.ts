@@ -192,3 +192,66 @@ export async function setSetting(
     [key, value]
   );
 }
+
+// ── OAuth Tokens ────────────────────────────────────────────────────────
+
+// Re-export for convenience if needed
+export interface OAuthToken {
+  provider: string;
+  access_token: string;
+  refresh_token: string | null;
+  token_type: string | null;
+  expires_at: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Get an OAuth token by provider.
+ */
+export async function getOAuthToken(provider: string): Promise<OAuthToken | null> {
+  const database = await initDB();
+  const rows = await database.select<OAuthToken[]>(
+    "SELECT * FROM oauth_tokens WHERE provider = $1",
+    [provider]
+  );
+  return rows.length > 0 ? rows[0] : null;
+}
+
+/**
+ * Save (upsert) an OAuth token.
+ */
+export async function saveOAuthToken(token: {
+  provider: string;
+  access_token: string;
+  refresh_token?: string | null;
+  token_type?: string | null;
+  expires_at?: number | null;
+}): Promise<void> {
+  const database = await initDB();
+  await database.execute(
+    `INSERT INTO oauth_tokens (provider, access_token, refresh_token, token_type, expires_at, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, datetime('now'), datetime('now'))
+     ON CONFLICT(provider) DO UPDATE SET
+       access_token = $2,
+       refresh_token = $3,
+       token_type = $4,
+       expires_at = $5,
+       updated_at = datetime('now')`,
+    [
+      token.provider,
+      token.access_token,
+      token.refresh_token ?? null,
+      token.token_type ?? null,
+      token.expires_at ?? null,
+    ]
+  );
+}
+
+/**
+ * Delete an OAuth token by provider.
+ */
+export async function deleteOAuthToken(provider: string): Promise<void> {
+  const database = await initDB();
+  await database.execute("DELETE FROM oauth_tokens WHERE provider = $1", [provider]);
+}

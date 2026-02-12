@@ -29,3 +29,7 @@ src-tauri/gen/
 
 # Sidecar binaries (placed here at build time)
 src-tauri/binaries/*.exe
+
+# Signing keys (private key must NEVER be committed)
+*.key
+*.key.pub

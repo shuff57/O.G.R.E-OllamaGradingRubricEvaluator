@@ -1,12 +1,19 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import { saveProviderConfig, setSetting } from '../lib/db';
+  import { signInWithGoogle, signInWithGitHub, fetchAvailableModels } from '../lib/oauth';
 
   const dispatch = createEventDispatcher();
 
   let currentStep = 1;
   let loading = false;
   let error = '';
+
+  // OAuth State
+  let fetchedModels: Record<string, Array<{id: string, name: string}>> = {};
+  let fetchingModels: Record<string, boolean> = {};
+  let modelFetchErrors: Record<string, string> = {};
+  let oauthSignedIn: Record<string, boolean> = {};
 
   let providers = [
     { 
@@ -24,7 +31,7 @@
       id: 'ollama_local', 
       name: 'Ollama Local', 
       enabled: false, 
-      apiKey: '', // Not typically needed for local, but keeping field for consistency
+      apiKey: '', 
       apiUrl: 'http://localhost:11434', 
       model: '', 
       keyUrl: '',
@@ -51,14 +58,28 @@
       placeholderKey: 'sk-ant-...'
     },
     { 
-      id: 'gemini', 
+      id: 'google-gemini', 
       name: 'Google Gemini', 
       enabled: false, 
       apiKey: '', 
       apiUrl: '', 
       model: '', 
       keyUrl: 'https://aistudio.google.com/apikey',
-      placeholderKey: 'AIza...'
+      placeholderKey: 'AIza...',
+      oauth: true,
+      useApiKey: false
+    },
+    {
+      id: 'github-models',
+      name: 'GitHub Models',
+      enabled: false, 
+      apiKey: '', 
+      apiUrl: '', 
+      model: '', 
+      keyUrl: 'https://github.com/settings/tokens',
+      placeholderKey: 'ghp_...',
+      oauth: true,
+      useApiKey: false
     }
   ];
 
@@ -81,6 +102,54 @@
     }
   }
 
+  async function handleOAuthSignIn(providerId: string) {
+    loading = true;
+    error = '';
+    try {
+      if (providerId === 'google-gemini') {
+        await signInWithGoogle();
+        oauthSignedIn['google-gemini'] = true;
+      } else if (providerId === 'github-models') {
+        await signInWithGitHub();
+        oauthSignedIn['github-models'] = true;
+      }
+      
+      // Auto fetch models after sign in
+      await fetchModels(providerId);
+    } catch (err: any) {
+      error = err.message || 'Sign in failed';
+      // Fallback to API key if sign in fails? User can just toggle manually.
+    } finally {
+      loading = false;
+    }
+  }
+
+  async function fetchModels(providerId: string) {
+    fetchingModels[providerId] = true;
+    fetchingModels = fetchingModels; // trigger update
+    modelFetchErrors[providerId] = '';
+    
+    try {
+      const oauthProvider = providerId === 'google-gemini' ? 'google' : 'github';
+      // @ts-ignore - fetchAvailableModels expects specific string literal type
+      const models = await fetchAvailableModels(oauthProvider);
+      fetchedModels[providerId] = models.map(m => ({ id: m, name: m }));
+      fetchedModels = fetchedModels; // trigger update
+    } catch (err: any) {
+      console.error(err);
+      modelFetchErrors[providerId] = 'Failed to fetch models.';
+      modelFetchErrors = modelFetchErrors;
+    } finally {
+      fetchingModels[providerId] = false;
+      fetchingModels = fetchingModels;
+    }
+  }
+
+  function toggleAuthMethod(provider: any) {
+    provider.useApiKey = !provider.useApiKey;
+    providers = providers;
+  }
+
   function nextStep() {
     error = '';
     
@@ -100,21 +169,23 @@
         if (p.id === 'ollama_local' && !p.apiUrl) {
           error = 'Ollama Local requires an API URL.'; return;
         }
-        if (['openai', 'anthropic', 'gemini'].includes(p.id) && !p.apiKey) {
-          error = `${p.name} requires an API Key.`; return;
+        // OAuth providers validation
+        if ((p.id === 'google-gemini' || p.id === 'github-models')) {
+           // If using API key, check it. If using OAuth, check if signed in.
+           // @ts-ignore
+           if (p.useApiKey) {
+             if (!p.apiKey) { error = `${p.name} requires an API Key.`; return; }
+           } else {
+             if (!oauthSignedIn[p.id]) { error = `Please sign in to ${p.name} or use an API Key.`; return; }
+           }
+        } else if (['openai', 'anthropic'].includes(p.id) && !p.apiKey) {
+           error = `${p.name} requires an API Key.`; return;
         }
       }
     }
 
     if (currentStep === 3) {
-       // Validate Step 3
-       // Model names are technically optional in some contexts (could default), 
-       // but the prompt implies collecting them. Let's make them optional but encouraged?
-       // The plan says "Text input for model name". Let's assume user might leave it blank to use defaults.
-       // However, strictly adhering to "configure" might imply we want them.
-       // Let's verify if empty is okay. Usually explicit is better.
-       // For now, I'll allow empty and assume the backend/provider handles defaults or the user knows what they are doing.
-       // Actually, let's just proceed.
+       // Validate Step 3 if needed
     }
 
     if (currentStep < 4) {
@@ -211,7 +282,38 @@
                     </div>
                   {/if}
                   
-                  {#if provider.id !== 'ollama_local'}
+                  {#if provider.oauth}
+                    <!-- OAuth Provider UI -->
+                    {#if provider.useApiKey}
+                       <div class="form-group">
+                        <label>API Key</label>
+                        <input type="password" bind:value={provider.apiKey} placeholder={provider.placeholderKey}>
+                        <div class="flex-row">
+                             {#if provider.keyUrl}
+                               <a href={provider.keyUrl} target="_blank" rel="noopener noreferrer" class="help-link">Get API Key</a>
+                             {/if}
+                             <button class="link-btn" on:click={() => toggleAuthMethod(provider)}>Or sign in with {provider.name}</button>
+                        </div>
+                      </div>
+                    {:else}
+                       <div class="oauth-section">
+                          {#if oauthSignedIn[provider.id]}
+                             <div class="signed-in-badge">
+                                <span>✅ Signed in</span>
+                             </div>
+                             {#if fetchedModels[provider.id]?.length}
+                                <span class="hint">{fetchedModels[provider.id].length} models available</span>
+                             {/if}
+                          {:else}
+                             <button class="btn-oauth" on:click={() => handleOAuthSignIn(provider.id)} disabled={loading}>
+                                {#if loading}Signing in...{:else}Sign in with {provider.name}{/if}
+                             </button>
+                          {/if}
+                          <button class="link-btn" on:click={() => toggleAuthMethod(provider)}>Or use API Key</button>
+                       </div>
+                    {/if}
+                  {:else if provider.id !== 'ollama_local'}
+                    <!-- Standard API Key Provider -->
                     <div class="form-group">
                       <label>API Key</label>
                       <input type="password" bind:value={provider.apiKey} placeholder={provider.placeholderKey}>
@@ -249,8 +351,33 @@
               <h3>{provider.name}</h3>
               <div class="form-group">
                 <label>Model Name</label>
-                <input type="text" bind:value={provider.model} placeholder="e.g. gpt-4o, llama3, claude-3-sonnet">
-                <span class="hint">Check your provider's documentation for exact model names.</span>
+                
+                {#if provider.oauth && !provider.useApiKey && oauthSignedIn[provider.id]}
+                    <!-- OAuth Dropdown -->
+                    {#if fetchingModels[provider.id]}
+                        <div class="loading-models">Fetching models...</div>
+                    {:else if fetchedModels[provider.id]?.length > 0}
+                        <select bind:value={provider.model} class="model-select">
+                           <option value="" disabled>Select a model</option>
+                           {#each fetchedModels[provider.id] as m}
+                              <option value={m.id}>{m.name}</option>
+                           {/each}
+                        </select>
+                        <div class="flex-row">
+                          <button class="link-btn small" on:click={() => fetchModels(provider.id)}>Refresh Models</button>
+                        </div>
+                    {:else}
+                         <div class="error-container">
+                             <span class="error-text">{modelFetchErrors[provider.id] || 'No models found.'}</span>
+                             <input type="text" bind:value={provider.model} placeholder="Enter model ID manually">
+                             <button class="link-btn small" on:click={() => fetchModels(provider.id)}>Retry Fetch</button>
+                         </div>
+                    {/if}
+                {:else}
+                   <!-- Text Input -->
+                   <input type="text" bind:value={provider.model} placeholder="e.g. gpt-4o, llama3, claude-3-sonnet">
+                   <span class="hint">Check your provider's documentation for exact model names.</span>
+                {/if}
               </div>
             </div>
           {/each}
@@ -557,5 +684,97 @@
     color: #e74c3c;
     text-align: center;
     font-weight: 500;
+  }
+
+  /* OAuth Styles */
+  .flex-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0.5rem;
+  }
+
+  .link-btn {
+    background: none;
+    border: none;
+    color: #3498db;
+    text-decoration: underline;
+    cursor: pointer;
+    font-size: 0.85rem;
+    padding: 0;
+  }
+  
+  .link-btn.small {
+    font-size: 0.8rem;
+    margin-top: 0.25rem;
+  }
+
+  .oauth-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 4px;
+    border: 1px dashed #cbd5e0;
+  }
+
+  .btn-oauth {
+    background-color: white;
+    color: #333;
+    border: 1px solid #ddd;
+    padding: 0.6rem 1.2rem;
+    border-radius: 4px;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  }
+
+  .btn-oauth:hover {
+    background-color: #fbfdff;
+    border-color: #b0c4de;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.08);
+  }
+
+  .signed-in-badge {
+    background-color: #d4edda;
+    color: #155724;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .loading-models {
+    color: #666;
+    font-style: italic;
+    padding: 0.5rem;
+  }
+
+  .model-select {
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 1rem;
+    width: 100%;
+    background-color: white;
+  }
+
+  .error-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .error-text {
+    color: #e74c3c;
+    font-size: 0.85rem;
   }
 </style>

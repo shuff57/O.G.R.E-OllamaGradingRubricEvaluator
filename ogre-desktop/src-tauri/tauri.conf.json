@@ -33,7 +33,15 @@
     ],
     "externalBin": [
       "binaries/grading-server"
-    ]
+    ],
+    "createUpdaterArtifacts": true
   },
-  "plugins": {}
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMzQjFGQkY4OEQwNEQzN0YKUldSLzB3U04rUHV4dzZJRG4rVnl5VFFkcWNRa3hWRHBXL3FuajRYV0MyT3ByQ2pBYjR1U0RhYVEK",
+      "endpoints": [
+        "https://github.com/shuff57/O.G.R.E-OllamaGradingReviewEvaluator/releases/latest/download/latest.json"
+      ]
+    }
+  }
 }
