@@ -447,6 +447,58 @@ async function batchGrade(tabId, provider, model, options = {}) {
     await clearBatchGradeState(pageUrl);
   }
 
+  // ===========================================================================
+  // Session Reporting (to Desktop App via Server)
+  // ===========================================================================
+  if (graded.length > 0) {
+    try {
+      const scores = graded.map(g => g.score).sort((a, b) => a - b);
+      const sum = scores.reduce((a, b) => a + b, 0);
+      const mean = sum / scores.length;
+      const min = scores[0];
+      const max = scores[scores.length - 1];
+      const median = scores.length % 2 === 0
+        ? (scores[scores.length / 2 - 1] + scores[scores.length / 2]) / 2
+        : scores[Math.floor(scores.length / 2)];
+
+      // Try to determine provider ID
+      let providerId = 'unknown';
+      if (provider && typeof provider.id === 'string') {
+        providerId = provider.id;
+      } else if (provider && provider.constructor && provider.constructor.name) {
+        providerId = provider.constructor.name.replace('Provider', '').toLowerCase();
+      }
+
+      // Prepare session data matching the DB schema
+      const sessionData = {
+        provider_id: providerId,
+        model: model || 'unknown',
+        student_count: graded.length,
+        mean_score: parseFloat(mean.toFixed(2)),
+        min_score: min,
+        max_score: max,
+        median_score: parseFloat(median.toFixed(2)),
+        max_possible_score: parseFloat(rubric.maxScore || 10),
+        page_url: pageUrl || 'unknown',
+        question_id: pageUrl ? (pageUrl.match(/[?&]q=(\d+)/) || [])[1] || '' : '',
+        custom_instructions: customInstructions || ''
+      };
+
+      // Send to local grading server (which relays to desktop app via stdout)
+      // Fire-and-forget: if server is down, we just continue
+      fetch('http://localhost:3456/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(sessionData)
+      }).catch(() => {
+        // Server likely not running, ignore
+      });
+
+    } catch (err) {
+      console.warn('Session reporting failed:', err);
+    }
+  }
+
   const summary = { graded, skipped, errors };
 
   if (onComplete) {

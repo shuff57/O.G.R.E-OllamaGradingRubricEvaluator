@@ -238,6 +238,29 @@ app.post('/grade', async (c) => {
   }
 });
 
+/**
+ * Session logging endpoint (for desktop app history)
+ * POST /session
+ * Body: { provider, model, studentCount, meanScore, ... }
+ */
+app.post('/session', async (c) => {
+  try {
+    const body = await c.req.json();
+    
+    // Log specialized JSON for the desktop app sidecar handler to pick up
+    // This allows the desktop app to persist grading history to SQLite
+    console.log(JSON.stringify({
+      type: 'session_complete',
+      ...body
+    }));
+    
+    return c.json({ ok: true });
+  } catch (error) {
+    console.error(`[${new Date().toLocaleTimeString()}] Session log error:`, error.message);
+    return c.json({ error: 'Failed to log session' }, 500);
+  }
+});
+
 // Helper function: Wait for keypress before exiting (keeps window open on error)
 function waitForKeypress() {
   console.log('\nPress any key to exit...');
