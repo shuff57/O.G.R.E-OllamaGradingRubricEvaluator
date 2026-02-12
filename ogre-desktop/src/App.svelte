@@ -1,39 +1,70 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import Dashboard from './pages/Dashboard.svelte';
   import History from './pages/History.svelte';
   import Logs from './pages/Logs.svelte';
   import Settings from './pages/Settings.svelte';
+  import SetupWizard from './pages/SetupWizard.svelte';
+  import { getSetting } from './lib/db';
 
   let currentPage = 'dashboard';
+  let setupComplete = false;
+  let loading = true;
+
+  onMount(async () => {
+    try {
+      const setting = await getSetting('setup_complete');
+      setupComplete = setting === 'true';
+    } catch (e) {
+      console.error('Failed to load setup status', e);
+      setupComplete = false;
+    } finally {
+      loading = false;
+    }
+  });
 
   function navigate(page: string) {
     currentPage = page;
   }
+
+  function handleSetupComplete() {
+    setupComplete = true;
+    navigate('dashboard');
+  }
 </script>
 
-<div class="app-container">
-  <aside class="sidebar">
-    <div class="brand">O.G.R.E</div>
-    <nav>
-      <button class:active={currentPage === 'dashboard'} on:click={() => navigate('dashboard')}>Dashboard</button>
-      <button class:active={currentPage === 'history'} on:click={() => navigate('history')}>History</button>
-      <button class:active={currentPage === 'logs'} on:click={() => navigate('logs')}>Logs</button>
-      <button class:active={currentPage === 'settings'} on:click={() => navigate('settings')}>Settings</button>
-    </nav>
-  </aside>
+{#if loading}
+  <div class="loading-screen">
+    <div class="spinner"></div>
+    <p>Loading O.G.R.E...</p>
+  </div>
+{:else if !setupComplete}
+  <SetupWizard on:complete={handleSetupComplete} />
+{:else}
+  <div class="app-container">
+    <aside class="sidebar">
+      <div class="brand">O.G.R.E</div>
+      <nav>
+        <button class:active={currentPage === 'dashboard'} on:click={() => navigate('dashboard')}>Dashboard</button>
+        <button class:active={currentPage === 'history'} on:click={() => navigate('history')}>History</button>
+        <button class:active={currentPage === 'logs'} on:click={() => navigate('logs')}>Logs</button>
+        <button class:active={currentPage === 'settings'} on:click={() => navigate('settings')}>Settings</button>
+      </nav>
+    </aside>
 
-  <main class="content">
-    {#if currentPage === 'dashboard'}
-      <Dashboard />
-    {:else if currentPage === 'history'}
-      <History />
-    {:else if currentPage === 'logs'}
-      <Logs />
-    {:else if currentPage === 'settings'}
-      <Settings />
-    {/if}
-  </main>
-</div>
+    <main class="content">
+      {#if currentPage === 'dashboard'}
+        <Dashboard />
+      {:else if currentPage === 'history'}
+        <History />
+      {:else if currentPage === 'logs'}
+        <Logs />
+      {:else if currentPage === 'settings'}
+        <Settings />
+      {/if}
+    </main>
+  </div>
+{/if}
 
 <style>
   /* Global styles for the app container */
@@ -42,6 +73,31 @@
     padding: 0;
     font-family: 'Segoe UI', sans-serif;
     background-color: #f5f5f5;
+  }
+
+  .loading-screen {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background-color: #2c3e50;
+    color: white;
+  }
+  
+  .spinner {
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top: 4px solid white;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    margin-bottom: 1rem;
+  }
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
   }
 
   .app-container {
