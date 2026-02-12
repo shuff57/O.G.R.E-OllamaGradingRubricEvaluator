@@ -1,11 +1,11 @@
 /**
- * providers.js - Multi-provider adapter module
- *
- * Supports 4 AI providers with normalized interfaces:
+ * providers.js - Multi-Provider Adapter for O.G.R.E Extension
+ * 
+ * Supported providers:
  *   - ollama-cloud:   User-provided Ollama Cloud endpoint
  *   - ollama-local:   Local Ollama at localhost:11434
  *   - openai:         OpenAI API
- *   - github-models:  GitHub Models (Azure-backed)
+ *   - github-models:  GitHub Copilot (api.githubcopilot.com)
  *
  * Each provider exposes:
  *   getConfig()                        -> { id, name, fields[] }
@@ -270,7 +270,7 @@ const githubModels = {
   getConfig() {
     return {
       id: 'github-models',
-      name: 'GitHub Models',
+      name: 'GitHub Copilot',
       fields: [
         { key: 'apiKey', label: 'GitHub Token', type: 'password', required: false, placeholder: 'ghp_...' },
         { key: 'oauthToken', label: 'OAuth Token', type: 'hidden' },
@@ -282,24 +282,29 @@ const githubModels = {
     const token = config.oauthToken || config.apiKey;
     const headers = {
       'Authorization': `Bearer ${token}`,
+      'Copilot-Integration-Id': 'vscode-chat',
     };
-    const res = await proxyFetch('https://models.inference.ai.azure.com/models', { headers });
+    const res = await proxyFetch('https://api.githubcopilot.com/models', { headers });
     if (!res.ok) throw new Error(`Failed to list models: ${res.status} ${res.statusText}`);
     const data = await res.json();
-    // GitHub Models returns an array directly or { value: [...] }
-    const models = Array.isArray(data) ? data : (data.value || data.data || []);
+    // Copilot API returns { data: [...] } with OpenAI-style format
+    const models = Array.isArray(data) ? data : (data.data || data.value || []);
     return models
-      .map((m) => ({ id: m.name || m.id, name: m.friendly_name || m.name || m.id }))
+      .map((m) => ({ id: m.id || m.name, name: m.id || m.name }))
       .sort((a, b) => a.name.localeCompare(b.name));
   },
 
   async testConnection(config) {
     try {
       const token = config.oauthToken || config.apiKey;
-      const headers = { 'Authorization': `Bearer ${token}` };
-      const res = await proxyFetch('https://models.inference.ai.azure.com/models', { headers });
+      const headers = {
+        'Authorization': `Bearer ${token}`,
+        'Copilot-Integration-Id': 'vscode-chat',
+      };
+      const res = await proxyFetch('https://api.githubcopilot.com/models', { headers });
       if (res.ok) return { ok: true };
       if (res.status === 401) return { ok: false, error: '401 Unauthorized. Check your GitHub Token or OAuth token.' };
+      if (res.status === 403) return { ok: false, error: '403 Forbidden. You may need a GitHub Copilot subscription.' };
       return { ok: false, error: `${res.status} ${res.statusText}` };
     } catch (err) {
       return { ok: false, error: err.message };
@@ -308,10 +313,16 @@ const githubModels = {
 
   buildChatRequest(config, messages, options = {}) {
     const token = config.oauthToken || config.apiKey;
+    const hasImages = messages.some(m => m.images && m.images.length > 0);
     const headers = {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`,
+      'Copilot-Integration-Id': 'vscode-chat',
     };
+    // Add vision header if request contains images
+    if (hasImages) {
+      headers['Copilot-Vision-Request'] = 'true';
+    }
 
     // Transform messages to OpenAI vision format if images are present
     const formattedMessages = messages.map(m => {
@@ -340,7 +351,7 @@ const githubModels = {
     if (options.temperature !== undefined) body.temperature = options.temperature;
     if (options.max_tokens !== undefined) body.max_tokens = options.max_tokens;
 
-    return { url: 'https://models.inference.ai.azure.com/chat/completions', headers, body };
+    return { url: 'https://api.githubcopilot.com/chat/completions', headers, body };
   },
 };
 

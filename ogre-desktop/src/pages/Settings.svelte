@@ -2,7 +2,15 @@
   import { onMount } from 'svelte';
   import { getProviderConfigs, saveProviderConfig, deleteProviderConfig, getSetting, setSetting, getOAuthToken } from '../lib/db';
   import type { ProviderConfig } from '../lib/db';
-  import { signInWithGoogle, signInWithGitHub, fetchAvailableModels, signOut } from '../lib/oauth';
+  import { 
+    startGitHubDeviceFlow, 
+    startChatGPTDeviceFlow, 
+    startClaudeCodePasteFlow, 
+    startGoogleDeviceFlow, 
+    signOut, 
+    fetchAvailableModels 
+  } from '../lib/oauth';
+  import type { DeviceFlowResult, CodePasteFlowResult } from '../lib/oauth';
 
   let providers: ProviderConfig[] = [];
   let editingProvider: string | null = null;
@@ -15,21 +23,28 @@
   let newProviderKey = '';
   let newProviderModel = '';
 
-  // OAuth State
+  // OAuth / Auth Flow State
   let oauthStatus: Record<string, boolean> = {};
   let fetchedModels: Record<string, string[]> = {};
   let fetchingModels: Record<string, boolean> = {};
   let modelFetchErrors: Record<string, string> = {};
   let useApiKey: Record<string, boolean> = {}; // Track if user wants to use API key even if OAuth is available
 
+  // Active authentication flows
+  let deviceFlows: Record<string, DeviceFlowResult> = {};
+  let claudeFlow: CodePasteFlowResult | null = null;
+  let claudeCodeInput = '';
+  let authLoading: Record<string, boolean> = {};
+  let authErrors: Record<string, string> = {};
+
   // Available providers
   const PROVIDER_OPTIONS = [
-    { id: 'ollama-cloud', name: 'Ollama Cloud', requiresUrl: true, requiresKey: true, defaultUrl: '', oauth: false },
-    { id: 'ollama-local', name: 'Ollama Local', requiresUrl: true, requiresKey: false, defaultUrl: 'http://localhost:11434', oauth: false },
-    { id: 'openai', name: 'OpenAI', requiresUrl: false, requiresKey: true, defaultUrl: '', oauth: false },
-    { id: 'anthropic', name: 'Anthropic (Claude)', requiresUrl: false, requiresKey: true, defaultUrl: '', oauth: false },
-    { id: 'google-gemini', name: 'Google Gemini', requiresUrl: false, requiresKey: true, defaultUrl: '', oauth: true },
-    { id: 'github-models', name: 'GitHub Models', requiresUrl: false, requiresKey: true, defaultUrl: '', oauth: true },
+    { id: 'ollama-cloud', name: 'Ollama Cloud', requiresUrl: true, requiresKey: true, defaultUrl: '', canSignIn: false },
+    { id: 'ollama-local', name: 'Ollama Local', requiresUrl: true, requiresKey: false, defaultUrl: 'http://localhost:11434', canSignIn: false },
+    { id: 'openai', name: 'OpenAI', requiresUrl: false, requiresKey: true, defaultUrl: '', canSignIn: true },
+    { id: 'anthropic', name: 'Anthropic (Claude)', requiresUrl: false, requiresKey: true, defaultUrl: '', canSignIn: true },
+    { id: 'google-gemini', name: 'Google Gemini', requiresUrl: false, requiresKey: true, defaultUrl: '', canSignIn: true },
+    { id: 'github-models', name: 'GitHub Models', requiresUrl: false, requiresKey: true, defaultUrl: '', canSignIn: true },
   ];
 
   // Available columns for history table
@@ -46,8 +61,10 @@
   ];
 
   onMount(async () => {
+    console.log('[Settings] onMount: Component mounted, starting initialization');
     await loadProviders();
     await loadColumnVisibility();
+    
     await checkOAuthStatus();
   });
 
@@ -60,11 +77,27 @@
     visibleColumns = columnsJson ? JSON.parse(columnsJson) : ['timestamp', 'provider', 'model', 'studentCount', 'meanScore', 'pageUrl'];
   }
 
+  function getProviderKey(id: string): "github" | "openai" | "anthropic" | "google" | null {
+    if (id === 'github-models') return 'github';
+    if (id === 'openai') return 'openai';
+    if (id === 'anthropic') return 'anthropic';
+    if (id === 'google-gemini') return 'google';
+    return null;
+  }
+
   async function checkOAuthStatus() {
+    console.log('[Settings] checkOAuthStatus: Starting OAuth status check');
     for (const opt of PROVIDER_OPTIONS) {
-      if (opt.oauth) {
-        const providerId = opt.id === 'google-gemini' ? 'google' : (opt.id === 'github-models' ? 'github' : opt.id);
-        const token = await getOAuthToken(providerId);
+      if (opt.canSignIn) {
+        const providerKey = getProviderKey(opt.id);
+        console.log(`[Settings] Checking provider: ${opt.id}, mapped key: ${providerKey}`);
+        if (!providerKey) continue;
+        
+        const token = await getOAuthToken(providerKey);
+        console.log(`[Settings] getOAuthToken('${providerKey}') returned:`, token ? 'TOKEN FOUND' : 'NULL');
+        if (token) {
+          console.log(`[Settings] Token details - expires_at: ${token.expires_at}, created_at: ${token.created_at}`);
+        }
         oauthStatus[opt.id] = !!token;
         if (token) {
            // If we have a token, fetch models automatically
@@ -72,35 +105,134 @@
         }
       }
     }
+    oauthStatus = { ...oauthStatus }; // Trigger reactivity after all checks
+    console.log('[Settings] checkOAuthStatus: Complete. Status:', oauthStatus);
   }
 
-  async function handleOAuthSignIn(providerId: string) {
+  async function startAuth(providerId: string) {
+    authErrors[providerId] = '';
+    authLoading[providerId] = true;
+    authErrors = { ...authErrors }; // Trigger reactivity
+    authLoading = { ...authLoading }; // Trigger reactivity
+    
     try {
-      if (providerId === 'google-gemini') {
-        await signInWithGoogle();
-        oauthStatus['google-gemini'] = true;
-        fetchModels('google-gemini');
-      } else if (providerId === 'github-models') {
-        await signInWithGitHub();
-        oauthStatus['github-models'] = true;
-        fetchModels('github-models');
+      if (providerId === 'github-models') {
+        const flow = await startGitHubDeviceFlow();
+        handleDeviceFlow(providerId, flow);
+      } else if (providerId === 'openai') {
+        const flow = await startChatGPTDeviceFlow();
+        handleDeviceFlow(providerId, flow);
+      } else if (providerId === 'google-gemini') {
+        const flow = await startGoogleDeviceFlow();
+        handleDeviceFlow(providerId, flow);
+      } else if (providerId === 'anthropic') {
+        const flow = await startClaudeCodePasteFlow();
+        claudeFlow = flow;
+        claudeCodeInput = '';
       }
     } catch (error) {
-      console.error('Sign in failed:', error);
-      alert('Sign in failed: ' + error);
+      console.error('Auth start failed:', error);
+      authErrors[providerId] = error instanceof Error ? error.message : String(error);
+      authErrors = { ...authErrors }; // Trigger reactivity
+    } finally {
+      authLoading[providerId] = false;
+      authLoading = { ...authLoading }; // Trigger reactivity
     }
+  }
+
+  async function handleDeviceFlow(providerId: string, flow: DeviceFlowResult) {
+    deviceFlows[providerId] = flow;
+    
+    // Start polling in background
+    try {
+      const result = await flow.poll();
+      console.log(`[Settings] Poll result for ${providerId}:`, result);
+      if (result.success) {
+        console.log(`[Settings] Setting oauthStatus[${providerId}] = true`);
+        oauthStatus[providerId] = true;
+        oauthStatus = { ...oauthStatus }; // Trigger reactivity
+        console.log(`[Settings] oauthStatus after update:`, oauthStatus);
+        fetchModels(providerId);
+        // Clear flow state
+        if (deviceFlows[providerId]) {
+          delete deviceFlows[providerId];
+          deviceFlows = { ...deviceFlows }; // Trigger reactivity
+        }
+      } else if (result.error !== 'Cancelled') {
+        authErrors[providerId] = result.error || 'Authentication failed';
+        authErrors = { ...authErrors }; // Trigger reactivity
+      }
+    } catch (error) {
+      console.error(`[Settings] Poll error for ${providerId}:`, error);
+      if (deviceFlows[providerId]) { // Only report if not cancelled
+        authErrors[providerId] = error instanceof Error ? error.message : String(error);
+      }
+    } finally {
+      // Cleanup if flow still exists
+      if (deviceFlows[providerId]) {
+        delete deviceFlows[providerId];
+        deviceFlows = { ...deviceFlows };
+      }
+    }
+  }
+
+  async function submitClaudeCode() {
+    if (!claudeFlow || !claudeCodeInput) return;
+    
+    authLoading['anthropic'] = true;
+    authErrors['anthropic'] = '';
+    authLoading = { ...authLoading }; // Trigger reactivity
+    authErrors = { ...authErrors }; // Trigger reactivity
+    
+    try {
+      const result = await claudeFlow.exchangeCode(claudeCodeInput);
+      if (result.success) {
+        oauthStatus['anthropic'] = true;
+        oauthStatus = { ...oauthStatus }; // Trigger reactivity
+        fetchModels('anthropic');
+        claudeFlow = null;
+        claudeCodeInput = '';
+      } else {
+        authErrors['anthropic'] = result.error || 'Code exchange failed';
+        authErrors = { ...authErrors }; // Trigger reactivity
+      }
+    } catch (error) {
+      authErrors['anthropic'] = error instanceof Error ? error.message : String(error);
+      authErrors = { ...authErrors }; // Trigger reactivity
+    } finally {
+      authLoading['anthropic'] = false;
+      authLoading = { ...authLoading }; // Trigger reactivity
+    }
+  }
+
+  function cancelAuth(providerId: string) {
+    if (providerId === 'anthropic' && claudeFlow) {
+      claudeFlow.cancel();
+      claudeFlow = null;
+    } else if (deviceFlows[providerId]) {
+      deviceFlows[providerId].cancel();
+      delete deviceFlows[providerId];
+      deviceFlows = { ...deviceFlows };
+    }
+    authLoading[providerId] = false;
+    authErrors[providerId] = '';
+    authLoading = { ...authLoading }; // Trigger reactivity
+    authErrors = { ...authErrors }; // Trigger reactivity
   }
 
   async function handleSignOut(providerId: string) {
     try {
-      const oauthProvider = providerId === 'google-gemini' ? 'google' : 'github';
-      await signOut(oauthProvider as 'google' | 'github');
-      oauthStatus[providerId] = false;
-      fetchedModels[providerId] = [];
+      const providerKey = getProviderKey(providerId);
+      if (providerKey) {
+        await signOut(providerKey);
+        oauthStatus[providerId] = false;
+        oauthStatus = { ...oauthStatus }; // Trigger reactivity
+        fetchedModels[providerId] = [];
+      }
     } catch (error) {
        console.error('Sign out failed:', error);
-       // Still update UI to reflect "signed out" locally
        oauthStatus[providerId] = false;
+       oauthStatus = { ...oauthStatus }; // Trigger reactivity
     }
   }
 
@@ -108,9 +240,17 @@
     fetchingModels[providerId] = true;
     modelFetchErrors[providerId] = '';
     try {
-      const oauthProvider = providerId === 'google-gemini' ? 'google' : 'github';
-      const models = await fetchAvailableModels(oauthProvider as 'google' | 'github');
+      const providerKey = getProviderKey(providerId);
+      if (!providerKey) throw new Error('Invalid provider for model fetching');
+      
+      const models = await fetchAvailableModels(providerKey);
       fetchedModels[providerId] = models;
+      
+      // If editing this provider, update its model if empty
+      const provider = providers.find(p => p.id === providerId);
+      if (provider && !provider.model && models.length > 0) {
+        provider.model = models[0];
+      }
     } catch (error) {
       console.error('Failed to fetch models:', error);
       modelFetchErrors[providerId] = error instanceof Error ? error.message : 'Unknown error';
@@ -243,29 +383,66 @@
             {/if}
             
             {#if option?.requiresKey}
-              {#if option.oauth}
+              {#if option.canSignIn}
                  <div class="oauth-section">
                    {#if oauthStatus[provider.id] && !useApiKey[provider.id]}
+                     <!-- SIGNED IN STATE -->
                      <div class="oauth-status success">
-                        <span class="icon">✅</span> Signed in via OAuth
+                        <span class="icon">✅</span> Signed in
                         <button class="small" on:click={() => handleSignOut(provider.id)}>Sign out</button>
                      </div>
+                   {:else if deviceFlows[provider.id]}
+                     <!-- DEVICE FLOW ACTIVE -->
+                     <div class="device-flow-container">
+                       <p class="instructions">1. Go to: <a href={deviceFlows[provider.id].verificationUrl} target="_blank">{deviceFlows[provider.id].verificationUrl}</a></p>
+                       <p class="instructions">2. Enter code:</p>
+                       <div class="code-display">
+                          {deviceFlows[provider.id].userCode}
+                          <button class="icon-btn small" title="Copy" on:click={() => navigator.clipboard.writeText(deviceFlows[provider.id].userCode)}>📋</button>
+                       </div>
+                       <div class="polling-indicator">
+                          <span class="spinner">⏳</span> Waiting for authorization...
+                       </div>
+                       <button class="cancel-btn" on:click={() => cancelAuth(provider.id)}>Cancel</button>
+                     </div>
+                   {:else if provider.id === 'anthropic' && claudeFlow}
+                     <!-- CLAUDE CODE PASTE ACTIVE -->
+                     <div class="device-flow-container">
+                       <p class="instructions">Authentication page opened in browser.</p>
+                       <p class="instructions">Please copy the code from Claude and paste it here:</p>
+                       <div class="input-row">
+                          <input type="text" bind:value={claudeCodeInput} placeholder="Paste code here (sk-ant-...)" />
+                          <button class="primary small" disabled={!claudeCodeInput || authLoading['anthropic']} on:click={submitClaudeCode}>
+                            {#if authLoading['anthropic']}...{:else}Submit Code{/if}
+                          </button>
+                       </div>
+                       <button class="cancel-btn" on:click={() => cancelAuth(provider.id)}>Cancel</button>
+                     </div>
                    {:else}
+                     <!-- NOT SIGNED IN / ACTIONS -->
                      <div class="oauth-actions">
+                        {#if authErrors[provider.id]}
+                          <div class="error-banner">{authErrors[provider.id]}</div>
+                        {/if}
+
                         {#if !useApiKey[provider.id]}
-                           <button class="oauth-btn" on:click={() => handleOAuthSignIn(provider.id)}>
-                             Sign in with {option.name.includes('Google') ? 'Google' : 'GitHub'}
+                           <button class="oauth-btn" disabled={authLoading[provider.id]} on:click={() => startAuth(provider.id)}>
+                             {#if authLoading[provider.id]}
+                               Loading...
+                             {:else}
+                               Sign in with {option.name.split(' ')[0]}
+                             {/if}
                            </button>
                            <div class="divider"><span>OR</span></div>
                         {/if}
                         
                         {#if useApiKey[provider.id]}
                            <label>
-                              API Key
+                              API Key (Optional)
                               <input type="password" bind:value={provider.api_key} placeholder="sk-..." />
                            </label>
                            <button class="link-btn" on:click={() => useApiKey[provider.id] = false}>
-                             Use OAuth instead
+                             Use Sign In instead
                            </button>
                         {:else}
                            <button class="link-btn" on:click={() => useApiKey[provider.id] = true}>
@@ -285,7 +462,7 @@
 
             <label>
               Model
-              {#if option?.oauth && oauthStatus[provider.id] && !useApiKey[provider.id]}
+              {#if option?.canSignIn && (oauthStatus[provider.id] || (useApiKey[provider.id] && provider.api_key))}
                   <div class="model-select-container">
                     {#if fetchingModels[provider.id]}
                         <div class="loading">Loading models...</div>
@@ -343,10 +520,10 @@
                 <span class="value">{'*'.repeat(20)}</span>
               </div>
             {/if}
-            {#if option?.oauth && oauthStatus[provider.id]}
+            {#if option?.canSignIn && oauthStatus[provider.id]}
                <div class="info-row">
                  <span class="label">Auth:</span>
-                 <span class="value success">✅ OAuth Signed In</span>
+                 <span class="value success">✅ Signed In</span>
                </div>
             {/if}
             <div class="info-row">
@@ -395,11 +572,11 @@
             {/if}
 
             {#if newOption?.requiresKey}
-               {#if newOption.oauth}
+               {#if newOption.canSignIn}
                   <!-- Simple view for add form, detailed view in edit -->
-                  <p class="hint">You can sign in with OAuth after saving.</p>
+                  <p class="hint">You can sign in after saving.</p>
                   <label>
-                    API Key (Optional if using OAuth)
+                    API Key (Optional if using Auth)
                     <input type="password" bind:value={newProviderKey} placeholder="sk-..." />
                   </label>
                {:else}
@@ -817,5 +994,98 @@
   .value.success {
     color: #00796b;
     font-weight: 600;
+  }
+  .oauth-btn:disabled {
+    background: #555;
+    cursor: wait;
+  }
+  
+  .error-banner {
+    color: #d32f2f;
+    background: #ffebee;
+    padding: 0.5rem;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    border: 1px solid #ffcdd2;
+  }
+  
+  /* Device Flow UI */
+  .device-flow-container {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    padding: 1rem;
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+  }
+  
+  .instructions {
+    margin: 0;
+    font-size: 0.95rem;
+    color: #444;
+  }
+  
+  .code-display {
+    background: #24292e;
+    color: #fff;
+    padding: 0.75rem;
+    border-radius: 4px;
+    font-family: 'Consolas', monospace;
+    font-size: 1.2rem;
+    letter-spacing: 1px;
+    text-align: center;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+    position: relative;
+  }
+  
+  .code-display .icon-btn {
+    position: absolute;
+    right: 0.5rem;
+    background: rgba(255,255,255,0.1);
+    border: none;
+    color: white;
+    padding: 0.3rem;
+  }
+  
+  .code-display .icon-btn:hover {
+    background: rgba(255,255,255,0.2);
+  }
+  
+  .polling-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    color: #666;
+    font-size: 0.9rem;
+    font-style: italic;
+  }
+  
+  .spinner {
+    animation: spin 2s linear infinite;
+    display: inline-block;
+  }
+  
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  
+  .cancel-btn {
+    align-self: center;
+    color: #666;
+    text-decoration: underline;
+    background: none;
+    border: none;
+    font-size: 0.9rem;
+  }
+  
+  .input-row {
+    display: flex;
+    gap: 0.5rem;
   }
 </style>

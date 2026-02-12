@@ -18,6 +18,46 @@
     },
     "shell:allow-stdin-write",
     "shell:allow-kill",
-    "sql:default"
+    "sql:default",
+    "sql:allow-load",
+    "sql:allow-execute",
+    "sql:allow-select",
+    "sql:allow-close",
+    "updater:default",
+    "updater:allow-check",
+    "updater:allow-download-and-install",
+    "http:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        {
+          "url": "https://github.com/*"
+        },
+        {
+          "url": "https://auth.openai.com/*"
+        },
+        {
+          "url": "https://api.openai.com/*"
+        },
+        {
+          "url": "https://claude.ai/*"
+        },
+        {
+          "url": "https://console.anthropic.com/*"
+        },
+        {
+          "url": "https://api.anthropic.com/*"
+        },
+        {
+          "url": "https://oauth2.googleapis.com/*"
+        },
+        {
+          "url": "https://generativelanguage.googleapis.com/*"
+        },
+        {
+          "url": "https://api.githubcopilot.com/*"
+        }
+      ]
+    }
   ]
 }

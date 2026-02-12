@@ -1,202 +1,503 @@
-import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-shell";
-import { saveOAuthToken, getOAuthToken, deleteOAuthToken, type OAuthToken } from "./db";
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+import { saveOAuthToken, getOAuthToken, deleteOAuthToken } from "./db";
 
-// Use the existing Vercel backend
-const OAUTH_BACKEND_URL = "https://ogre-oauth-backend.vercel.app";
+// ── Types ────────────────────────────────────────────────────────────────
 
-// Placeholders - user should replace these with actual Client IDs
-const GOOGLE_CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com"; 
-const GITHUB_CLIENT_ID = "YOUR_GITHUB_CLIENT_ID";
-
-// Redirect URIs must match what is registered in the OAuth provider
-const GOOGLE_REDIRECT_URI = "ogre://oauth/callback/google";
-const GITHUB_REDIRECT_URI = "ogre://oauth/callback/github";
-
-export async function signInWithGoogle(): Promise<string> {
-  const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-  authUrl.searchParams.set('client_id', GOOGLE_CLIENT_ID);
-  authUrl.searchParams.set('redirect_uri', GOOGLE_REDIRECT_URI);
-  authUrl.searchParams.set('response_type', 'code');
-  authUrl.searchParams.set('scope', 'https://www.googleapis.com/auth/generative-language.retriever');
-  authUrl.searchParams.set('access_type', 'offline');
-  authUrl.searchParams.set('prompt', 'consent');
-  
-  const state = crypto.randomUUID();
-  authUrl.searchParams.set('state', state);
-
-  await open(authUrl.toString());
-
-  return new Promise<string>((resolve, reject) => {
-    // Timeout to prevent hanging listener
-    const timeout = setTimeout(() => {
-        unlisten.then(u => u());
-        reject(new Error("Timeout waiting for OAuth callback"));
-    }, 300000); // 5 minutes
-
-    const unlisten = listen<string>("oauth-callback", async (event) => {
-      const urlStr = event.payload;
-      try {
-        const url = new URL(urlStr);
-        
-        // Verify it's for google
-        if (!url.pathname.includes("google")) return; 
-
-        clearTimeout(timeout);
-
-        const code = url.searchParams.get("code");
-        const returnedState = url.searchParams.get("state");
-
-        if (returnedState !== state) {
-           console.warn("State mismatch in OAuth callback");
-        }
-
-        if (!code) {
-           throw new Error("No code found in callback");
-        }
-
-        // Exchange Code for Token via Backend
-        const response = await fetch(`${OAUTH_BACKEND_URL}/api/auth/google/callback`, {
-           method: "POST",
-           headers: { "Content-Type": "application/json" },
-           body: JSON.stringify({ 
-               code,
-               redirect_uri: GOOGLE_REDIRECT_URI 
-           })
-        });
-
-        const data = await response.json();
-        
-        if (!data.success) {
-            throw new Error(data.error || "Failed to exchange token");
-        }
-
-        await saveOAuthToken({
-            provider: "google",
-            access_token: data.access_token,
-            refresh_token: data.refresh_token,
-            expires_at: Date.now() + (data.expires_in * 1000),
-            token_type: "Bearer"
-        });
-
-        resolve(data.access_token);
-        unlisten.then(u => u()); 
-      } catch (err) {
-        reject(err);
-        unlisten.then(u => u());
-      }
-    });
-  });
+export interface DeviceFlowResult {
+  userCode: string;
+  verificationUrl: string;
+  poll: () => Promise<{ success: boolean; accessToken?: string; error?: string }>;
+  cancel: () => void;
 }
 
-export async function signInWithGitHub(): Promise<string> {
-  const authUrl = new URL('https://github.com/login/oauth/authorize');
-  authUrl.searchParams.set('client_id', GITHUB_CLIENT_ID);
-  authUrl.searchParams.set('redirect_uri', GITHUB_REDIRECT_URI);
-  authUrl.searchParams.set('scope', 'repo user');
-  authUrl.searchParams.set('state', crypto.randomUUID());
+export interface CodePasteFlowResult {
+  authUrl: string;
+  exchangeCode: (code: string) => Promise<{ success: boolean; accessToken?: string; error?: string }>;
+  cancel: () => void;
+}
 
-  await open(authUrl.toString());
+// ── Helpers ──────────────────────────────────────────────────────────────
 
-  return new Promise<string>((resolve, reject) => {
-     const timeout = setTimeout(() => {
-        unlisten.then(u => u());
-        reject(new Error("Timeout waiting for OAuth callback"));
-    }, 300000);
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-     const unlisten = listen<string>("oauth-callback", async (event) => {
-        const urlStr = event.payload;
-        try {
-            const url = new URL(urlStr);
-            if (!url.pathname.includes("github")) return;
+const POLLING_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const POLLING_SAFETY_MARGIN_MS = 3000;
 
-            clearTimeout(timeout);
-            
-            const code = url.searchParams.get("code");
-            if (!code) {
-                throw new Error("No code found");
-            }
+/** Generate a PKCE code_verifier: 128 random characters from unreserved charset. */
+function generateCodeVerifier(): string {
+  const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
+  const randomValues = crypto.getRandomValues(new Uint8Array(128));
+  return Array.from(randomValues, (v) => charset[v % charset.length]).join("");
+}
 
-            const response = await fetch(`${OAUTH_BACKEND_URL}/api/auth/github/callback`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ code }) 
-            });
+/** Generate a PKCE code_challenge: SHA-256 hash of verifier, base64url-encoded. */
+async function generateCodeChallenge(verifier: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(verifier);
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  // base64url encode (no padding)
+  const base64 = btoa(String.fromCharCode(...new Uint8Array(hash)));
+  return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
 
-            const data = await response.json();
-            if (!data.success) throw new Error(data.error);
+/** Generate a random state parameter: 32 hex characters. */
+function generateState(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
 
+// ── GitHub Device Flow ───────────────────────────────────────────────────
+
+// GitHub CLI OAuth App (public client for device flow)
+// This is the official GitHub CLI app ID - safe to use for device flow
+// See: https://github.com/cli/cli/blob/trunk/pkg/cmd/auth/login.go
+const GITHUB_CLIENT_ID = "178c6fc778ccc68e1d6a";
+const GITHUB_DEVICE_CODE_URL = "https://github.com/login/device/code";
+const GITHUB_ACCESS_TOKEN_URL = "https://github.com/login/oauth/access_token";
+
+export async function startGitHubDeviceFlow(): Promise<DeviceFlowResult> {
+  const res = await tauriFetch(GITHUB_DEVICE_CODE_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      client_id: GITHUB_CLIENT_ID,
+      scope: "read:user",
+    }),
+  });
+
+  if (!res.ok) throw new Error(`GitHub device code request failed: ${res.status}`);
+  const data = await res.json();
+
+  console.log("GitHub device code response:", data);
+
+  const {
+    device_code,
+    user_code,
+    verification_uri,
+    interval: rawInterval,
+  } = data;
+
+  console.log("Opening verification URL:", verification_uri);
+
+  let interval = (rawInterval ?? 5) * 1000 + POLLING_SAFETY_MARGIN_MS;
+  let cancelled = false;
+
+  await open(verification_uri);
+
+  return {
+    userCode: user_code,
+    verificationUrl: verification_uri,
+    cancel: () => { cancelled = true; },
+    poll: async () => {
+      const deadline = Date.now() + POLLING_TIMEOUT_MS;
+
+      while (!cancelled && Date.now() < deadline) {
+        await sleep(interval);
+        if (cancelled) return { success: false, error: "Cancelled" };
+
+        const tokenRes = await tauriFetch(GITHUB_ACCESS_TOKEN_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            client_id: GITHUB_CLIENT_ID,
+            device_code,
+            grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+          }),
+        });
+
+        console.log("GitHub token response status:", tokenRes.status);
+        const responseText = await tokenRes.text();
+        console.log("GitHub token response body:", responseText);
+        const tokenData = JSON.parse(responseText);
+
+        if (tokenData.error === "authorization_pending") continue;
+        if (tokenData.error === "slow_down") {
+          interval += 5000; // RFC 8628 §3.5
+          continue;
+        }
+        if (tokenData.error) {
+          return { success: false, error: tokenData.error_description || tokenData.error };
+        }
+
+        if (tokenData.access_token) {
+          console.log("[OAuth] GitHub access token received, saving to DB...");
+          try {
             await saveOAuthToken({
-                provider: "github",
-                access_token: data.access_token,
-                token_type: data.token_type
+              provider: "github",
+              access_token: tokenData.access_token,
+              token_type: tokenData.token_type ?? "Bearer",
             });
-
-            resolve(data.access_token);
-            unlisten.then(u => u());
-        } catch (err) {
-            reject(err);
-            unlisten.then(u => u());
+            console.log("[OAuth] Token saved successfully to DB");
+          } catch (err) {
+            console.error("[OAuth] Failed to save token to DB:", err);
+            return { success: false, error: `Failed to save token: ${err}` };
+          }
+          console.log("[OAuth] Returning success result");
+          return { success: true, accessToken: tokenData.access_token };
         }
-     });
+      }
+
+      return { success: false, error: cancelled ? "Cancelled" : "Timeout waiting for authorization" };
+    },
+  };
+}
+
+// ── ChatGPT / OpenAI Device Flow ─────────────────────────────────────────
+
+const OPENAI_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
+const OPENAI_DEVICE_CODE_URL = "https://auth.openai.com/api/accounts/deviceauth/usercode";
+const OPENAI_DEVICE_TOKEN_URL = "https://auth.openai.com/api/accounts/deviceauth/token";
+const OPENAI_TOKEN_EXCHANGE_URL = "https://auth.openai.com/oauth/token";
+const OPENAI_AUDIENCE = "https://api.openai.com/v1";
+
+export async function startChatGPTDeviceFlow(): Promise<DeviceFlowResult> {
+  const res = await tauriFetch(OPENAI_DEVICE_CODE_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ client_id: OPENAI_CLIENT_ID }),
   });
-}
 
-export async function signOut(provider: "google" | "github"): Promise<void> {
-    const token = await getOAuthToken(provider);
-    if (provider === "google" && token?.access_token) {
-        try {
-            await fetch(`https://oauth2.googleapis.com/revoke?token=${token.access_token}`, {
-                method: "POST"
-            });
-        } catch (e) {
-            console.warn("Revoke failed", e);
+  if (!res.ok) throw new Error(`OpenAI device code request failed: ${res.status}`);
+  const data = await res.json();
+
+  const { device_auth_id, user_code, interval: rawInterval } = data;
+  const interval = (rawInterval ?? 5) * 1000;
+  let cancelled = false;
+
+  const verificationUrl = `https://auth.openai.com/codex/device?user_code=${user_code}`;
+  await open(verificationUrl);
+
+  return {
+    userCode: user_code,
+    verificationUrl,
+    cancel: () => { cancelled = true; },
+    poll: async () => {
+      const deadline = Date.now() + POLLING_TIMEOUT_MS;
+
+      while (!cancelled && Date.now() < deadline) {
+        await sleep(interval);
+        if (cancelled) return { success: false, error: "Cancelled" };
+
+        const tokenRes = await tauriFetch(OPENAI_DEVICE_TOKEN_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            device_auth_id,
+            grant_type: "device_code",
+          }),
+        });
+
+        const tokenData = await tokenRes.json();
+
+        if (tokenData.error === "authorization_pending") continue;
+        if (tokenData.error === "slow_down") {
+          await sleep(5000);
+          continue;
         }
-    }
-    await deleteOAuthToken(provider);
+        if (tokenData.error) {
+          return { success: false, error: tokenData.error_description || tokenData.error };
+        }
+
+        // Step 1 success: we have an id_token (JWT), now exchange for access_token
+        const id_token = tokenData.id_token;
+        if (!id_token) {
+          return { success: false, error: "No id_token received from device auth" };
+        }
+
+        // Step 2: Token exchange — id_token → access_token
+        const exchangeRes = await tauriFetch(OPENAI_TOKEN_EXCHANGE_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
+            subject_token: id_token,
+            subject_token_type: "urn:ietf:params:oauth:token-type:id_token",
+            audience: OPENAI_AUDIENCE,
+            client_id: OPENAI_CLIENT_ID,
+          }),
+        });
+
+        if (!exchangeRes.ok) {
+          const errText = await exchangeRes.text();
+          return { success: false, error: `Token exchange failed: ${errText}` };
+        }
+
+        const exchangeData = await exchangeRes.json();
+        if (!exchangeData.access_token) {
+          return { success: false, error: "No access_token in token exchange response" };
+        }
+
+        await saveOAuthToken({
+          provider: "openai",
+          access_token: exchangeData.access_token,
+          token_type: "Bearer",
+        });
+
+        return { success: true, accessToken: exchangeData.access_token };
+      }
+
+      return { success: false, error: cancelled ? "Cancelled" : "Timeout waiting for authorization" };
+    },
+  };
 }
 
-export async function fetchAvailableModels(provider: "google" | "github"): Promise<string[]> {
-    const tokenData = await getOAuthToken(provider);
-    if (!tokenData) throw new Error("Not signed in");
+// ── Claude / Anthropic PKCE Code-Paste Flow ──────────────────────────────
 
-    let accessToken = tokenData.access_token;
+const ANTHROPIC_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
+const ANTHROPIC_AUTH_URL = "https://claude.ai/oauth/authorize";
+const ANTHROPIC_TOKEN_URL = "https://console.anthropic.com/v1/oauth/token";
+const ANTHROPIC_REDIRECT_URI = "http://localhost";
+const ANTHROPIC_SCOPE = "org:create_api_key";
 
-    // Refresh if needed (Google only)
-    if (provider === "google" && tokenData.expires_at && Date.now() > tokenData.expires_at) {
-        if (!tokenData.refresh_token) throw new Error("Token expired and no refresh token");
-        
-        const response = await fetch(`${OAUTH_BACKEND_URL}/api/auth/google/refresh`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ refresh_token: tokenData.refresh_token })
+export async function startClaudeCodePasteFlow(): Promise<CodePasteFlowResult> {
+  const code_verifier = generateCodeVerifier();
+  const code_challenge = await generateCodeChallenge(code_verifier);
+  const state = generateState();
+
+  const authUrl = new URL(ANTHROPIC_AUTH_URL);
+  authUrl.searchParams.set("response_type", "code");
+  authUrl.searchParams.set("client_id", ANTHROPIC_CLIENT_ID);
+  authUrl.searchParams.set("redirect_uri", ANTHROPIC_REDIRECT_URI);
+  authUrl.searchParams.set("code_challenge", code_challenge);
+  authUrl.searchParams.set("code_challenge_method", "S256");
+  authUrl.searchParams.set("scope", ANTHROPIC_SCOPE);
+  authUrl.searchParams.set("state", state);
+
+  const authUrlStr = authUrl.toString();
+  await open(authUrlStr);
+
+  let cancelled = false;
+
+  return {
+    authUrl: authUrlStr,
+    cancel: () => { cancelled = true; },
+    exchangeCode: async (code: string) => {
+      if (cancelled) return { success: false, error: "Cancelled" };
+
+      try {
+        const res = await tauriFetch(ANTHROPIC_TOKEN_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            grant_type: "authorization_code",
+            client_id: ANTHROPIC_CLIENT_ID,
+            code,
+            redirect_uri: ANTHROPIC_REDIRECT_URI,
+            code_verifier,
+          }),
         });
-        
-        const data = await response.json();
-        if (!data.success) throw new Error("Refresh failed");
-        
-        accessToken = data.access_token;
+
+        if (!res.ok) {
+          const errText = await res.text();
+          return { success: false, error: `Token exchange failed (${res.status}): ${errText}` };
+        }
+
+        const data = await res.json();
+        if (!data.access_token) {
+          return { success: false, error: "No access_token in response" };
+        }
+
         await saveOAuthToken({
-            ...tokenData,
-            access_token: accessToken,
-            expires_at: Date.now() + (data.expires_in * 1000)
+          provider: "anthropic",
+          access_token: data.access_token,
+          token_type: "Bearer",
         });
+
+        return { success: true, accessToken: data.access_token };
+      } catch (err: any) {
+        return { success: false, error: err.message || String(err) };
+      }
+    },
+  };
+}
+
+// ── Google Device Flow ───────────────────────────────────────────────────
+
+// TODO: Create a Google OAuth Client at https://console.cloud.google.com/apis/credentials
+// — select "TVs and Limited Input Devices" type, then replace this value
+const GOOGLE_CLIENT_ID = "TODO_REGISTER_GOOGLE_OAUTH_CLIENT";
+const GOOGLE_DEVICE_CODE_URL = "https://oauth2.googleapis.com/device/code";
+const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const GOOGLE_SCOPE = "https://www.googleapis.com/auth/generative-language.retriever";
+
+export async function startGoogleDeviceFlow(): Promise<DeviceFlowResult> {
+  const body = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: GOOGLE_SCOPE,
+  });
+
+  const res = await tauriFetch(GOOGLE_DEVICE_CODE_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+  });
+
+  if (!res.ok) throw new Error(`Google device code request failed: ${res.status}`);
+  const data = await res.json();
+
+  const {
+    device_code,
+    user_code,
+    verification_url,
+    interval: rawInterval,
+  } = data;
+
+  let interval = (rawInterval ?? 5) * 1000 + POLLING_SAFETY_MARGIN_MS;
+  let cancelled = false;
+
+  await open(verification_url);
+
+  return {
+    userCode: user_code,
+    verificationUrl: verification_url,
+    cancel: () => { cancelled = true; },
+    poll: async () => {
+      const deadline = Date.now() + POLLING_TIMEOUT_MS;
+
+      while (!cancelled && Date.now() < deadline) {
+        await sleep(interval);
+        if (cancelled) return { success: false, error: "Cancelled" };
+
+        const tokenRes = await tauriFetch(GOOGLE_TOKEN_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            client_id: GOOGLE_CLIENT_ID,
+            device_code,
+            grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+          }),
+        });
+
+        const tokenData = await tokenRes.json();
+
+        if (tokenData.error === "authorization_pending") continue;
+        if (tokenData.error === "slow_down") {
+          interval += 5000; // RFC 8628 §3.5
+          continue;
+        }
+        if (tokenData.error) {
+          return { success: false, error: tokenData.error_description || tokenData.error };
+        }
+
+        if (tokenData.access_token) {
+          await saveOAuthToken({
+            provider: "google",
+            access_token: tokenData.access_token,
+            refresh_token: tokenData.refresh_token ?? null,
+            token_type: tokenData.token_type ?? "Bearer",
+            expires_at: tokenData.expires_in
+              ? Date.now() + tokenData.expires_in * 1000
+              : null,
+          });
+          return { success: true, accessToken: tokenData.access_token };
+        }
+      }
+
+      return { success: false, error: cancelled ? "Cancelled" : "Timeout waiting for authorization" };
+    },
+  };
+}
+
+// ── Model Fetching ───────────────────────────────────────────────────────
+
+export async function fetchAvailableModels(
+  provider: "github" | "openai" | "anthropic" | "google",
+  token?: string
+): Promise<string[]> {
+  // Use provided token or look up stored one
+  let accessToken = token;
+  if (!accessToken) {
+    // For GitHub, try API key from provider config first (OAuth doesn't work for models API)
+    if (provider === "github") {
+      const { getProviderConfig } = await import("./db");
+      const config = await getProviderConfig("github-models");
+      if (config?.api_key) {
+        accessToken = config.api_key;
+      }
+    }
+    
+    // Fall back to OAuth token if no API key
+    if (!accessToken) {
+      const tokenData = await getOAuthToken(provider);
+      if (!tokenData) throw new Error(`Not signed in to ${provider}`);
+      accessToken = tokenData.access_token;
+    }
+  }
+
+  switch (provider) {
+    case "github": {
+      const res = await tauriFetch("https://api.githubcopilot.com/models", {
+        headers: { 
+          Authorization: `Bearer ${accessToken}`,
+          "Copilot-Integration-Id": "vscode-chat",
+        },
+      });
+      if (!res.ok) throw new Error(`Failed to fetch GitHub models: ${res.status}`);
+      const json = await res.json();
+      // Copilot API returns { data: [...] } with OpenAI-style format
+      const models = Array.isArray(json) ? json : (json.data || json.value || []);
+      return models
+        .map((m: any) => ({ id: m.id || m.name, name: m.id || m.name }))
+        .map((m: any) => m.id);
     }
 
-    if (provider === "google") {
-        const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models", {
-            headers: { Authorization: `Bearer ${accessToken}` }
-        });
-        if (!res.ok) throw new Error("Failed to fetch models");
-        const json = await res.json();
-        return json.models?.map((m: any) => m.name.replace("models/", "")) || [];
-    } else {
-        // GitHub Models (Azure AI inference)
-        const res = await fetch("https://models.github.ai/inference/v1/models", {
-             headers: { Authorization: `Bearer ${accessToken}` }
-        });
-        if (!res.ok) throw new Error("Failed to fetch GitHub models");
-        const json = await res.json();
-        return json.data?.map((m: any) => m.id) || [];
+    case "openai": {
+      const res = await tauriFetch("https://api.openai.com/v1/models", {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) throw new Error(`Failed to fetch OpenAI models: ${res.status}`);
+      const json = await res.json();
+      return json.data?.map((m: any) => m.id) || [];
     }
+
+    case "anthropic": {
+      const res = await tauriFetch("https://api.anthropic.com/v1/models", {
+        headers: {
+          "x-api-key": accessToken,
+          "anthropic-version": "2023-06-01",
+        },
+      });
+      if (!res.ok) throw new Error(`Failed to fetch Anthropic models: ${res.status}`);
+      const json = await res.json();
+      return json.data?.map((m: any) => m.id) || [];
+    }
+
+    case "google": {
+      const res = await tauriFetch("https://generativelanguage.googleapis.com/v1beta/models", {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) throw new Error(`Failed to fetch Google models: ${res.status}`);
+      const json = await res.json();
+      return json.models?.map((m: any) => m.name.replace("models/", "")) || [];
+    }
+
+    default:
+      throw new Error(`Unknown provider: ${provider}`);
+  }
+}
+
+// ── Sign Out ─────────────────────────────────────────────────────────────
+
+export async function signOut(provider: string): Promise<void> {
+  // Best-effort token revocation for Google
+  if (provider === "google") {
+    const tokenData = await getOAuthToken(provider);
+    if (tokenData?.access_token) {
+      try {
+        await tauriFetch(`https://oauth2.googleapis.com/revoke?token=${tokenData.access_token}`, {
+          method: "POST",
+        });
+      } catch {
+        // Revocation is best-effort
+      }
+    }
+  }
+  await deleteOAuthToken(provider);
 }
