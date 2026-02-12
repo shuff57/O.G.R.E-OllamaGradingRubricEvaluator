@@ -1,47 +1,106 @@
-<script>
-  import svelteLogo from './assets/svelte.svg'
-  import viteLogo from '/vite.svg'
-  import Counter from './lib/Counter.svelte'
+<script lang="ts">
+  import Dashboard from './pages/Dashboard.svelte';
+  import History from './pages/History.svelte';
+  import Logs from './pages/Logs.svelte';
+  import Settings from './pages/Settings.svelte';
+
+  let currentPage = 'dashboard';
+
+  function navigate(page: string) {
+    currentPage = page;
+  }
 </script>
 
-<main>
-  <div>
-    <a href="https://vite.dev" target="_blank" rel="noreferrer">
-      <img src={viteLogo} class="logo" alt="Vite Logo" />
-    </a>
-    <a href="https://svelte.dev" target="_blank" rel="noreferrer">
-      <img src={svelteLogo} class="logo svelte" alt="Svelte Logo" />
-    </a>
-  </div>
-  <h1>Vite + Svelte</h1>
+<div class="app-container">
+  <aside class="sidebar">
+    <div class="brand">O.G.R.E</div>
+    <nav>
+      <button class:active={currentPage === 'dashboard'} on:click={() => navigate('dashboard')}>Dashboard</button>
+      <button class:active={currentPage === 'history'} on:click={() => navigate('history')}>History</button>
+      <button class:active={currentPage === 'logs'} on:click={() => navigate('logs')}>Logs</button>
+      <button class:active={currentPage === 'settings'} on:click={() => navigate('settings')}>Settings</button>
+    </nav>
+  </aside>
 
-  <div class="card">
-    <Counter />
-  </div>
-
-  <p>
-    Check out <a href="https://github.com/sveltejs/kit#readme" target="_blank" rel="noreferrer">SvelteKit</a>, the official Svelte app framework powered by Vite!
-  </p>
-
-  <p class="read-the-docs">
-    Click on the Vite and Svelte logos to learn more
-  </p>
-</main>
+  <main class="content">
+    {#if currentPage === 'dashboard'}
+      <Dashboard />
+    {:else if currentPage === 'history'}
+      <History />
+    {:else if currentPage === 'logs'}
+      <Logs />
+    {:else if currentPage === 'settings'}
+      <Settings />
+    {/if}
+  </main>
+</div>
 
 <style>
-  .logo {
-    height: 6em;
-    padding: 1.5em;
-    will-change: filter;
-    transition: filter 300ms;
+  /* Global styles for the app container */
+  :global(body) {
+    margin: 0;
+    padding: 0;
+    font-family: 'Segoe UI', sans-serif;
+    background-color: #f5f5f5;
   }
-  .logo:hover {
-    filter: drop-shadow(0 0 2em #646cffaa);
+
+  .app-container {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
   }
-  .logo.svelte:hover {
-    filter: drop-shadow(0 0 2em #ff3e00aa);
+
+  .sidebar {
+    width: 250px;
+    background-color: #2c3e50;
+    color: white;
+    display: flex;
+    flex-direction: column;
+    padding: 1rem;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.1);
   }
-  .read-the-docs {
-    color: #888;
+
+  .brand {
+    font-size: 1.5rem;
+    font-weight: bold;
+    margin-bottom: 2rem;
+    padding-left: 1rem;
+    color: #ecf0f1;
+  }
+
+  nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  nav button {
+    background: none;
+    border: none;
+    color: #bdc3c7;
+    text-align: left;
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    font-size: 1rem;
+    border-radius: 4px;
+    transition: all 0.2s;
+  }
+
+  nav button:hover {
+    background-color: #34495e;
+    color: white;
+  }
+
+  nav button.active {
+    background-color: #3498db;
+    color: white;
+    font-weight: 500;
+  }
+
+  .content {
+    flex: 1;
+    overflow-y: auto;
+    background-color: white;
   }
 </style>

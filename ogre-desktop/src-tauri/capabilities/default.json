@@ -11,7 +11,7 @@
       "identifier": "shell:allow-spawn",
       "allow": [
         {
-          "name": "binaries/grading-server",
+          "name": "grading-server",
           "sidecar": true
         }
       ]

@@ -17,7 +17,7 @@ fn spawn_sidecar(app_handle: &tauri::AppHandle, restart_count: Arc<Mutex<u32>>) 
     let handle = app_handle.clone();
     let sidecar_command = handle
         .shell()
-        .sidecar("binaries/grading-server")
+        .sidecar("grading-server")
         .expect("failed to create sidecar command");
 
     let (mut rx, child) = sidecar_command
@@ -183,18 +183,16 @@ INSERT OR IGNORE INTO app_settings (key, value) VALUES ('history_visible_columns
             spawn_sidecar(&handle, restart_count);
             Ok(())
         })
-        .on_window_event(|window, event| {
-            // Kill sidecar when the app window is destroyed (closed)
-            if let tauri::WindowEvent::Destroyed = event {
-                let app_handle = window.app_handle();
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            // Kill sidecar when the app exits
+            if let tauri::RunEvent::Exit = event {
                 let state = app_handle.state::<Mutex<SidecarState>>();
                 let mut guard = state.lock().unwrap();
                 if let Some(child) = guard.child.take() {
                     let _ = child.kill();
-                    let _ = app_handle.emit("server-status", "stopped");
                 }
             }
-        })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        });
 }
