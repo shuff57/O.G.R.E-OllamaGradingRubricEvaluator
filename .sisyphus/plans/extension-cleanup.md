@@ -541,7 +541,7 @@ Task 4: Mode Selector Icons + Final Polish (independent but best done last)
 
 ---
 
-- [ ] 3. Hide All Auth UI When Desktop Is Connected
+- [x] 3. Hide All Auth UI When Desktop Is Connected
 
   **What to do**:
 

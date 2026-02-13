@@ -1895,6 +1895,7 @@ function updateProviderUI(connected) {
   const manualContent = document.getElementById('manualModeContent');
   const disconnectedBanner = document.getElementById('manualModeBanner');
   const desktopStatusBanner = document.getElementById('desktopStatusBanner');
+  const body = document.body;
 
   if (!desktopContent || !manualContent) return;
 
@@ -1902,20 +1903,46 @@ function updateProviderUI(connected) {
     // Show Simplified UI
     desktopContent.style.display = 'block';
     manualContent.style.display = 'none';
+    body.classList.add('desktop-connected');
+    body.classList.remove('desktop-disconnected');
     
     if (desktopStatusBanner) {
         desktopStatusBanner.className = 'status-banner status-success';
         desktopStatusBanner.innerHTML = '<i class="bi bi-check-circle-fill"></i> Connected to Desktop App';
     }
+    
+    // Update info display
+    updateDesktopProviderInfo();
   } else {
     // Show Manual UI
     desktopContent.style.display = 'none';
     manualContent.style.display = 'block';
+    body.classList.add('desktop-disconnected');
+    body.classList.remove('desktop-connected');
     
     // Show warning banner in manual mode if we tried to connect but failed
     if (disconnectedBanner) {
       disconnectedBanner.style.display = 'flex'; // Use flex to match layout
     }
+    
+    // Ensure provider dropdown shows current selection
+    const providerSelect = document.getElementById('providerSelect');
+    if (providerSelect && currentProviderId) {
+      providerSelect.value = currentProviderId;
+    }
+  }
+}
+
+/**
+ * Updates the read-only desktop provider info display.
+ */
+function updateDesktopProviderInfo() {
+  const providerNameEl = document.getElementById('desktopProviderName');
+  const modelNameEl = document.getElementById('desktopModelName');
+  
+  if (window.desktopProviderInfo) {
+    if (providerNameEl) providerNameEl.textContent = window.desktopProviderInfo.provider || '—';
+    if (modelNameEl) modelNameEl.textContent = window.desktopProviderInfo.model || '—';
   }
 }
 
@@ -2034,6 +2061,16 @@ async function activateFallbackMode() {
  */
 function applyDesktopProviders(providers) {
   desktopConnected = true;
+  
+  // Populate desktop info for UI
+  const activeProvider = providers.find(p => p.is_active) || (providers.length > 0 ? providers[0] : null);
+  if (activeProvider) {
+    window.desktopProviderInfo = {
+      provider: activeProvider.name,
+      model: activeProvider.model
+    };
+  }
+
   updateProviderUI(true);
   populateDesktopProviderDropdown(providers);
 

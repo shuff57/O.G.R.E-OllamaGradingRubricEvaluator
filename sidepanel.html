@@ -1260,6 +1260,43 @@
       font-size: 13px;
       display: none;
     }
+    /* Hide elements when desktop is connected */
+    .desktop-connected .auth-ui {
+      display: none !important;
+    }
+
+    /* Show elements only when desktop is connected */
+    .desktop-only {
+      display: none;
+    }
+    .desktop-connected .desktop-only {
+      display: flex !important;
+    }
+
+    /* Desktop provider info bar */
+    .desktop-provider-info {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-2);
+      padding: var(--spacing-2);
+      background: var(--color-bg-sidebar);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      margin-bottom: var(--spacing-2);
+    }
+    .desktop-provider-info .provider-label,
+    .desktop-provider-info .model-label {
+      color: var(--color-text-secondary);
+      font-weight: bold;
+    }
+    .desktop-provider-info .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--color-success);
+      margin-left: auto;
+    }
   </style>
 </head>
 <body>
@@ -1268,7 +1305,6 @@
     <img src="logo.png" class="brand-logo" alt="Logo">
     <h3><i class="bi bi-gear-fill"></i> Config</h3>
     
-    <!-- Desktop Mode Content -->
     <div id="desktopModeContent" style="display: none;">
       <div class="status-banner status-success mb-medium">
         <i class="bi bi-pc-display-horizontal"></i> 
@@ -1286,6 +1322,15 @@
         </div>
       </div>
 
+      <!-- Desktop Provider Info (Read-Only) -->
+      <div id="desktopProviderInfo" class="desktop-provider-info desktop-only">
+        <span class="provider-label">Provider:</span>
+        <span id="desktopProviderName">—</span>
+        <span class="model-label">Model:</span>
+        <span id="desktopModelName">—</span>
+        <span class="status-dot" title="Connected to Desktop"></span>
+      </div>
+
       <div class="info-box mb-medium text-xs">
         <i class="bi bi-info-circle-fill mr-small"></i>
         Provider settings are managed in the O.G.R.E Desktop app.
@@ -1295,7 +1340,6 @@
       </div>
     </div>
 
-    <!-- Manual Mode Content (Wrapped) -->
     <div id="manualModeContent">
       <div class="status-banner status-warning mb-medium" id="manualModeBanner" style="display: none;">
         <i class="bi bi-wifi-off"></i> 
@@ -1304,7 +1348,7 @@
       </div>
 
       <!-- Provider Selector -->
-      <div class="provider-selector">
+      <div class="provider-selector auth-ui">
         <label for="providerSelect" class="mb-0">Provider</label>
         <select id="providerSelect" class="provider-dropdown">
           <option value="ollama">Ollama</option>
@@ -1315,25 +1359,25 @@
         </select>
         <span id="providerStatus" class="provider-status-indicator" title="Provider Status"></span>
       </div>
-
+      
       <!-- Provider Config Container (Dynamic Fields) -->
-      <div id="providerConfigContainer">
+      <div id="providerConfigContainer" class="auth-ui">
         <!-- Fields injected by JS -->
       </div>
     </div>
 
-    <div class="flex-between mb-small mt-5">
+    <div class="flex-between mb-small mt-5 auth-ui">
       <label class="mb-0">AI Model</label>
       <div class="flex-gap-medium">
         <i class="bi bi-arrow-clockwise cursor-pointer text-muted text-sm" id="btnRefreshModels" title="Refresh Models"></i>
         <i class="bi bi-info-circle cursor-pointer text-muted text-sm" id="btnModelInfo" title="Click for Model Guide"></i>
       </div>
     </div>
-    <select id="modelName" class="mb-10">
+    <select id="modelName" class="mb-10 auth-ui">
        <option value="" disabled selected>Loading models...</option>
     </select>
 
-    <div id="thinkingControls" class="mb-10" style="display: none;">
+    <div id="thinkingControls" class="mb-10 auth-ui" style="display: none;">
       <div id="gptThinking" style="display: none;">
         <label>Thinking Level</label>
         <select id="thinkLevel">
@@ -1349,7 +1393,7 @@
       </div>
     </div>
 
-    <div class="btn-row">
+    <div class="btn-row auth-ui">
       <button id="testConnection" class="secondary flex-1"><i class="bi bi-wifi"></i> Test</button>
       <button id="saveConfig" class="secondary flex-1"><i class="bi bi-floppy"></i> Save</button>
     </div>
