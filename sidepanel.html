@@ -417,9 +417,10 @@
     .mode-selector {
       display: flex;
       background: var(--color-border);
-      padding: 3px;
-      border-radius: var(--radius-sm);
-      margin-top: var(--spacing-2);
+      padding: var(--spacing-1);
+      border-radius: var(--radius-lg);
+      margin-top: 0;
+      margin-bottom: var(--spacing-3);
       border-top: none; /* Removed the line from container */
     }
     .mode-selector input {
@@ -726,6 +727,7 @@
     .mb-0 { margin-bottom: 0 !important; }
     .mb-small { margin-bottom: var(--spacing-1); }
     .mb-medium { margin-bottom: var(--spacing-2); }
+    .mb-10 { margin-bottom: var(--spacing-3); }
     /* .mr-small already defined */
     .mt-0 { margin-top: 0; }
     
@@ -791,7 +793,7 @@
     .model-card-header { font-weight:bold; display:flex; justify-content:space-between; align-items:center; }
     .model-desc { font-size:12px; margin: 6px 0; font-style:italic; line-height: 1.4; }
     .model-meta { display:flex; gap:10px; font-size:11px; margin-bottom:6px; }
-    .model-scores-grid { display:grid; grid-template-columns: repeat(4, 1fr); gap:2px; margin-top:6px; padding:6px; border-radius:6px; }
+    .model-scores-grid { display:grid; grid-template-columns: repeat(4, 1fr); gap:2px; margin-top:6px; padding:6px; border-radius:var(--radius-lg); }
     .model-score-label { font-size:9px; }
     .model-score-val { font-weight:bold; }
     .model-name { font-size:14px; }
@@ -1364,13 +1366,165 @@
       color: var(--color-error) !important;
       opacity: 0.8;
     }
+
+    /* =========================================
+       Device Flow & Auth UI
+       ========================================= */
+    .device-flow-section {
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: var(--spacing-2);
+      margin-bottom: var(--spacing-2);
+    }
+
+    .device-code-display {
+      background: #0d1117; /* Always dark for code */
+      color: #c9d1d9;
+      padding: var(--spacing-2);
+      border-radius: var(--radius-sm);
+      font-family: var(--font-mono);
+      font-size: 1.2em;
+      text-align: center;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: var(--spacing-2);
+      margin-bottom: var(--spacing-2);
+      border: 1px solid var(--color-border);
+    }
+    
+    .device-code-display .user-code {
+        letter-spacing: 2px;
+        font-weight: bold;
+    }
+
+    .oauth-divider {
+      display: flex;
+      align-items: center;
+      text-align: center;
+      margin: var(--spacing-2) 0;
+      color: var(--color-text-secondary);
+      font-size: 11px;
+    }
+    .oauth-divider::before,
+    .oauth-divider::after {
+      content: '';
+      flex: 1;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .oauth-divider span {
+      padding: 0 10px;
+    }
+
+    .oauth-signed-in {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--spacing-2);
+      padding: var(--spacing-2);
+      background: var(--color-success-bg);
+      border: 1px solid var(--color-success-ring);
+      border-radius: var(--radius-md);
+      color: var(--color-success);
+      margin-bottom: var(--spacing-2);
+    }
+    
+    .oauth-signed-in .badge-text {
+        font-weight: bold;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    /* States visibility helper */
+    .device-flow-active, 
+    .code-paste-active,
+    .device-flow-signed-out,
+    .device-flow-signed-in {
+      animation: fadeIn 0.3s ease;
+    }
+    
+    .device-flow-signed-in {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .spinner-inline {
+        display: inline-block;
+        width: 1em;
+        height: 1em;
+        border: 2px solid currentColor;
+        border-right-color: transparent;
+        border-radius: 50%;
+        animation: spin 0.75s linear infinite;
+        vertical-align: text-bottom;
+        margin-right: 5px;
+    }
+    
+    /* Collapsible section styles */
+    .collapsible-header {
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 0 !important;
+      padding: 0;
+      line-height: 1;
+    }
+    
+    .collapsible-content {
+      margin-top: var(--spacing-3);
+      overflow: hidden;
+      transition: max-height 0.3s ease, opacity 0.3s ease, margin-top 0.3s ease;
+    }
+    
+    .collapsible-content.collapsed {
+      max-height: 0 !important;
+      opacity: 0;
+      margin-top: 0 !important;
+      padding: 0 !important;
+    }
+    
+    .collapsible-header span {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      line-height: 1;
+    }
+    
+    .collapsible-header i {
+      line-height: 1;
+    }
+    
+    .collapsible-header:hover {
+      opacity: 0.8;
+    }
+    
+    .collapse-icon {
+      transition: transform 0.3s ease;
+      font-size: 0.9em;
+      display: flex;
+      align-items: center;
+      line-height: 1;
+    }
+    
+    .collapse-icon.collapsed {
+      transform: rotate(-90deg);
+    }
   </style>
 </head>
 <body>
 
   <div class="card">
-    <img src="logo.png" class="brand-logo" alt="Logo">
-    <h3><i class="bi bi-gear-fill"></i> Config</h3>
+    <h3 class="collapsible-header" id="configHeader">
+      <span><i class="bi bi-gear-fill"></i> Settings</span>
+      <i class="bi bi-chevron-down collapse-icon" id="configCollapseIcon"></i>
+    </h3>
+    
+    <div class="collapsible-content" id="configContent">
     
     <div id="desktopModeContent" style="display: none;">
       <div class="status-banner status-success mb-medium">
@@ -1385,7 +1539,7 @@
           <select id="desktopProviderSelect" class="flex-1 mb-0">
             <option value="" disabled selected>Loading providers...</option>
           </select>
-          <button id="btnRefreshDesktop" class="secondary w-auto mb-0" title="Refresh Config"><i class="bi bi-arrow-clockwise"></i></button>
+          <button id="btnRefreshDesktop" class="secondary w-auto mb-0" title="Refresh Settings"><i class="bi bi-arrow-clockwise"></i></button>
         </div>
       </div>
 
@@ -1427,9 +1581,99 @@
         <span id="providerStatus" class="provider-status-indicator" title="Provider Status"></span>
       </div>
       
+      <!-- Device Flow Auth Containers (Outside of providerConfigContainer to prevent deletion) -->
+      <div id="authContainersWrapper" class="auth-ui">
+        <!-- GitHub Models Auth UI -->
+        <div id="github-models-auth-container" class="device-flow-section" style="display: none;">
+            <!-- State 1: Signed Out -->
+            <div id="github-models-signed-out" class="device-flow-signed-out">
+                <button id="btn-signin-github-models" class="btn-primary mb-small w-full">
+                    <i class="bi bi-github"></i> Sign in with GitHub
+                </button>
+            </div>
+
+            <!-- State 2: Device Flow Active -->
+            <div id="github-models-device-flow" class="device-flow-active" style="display: none;">
+                <p class="text-center mb-small">1. Go to: <a href="#" target="_blank" id="github-models-verification-url" class="link-blue">...</a></p>
+                <p class="text-center mb-small">2. Enter code:</p>
+                <div class="device-code-display">
+                    <span id="github-models-user-code" class="user-code">...</span>
+                    <button class="secondary btn-tool-auto" id="btn-copy-github-models-code" title="Copy Code"><i class="bi bi-clipboard"></i></button>
+                </div>
+                <div class="text-center mb-medium text-muted">
+                    <span class="spinner-inline"></span> Waiting for authorization...
+                </div>
+                <button id="btn-cancel-github-models" class="secondary w-full">Cancel</button>
+            </div>
+
+            <!-- State 3: Signed In -->
+            <div id="github-models-signed-in" class="device-flow-signed-in" style="display: none;">
+                <div class="badge-text"><i class="bi bi-check-circle-fill"></i> Signed in with GitHub</div>
+                <button id="btn-signout-github-models" class="secondary btn-tool-auto">Sign Out</button>
+            </div>
+        </div>
+
+        <!-- OpenAI Auth UI -->
+        <div id="openai-auth-container" class="device-flow-section" style="display: none;">
+            <!-- State 1: Signed Out -->
+            <div id="openai-signed-out" class="device-flow-signed-out">
+                <button id="btn-signin-openai" class="btn-primary mb-small w-full" style="background-color: #10a37f; border-color: #10a37f; color: white;">
+                    <i class="bi bi-lightning-charge-fill"></i> Sign in with OpenAI
+                </button>
+            </div>
+
+            <!-- State 2: Device Flow Active -->
+            <div id="openai-device-flow" class="device-flow-active" style="display: none;">
+                <p class="text-center mb-small">1. Go to: <a href="#" target="_blank" id="openai-verification-url" class="link-blue">...</a></p>
+                <p class="text-center mb-small">2. Enter code:</p>
+                <div class="device-code-display">
+                    <span id="openai-user-code" class="user-code">...</span>
+                    <button class="secondary btn-tool-auto" id="btn-copy-openai-code" title="Copy Code"><i class="bi bi-clipboard"></i></button>
+                </div>
+                <div class="text-center mb-medium text-muted">
+                    <span class="spinner-inline"></span> Waiting for authorization...
+                </div>
+                <button id="btn-cancel-openai" class="secondary w-full">Cancel</button>
+            </div>
+
+            <!-- State 3: Signed In -->
+            <div id="openai-signed-in" class="device-flow-signed-in" style="display: none; justify-content: space-between; align-items: center;">
+                <div class="badge-text"><i class="bi bi-check-circle-fill"></i> Signed in with OpenAI</div>
+                <button id="btn-signout-openai" class="secondary btn-tool-auto">Sign Out</button>
+            </div>
+        </div>
+
+        <!-- Claude (Anthropic) Auth UI -->
+        <div id="anthropic-auth-container" class="device-flow-section" style="display: none;">
+            <!-- State 1: Signed Out -->
+            <div id="anthropic-signed-out" class="device-flow-signed-out">
+                <button id="btn-signin-anthropic" class="btn-primary mb-small w-full" style="background-color: #d97757; border-color: #d97757; color: white;">
+                    <i class="bi bi-robot"></i> Sign in with Claude
+                </button>
+            </div>
+
+            <!-- State 2: Code Paste Active (Claude Special Flow) -->
+            <div id="anthropic-code-paste" class="code-paste-active" style="display: none;">
+                <div class="info-box mb-medium text-center">
+                    <i class="bi bi-box-arrow-up-right"></i> Auth page opened in browser
+                </div>
+                <p class="text-center mb-small text-muted" style="font-size: 0.9em;">Copy code from Claude and paste below:</p>
+                <input type="text" id="anthropic-code-input" placeholder="sk-ant-..." class="mb-medium font-mono text-center" />
+                
+                <button id="btn-submit-anthropic-code" class="btn-primary mb-small">Submit Code</button>
+                <button id="btn-cancel-anthropic" class="secondary w-full">Cancel</button>
+            </div>
+
+            <!-- State 3: Signed In -->
+            <div id="anthropic-signed-in" class="device-flow-signed-in" style="display: none; justify-content: space-between; align-items: center;">
+                <div class="badge-text"><i class="bi bi-check-circle-fill"></i> Signed in with Claude</div>
+                <button id="btn-signout-anthropic" class="secondary btn-tool-auto">Sign Out</button>
+            </div>
+        </div>
+      </div>
+      
       <!-- Provider Config Container (Dynamic Fields) -->
       <div id="providerConfigContainer" class="auth-ui">
-        <!-- Fields injected by JS -->
       </div>
     </div>
 
@@ -1466,23 +1710,28 @@
     </div>
     <div id="configStatus" class="config-status-text" style="display: none;"></div>
 
-    <div class="mt-10 pt-10 border-top-eee">
-      <div class="mode-selector">
-        <input type="radio" name="appMode" id="modeGrader" value="grader" checked>
-        <label for="modeGrader"><i class="bi bi-check2-square"></i> Grader</label>
-        
-        <input type="radio" name="appMode" id="modeSolver" value="solver">
-        <label for="modeSolver"><i class="bi bi-lightbulb"></i> Solver</label>
-        
-        <input type="radio" name="appMode" id="modeBatch" value="batch">
-        <label for="modeBatch"><i class="bi bi-collection"></i> Batch</label>
-      </div>
-    </div>
+  </div>
+  </div>
 
+  <!-- Mode Selector (After Config) -->
+  <div class="mode-selector">
+    <input type="radio" name="appMode" id="modeGrader" value="grader" checked>
+    <label for="modeGrader"><i class="bi bi-check2-square"></i> Grader</label>
+    
+    <input type="radio" name="appMode" id="modeSolver" value="solver">
+    <label for="modeSolver"><i class="bi bi-lightbulb"></i> Solver</label>
+    
+    <input type="radio" name="appMode" id="modeBatch" value="batch">
+    <label for="modeBatch"><i class="bi bi-collection"></i> Batch</label>
   </div>
 
   <div class="card" id="rubricCard">
-    <h3 id="rubricTitle"><i class="bi bi-list-check"></i> 1. Define Role / Rubric</h3>
+    <h3 class="collapsible-header" id="rubricHeader">
+      <span id="rubricTitle"><i class="bi bi-list-check"></i> Define Role / Rubric</span>
+      <i class="bi bi-chevron-down collapse-icon" id="rubricCollapseIcon"></i>
+    </h3>
+    
+    <div class="collapsible-content" id="rubricContent">
     <div class="flex-gap-10 mb-10">
       <label class="radio-label">
         <input type="radio" name="rubricMode" value="text" checked class="radio-input"> Text
@@ -1536,10 +1785,16 @@
 
     <input type="file" id="rubricUpload" accept="image/*" multiple style="display: none;">
     <div id="rubricImagesContainer" class="image-grid"></div>
+    </div>
   </div>
 
   <div class="card">
-    <h3 id="studentWorkTitle"><i class="bi bi-person-workspace"></i> 2. Student Work</h3>
+    <h3 class="collapsible-header" id="studentWorkHeader">
+      <span id="studentWorkTitle"><i class="bi bi-person-workspace"></i> Student Work</span>
+      <i class="bi bi-chevron-down collapse-icon" id="studentWorkCollapseIcon"></i>
+    </h3>
+    
+    <div class="collapsible-content" id="studentWorkContent">
     
     <div class="btn-row">
       <button id="btnGetStudentText" class="secondary btn-tool"><i class="bi bi-text-paragraph"></i> Get Highlighted Text</button>
@@ -1569,10 +1824,16 @@
     
     <input type="file" id="studentUpload" accept="image/*" multiple style="display: none;">
     <div id="studentImagesContainer" class="image-grid"></div>
+    </div>
   </div>
 
   <div class="card" id="batchGradeCard" style="display: none;">
-    <h3><i class="bi bi-collection-fill"></i> 3. Batch Grading</h3>
+    <h3 class="collapsible-header" id="batchHeader">
+      <span><i class="bi bi-collection-fill"></i> Batch Grading</span>
+      <i class="bi bi-chevron-down collapse-icon" id="batchCollapseIcon"></i>
+    </h3>
+    
+    <div class="collapsible-content" id="batchContent">
     
     <div id="batchPageStatus" class="batch-status-box">
       <i class="bi bi-search"></i> <span id="batchPageStatusText">Checking page...</span>
@@ -1632,6 +1893,7 @@
 
     <div id="batchResults" class="batch-results-log">
       <!-- Results log -->
+    </div>
     </div>
   </div>
 
@@ -1720,7 +1982,7 @@
           <div class="text-xs-extra text-primary-dark">
             <i class="bi bi-info-circle text-primary"></i>
             <strong>Note:</strong> This token is for <strong>repository integration</strong> (accessing code, making commits, etc.). 
-            <strong>If you only want to use GitHub AI Models</strong>, configure that in the <strong>Config → GitHub tab</strong> instead (minimal scopes needed).
+            <strong>If you only want to use GitHub AI Models</strong>, configure that in the <strong>Settings → GitHub tab</strong> instead (minimal scopes needed).
           </div>
         </div>
         

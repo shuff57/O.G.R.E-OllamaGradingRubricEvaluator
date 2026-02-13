@@ -4,7 +4,7 @@ const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
 function createMocks({ method = 'POST', body = undefined } = {}) {
-  const req = { method, body };
+  const req = { method, body, headers: { origin: 'chrome-extension://test' } };
   const headers = {};
   const res = {
     statusCode: null,

@@ -18,7 +18,7 @@
 // ---------------------------------------------------------------------------
 // Helper: fetch via background service worker proxy (avoids CORS in sidepanel)
 // ---------------------------------------------------------------------------
-function proxyFetch(url, options = {}) {
+export function proxyFetch(url, options = {}) {
   return new Promise((resolve, reject) => {
     if (typeof chrome === 'undefined' || !chrome.runtime) {
       reject(new Error('Extension API not available'));
@@ -60,6 +60,13 @@ function normalizeBaseUrl(url) {
   let u = (url || '').replace(/\/+$/, '');
   if (u.endsWith('/api')) u = u.slice(0, -4);
   return u;
+}
+
+// ---------------------------------------------------------------------------
+// Helper: extract auth token (prefer oauthToken over apiKey)
+// ---------------------------------------------------------------------------
+function getAuthToken(config) {
+  return config.oauthToken || config.apiKey;
 }
 
 // ---------------------------------------------------------------------------
@@ -140,13 +147,15 @@ const openai = {
       name: 'OpenAI',
       fields: [
         { key: 'apiKey', label: 'API Key', type: 'password', required: true, placeholder: 'sk-...' },
+        { key: 'oauthToken', label: 'OAuth Token', type: 'hidden' },
       ],
     };
   },
 
   async listModels(config) {
+    const token = getAuthToken(config);
     const headers = {
-      'Authorization': `Bearer ${config.apiKey}`,
+      'Authorization': `Bearer ${token}`,
     };
     const res = await proxyFetch('https://api.openai.com/v1/models', { headers });
     if (!res.ok) throw new Error(`Failed to list models: ${res.status} ${res.statusText}`);
@@ -158,7 +167,8 @@ const openai = {
 
   async testConnection(config) {
     try {
-      const headers = { 'Authorization': `Bearer ${config.apiKey}` };
+      const token = getAuthToken(config);
+      const headers = { 'Authorization': `Bearer ${token}` };
       const res = await proxyFetch('https://api.openai.com/v1/models', { headers });
       if (res.ok) return { ok: true };
       if (res.status === 401) return { ok: false, error: '401 Unauthorized. Check your API Key.' };
@@ -169,9 +179,10 @@ const openai = {
   },
 
   buildChatRequest(config, messages, options = {}) {
+    const token = getAuthToken(config);
     const headers = {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${config.apiKey}`,
+      'Authorization': `Bearer ${token}`,
     };
 
     // Transform messages to OpenAI vision format if images are present
@@ -221,7 +232,7 @@ const githubModels = {
   },
 
   async listModels(config) {
-    const token = config.oauthToken || config.apiKey;
+    const token = getAuthToken(config);
     const headers = {
       'Authorization': `Bearer ${token}`,
       'Copilot-Integration-Id': 'vscode-chat',
@@ -238,7 +249,7 @@ const githubModels = {
 
   async testConnection(config) {
     try {
-      const token = config.oauthToken || config.apiKey;
+      const token = getAuthToken(config);
       const headers = {
         'Authorization': `Bearer ${token}`,
         'Copilot-Integration-Id': 'vscode-chat',
@@ -254,7 +265,7 @@ const githubModels = {
   },
 
   buildChatRequest(config, messages, options = {}) {
-    const token = config.oauthToken || config.apiKey;
+    const token = getAuthToken(config);
     const hasImages = messages.some(m => m.images && m.images.length > 0);
     const headers = {
       'Content-Type': 'application/json',
@@ -307,6 +318,7 @@ const anthropic = {
       name: 'Anthropic Claude',
       fields: [
         { key: 'apiKey', label: 'API Key', type: 'password', required: true, placeholder: 'sk-ant-...' },
+        { key: 'oauthToken', label: 'OAuth Token', type: 'hidden' },
       ],
     };
   },
@@ -327,9 +339,10 @@ const anthropic = {
 
   async testConnection(config) {
     try {
+      const token = getAuthToken(config);
       const headers = {
         'Content-Type': 'application/json',
-        'x-api-key': config.apiKey,
+        'x-api-key': token,
         'anthropic-version': '2023-06-01',
       };
       const body = {
@@ -351,9 +364,10 @@ const anthropic = {
   },
 
   buildChatRequest(config, messages, options = {}) {
+    const token = getAuthToken(config);
     const headers = {
       'Content-Type': 'application/json',
-      'x-api-key': config.apiKey,
+      'x-api-key': token,
       'anthropic-version': '2023-06-01',
     };
 

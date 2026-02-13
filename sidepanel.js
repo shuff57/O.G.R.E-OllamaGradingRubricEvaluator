@@ -1,5 +1,13 @@
-import { PROVIDERS, getActiveProvider, setActiveProvider } from './providers.js';
+import { PROVIDERS, getActiveProvider, setActiveProvider, proxyFetch } from './providers.js';
 import BatchGrader from './batch-grader.js';
+import {
+  startGitHubDeviceFlow,
+  startChatGPTDeviceFlow,
+  startClaudeCodePasteFlow,
+  saveDeviceFlowToken,
+  getDeviceFlowToken,
+  deleteDeviceFlowToken
+} from './device-flow.js';
 
 // --- 1. Initialization & Storage ---
 let currentProviderId = 'ollama';
@@ -7,6 +15,19 @@ let providerConfigs = {};
 let availableModels = []; // Cache models
 let currentMode = 'grader';
 let batchAbortController = null; // For cancelling batch
+
+// --- Device Flow State ---
+// Per-provider state: { flowType, userCode, verificationUrl, polling, cancel }
+let deviceFlowStates = {};
+// OAuth tokens loaded from chrome.storage.local
+let oauthTokens = {};
+
+// Maps provider IDs → device flow starters and token storage keys
+const DEVICE_FLOW_PROVIDERS = {
+  'github-models': { startFlow: startGitHubDeviceFlow, tokenKey: 'github', flowType: 'device' },
+  'openai':        { startFlow: startChatGPTDeviceFlow, tokenKey: 'openai', flowType: 'device' },
+  'anthropic':     { startFlow: startClaudeCodePasteFlow, tokenKey: 'anthropic', flowType: 'code-paste' },
+};
 
 // Provider setup URLs for "Get API Key" links
 const PROVIDER_KEY_URLS = {
@@ -24,6 +45,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (window.MathfieldElement) {
     MathfieldElement.fontsDirectory = 'lib/fonts';
   }
+
+  // Load OAuth tokens from storage before provider config (so they're available)
+  await loadOAuthTokens();
 
   // Load provider config (desktop first, fallback to chrome.storage.local)
   await loadProviderConfig();
@@ -87,6 +111,143 @@ const presets = {
 };
 
 function setupListeners() {
+  // Collapsible Config Section
+  const configHeader = document.getElementById('configHeader');
+  const configContent = document.getElementById('configContent');
+  const configCollapseIcon = document.getElementById('configCollapseIcon');
+  
+  if (configHeader && configContent && configCollapseIcon) {
+    // Set initial max-height for smooth transitions
+    configContent.style.maxHeight = configContent.scrollHeight + 'px';
+    
+    configHeader.addEventListener('click', () => {
+      const isCollapsed = configContent.classList.contains('collapsed');
+      
+      if (isCollapsed) {
+        // Expand
+        configContent.classList.remove('collapsed');
+        configCollapseIcon.classList.remove('collapsed');
+        configContent.style.maxHeight = configContent.scrollHeight + 'px';
+      } else {
+        // Collapse
+        configContent.classList.add('collapsed');
+        configCollapseIcon.classList.add('collapsed');
+        configContent.style.maxHeight = '0';
+      }
+      
+      // Save state
+      chrome.storage.local.set({ configCollapsed: !isCollapsed });
+    });
+    
+    // Restore collapsed state
+    chrome.storage.local.get('configCollapsed').then(result => {
+      if (result.configCollapsed) {
+        configContent.classList.add('collapsed');
+        configCollapseIcon.classList.add('collapsed');
+        configContent.style.maxHeight = '0';
+      }
+    });
+  }
+  
+  // Rubric Card Collapsible
+  const rubricHeader = document.getElementById('rubricHeader');
+  const rubricContent = document.getElementById('rubricContent');
+  const rubricCollapseIcon = document.getElementById('rubricCollapseIcon');
+  
+  if (rubricHeader && rubricContent && rubricCollapseIcon) {
+    rubricContent.style.maxHeight = rubricContent.scrollHeight + 'px';
+    
+    rubricHeader.addEventListener('click', () => {
+      const isCollapsed = rubricContent.classList.contains('collapsed');
+      
+      if (isCollapsed) {
+        rubricContent.classList.remove('collapsed');
+        rubricCollapseIcon.classList.remove('collapsed');
+        rubricContent.style.maxHeight = rubricContent.scrollHeight + 'px';
+      } else {
+        rubricContent.classList.add('collapsed');
+        rubricCollapseIcon.classList.add('collapsed');
+        rubricContent.style.maxHeight = '0';
+      }
+      
+      chrome.storage.local.set({ rubricCollapsed: !isCollapsed });
+    });
+    
+    chrome.storage.local.get('rubricCollapsed').then(result => {
+      if (result.rubricCollapsed) {
+        rubricContent.classList.add('collapsed');
+        rubricCollapseIcon.classList.add('collapsed');
+        rubricContent.style.maxHeight = '0';
+      }
+    });
+  }
+  
+  // Student Work Card Collapsible
+  const studentWorkHeader = document.getElementById('studentWorkHeader');
+  const studentWorkContent = document.getElementById('studentWorkContent');
+  const studentWorkCollapseIcon = document.getElementById('studentWorkCollapseIcon');
+  
+  if (studentWorkHeader && studentWorkContent && studentWorkCollapseIcon) {
+    studentWorkContent.style.maxHeight = studentWorkContent.scrollHeight + 'px';
+    
+    studentWorkHeader.addEventListener('click', () => {
+      const isCollapsed = studentWorkContent.classList.contains('collapsed');
+      
+      if (isCollapsed) {
+        studentWorkContent.classList.remove('collapsed');
+        studentWorkCollapseIcon.classList.remove('collapsed');
+        studentWorkContent.style.maxHeight = studentWorkContent.scrollHeight + 'px';
+      } else {
+        studentWorkContent.classList.add('collapsed');
+        studentWorkCollapseIcon.classList.add('collapsed');
+        studentWorkContent.style.maxHeight = '0';
+      }
+      
+      chrome.storage.local.set({ studentWorkCollapsed: !isCollapsed });
+    });
+    
+    chrome.storage.local.get('studentWorkCollapsed').then(result => {
+      if (result.studentWorkCollapsed) {
+        studentWorkContent.classList.add('collapsed');
+        studentWorkCollapseIcon.classList.add('collapsed');
+        studentWorkContent.style.maxHeight = '0';
+      }
+    });
+  }
+  
+  // Batch Card Collapsible
+  const batchHeader = document.getElementById('batchHeader');
+  const batchContent = document.getElementById('batchContent');
+  const batchCollapseIcon = document.getElementById('batchCollapseIcon');
+  
+  if (batchHeader && batchContent && batchCollapseIcon) {
+    batchContent.style.maxHeight = batchContent.scrollHeight + 'px';
+    
+    batchHeader.addEventListener('click', () => {
+      const isCollapsed = batchContent.classList.contains('collapsed');
+      
+      if (isCollapsed) {
+        batchContent.classList.remove('collapsed');
+        batchCollapseIcon.classList.remove('collapsed');
+        batchContent.style.maxHeight = batchContent.scrollHeight + 'px';
+      } else {
+        batchContent.classList.add('collapsed');
+        batchCollapseIcon.classList.add('collapsed');
+        batchContent.style.maxHeight = '0';
+      }
+      
+      chrome.storage.local.set({ batchCollapsed: !isCollapsed });
+    });
+    
+    chrome.storage.local.get('batchCollapsed').then(result => {
+      if (result.batchCollapsed) {
+        batchContent.classList.add('collapsed');
+        batchCollapseIcon.classList.add('collapsed');
+        batchContent.style.maxHeight = '0';
+      }
+    });
+  }
+  
   document.getElementById('btnRefreshModels').addEventListener('click', refreshModels);
   
   // Provider Switching
@@ -99,6 +260,9 @@ function setupListeners() {
 
   // Desktop Mode Listeners
   setupDesktopListeners();
+
+  // Device Flow (OAuth) Listeners
+  setupDeviceFlowListeners();
 
   // Preset Buttons for Grading Instructions
   document.getElementById('btnPresetNonZero')?.addEventListener('click', () => {
@@ -961,8 +1125,8 @@ async function switchMode(mode) {
 
   } else {
     // Grader (Default)
-    rubricTitle.innerHTML = '<i class="bi bi-list-check"></i> 1. Define Role / Rubric';
-    studentWorkTitle.innerHTML = '<i class="bi bi-person-workspace"></i> 2. Student Work';
+    rubricTitle.innerHTML = '<i class="bi bi-list-check"></i> Define Role / Rubric';
+    studentWorkTitle.innerHTML = '<i class="bi bi-person-workspace"></i> Student Work';
     
     btnImportRubric.innerHTML = '<i class="bi bi-stars"></i> Import Rubric from Highlighted Text (AI)';
     btnImportRubricImage.innerHTML = '<i class="bi bi-file-image"></i> Import Rubric from Screenshot (AI)';
@@ -1007,9 +1171,9 @@ async function checkBatchPageStatus() {
        // Check for saved state
        await checkResumeState(tab.url);
     } else {
-       statusText.innerText = "Navigate to a MyOpenMath 'Grade All' page to use this feature.";
-       statusEl.classList.add('status-error'); // or warning
-       statusEl.classList.remove('status-info', 'status-success');
+       statusText.innerText = "";
+       statusEl.style.display = 'none';
+       statusEl.classList.remove('status-error', 'status-info', 'status-success');
        statusEl.style.background = '';
        statusEl.style.color = '';
     }
@@ -1497,44 +1661,6 @@ function showConfigStatus(text, color) {
   }
 }
 
-function proxyFetch(url, options = {}) {
-  return new Promise((resolve, reject) => {
-    if (typeof chrome === 'undefined' || !chrome.runtime) {
-      reject(new Error("Extension API not found. Please open this via the extension icon, not as a file."));
-      return;
-    }
-
-    // Client-side timeout safety net (130s - slightly more than background timeout)
-    const timeoutId = setTimeout(() => {
-      reject(new Error('Request timed out - the API did not respond in time'));
-    }, 130000);
-
-    chrome.runtime.sendMessage({
-      action: "proxyFetch",
-      url: url,
-      options: options
-    }, (response) => {
-      clearTimeout(timeoutId);
-
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-      } else if (!response) {
-        reject(new Error('No response from background service worker'));
-      } else if (response.error) {
-        reject(new Error(response.error));
-      } else {
-        resolve({
-          ok: response.ok,
-          status: response.status,
-          statusText: response.statusText,
-          text: () => Promise.resolve(response.data),
-          json: () => Promise.resolve(JSON.parse(response.data))
-        });
-      }
-    });
-  });
-}
-
 // --- Persistence Logic ---
 
 function renderProviderConfig(providerId) {
@@ -1548,6 +1674,12 @@ function renderProviderConfig(providerId) {
   const currentConfig = providerConfigs[providerId] || {};
 
   configDef.fields.forEach(field => {
+    // Skip hidden fields (e.g., OAuth tokens stored internally)
+    if (field.type === 'hidden') return;
+    
+    // Skip API key fields if OAuth token exists for this provider
+    if (field.key === 'apiKey' && oauthTokens[providerId]) return;
+    
     const div = document.createElement('div');
     div.className = 'provider-field-group';
     
@@ -1638,15 +1770,6 @@ function renderProviderConfig(providerId) {
   statusDiv.id = `provider-status-${providerId}`;
   statusDiv.className = 'provider-status provider-status-message';
   container.appendChild(statusDiv);
-  
-  // Add manual test button
-  if (configDef.fields.some(f => f.key === 'apiKey' || f.key === 'apiUrl')) {
-    const testBtn = document.createElement('button');
-    testBtn.innerHTML = '🔄 Test Connection';
-    testBtn.classList.add('btn-test-connection');
-    testBtn.addEventListener('click', () => testConnection(providerId));
-    container.appendChild(testBtn);
-  }
 }
 
 // Helper function to mask API keys
@@ -1714,6 +1837,9 @@ async function switchProvider(providerId) {
   
   // Render Config
   renderProviderConfig(providerId);
+  
+  // Show correct auth container for this provider
+  showAuthContainerForProvider(providerId);
   
   // Update status indicator for current provider
   updateProviderTabStatus(providerId);
@@ -1803,11 +1929,21 @@ function getProviderConfigFromUI(providerId) {
         });
     }
     
+    // Inject OAuth token if available (providers.js getAuthToken prefers oauthToken over apiKey)
+    if (oauthTokens[providerId]) {
+      config.oauthToken = oauthTokens[providerId];
+    }
+    
      // Update cache
     providerConfigs[providerId] = config;
     return config;
   }
-  return providerConfigs[providerId] || {};
+  // For non-current providers, also inject OAuth tokens
+  const cached = providerConfigs[providerId] || {};
+  if (oauthTokens[providerId]) {
+    cached.oauthToken = oauthTokens[providerId];
+  }
+  return cached;
 }
 
 function populateModelDropdown(models) {
@@ -1929,15 +2065,28 @@ async function fetchProvidersFromDesktop(token) {
  * Toggles between Simplified Desktop Mode and Manual Mode.
  */
 function updateProviderUI(connected) {
+  console.log('[Desktop] updateProviderUI called, connected:', connected);
+  
   const desktopContent = document.getElementById('desktopModeContent');
   const manualContent = document.getElementById('manualModeContent');
   const disconnectedBanner = document.getElementById('manualModeBanner');
   const desktopStatusBanner = document.getElementById('desktopStatusBanner');
   const body = document.body;
 
+  console.log('[Desktop] Elements found:', {
+    desktopContent,
+    manualContent,
+    disconnectedBanner,
+    desktopStatusBanner,
+    body
+  });
+
   if (!desktopContent || !manualContent) return;
 
   if (connected) {
+    // Cancel any active device flows silently — desktop manages auth now
+    cancelAllDeviceFlows();
+
     // Show Simplified UI
     desktopContent.style.display = 'block';
     manualContent.style.display = 'none';
@@ -1952,14 +2101,19 @@ function updateProviderUI(connected) {
     // Update info display
     updateDesktopProviderInfo();
   } else {
+    console.log('[Desktop] Activating manual mode UI');
+    
     // Show Manual UI
     desktopContent.style.display = 'none';
     manualContent.style.display = 'block';
     body.classList.add('desktop-disconnected');
     body.classList.remove('desktop-connected');
     
+    console.log('[Desktop] Body classes:', body.className);
+    
     // Show warning banner in manual mode if we tried to connect but failed
     if (disconnectedBanner) {
+      console.log('[Desktop] Showing disconnected banner');
       disconnectedBanner.style.display = 'flex'; // Use flex to match layout
     }
     
@@ -1969,6 +2123,9 @@ function updateProviderUI(connected) {
       providerSelect.value = currentProviderId;
     }
   }
+  
+  console.log('[Desktop] Final state - manualContent.style.display:', manualContent.style.display);
+  console.log('[Desktop] Final state - body.classList:', body.classList.toString());
 }
 
 /**
@@ -2088,10 +2245,12 @@ function setupDesktopListeners() {
  * Sets module state and loads config from chrome.storage.local.
  */
 async function activateFallbackMode() {
+  console.log('[Desktop] activateFallbackMode called');
   desktopConnected = false;
   handshakeToken = null;
   updateProviderUI(false);
   await loadState(); // chrome.storage.local — the fallback path
+  console.log('[Desktop] activateFallbackMode complete');
 }
 
 /**
@@ -2290,11 +2449,15 @@ function saveState() {
 }
 
 async function loadState() {
+  console.log('[State] loadState called');
+  
   const result = await chrome.storage.local.get([
     'activeProvider', 'providerConfigs', 'modelName', 
     'rubricMode', 'rubricText', 'rubricTable', 'rubricImages', 'customInstructions',
     'apiUrl', 'apiKey' // Legacy
   ]);
+
+  console.log('[State] Loaded from storage:', result);
 
   // Load Provider Configs
   if (result.providerConfigs) {
@@ -2345,6 +2508,9 @@ async function loadState() {
     activeProvider = PROVIDER_ID_MIGRATION[activeProvider];
   }
   currentProviderId = activeProvider;
+  
+  console.log('[State] Current provider ID:', currentProviderId);
+  
   await setActiveProvider(currentProviderId);
   
   // Update Selector UI
@@ -2359,7 +2525,12 @@ async function loadState() {
   });
 
   // Render Config
+  console.log('[State] Calling renderProviderConfig');
   renderProviderConfig(currentProviderId);
+  
+  // Show correct auth UI for current provider
+  console.log('[State] Calling showAuthContainerForProvider');
+  showAuthContainerForProvider(currentProviderId);
   
   // Load Rubric State
   if (result.rubricMode) {
@@ -2752,7 +2923,322 @@ window.addEventListener('click', (event) => {
 });
 
 
-// --- Batch Grading Logic ---
+
+// --- 5. Device Flow Orchestration ---
+
+/**
+ * Load OAuth tokens from chrome.storage.local on init.
+ * Sets oauthTokens dict and injects into providerConfigs so providers.js getAuthToken() works.
+ */
+async function loadOAuthTokens() {
+  for (const [providerId, meta] of Object.entries(DEVICE_FLOW_PROVIDERS)) {
+    const tokenData = await getDeviceFlowToken(meta.tokenKey);
+    if (tokenData && tokenData.access_token) {
+      oauthTokens[providerId] = tokenData.access_token;
+    }
+  }
+  console.log('[DeviceFlow] Loaded OAuth tokens for:', Object.keys(oauthTokens));
+}
+
+/**
+ * Update the device flow auth UI for a given provider.
+ * States: signed-out | device-flow-active | code-paste-active | signed-in
+ */
+function updateDeviceFlowUI(providerId) {
+  const dfConfig = DEVICE_FLOW_PROVIDERS[providerId];
+  if (!dfConfig) return; // not a device-flow provider
+
+  const container = document.getElementById(`${providerId}-auth-container`);
+  if (!container) return;
+
+  const signedOut = document.getElementById(`${providerId}-signed-out`);
+  const signedIn = document.getElementById(`${providerId}-signed-in`);
+  // device flow active (GitHub/OpenAI)
+  const deviceFlowEl = document.getElementById(`${providerId}-device-flow`);
+  // code paste active (Claude)
+  const codePasteEl = document.getElementById(`${providerId}-code-paste`);
+
+  // Determine state
+  const hasToken = !!oauthTokens[providerId];
+  const activeFlow = deviceFlowStates[providerId];
+
+  // Hide everything first
+  if (signedOut) signedOut.style.display = 'none';
+  if (signedIn) signedIn.style.display = 'none';
+  if (deviceFlowEl) deviceFlowEl.style.display = 'none';
+  if (codePasteEl) codePasteEl.style.display = 'none';
+
+  // Show container
+  container.style.display = 'block';
+
+  if (hasToken) {
+    if (signedIn) signedIn.style.display = 'flex';
+    // Re-render config fields to hide API key input
+    renderProviderConfig(providerId);
+  } else if (activeFlow) {
+    if (activeFlow.flowType === 'device' && deviceFlowEl) {
+      deviceFlowEl.style.display = 'block';
+    } else if (activeFlow.flowType === 'code-paste' && codePasteEl) {
+      codePasteEl.style.display = 'block';
+    }
+  } else {
+    if (signedOut) signedOut.style.display = 'block';
+    // Re-render config fields to show API key input
+    renderProviderConfig(providerId);
+  }
+}
+
+/**
+ * Show the correct auth container for the current provider, hide others.
+ */
+function showAuthContainerForProvider(providerId) {
+  // Hide all auth containers
+  for (const pid of Object.keys(DEVICE_FLOW_PROVIDERS)) {
+    const container = document.getElementById(`${pid}-auth-container`);
+    if (container) container.style.display = 'none';
+  }
+  // Show + update the one for current provider
+  if (DEVICE_FLOW_PROVIDERS[providerId]) {
+    const container = document.getElementById(`${providerId}-auth-container`);
+    
+    if (container) {
+      container.style.display = 'block';
+    }
+    updateDeviceFlowUI(providerId);
+  }
+}
+
+/**
+ * Start a device flow / code-paste flow for the given provider.
+ * Prevents multiple simultaneous flows for the same provider.
+ */
+async function startDeviceFlowForProvider(providerId) {
+  const meta = DEVICE_FLOW_PROVIDERS[providerId];
+  if (!meta) return;
+
+  // Prevent duplicate
+  if (deviceFlowStates[providerId]) {
+    console.warn(`[DeviceFlow] Flow already active for ${providerId}`);
+    return;
+  }
+
+  try {
+    showConfigStatus(`Starting sign-in for ${providerId}...`, 'blue');
+    const flow = await meta.startFlow();
+
+    if (meta.flowType === 'device') {
+      // GitHub / OpenAI device flow
+      deviceFlowStates[providerId] = {
+        flowType: 'device',
+        userCode: flow.userCode,
+        verificationUrl: flow.verificationUrl,
+        cancel: flow.cancel
+      };
+
+      // Update UI to show code
+      const codeEl = document.getElementById(`${providerId}-user-code`);
+      if (codeEl) codeEl.textContent = flow.userCode;
+      const urlEl = document.getElementById(`${providerId}-verification-url`);
+      if (urlEl) {
+        urlEl.href = flow.verificationUrl;
+        urlEl.textContent = flow.verificationUrl;
+      }
+      updateDeviceFlowUI(providerId);
+
+      // Open verification URL in new tab
+      chrome.tabs.create({ url: flow.verificationUrl });
+
+      // Start polling
+      const result = await flow.poll();
+      // Flow completed (success, cancel, or timeout)
+      if (result.success) {
+        oauthTokens[providerId] = result.accessToken;
+        showConfigStatus('Signed in successfully!', 'green');
+        // Refresh models for this provider
+        if (providerId === currentProviderId) {
+          refreshModels();
+        }
+      } else if (result.error !== 'Cancelled') {
+        showConfigStatus(`Auth failed: ${result.error}`, 'red');
+      }
+    } else if (meta.flowType === 'code-paste') {
+      // Claude PKCE code-paste flow
+      deviceFlowStates[providerId] = {
+        flowType: 'code-paste',
+        authUrl: flow.authUrl,
+        exchangeCode: flow.exchangeCode,
+        cancel: flow.cancel
+      };
+
+      updateDeviceFlowUI(providerId);
+
+      // Open auth URL in new tab
+      chrome.tabs.create({ url: flow.authUrl });
+    }
+  } catch (err) {
+    console.error(`[DeviceFlow] Error starting flow for ${providerId}:`, err);
+    showConfigStatus(`Auth error: ${err.message}`, 'red');
+  } finally {
+    // Clean up flow state (unless code-paste is waiting for user input)
+    if (meta.flowType === 'device') {
+      delete deviceFlowStates[providerId];
+      updateDeviceFlowUI(providerId);
+    }
+  }
+}
+
+/**
+ * Submit the pasted code for Claude PKCE flow.
+ */
+async function submitClaudeCode(providerId) {
+  const flow = deviceFlowStates[providerId];
+  if (!flow || flow.flowType !== 'code-paste') return;
+
+  const codeInput = document.getElementById(`${providerId}-code-input`);
+  const code = codeInput ? codeInput.value.trim() : '';
+  if (!code) {
+    showConfigStatus('Please paste the authorization code.', 'orange');
+    return;
+  }
+
+  try {
+    showConfigStatus('Exchanging code...', 'blue');
+    const result = await flow.exchangeCode(code);
+    if (result.success) {
+      oauthTokens[providerId] = result.accessToken;
+      showConfigStatus('Signed in with Claude!', 'green');
+      // Refresh models
+      if (providerId === currentProviderId) {
+        refreshModels();
+      }
+    } else {
+      showConfigStatus(`Code exchange failed: ${result.error}`, 'red');
+    }
+  } catch (err) {
+    showConfigStatus(`Code exchange error: ${err.message}`, 'red');
+  } finally {
+    delete deviceFlowStates[providerId];
+    updateDeviceFlowUI(providerId);
+  }
+}
+
+/**
+ * Cancel an active device flow for a provider.
+ */
+function cancelDeviceFlow(providerId) {
+  const flow = deviceFlowStates[providerId];
+  if (flow && flow.cancel) {
+    flow.cancel();
+  }
+  delete deviceFlowStates[providerId];
+  updateDeviceFlowUI(providerId);
+  showConfigStatus('Sign-in cancelled.', 'blue');
+}
+
+/**
+ * Cancel all active device flows (e.g. when desktop connects).
+ */
+function cancelAllDeviceFlows() {
+  for (const [pid, flow] of Object.entries(deviceFlowStates)) {
+    if (flow && flow.cancel) {
+      flow.cancel();
+    }
+  }
+  deviceFlowStates = {};
+}
+
+/**
+ * Sign out from a provider: remove token from storage and reset UI.
+ */
+async function signOutProvider(providerId) {
+  const meta = DEVICE_FLOW_PROVIDERS[providerId];
+  if (!meta) return;
+
+  await deleteDeviceFlowToken(meta.tokenKey);
+  delete oauthTokens[providerId];
+  updateDeviceFlowUI(providerId);
+  showConfigStatus('Signed out.', 'blue');
+
+  // Refresh models (will fail without token, showing empty list or prompting for key)
+  if (providerId === currentProviderId) {
+    refreshModels();
+  }
+}
+
+/**
+ * Sets up event listeners for device flow UI elements.
+ */
+function setupDeviceFlowListeners() {
+  // --- GitHub Models ---
+  const btnSigninGithub = document.getElementById('btn-signin-github-models');
+  if (btnSigninGithub) {
+    btnSigninGithub.addEventListener('click', () => startDeviceFlowForProvider('github-models'));
+  }
+
+  const btnCancelGithub = document.getElementById('btn-cancel-github-models');
+  if (btnCancelGithub) {
+    btnCancelGithub.addEventListener('click', () => cancelDeviceFlow('github-models'));
+  }
+
+  const btnSignoutGithub = document.getElementById('btn-signout-github-models');
+  if (btnSignoutGithub) {
+    btnSignoutGithub.addEventListener('click', () => signOutProvider('github-models'));
+  }
+
+  const btnCopyGithub = document.getElementById('btn-copy-github-models-code');
+  if (btnCopyGithub) {
+    btnCopyGithub.addEventListener('click', () => {
+      const code = document.getElementById('github-models-user-code')?.textContent;
+      if (code) navigator.clipboard.writeText(code);
+    });
+  }
+
+  // --- OpenAI ---
+  const btnSigninOpenai = document.getElementById('btn-signin-openai');
+  if (btnSigninOpenai) {
+    btnSigninOpenai.addEventListener('click', () => startDeviceFlowForProvider('openai'));
+  }
+
+  const btnCancelOpenai = document.getElementById('btn-cancel-openai');
+  if (btnCancelOpenai) {
+    btnCancelOpenai.addEventListener('click', () => cancelDeviceFlow('openai'));
+  }
+
+  const btnSignoutOpenai = document.getElementById('btn-signout-openai');
+  if (btnSignoutOpenai) {
+    btnSignoutOpenai.addEventListener('click', () => signOutProvider('openai'));
+  }
+
+  const btnCopyOpenai = document.getElementById('btn-copy-openai-code');
+  if (btnCopyOpenai) {
+    btnCopyOpenai.addEventListener('click', () => {
+      const code = document.getElementById('openai-user-code')?.textContent;
+      if (code) navigator.clipboard.writeText(code);
+    });
+  }
+
+  // --- Claude (Anthropic) ---
+  const btnSigninAnthropic = document.getElementById('btn-signin-anthropic');
+  if (btnSigninAnthropic) {
+    btnSigninAnthropic.addEventListener('click', () => startDeviceFlowForProvider('anthropic'));
+  }
+
+  const btnCancelAnthropic = document.getElementById('btn-cancel-anthropic');
+  if (btnCancelAnthropic) {
+    btnCancelAnthropic.addEventListener('click', () => cancelDeviceFlow('anthropic'));
+  }
+
+  const btnSignoutAnthropic = document.getElementById('btn-signout-anthropic');
+  if (btnSignoutAnthropic) {
+    btnSignoutAnthropic.addEventListener('click', () => signOutProvider('anthropic'));
+  }
+
+  const btnSubmitClaudeCode = document.getElementById('btn-submit-anthropic-code');
+  if (btnSubmitClaudeCode) {
+    btnSubmitClaudeCode.addEventListener('click', () => submitClaudeCode('anthropic'));
+  }
+}
+
 let isBatchRunning = false;
 
 document.getElementById('btnStartBatch').addEventListener('click', startBatchGrading);

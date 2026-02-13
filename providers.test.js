@@ -127,4 +127,62 @@ describe('PROVIDERS Adapter Logic', () => {
     });
   });
 
+  describe('openai - OAuth token support', () => {
+    const provider = PROVIDERS['openai'];
+
+    it('should use oauthToken in Authorization header when present', () => {
+      const config = { oauthToken: 'oauth-token-123', apiKey: 'sk-fallback', model: 'gpt-4o' };
+      const messages = [{ role: 'user', content: 'Hello' }];
+      
+      const req = provider.buildChatRequest(config, messages);
+      expect(req.headers['Authorization']).toBe('Bearer oauth-token-123');
+    });
+
+    it('should fall back to apiKey when oauthToken not present', () => {
+      const config = { apiKey: 'sk-test', model: 'gpt-4o' };
+      const messages = [{ role: 'user', content: 'Hello' }];
+      
+      const req = provider.buildChatRequest(config, messages);
+      expect(req.headers['Authorization']).toBe('Bearer sk-test');
+    });
+
+    it('should prefer oauthToken over apiKey in buildChatRequest', () => {
+      const config = { oauthToken: 'oauth-123', apiKey: 'sk-test', model: 'gpt-4o' };
+      const messages = [{ role: 'user', content: 'Hello' }];
+      
+      const req = provider.buildChatRequest(config, messages);
+      expect(req.headers['Authorization']).toBe('Bearer oauth-123');
+      expect(req.headers['Authorization']).not.toContain('sk-test');
+    });
+  });
+
+  describe('anthropic - OAuth token support', () => {
+    const provider = PROVIDERS['anthropic'];
+
+    it('should use oauthToken in x-api-key header when present', () => {
+      const config = { oauthToken: 'oauth-token-123', apiKey: 'sk-ant-fallback', model: 'claude-3-5-sonnet-20241022' };
+      const messages = [{ role: 'user', content: 'Hello' }];
+      
+      const req = provider.buildChatRequest(config, messages);
+      expect(req.headers['x-api-key']).toBe('oauth-token-123');
+    });
+
+    it('should fall back to apiKey when oauthToken not present', () => {
+      const config = { apiKey: 'sk-ant-test', model: 'claude-3-5-sonnet-20241022' };
+      const messages = [{ role: 'user', content: 'Hello' }];
+      
+      const req = provider.buildChatRequest(config, messages);
+      expect(req.headers['x-api-key']).toBe('sk-ant-test');
+    });
+
+    it('should prefer oauthToken over apiKey in buildChatRequest', () => {
+      const config = { oauthToken: 'oauth-123', apiKey: 'sk-ant-test', model: 'claude-3-5-sonnet-20241022' };
+      const messages = [{ role: 'user', content: 'Hello' }];
+      
+      const req = provider.buildChatRequest(config, messages);
+      expect(req.headers['x-api-key']).toBe('oauth-123');
+      expect(req.headers['x-api-key']).not.toContain('sk-ant-test');
+    });
+  });
+
 });
