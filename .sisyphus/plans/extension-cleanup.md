@@ -64,14 +64,14 @@ Make the extension sidepanel visually consistent with the desktop app's componen
 - Mode switcher with Bootstrap Icon labels
 
 ### Definition of Done
-- [ ] All buttons use desktop-style bordered appearance (not full-width colored)
-- [ ] All cards have `border: 1px solid var(--color-border)` and dark mode gradient `::before`
-- [ ] Provider config uses `<select>` dropdown instead of tab buttons
-- [ ] All auth UI (API keys, OAuth buttons, Test Connection, Save Config) hidden when desktop connected
-- [ ] Mode switcher labels include Bootstrap Icons
-- [ ] Light mode radii match desktop (8/12/20)
-- [ ] Both dark and light themes render correctly
-- [ ] All three modes (Grader/Solver/Batch) still function correctly
+- [x] All buttons use desktop-style bordered appearance (not full-width colored)
+- [x] All cards have `border: 1px solid var(--color-border)` and dark mode gradient `::before`
+- [x] Provider config uses `<select>` dropdown instead of tab buttons
+- [x] All auth UI (API keys, OAuth buttons, Test Connection, Save Config) hidden when desktop connected
+- [x] Mode switcher labels include Bootstrap Icons
+- [x] Light mode radii match desktop (8/12/20)
+- [x] Both dark and light themes render correctly
+- [x] All three modes (Grader/Solver/Batch) still function correctly
 
 ### Must Have
 - Visual parity with desktop button/card/input styles
@@ -306,15 +306,15 @@ Task 4: Mode Selector Icons + Final Polish (independent but best done last)
 
   **Acceptance Criteria**:
 
-  - [ ] All hardcoded `border-radius` values replaced with `var(--radius-*)` (search returns 0 hardcoded px values in `<style>`)
-  - [ ] Light mode `--radius-sm/md/lg` changed to `8px/12px/20px`
-  - [ ] Base `button` style matches desktop (bordered, not full-width colored)
-  - [ ] `.btn-primary` class exists and applied to primary action buttons
-  - [ ] `.card` has `border: 1px solid var(--color-border)` and `::before` gradient
-  - [ ] `renderProviderConfig()` no longer uses hardcoded color values — CSS classes used instead
-  - [ ] `#007bff` does not appear anywhere in `sidepanel.js`
-  - [ ] All three modes (Grader/Solver/Batch) still render buttons correctly with mode accent colors
-  - [ ] No visual regression in dark mode (radii unchanged, colors same)
+  - [x] All hardcoded `border-radius` values replaced with `var(--radius-*)` (search returns 0 hardcoded px values in `<style>`)
+  - [x] Light mode `--radius-sm/md/lg` changed to `8px/12px/20px`
+  - [x] Base `button` style matches desktop (bordered, not full-width colored)
+  - [x] `.btn-primary` class exists and applied to primary action buttons
+  - [x] `.card` has `border: 1px solid var(--color-border)` and `::before` gradient
+  - [x] `renderProviderConfig()` no longer uses hardcoded color values — CSS classes used instead
+  - [x] `#007bff` does not appear anywhere in `sidepanel.js`
+  - [x] All three modes (Grader/Solver/Batch) still render buttons correctly with mode accent colors
+  - [x] No visual regression in dark mode (radii unchanged, colors same)
 
   **Agent-Executed QA Scenarios:**
 
@@ -477,12 +477,12 @@ Task 4: Mode Selector Icons + Final Polish (independent but best done last)
 
   **Acceptance Criteria**:
 
-  - [ ] No `.tab-btn` elements exist in rendered HTML
-  - [ ] `#providerSelect` dropdown exists with all 5 providers as options
-  - [ ] Changing dropdown selection triggers `switchProvider()` and renders correct provider config
-  - [ ] Provider connection status is visible via `#providerStatus` indicator (colored dot)
-  - [ ] Old `.tab-btn` CSS rules removed from `<style>` block
-  - [ ] `querySelectorAll('.tab-btn')` returns empty NodeList (search JS for any remaining references)
+  - [x] No `.tab-btn` elements exist in rendered HTML
+  - [x] `#providerSelect` dropdown exists with all 5 providers as options
+  - [x] Changing dropdown selection triggers `switchProvider()` and renders correct provider config
+  - [x] Provider connection status is visible via `#providerStatus` indicator (colored dot)
+  - [x] Old `.tab-btn` CSS rules removed from `<style>` block
+  - [x] `querySelectorAll('.tab-btn')` returns empty NodeList (search JS for any remaining references)
 
   **Agent-Executed QA Scenarios:**
 
@@ -627,13 +627,13 @@ Task 4: Mode Selector Icons + Final Polish (independent but best done last)
 
   **Acceptance Criteria**:
 
-  - [ ] When `desktopConnected === true`: no API key inputs visible, no OAuth buttons visible, no Test Connection buttons visible
-  - [ ] When `desktopConnected === true`: desktop provider/model info displayed as read-only
-  - [ ] When `desktopConnected === false`: all provider config UI reappears (dropdown, config fields, buttons)
-  - [ ] Mode selector remains visible in both states
-  - [ ] Student work area and rubric area remain visible in both states
-  - [ ] Run Assessment / Start Batch buttons remain visible in both states
-  - [ ] Transitioning between connected/disconnected does not lose form data
+  - [x] When `desktopConnected === true`: no API key inputs visible, no OAuth buttons visible, no Test Connection buttons visible
+  - [x] When `desktopConnected === true`: desktop provider/model info displayed as read-only
+  - [x] When `desktopConnected === false`: all provider config UI reappears (dropdown, config fields, buttons)
+  - [x] Mode selector remains visible in both states
+  - [x] Student work area and rubric area remain visible in both states
+  - [x] Run Assessment / Start Batch buttons remain visible in both states
+  - [x] Transitioning between connected/disconnected does not lose form data
 
   **Agent-Executed QA Scenarios:**
 
@@ -754,12 +754,12 @@ Task 4: Mode Selector Icons + Final Polish (independent but best done last)
 
   **Acceptance Criteria**:
 
-  - [ ] Each mode button (Grader/Solver/Batch) displays an icon before the label text
-  - [ ] Icons are visible in both dark and light themes
-  - [ ] Icons inherit the active/inactive state colors of the segmented control
-  - [ ] No text wrapping or overflow in mode selector buttons
-  - [ ] Spacing feels compact but readable in sidepanel width (~400px)
-  - [ ] No hardcoded color values remain outside `:root` / `[data-theme]` blocks (final grep check)
+  - [x] Each mode button (Grader/Solver/Batch) displays an icon before the label text
+  - [x] Icons are visible in both dark and light themes
+  - [x] Icons inherit the active/inactive state colors of the segmented control
+  - [x] No text wrapping or overflow in mode selector buttons
+  - [x] Spacing feels compact but readable in sidepanel width (~400px)
+  - [x] No hardcoded color values remain outside `:root` / `[data-theme]` blocks (final grep check)
 
   **Agent-Executed QA Scenarios:**
 
@@ -835,17 +835,17 @@ grep -n "border-radius:.*px" sidepanel.html
 ```
 
 ### Final Checklist
-- [ ] All buttons use desktop bordered style (not full-width colored)
-- [ ] Primary action buttons use `.btn-primary` with accent color
-- [ ] Cards have border + dark mode gradient top strip
-- [ ] Inputs have darker background + focus ring
-- [ ] Light mode radii are 8/12/20
-- [ ] Provider tabs replaced with compact dropdown
-- [ ] Provider status shown via indicator dot
-- [ ] All auth UI hidden when desktop connected
-- [ ] Clean desktop-connected layout with read-only provider info
-- [ ] Mode icons visible and properly styled
-- [ ] Both themes verified across all modes
-- [ ] No hardcoded colors or radii outside CSS variable definitions
-- [ ] No `.tab-btn` remnants in code
-- [ ] All three modes (Grader/Solver/Batch) fully functional
+- [x] All buttons use desktop bordered style (not full-width colored)
+- [x] Primary action buttons use `.btn-primary` with accent color
+- [x] Cards have border + dark mode gradient top strip
+- [x] Inputs have darker background + focus ring
+- [x] Light mode radii are 8/12/20
+- [x] Provider tabs replaced with compact dropdown
+- [x] Provider status shown via indicator dot
+- [x] All auth UI hidden when desktop connected
+- [x] Clean desktop-connected layout with read-only provider info
+- [x] Mode icons visible and properly styled
+- [x] Both themes verified across all modes
+- [x] No hardcoded colors or radii outside CSS variable definitions
+- [x] No `.tab-btn` remnants in code
+- [x] All three modes (Grader/Solver/Batch) fully functional
