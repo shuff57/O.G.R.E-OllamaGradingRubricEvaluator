@@ -7,28 +7,187 @@
   <link rel="stylesheet" href="lib/mathlive-static.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
   <style>
-    body { font-family: sans-serif; padding: 10px; background: #f9f9f9; }
-    .card { position: relative; background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 15px; }
-    h3 { margin-top: 0; font-size: 14px; color: #333; }
-    label { font-size: 12px; font-weight: bold; color: #555; display: block; margin-bottom: 5px; }
-    input, textarea, select { width: 100%; padding: 8px; box-sizing: border-box; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px; }
+    :root {
+      /* =========================================
+         DARK MODE (Default / Technical / VS Code)
+         ========================================= */
+      --theme-name: 'dark';
+      
+      /* Colors */
+      --color-bg-main: #0d1117;     /* GitHub Dark Dimmed / VS Code deeply dark */
+      --color-bg-sidebar: #161b22;  /* Slightly lighter for sidebar */
+      --color-bg-card: #161b22;
+      --color-bg-card-hover: #21262d;
+      
+      --color-text-primary: #c9d1d9;
+      --color-text-secondary: #8b949e;
+      --color-text-muted: #484f58;
+
+      /* Syntax Highlighting Accents */
+      --color-primary: #58a6ff;     /* VS Code Blue */
+      --color-primary-hover: #79c0ff;
+      --color-primary-text: #0d1117;
+
+      --color-secondary: #d2a8ff;   /* Purple */
+      --color-accent: #79c0ff;      /* Cyan/Blue */
+      
+      --color-border: #30363d;
+      --color-border-hover: #8b949e;
+
+      /* Status Colors (Terminal Style) */
+      --color-success: #3fb950;     /* Terminal Green */
+      --color-warning: #d29922;     /* Terminal Yellow */
+      --color-error: #f85149;       /* Terminal Red */
+
+      --color-success-ring: rgba(63, 185, 80, 0.2);
+      --color-warning-ring: rgba(210, 153, 34, 0.2);
+      --color-error-ring: rgba(248, 81, 73, 0.2);
+
+      --color-primary-bg: rgba(88, 166, 255, 0.1);
+      --color-success-bg: rgba(63, 185, 80, 0.1);
+      --color-warning-bg: rgba(210, 153, 34, 0.1);
+      --color-error-bg: rgba(248, 81, 73, 0.1);
+
+      /* Typography - Technical */
+      --font-display: 'JetBrains Mono', monospace;
+      --font-body: 'JetBrains Mono', monospace; /* Monospace everything for that dev feel */
+      --font-mono: 'JetBrains Mono', monospace;
+
+      /* Spacing & Layout */
+      --spacing-1: 0.25rem;
+      --spacing-2: 0.5rem;
+      --spacing-3: 0.75rem;
+      --spacing-4: 1rem;
+      --spacing-6: 1.5rem;
+      --spacing-8: 2rem;
+      --spacing-12: 3rem;
+      
+      /* Visual Details */
+      --radius-sm: 2px;
+      --radius-md: 4px;
+      --radius-lg: 6px;
+      --radius-full: 9999px;
+
+      --shadow-sm: 0 1px 0 rgba(27, 31, 35, 0.04);
+      --shadow-md: 0 3px 6px rgba(0, 0, 0, 0.4);
+      --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
+
+      --transition-fast: 100ms cubic-bezier(0.4, 0, 0.2, 1);
+      --transition-normal: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+      --transition-spring: 300ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+      /* Special Effects */
+      --code-line-height: 1.5;
+      --border-style: solid;
+
+      /* Mode Specific Accents (Default Grader) */
+      --color-mode-accent: #16a34a;
+      --color-mode-accent-hover: #15803d;
+      --color-mode-accent-ring: rgba(22, 163, 74, 0.2);
+    }
+
+    /* =========================================
+       LIGHT MODE (Playful / Educator / Friendly)
+       ========================================= */
+    [data-theme="light"] {
+      --theme-name: 'light';
+
+      /* Colors - Warm & Vibrant */
+      --color-bg-main: #fffcf5;      /* Cream / Warm Paper */
+      --color-bg-sidebar: #ffffff;
+      --color-bg-card: #ffffff;
+      --color-bg-card-hover: #fff9e6; /* Very subtle yellow tint on hover */
+
+      --color-text-primary: #2d3748;
+      --color-text-secondary: #718096;
+      --color-text-muted: #a0aec0;
+
+      /* Playful Accents */
+      --color-primary: #ff6b6b;      /* Coral / Post-it Red-Pink */
+      --color-primary-hover: #ff5252;
+      --color-primary-text: #ffffff;
+
+      --color-secondary: #4ecdc4;    /* Teal */
+      --color-accent: #ffe66d;       /* Bright Yellow */
+
+      --color-border: #edf2f7;
+      --color-border-hover: #cbd5e0;
+
+      /* Status Colors (Friendly) */
+      --color-success: #06d6a0;      /* Minty Green */
+      --color-warning: #ffd166;      /* Sunny Yellow */
+      --color-error: #ef476f;        /* Berry Red */
+
+      --color-success-ring: rgba(6, 214, 160, 0.3);
+      --color-warning-ring: rgba(255, 209, 102, 0.4);
+      --color-error-ring: rgba(239, 71, 111, 0.2);
+
+      --color-primary-bg: rgba(255, 107, 107, 0.1);
+      --color-success-bg: rgba(6, 214, 160, 0.1);
+      --color-warning-bg: rgba(255, 209, 102, 0.1);
+      --color-error-bg: rgba(239, 71, 111, 0.1);
+
+      /* Typography - Friendly */
+      --font-display: 'Fredoka', sans-serif;
+      --font-body: 'Outfit', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace; /* Keep mono for code */
+
+      /* Visual Details - Bubbly (Capped for Side Panel) */
+      --radius-sm: 6px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+      --radius-full: 9999px;
+
+      --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.05);
+      --shadow-md: 0 6px 12px rgba(0, 0, 0, 0.08), 0 3px 6px rgba(0,0,0,0.05);
+      --shadow-lg: 0 15px 30px rgba(0, 0, 0, 0.1);
+
+      --border-style: solid;
+    }
+
+    /* Mode Overrides */
+    body.solver-mode {
+      --color-mode-accent: #2563eb;
+      --color-mode-accent-hover: #1d4ed8;
+      --color-mode-accent-ring: rgba(37, 99, 235, 0.2);
+    }
+
+    body.batch-mode {
+      --color-mode-accent: #d97706;
+      --color-mode-accent-hover: #b45309;
+      --color-mode-accent-ring: rgba(217, 119, 6, 0.2);
+    }
+    
+    body { 
+      font-family: var(--font-body, sans-serif); 
+      padding: 10px; 
+      background-color: var(--color-bg-main); 
+      color: var(--color-text-primary);
+      transition: background-color var(--transition-normal, 0.2s), color var(--transition-normal, 0.2s);
+    }
+
+
+    .card { position: relative; background: var(--color-bg-card); padding: var(--spacing-2); border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 15px; }
+    h3 { margin-top: 0; font-size: 14px; color: var(--color-text-primary); }
+    label { font-size: 12px; font-weight: bold; color: var(--color-text-secondary); display: block; margin-bottom: var(--spacing-1); }
+    input, textarea, select { width: 100%; padding: 8px; box-sizing: border-box; margin-bottom: var(--spacing-2); border: 1px solid var(--color-border); border-radius: var(--radius-md); }
     
     /* Default (Grader) - Green Theme */
-    button { width: 100%; background: #16a34a; color: white; border: none; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold; margin-bottom: 5px; transition: background-color 0.3s; }
-    button:hover { background: #15803d; }
+    button { width: 100%; background: var(--color-mode-accent); color: var(--color-primary-text); border: none; padding: var(--spacing-2); border-radius: var(--radius-md); cursor: pointer; font-weight: bold; margin-bottom: var(--spacing-1); transition: background-color var(--transition-normal); }
+    button:hover { background: var(--color-mode-accent-hover); }
     
     /* Solver Mode - Blue Theme */
-    body.solver-mode button { background: #2563eb; }
-    body.solver-mode button:hover { background: #1d4ed8; }
+    body.solver-mode button { background: var(--color-mode-accent); }
+    body.solver-mode button:hover { background: var(--color-mode-accent-hover); }
 
-    button.secondary { background: #e5e7eb; color: #333; }
-    button.secondary:hover { background: #d1d5db; }
+    button.secondary { background: var(--color-bg-card-hover); color: var(--color-text-primary); }
+    button.secondary:hover { background: var(--color-border-hover); }
     /* Ensure secondary buttons stay gray in solver mode */
-    body.solver-mode button.secondary { background: #e5e7eb; color: #333; }
-    body.solver-mode button.secondary:hover { background: #d1d5db; }
+    body.solver-mode button.secondary { background: var(--color-bg-card-hover); color: var(--color-text-primary); }
+    body.solver-mode button.secondary:hover { background: var(--color-border-hover); }
 
-    .preview { max-width: 100%; height: auto; border: 1px solid #ccc; margin-top: 5px; display: none; }
-    #status { font-size: 12px; color: #666; margin-top: 10px; }
+    .preview { max-width: 100%; height: auto; border: 1px solid var(--color-border); margin-top: var(--spacing-1); display: none; }
+    #status { font-size: 12px; color: var(--color-text-secondary); margin-top: var(--spacing-2); }
     #response { white-space: pre-wrap; font-size: 13px; line-height: 1.4; }
     
     /* LaTeX Toolbar */
@@ -36,24 +195,24 @@
       display: flex;
       flex-wrap: wrap;
       gap: 2px;
-      margin-bottom: 5px;
-      background: #eee;
+      margin-bottom: var(--spacing-1);
+      background: var(--color-border);
       padding: 4px;
-      border-radius: 4px;
+      border-radius: var(--radius-md);
     }
     .latex-btn {
-      background: white;
-      border: 1px solid #ccc;
-      border-radius: 3px;
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
       cursor: pointer;
       font-size: 11px;
       padding: 2px 6px;
       min-width: 24px;
-      color: #333;
+      color: var(--color-text-primary);
     }
     .latex-btn:hover {
-      background: #e0e0e0;
-      border-color: #999;
+      background: var(--color-bg-card-hover);
+      border-color: var(--color-border-hover);
     }
 
     /* Rich Editor */
@@ -62,26 +221,26 @@
       min-height: 80px;
       padding: 8px;
       box-sizing: border-box;
-      margin-bottom: 10px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      background: white;
+      margin-bottom: var(--spacing-2);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-card);
       font-family: sans-serif;
       font-size: 13px;
       overflow-y: auto;
       white-space: pre-wrap;
     }
     .rich-editor:focus {
-      outline: 2px solid #16a34a;
+      outline: 2px solid var(--color-mode-accent);
       border-color: transparent;
     }
     body.solver-mode .rich-editor:focus {
-      outline: 2px solid #2563eb;
+      outline: 2px solid var(--color-mode-accent);
     }
     /* Placeholder simulation */
     .rich-editor:empty:before {
       content: attr(placeholder);
-      color: #aaa;
+      color: var(--color-text-muted);
     }
     
     /* Math Field in Editor */
@@ -95,7 +254,7 @@
       margin: 0 2px;
       border: 1px solid transparent;
       background: rgba(0,0,0,0.03);
-      border-radius: 3px;
+      border-radius: var(--radius-sm);
       vertical-align: middle;
       font-size: 1.1em;
     }
@@ -103,28 +262,28 @@
     /* Target the internal parts of the math-field to ensure icons are visible */
     .rich-editor math-field::part(menu-toggle),
     .rich-editor math-field::part(virtual-keyboard-toggle) {
-      color: #555;
+      color: var(--color-text-secondary);
       opacity: 0.8;
       padding: 2px;
-      display: flex !important; /* Force display */
-      visibility: visible !important;
+      display: flex; /* Force display */
+      visibility: visible;
     }
     
     .rich-editor math-field::part(menu-toggle):hover,
     .rich-editor math-field::part(virtual-keyboard-toggle):hover {
       opacity: 1;
       background-color: rgba(0,0,0,0.1);
-      border-radius: 4px;
+      border-radius: var(--radius-md);
     }
 
     .rich-editor math-field:focus-within {
-      background: white;
-      border-color: #16a34a;
-      box-shadow: 0 0 0 1px #16a34a;
+      background: var(--color-bg-card);
+      border-color: var(--color-mode-accent);
+      box-shadow: 0 0 0 1px var(--color-mode-accent);
     }
     body.solver-mode .rich-editor math-field:focus-within {
-      border-color: #2563eb;
-      box-shadow: 0 0 0 1px #2563eb;
+      border-color: var(--color-mode-accent);
+      box-shadow: 0 0 0 1px var(--color-mode-accent);
     }
 
     /* MathLive Modal */
@@ -140,10 +299,10 @@
       background-color: rgba(0,0,0,0.4); 
     }
     .modal-content {
-      background-color: #fefefe;
+      background-color: var(--color-bg-card);
       margin: 15% auto; 
       padding: 20px;
-      border: 1px solid #888;
+      border: 1px solid var(--color-text-muted);
       width: 90%; 
       border-radius: 8px;
       box-shadow: 0 4px 8px rgba(0,0,0,0.2);
@@ -151,20 +310,20 @@
     .modal-actions {
       display: flex;
       justify-content: flex-end;
-      gap: 10px;
+      gap: var(--spacing-2);
     }
 
     /* Live Preview */
     .math-preview {
-      border: 1px solid #eee;
-      background: #fff;
-      padding: 10px;
-      border-radius: 4px;
+      border: 1px solid var(--color-border);
+      background: var(--color-bg-card);
+      padding: var(--spacing-2);
+      border-radius: var(--radius-md);
       min-height: 40px;
-      margin-bottom: 10px;
+      margin-bottom: var(--spacing-2);
       font-size: 13px;
       line-height: 1.5;
-      color: #333;
+      color: var(--color-text-primary);
       white-space: pre-wrap; /* Preserve newlines */
     }
     /* Make read-only math fields blend in */
@@ -188,10 +347,10 @@
     /* Toggle Switch - REPLACED WITH 3-WAY */
     .mode-selector {
       display: flex;
-      background: #eee;
+      background: var(--color-border);
       padding: 3px;
       border-radius: 6px;
-      margin-top: 10px;
+      margin-top: var(--spacing-2);
       border-top: none; /* Removed the line from container */
     }
     .mode-selector input {
@@ -203,32 +362,32 @@
       padding: 6px 0;
       font-size: 12px;
       cursor: pointer;
-      border-radius: 4px;
-      color: #666;
+      border-radius: var(--radius-md);
+      color: var(--color-text-secondary);
       font-weight: bold;
       transition: all 0.2s;
       margin-bottom: 0;
     }
     .mode-selector input:checked + label {
-      background: white;
+      background: var(--color-bg-card);
       box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-      color: #333;
+      color: var(--color-text-primary);
     }
     /* Mode Specific Colors */
-    .mode-selector input#modeGrader:checked + label { color: #16a34a; }
-    .mode-selector input#modeSolver:checked + label { color: #2563eb; }
-    .mode-selector input#modeBatch:checked + label { color: #d97706; } /* Amber/Orange for Batch */
+    .mode-selector input#modeGrader:checked + label { color: var(--color-mode-accent); }
+    .mode-selector input#modeSolver:checked + label { color: var(--color-mode-accent); }
+    .mode-selector input#modeBatch:checked + label { color: var(--color-mode-accent); } /* Amber/Orange for Batch */
 
     /* Batch Mode Styles */
-    body.batch-mode button.primary-action { color: #d97706 !important; }
-    body.batch-mode button.primary-action:hover { background: #fffbeb !important; }
-    body.batch-mode #batchGradeCard button#btnStartBatch { background: #d97706; }
-    body.batch-mode #batchGradeCard button#btnStartBatch:hover { background: #b45309; }
+    body.batch-mode button.primary-action { color: var(--color-mode-accent); }
+    body.batch-mode button.primary-action:hover { background: var(--color-warning-bg); }
+    body.batch-mode #batchGradeCard button#btnStartBatch { background: var(--color-mode-accent); }
+    body.batch-mode #batchGradeCard button#btnStartBatch:hover { background: var(--color-mode-accent-hover); }
 
     /* Chat Bubbles */
     .chat-message {
       padding: 8px 12px;
-      border-radius: 15px;
+      border-radius: var(--radius-lg);
       max-width: 80%;
       margin-bottom: 8px;
       font-size: 13px;
@@ -237,35 +396,35 @@
     .user-message {
       align-self: flex-end;
       background: #e3f2fd; /* Light Blue */
-      border-radius: 15px 15px 0 15px;
+      border-radius: var(--radius-lg) 15px 0 15px;
       margin-left: auto;
     }
     .assistant-message {
       align-self: flex-start;
-      background: #fff;
-      border: 1px solid #ddd;
-      border-radius: 15px 15px 15px 0;
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg) 15px 15px 0;
       margin-right: auto;
     }
     #solverChatHistory {
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: var(--spacing-2);
       max-height: 300px;
       overflow-y: auto;
-      padding: 10px;
-      border: 1px solid #eee;
-      border-radius: 4px;
-      background: #f9f9f9;
-      margin-bottom: 10px;
+      padding: var(--spacing-2);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-main);
+      margin-bottom: var(--spacing-2);
     }
 
     /* Integrated Input Container */
     .integrated-input-container {
       display: flex;
       flex-direction: column;
-      background: white;
-      padding: 5px;
+      background: var(--color-bg-card);
+      padding: var(--spacing-1);
       min-height: 80px;
       transition: outline 0.1s;
       
@@ -277,24 +436,24 @@
 
     /* Specific override for Rubric Input to have a border */
     #rubricTextContainer {
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      margin-bottom: 10px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      margin-bottom: var(--spacing-2);
     }
 
     .integrated-input-container:focus-within {
-      outline: 2px solid #16a34a;
+      outline: 2px solid var(--color-mode-accent);
       border-color: transparent;
     }
     body.solver-mode .integrated-input-container:focus-within {
-      outline: 2px solid #2563eb;
+      outline: 2px solid var(--color-mode-accent);
     }
     
     /* Override rich-editor styles when inside integrated container */
     .integrated-input-container .rich-editor {
       border: none;
       margin-bottom: 0;
-      padding: 5px;
+      padding: var(--spacing-1);
       min-height: 60px;
       flex-grow: 1;
     }
@@ -306,55 +465,55 @@
     .integrated-controls {
       display: flex;
       flex-direction: row;
-      gap: 5px;
-      margin-top: 5px;
-      border-top: 1px solid #eee;
+      gap: var(--spacing-1);
+      margin-top: var(--spacing-1);
+      border-top: 1px solid var(--color-border);
       padding-top: 5px;
       align-items: center;
     }
     .integrated-controls button, 
     .integrated-controls label.button {
-      border: none !important;
-      background: transparent !important;
-      color: #888 !important;
-      width: 28px !important;
-      height: 28px !important;
-      padding: 0 !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      cursor: pointer !important;
-      border-radius: 4px !important;
-      margin-bottom: 0 !important;
+      border: none;
+      background: transparent;
+      color: var(--color-text-muted);
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      border-radius: var(--radius-md);
+      margin-bottom: 0;
     }
     .integrated-controls button:hover, 
     .integrated-controls label.button:hover {
-      background: #f0f0f0 !important;
-      color: #333 !important;
+      background: var(--color-bg-card-hover);
+      color: var(--color-text-primary);
     }
     /* Active/Primary buttons in controls (like Send) */
     .integrated-controls button.primary-action {
-      color: #16a34a !important; /* Green (Grader default) */
-      margin-left: auto !important; /* Push to right */
+      color: var(--color-mode-accent); /* Green (Grader default) */
+      margin-left: auto; /* Push to right */
     }
     .integrated-controls button.primary-action:hover {
-      background: #f0fdf4 !important;
+      background: var(--color-success-bg);
     }
     
     /* Solver Mode Override for Primary Button */
     body.solver-mode .integrated-controls button.primary-action {
-      color: #2563eb !important; /* Blue */
+      color: var(--color-mode-accent); /* Blue */
     }
     body.solver-mode .integrated-controls button.primary-action:hover {
-      background: #eff6ff !important;
+      background: var(--color-primary-bg);
     }
 
     /* Chat Interface Wrapper */
     #chatInterfaceWrapper {
       transition: all 0.2s;
-      border: 1px solid #ddd;
+      border: 1px solid var(--color-border);
       border-radius: 6px;
-      background: white;
+      background: var(--color-bg-card);
       overflow: hidden;
       box-shadow: 0 2px 5px rgba(0,0,0,0.05);
       display: flex;
@@ -365,26 +524,26 @@
     .solver-chat-history {
       display: flex; /* Always visible now */
       flex-direction: column;
-      gap: 10px;
+      gap: var(--spacing-2);
       max-height: 300px;
       overflow-y: auto;
-      padding: 10px;
-      background: #f9f9f9;
+      padding: var(--spacing-2);
+      background: var(--color-bg-main);
       
       /* Integrated Style */
       border: none;
       border-radius: 0;
       margin-bottom: 0;
-      border-bottom: 1px solid #eee;
+      border-bottom: 1px solid var(--color-border);
       flex-grow: 1;
     }
 
     /* Solver Mode Integration Styles - REMOVED (Now Default) */
     /*
     body.solver-mode #chatInterfaceWrapper {
-      border: 1px solid #ddd;
+      border: 1px solid var(--color-border);
       border-radius: 6px;
-      background: white;
+      background: var(--color-bg-card);
       overflow: hidden;
       box-shadow: 0 2px 5px rgba(0,0,0,0.05);
       display: flex;
@@ -392,39 +551,39 @@
     }
     
     body.solver-mode .solver-chat-history {
-      border: none !important;
-      border-radius: 0 !important;
-      margin-bottom: 0 !important;
-      border-bottom: 1px solid #eee !important;
-      background: #f8fafc; 
+      border: none;
+      border-radius: 0;
+      margin-bottom: 0;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-main); 
       flex-grow: 1;
     }
     
     body.solver-mode .integrated-input-container {
-      border: none !important;
-      border-radius: 0 !important;
-      margin-bottom: 0 !important;
-      background: white;
-      box-shadow: none !important;
+      border: none;
+      border-radius: 0;
+      margin-bottom: 0;
+      background: var(--color-bg-card);
+      box-shadow: none;
     }
     */
     
     /* Keep background color change for Solver Mode */
     body.solver-mode .solver-chat-history {
-      background: #f8fafc;
+      background: var(--color-bg-main);
     }
     
     /* Focus ring around the whole wrapper in solver mode */
     body.solver-mode #chatInterfaceWrapper:focus-within {
-      border-color: #2563eb;
+      border-color: var(--color-mode-accent);
       box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
     }
     body.solver-mode .integrated-input-container:focus-within {
-      outline: none !important;
+      outline: none;
     }
 
     /* Tabbed Interface */
-    .tabs { display: flex; border-bottom: 1px solid #ddd; margin-bottom: 10px; flex-wrap: wrap; }
+    .tabs { display: flex; border-bottom: 1px solid var(--color-border); margin-bottom: var(--spacing-2); flex-wrap: wrap; }
     .tab-btn {
       padding: 8px 12px;
       cursor: pointer;
@@ -432,18 +591,18 @@
       background: none;
       font-size: 12px;
       font-weight: bold;
-      color: #666;
+      color: var(--color-text-secondary);
       border-bottom: 2px solid transparent;
       margin-bottom: -1px;
       transition: all 0.2s;
-      width: auto !important; /* Override default button width */
-      border-radius: 0 !important;
+      width: auto; /* Override default button width */
+      border-radius: 0;
       margin-right: 2px;
       position: relative;
     }
-    .tab-btn:hover { color: #333; background: #f5f5f5; }
-    .tab-btn.active { color: #16a34a; border-bottom-color: #16a34a; }
-    body.solver-mode .tab-btn.active { color: #2563eb; border-bottom-color: #2563eb; }
+    .tab-btn:hover { color: var(--color-text-primary); background: var(--color-bg-card-hover); }
+    .tab-btn.active { color: var(--color-mode-accent); border-bottom-color: var(--color-mode-accent); }
+    body.solver-mode .tab-btn.active { color: var(--color-mode-accent); border-bottom-color: var(--color-mode-accent); }
     
     /* Provider status indicator on tabs */
     .tab-btn::after {
@@ -453,13 +612,13 @@
       right: 4px;
       width: 6px;
       height: 6px;
-      border-radius: 50%;
+      border-radius: var(--radius-full);
       background: transparent;
     }
-    .tab-btn.status-connected::after { background: #22c55e; }
-    .tab-btn.status-error::after { background: #ef4444; }
+    .tab-btn.status-connected::after { background: var(--color-success); }
+    .tab-btn.status-error::after { background: var(--color-error); }
     .tab-btn.status-testing::after { 
-      background: #eab308;
+      background: var(--color-warning);
       animation: pulse 1.5s ease-in-out infinite;
     }
     
@@ -468,7 +627,7 @@
       50% { opacity: 0.5; }
     }
     
-    .provider-field-group { margin-bottom: 10px; animation: fadeIn 0.3s ease; }
+    .provider-field-group { margin-bottom: var(--spacing-2); animation: fadeIn 0.3s ease; }
     .provider-status {
       animation: slideIn 0.3s ease;
     }
@@ -478,12 +637,570 @@
       to { opacity: 1; transform: translateY(0); } 
     }
 
+
+
+    /* Utility Classes - Added during final refactor */
+    .flex-gap-small { display: flex; gap: var(--spacing-1); }
+    .flex-gap-medium { display: flex; gap: var(--spacing-2); }
+    .flex-between { display: flex; justify-content: space-between; align-items: center; }
+    .flex-center { display: flex; justify-content: center; align-items: center; }
+    .inline-flex-center { display: inline-flex; align-items: center; }
+    
+    .w-full { width: 100%; }
+    /* .w-auto already defined */
+    .flex-1 { flex: 1; }
+    
+    .m-0 { margin: 0; }
+    .mb-0 { margin-bottom: 0 !important; }
+    .mb-small { margin-bottom: var(--spacing-1); }
+    .mb-medium { margin-bottom: var(--spacing-2); }
+    /* .mr-small already defined */
+    .mt-0 { margin-top: 0; }
+    
+    .p-0 { padding: 0; }
+    .p-1 { padding: var(--spacing-1); }
+    .p-2 { padding: var(--spacing-2); }
+    
+    .text-left { text-align: left; }
+    .text-center { text-align: center; }
+    .font-normal { font-weight: normal; }
+    .cursor-pointer { cursor: pointer; }
+    
+    .btn-sm { font-size: 12px; padding: 4px 8px; }
+    
+    /* Component Classes */
+    .status-banner {
+      margin-bottom: var(--spacing-2); 
+      padding: var(--spacing-2); 
+      background: #e0f2fe; 
+      border: 1px solid #bae6fd; 
+      border-radius: var(--radius-md); 
+      color: #0369a1; 
+      font-size: 12px; 
+      display: flex; 
+      align-items: center; 
+      gap: var(--spacing-2);
+    }
+    [data-theme="dark"] .status-banner {
+      background: rgba(3, 105, 161, 0.2);
+      border-color: rgba(3, 105, 161, 0.4);
+      color: #7dd3fc;
+    }
+
+    .spinner-sm {
+      width: 12px; 
+      height: 12px; 
+      border: 2px solid currentColor; 
+      border-top-color: transparent; 
+      border-radius: 50%; 
+      animation: spin 1s linear infinite;
+    }
+
+    .rubric-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 12px; }
+    .rubric-table-header { background: var(--color-bg-card-hover); }
+    .rubric-th { border: 1px solid var(--color-border); padding: 5px; text-align: left; }
+    .rubric-td { border: 1px solid var(--color-border); padding: 5px; }
+
+    .details-box { margin-bottom: 15px; border: 1px solid var(--color-border); border-radius: 4px; padding: 0; background: var(--color-bg-card); }
+    .summary-header { padding: 8px 10px; cursor: pointer; background: var(--color-bg-card-hover); font-size: 12px; font-weight: bold; color: var(--color-text-secondary); display: flex; align-items: center; justify-content: space-between; }
+    .resume-box { margin-bottom: 10px; padding: 10px; background: var(--color-warning-bg); border: 1px solid var(--color-warning); border-radius: 4px; }
+    
+    .progress-container { width: 100%; background: var(--color-border); height: 8px; border-radius: 4px; overflow: hidden; }
+    .progress-bar { width: 0%; background: var(--color-mode-accent); height: 100%; transition: width 0.3s; }
+
+    /* Refactoring Additions */
+    .position-absolute { position: absolute; }
+    .top-10 { top: 10px; }
+    .right-10 { right: 10px; }
+    .logo-img { width: 100px; height: 45px; object-fit: cover; object-position: top; }
+    
+    .items-center { align-items: center; }
+    .justify-between { justify-content: space-between; }
+    .justify-end { justify-content: flex-end; }
+    .gap-medium { gap: 8px; }
+    .gap-10 { gap: var(--spacing-2); }
+    
+    .mr-small { margin-right: 5px; }
+    .mb-10 { margin-bottom: var(--spacing-2); }
+    .mt-5 { margin-top: var(--spacing-1); }
+    .mt-10 { margin-top: var(--spacing-2); }
+    .pt-10 { padding-top: 10px; }
+    
+    .text-sm { font-size: 14px; }
+    .text-xs-extra { font-size: 10px; }
+    .text-base { font-size: 13px; }
+    
+    .rounded-circle { border-radius: var(--radius-full); }
+    .rounded-sm { border-radius: var(--radius-md); }
+    
+    .list-none { list-style: none; padding: 0; margin: 0; }
+    .pl-20 { padding-left: 20px; }
+    
+    .border-top-eee { border-top: 1px solid var(--color-border); }
+    .bg-white { background: var(--color-bg-card); }
+    .w-auto { width: auto; }
+
+    /* Semantic Components */
+    .github-success-box {
+      background: var(--color-success-bg); 
+      border: 1px solid var(--color-success); 
+      color: var(--color-success);
+      padding: 8px;
+      border-radius: var(--radius-md);
+    }
+    [data-theme="dark"] .github-success-box {
+      background: rgba(34, 197, 94, 0.1);
+      border-color: rgba(34, 197, 94, 0.3);
+      color: var(--color-success);
+    }
+    
+    .info-box {
+      background: var(--color-primary-bg); 
+      border: 1px solid var(--color-primary); 
+      color: var(--color-primary);
+      padding: var(--spacing-2);
+      border-radius: var(--radius-md);
+    }
+    [data-theme="dark"] .info-box {
+      background: var(--color-primary-bg);
+      border-color: rgba(56, 189, 248, 0.3);
+      color: #38bdf8;
+    }
+    
+    .warning-box {
+      background: var(--color-warning-bg); 
+      border: 1px solid var(--color-warning); 
+      color: var(--color-warning);
+      padding: 8px;
+      border-radius: var(--radius-md);
+    }
+    [data-theme="dark"] .warning-box {
+      background: var(--color-warning-bg);
+      border-color: rgba(251, 191, 36, 0.3);
+      color: #fbbf24;
+    }
+    
+    .note-box {
+      background: var(--color-primary-bg); 
+      border: 1px solid var(--color-primary); 
+      border-radius: var(--radius-md); 
+      padding: var(--spacing-2);
+      color: var(--color-primary);
+    }
+    [data-theme="dark"] .note-box {
+      background: rgba(59, 130, 246, 0.1);
+      border-color: rgba(59, 130, 246, 0.3);
+      color: #60a5fa;
+    }
+    
+    .code-badge {
+      background: var(--color-bg-card-hover); 
+      padding: 2px 6px; 
+      border-radius: 2px;
+      font-family: monospace;
+    }
+    [data-theme="dark"] .code-badge {
+      background: var(--color-border);
+      color: #e6edf3;
+    }
+    
+    .modal-content-sm { max-width: 500px; }
+    .modal-content-xs { max-width: 450px; }
+    
+    .close-btn { font-size: 24px; cursor: pointer; }
+    
+    .link-blue { color: var(--color-mode-accent); text-decoration: none; }
+    [data-theme="dark"] .link-blue { color: #58a6ff; }
+
+    /* =========================================
+       Status & Utility Classes (Dark Mode Compat)
+       ========================================= */
+    .status-info { 
+      background: var(--color-primary-bg) !important; 
+      color: var(--color-primary) !important; 
+      border-color: var(--color-primary) !important; 
+    }
+    .status-success { 
+      background: var(--color-success-bg) !important; 
+      color: var(--color-success) !important; 
+      border-color: var(--color-success) !important; 
+    }
+    .status-error { 
+      background: var(--color-error-bg) !important; 
+      color: var(--color-error) !important; 
+      border-color: var(--color-error) !important; 
+    }
+    .status-warning { 
+      background: var(--color-warning-bg) !important; 
+      color: var(--color-warning) !important; 
+      border-color: var(--color-warning) !important; 
+    }
+    
+    /* Text Colors */
+    .text-error { color: var(--color-error) !important; }
+    .text-success { color: var(--color-success) !important; }
+    .text-warning { color: var(--color-warning) !important; }
+    .text-muted { color: var(--color-text-secondary) !important; }
+    .text-white { color: var(--color-primary-text) !important; }
+    .text-primary { color: var(--color-primary) !important; }
+    
+    /* Borders & Layout */
+    .border-light { border: 1px solid var(--color-border) !important; }
+    .border-bottom-light { border-bottom: 1px solid var(--color-border) !important; }
+    .border-left-thick { border-left: 2px solid var(--color-border) !important; }
+    .border-none { border: none !important; }
+    .rounded-circle { border-radius: 50% !important; }
+    
+    /* Backgrounds */
+    .bg-error { background: var(--color-error) !important; }
+    /* Migration Classes */
+    .brand-logo { 
+      position: absolute; 
+      top: 10px; 
+      right: 10px; 
+      width: 100px; 
+      height: 45px; 
+      object-fit: cover; 
+      object-position: top; 
+    }
+    [data-theme="dark"] .brand-logo {
+      filter: brightness(0.9);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 0;
+    }
+    
+    .btn-row {
+      display: flex;
+      gap: 5px;
+      margin-bottom: 5px;
+    }
+    
+    .btn-row-tight {
+      display: flex;
+      gap: 5px;
+      margin-bottom: 0;
+    }
+
+    .form-group-inline {
+      display: inline-flex;
+      align-items: center;
+      font-weight: normal;
+    }
+    
+    .status-banner {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 10px;
+      font-size: 12px;
+    }
+
+    .rubric-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 10px;
+      font-size: 12px;
+    }
+    .rubric-table th {
+      border: 1px solid var(--color-border);
+      padding: 5px;
+      text-align: left;
+      background: var(--color-bg-card-hover);
+      color: var(--color-text-primary);
+    }
+
+    .mode-selector-container {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--color-border);
+    }
+    .radio-input {
+      width: auto;
+      margin-right: 5px;
+      margin-bottom: 0;
+    }
+    .flex-gap-10 { display: flex; gap: 10px; }
+    .btn-row-10 {
+      display: flex;
+      gap: 5px;
+      margin-bottom: 10px;
+    }
+    
+    /* New Migration Classes */
+    .btn-tool {
+      margin-bottom: 0;
+      font-size: 12px;
+      flex: 1;
+    }
+    .btn-tool-auto {
+      width: auto;
+      margin-bottom: 0;
+      font-size: 10px;
+      padding: 4px 6px;
+    }
+    .btn-resume {
+      flex: 1; 
+      font-size: 11px; 
+      padding: 6px; 
+      margin-bottom: 0; 
+      background: var(--color-warning); 
+      color: #78350f;
+    }
+    .btn-fresh {
+      flex: 1; 
+      font-size: 11px; 
+      padding: 6px; 
+      margin-bottom: 0;
+    }
+
+    .radio-label {
+      display: inline-flex; 
+      align-items: center; 
+      font-weight: normal;
+    }
+    
+    .batch-status-box {
+      padding: 10px;
+      background: #eee;
+      border-radius: 4px;
+      margin-bottom: 10px;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    [data-theme="dark"] .batch-status-box {
+      background: var(--color-bg-card-hover);
+      color: var(--color-text-primary);
+    }
+    
+    .details-container {
+      margin-bottom: 15px; 
+      border: 1px solid var(--color-border); 
+      border-radius: 4px; 
+      padding: 0; 
+      background: var(--color-bg-card);
+    }
+    
+    .details-content {
+      padding: 10px; 
+      border-top: 1px solid var(--color-border);
+    }
+    
+    .custom-instructions-area {
+      font-size: 12px; 
+      resize: vertical; 
+      margin-bottom: 0; 
+      width: 100%; 
+      border: 1px solid var(--color-border); 
+      border-radius: 4px; 
+      padding: 8px;
+    }
+
+    .resume-prompt-box {
+      display: none; 
+      margin-bottom: 10px; 
+      padding: 10px; 
+      background: #fffbeb; 
+      border: 1px solid #fbbf24; 
+      border-radius: 4px;
+    }
+    [data-theme="dark"] .resume-prompt-box {
+      background: rgba(251, 191, 36, 0.1);
+      border-color: rgba(251, 191, 36, 0.3);
+    }
+    
+    .progress-track {
+      width: 100%; 
+      background: #eee; 
+      height: 8px; 
+      border-radius: 4px; 
+      overflow: hidden;
+    }
+    [data-theme="dark"] .progress-track {
+      background: var(--color-border);
+    }
+    
+    .batch-results-log {
+      margin-top: 10px; 
+      max-height: 200px; 
+      overflow-y: auto; 
+      font-size: 11px; 
+      border: 1px solid #eee; 
+      border-radius: 4px; 
+      padding: 5px; 
+      display: none; 
+      background: #f9f9f9;
+    }
+    [data-theme="dark"] .batch-results-log {
+      background: var(--color-bg-card);
+      border-color: var(--color-border);
+    }
+    
+    .about-text {
+      font-size: 12px; 
+      color: var(--color-text-secondary); 
+      margin-bottom: 5px;
+    }
+    
+    .modal-header {
+      display: flex; 
+      justify-content: space-between; 
+      align-items: center; 
+      margin-bottom: 15px;
+    }
+
+    .image-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 5px;
+    }
+    .progress-info {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+    
+    .btn-stop {
+      background: #fee2e2 !important;
+      color: #b91c1c !important;
+    }
+    [data-theme="dark"] .btn-stop {
+        background: rgba(239, 68, 68, 0.2) !important;
+        color: #f87171 !important;
+    }
+    
+    .w-50px { width: 50px; }
+    .w-90px { width: 90px; }
+    .scroll-list-400 { max-height: 400px; overflow-y: auto; }
+    
+    .my-5 { margin-top: 5px; margin-bottom: 5px; }
+    .my-3 { margin-top: 3px; margin-bottom: 3px; }
+    .mt-15 { margin-top: 15px; }
+    .pl-10 { padding-left: 10px; }
+    .line-height-relaxed { line-height: 1.6; }
+
+    /* Modal & Rubric Styles */
+    .rubric-status-box {
+      margin-bottom: 10px; 
+      padding: 8px; 
+      background: #e0f2fe; 
+      border: 1px solid #bae6fd; 
+      border-radius: 4px; 
+      color: #0369a1; 
+      font-size: 12px; 
+      align-items: center; 
+      gap: 8px;
+    }
+    [data-theme="dark"] .rubric-status-box {
+      background: rgba(3, 105, 161, 0.2);
+      border-color: rgba(3, 105, 161, 0.4);
+      color: #7dd3fc;
+    }
+
+    .spinner-blue {
+      width: 12px; 
+      height: 12px; 
+      border: 2px solid currentColor; 
+      border-top-color: transparent; 
+      border-radius: 50%; 
+      animation: spin 1s linear infinite;
+    }
+
+    .info-callout {
+      background: #e0f2fe; 
+      border: 1px solid #38bdf8; 
+      border-radius: 4px; 
+      padding: 10px; 
+      margin-bottom: 15px;
+    }
+    [data-theme="dark"] .info-callout {
+      background: rgba(56, 189, 248, 0.1);
+      border-color: rgba(56, 189, 248, 0.3);
+    }
+
+    .info-callout-text {
+      font-size: 12px; 
+      color: #0c4a6e;
+    }
+    [data-theme="dark"] .info-callout-text { color: #e0f2fe; }
+
+    .info-icon-blue { color: #0284c7; }
+    [data-theme="dark"] .info-icon-blue { color: #38bdf8; }
+
+    /* New Utility Classes for JS Refactoring */
+    .bg-header { background: var(--color-bg-card-hover); }
+    [data-theme="light"] .bg-header { background: #f1f1f1; }
+    .border-bottom-dashed { border-bottom: 1px dashed var(--color-border); }
+    .cost-badge { font-size: 10px; border: 1px solid currentColor; padding: 1px 5px; border-radius: 10px; text-transform: uppercase; }
+    .model-list-item { margin-bottom: 12px; padding-bottom: 12px; }
+    /* =========================================
+       Task 5: Polish — Decorative Touches
+       ========================================= */
+
+    /* 1. Card Gradient Top-Border (Dark Mode) */
+    [data-theme="dark"] .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%;
+      height: 2px;
+      background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+      opacity: 0.5;
+      border-radius: 8px 8px 0 0; /* Match card radius */
+    }
+
+    /* 2. Custom Scrollbar Styling */
+    /* Track */
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: var(--color-bg-sidebar); }
+    /* Thumb */
+    ::-webkit-scrollbar-thumb { 
+      background: var(--color-border); 
+      border-radius: var(--radius-full);
+    }
+    ::-webkit-scrollbar-thumb:hover { background: var(--color-border-hover); }
+
+    /* 4. Card Hover Effects */
+    .card:hover {
+      border-color: var(--color-border-hover);
+      box-shadow: var(--shadow-md);
+      transition: border-color var(--transition-normal), box-shadow var(--transition-normal);
+    }
+
+    /* 5. Logo Dark Mode Treatment */
+    [data-theme="dark"] .brand-logo { 
+      filter: brightness(1.2) contrast(0.95); 
+    }
+
+    /* 6. Dot-Grid Background Pattern (Dark Mode) */
+    [data-theme="dark"] body {
+      background-image: radial-gradient(var(--color-border) 1px, transparent 1px);
+      background-size: 30px 30px;
+    }
+
+    /* 7. Input Focus Ring */
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      box-shadow: 0 0 0 3px var(--color-primary-bg);
+      border-color: var(--color-primary);
+      transition: box-shadow var(--transition-normal), border-color var(--transition-normal);
+    }
   </style>
 </head>
 <body>
 
   <div class="card">
-    <img src="logo.png" style="position: absolute; top: 10px; right: 10px; width: 100px; height: 45px; object-fit: cover; object-position: top;" alt="Logo">
+    <img src="logo.png" class="brand-logo" alt="Logo">
     <h3><i class="bi bi-gear-fill"></i> Config</h3>
     
     <!-- Provider Tabs -->
@@ -501,18 +1218,18 @@
       <!-- Fields injected by JS -->
     </div>
 
-    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; margin-top: 5px;">
-      <label style="margin-bottom: 0;">AI Model</label>
-      <div style="display: flex; gap: 8px;">
-        <i class="bi bi-arrow-clockwise" id="btnRefreshModels" style="cursor: pointer; color: #666; font-size: 14px;" title="Refresh Models"></i>
-        <i class="bi bi-info-circle" id="btnModelInfo" style="cursor: pointer; color: #666; font-size: 14px;" title="Click for Model Guide"></i>
+    <div class="flex-between mb-small mt-5">
+      <label class="mb-0">AI Model</label>
+      <div class="flex-gap-medium">
+        <i class="bi bi-arrow-clockwise cursor-pointer text-muted text-sm" id="btnRefreshModels" title="Refresh Models"></i>
+        <i class="bi bi-info-circle cursor-pointer text-muted text-sm" id="btnModelInfo" title="Click for Model Guide"></i>
       </div>
     </div>
-    <select id="modelName" style="margin-bottom: 10px;">
+    <select id="modelName" class="mb-10">
        <option value="" disabled selected>Loading models...</option>
     </select>
 
-    <div id="thinkingControls" style="margin-bottom: 10px; display: none;">
+    <div id="thinkingControls" class="mb-10" style="display: none;">
       <div id="gptThinking" style="display: none;">
         <label>Thinking Level</label>
         <select id="thinkLevel">
@@ -522,19 +1239,19 @@
         </select>
       </div>
       <div id="otherThinking" style="display: none;">
-        <label style="display:inline-flex; align-items: center; font-weight: normal;">
-          <input type="checkbox" id="thinkingMode" style="width: auto; margin-right: 5px; margin-bottom: 0;"> Enable Thinking Mode
+        <label class="checkbox-wrapper">
+          <input type="checkbox" id="thinkingMode"> Enable Thinking Mode
         </label>
       </div>
     </div>
 
-    <div style="display: flex; gap: 5px;">
+    <div class="btn-row">
       <button id="testConnection" class="secondary" style="flex: 1;"><i class="bi bi-wifi"></i> Test</button>
       <button id="saveConfig" class="secondary" style="flex: 1;"><i class="bi bi-floppy"></i> Save</button>
     </div>
     <div id="configStatus" style="margin-top: 0; font-size: 0.9em; text-align: center; display: none;"></div>
 
-    <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #eee;">
+    <div class="mt-10 pt-10 border-top-eee">
       <div class="mode-selector">
         <input type="radio" name="appMode" id="modeGrader" value="grader" checked>
         <label for="modeGrader">Grader</label>
@@ -551,33 +1268,33 @@
 
   <!-- GitHub Authentication Section -->
   <div class="card">
-    <h3 style="display: flex; align-items: center; justify-content: space-between;">
+    <h3 class="flex-between">
       <span><i class="bi bi-github"></i> GitHub Integration (Optional)</span>
-      <i class="bi bi-info-circle" id="btnGitHubInfo" style="cursor: pointer; color: #666; font-size: 14px;" title="Click for setup instructions"></i>
+      <i class="bi bi-info-circle cursor-pointer text-muted text-sm" id="btnGitHubInfo" title="Click for setup instructions"></i>
     </h3>
     <div id="githubAuthContainer">
       <!-- Signed Out State -->
-      <div id="githubSignedOut" style="display: block;">
-        <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
+      <div id="githubSignedOut">
+        <p class="text-small text-muted mb-10">
           Connect GitHub to enable repository features and API access.
         </p>
-        <p style="font-size: 11px; color: #999; margin-bottom: 5px;">
-          <a href="https://github.com/settings/tokens/new" target="_blank" style="color: #2563eb;">Create Personal Access Token</a> (grant <code style="background: #f3f4f6; padding: 2px 4px; border-radius: 2px;">repo</code> and <code style="background: #f3f4f6; padding: 2px 4px; border-radius: 2px;">user</code> scopes)
+        <p class="text-xs text-muted mb-small">
+          <a href="https://github.com/settings/tokens/new" target="_blank" class="link-blue">Create Personal Access Token</a> (grant <code class="code-badge">repo</code> and <code class="code-badge">user</code> scopes)
         </p>
-        <input type="password" id="githubTokenManual" placeholder="ghp_xxxxxxxxxxxx" style="margin-bottom: 5px; font-family: monospace; font-size: 11px;">
+        <input type="password" id="githubTokenManual" placeholder="ghp_xxxxxxxxxxxx" class="mb-small font-mono text-xs">
         <button id="btnSaveToken" class="secondary"><i class="bi bi-shield-lock"></i> Save Token</button>
       </div>
 
       <!-- Signed In State -->
       <div id="githubSignedIn" style="display: none;">
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding: 8px; background: #f0fdf4; border: 1px solid #86efac; border-radius: 4px;">
-          <img id="githubAvatar" src="" alt="Avatar" style="width: 32px; height: 32px; border-radius: 50%; border: 2px solid #22c55e;">
-          <div style="flex: 1;">
-            <div id="githubUsername" style="font-weight: bold; font-size: 13px; color: #166534;"></div>
-            <div style="font-size: 11px; color: #15803d;">✓ Connected</div>
+        <div class="flex-gap-medium items-center mb-10 github-success-box">
+          <img id="githubAvatar" src="" alt="Avatar" class="avatar-sm">
+          <div class="flex-1">
+            <div id="githubUsername" class="font-bold text-base text-success-dark"></div>
+            <div class="text-xs text-success">✓ Connected</div>
           </div>
         </div>
-        <button id="btnGitHubSignOut" class="secondary" style="font-size: 12px; padding: 8px;">
+        <button id="btnGitHubSignOut" class="secondary text-small p-2">
           <i class="bi bi-box-arrow-right"></i> Sign Out
         </button>
       </div>
@@ -586,23 +1303,23 @@
 
   <div class="card" id="rubricCard">
     <h3 id="rubricTitle"><i class="bi bi-list-check"></i> 1. Define Role / Rubric</h3>
-    <div style="margin-bottom: 10px; display: flex; gap: 10px;">
-      <label style="display:inline-flex; align-items: center; font-weight: normal;">
-        <input type="radio" name="rubricMode" value="text" checked style="width: auto; margin-right: 5px; margin-bottom: 0;"> Text
+    <div class="flex-gap-10 mb-10">
+      <label class="radio-label">
+        <input type="radio" name="rubricMode" value="text" checked class="radio-input"> Text
       </label>
-      <label style="display:inline-flex; align-items: center; font-weight: normal;">
-        <input type="radio" name="rubricMode" value="table" style="width: auto; margin-right: 5px; margin-bottom: 0;"> Table
+      <label class="radio-label">
+        <input type="radio" name="rubricMode" value="table" class="radio-input"> Table
       </label>
     </div>
 
-    <div style="display: flex; gap: 5px; margin-bottom: 5px;">
-      <button id="btnGetRubricText" class="secondary" style="margin-bottom: 0; font-size: 12px; flex: 1;"><i class="bi bi-text-paragraph"></i> Get Highlighted Text</button>
-      <button id="btnImportRubric" class="secondary" style="margin-bottom: 0; font-size: 12px; flex: 1;"><i class="bi bi-stars"></i> Import Rubric from Highlighted Text (AI)</button>
+    <div class="btn-row">
+      <button id="btnGetRubricText" class="secondary btn-tool"><i class="bi bi-text-paragraph"></i> Get Highlighted Text</button>
+      <button id="btnImportRubric" class="secondary btn-tool"><i class="bi bi-stars"></i> Import Rubric from Highlighted Text (AI)</button>
     </div>
     
-    <div style="display: flex; gap: 5px; margin-bottom: 10px;">
-      <button id="btnRubricArea" class="secondary" style="margin-bottom: 0; font-size: 12px; flex: 1;"><i class="bi bi-crop"></i> Screenshot Area</button>
-      <button id="btnImportRubricImage" class="secondary" style="margin-bottom: 0; font-size: 12px; flex: 1;"><i class="bi bi-file-image"></i> Import Rubric from Screenshot (AI)</button>
+    <div class="btn-row-10">
+      <button id="btnRubricArea" class="secondary btn-tool"><i class="bi bi-crop"></i> Screenshot Area</button>
+      <button id="btnImportRubricImage" class="secondary btn-tool"><i class="bi bi-file-image"></i> Import Rubric from Screenshot (AI)</button>
     </div>
 
     <div id="rubricStatus" style="display:none; margin-bottom: 10px; padding: 8px; background: #e0f2fe; border: 1px solid #bae6fd; border-radius: 4px; color: #0369a1; font-size: 12px; align-items: center; gap: 8px;">
@@ -621,37 +1338,37 @@
     </div>
 
     <div id="rubricTableContainer" style="display:none;">
-      <table id="rubricTable" style="width:100%; border-collapse: collapse; margin-bottom: 10px; font-size: 12px;">
+      <table id="rubricTable" class="rubric-table">
         <thead>
-          <tr style="background: #f1f1f1;">
-            <th style="border: 1px solid #ddd; padding: 5px; text-align: left;">Criteria</th>
-            <th style="border: 1px solid #ddd; padding: 5px; text-align: left;">Description</th>
-            <th style="border: 1px solid #ddd; padding: 5px; text-align: left; width: 50px;">Pts</th>
-            <th style="border: 1px solid #ddd; padding: 5px; width: 20px;"></th>
+          <tr class="rubric-table-header">
+            <th>Criteria</th>
+            <th>Description</th>
+            <th style="width: 50px;">Pts</th>
+            <th style="width: 20px;"></th>
           </tr>
         </thead>
         <tbody>
           <!-- Rows will be added here -->
         </tbody>
       </table>
-      <button id="btnAddRow" class="secondary" style="width: auto; padding: 5px 10px; font-size: 12px;">+ Add Row</button>
+      <button id="btnAddRow" class="secondary w-auto btn-sm">+ Add Row</button>
     </div>
 
     <input type="file" id="rubricUpload" accept="image/*" multiple style="display: none;">
-    <div id="rubricImagesContainer" style="display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px;"></div>
+    <div id="rubricImagesContainer" class="image-grid"></div>
   </div>
 
   <div class="card">
     <h3 id="studentWorkTitle"><i class="bi bi-person-workspace"></i> 2. Student Work</h3>
     
-    <div style="display: flex; gap: 5px; margin-bottom: 5px;">
-      <button id="btnGetStudentText" class="secondary" style="margin-bottom: 0; font-size: 12px; flex: 1;"><i class="bi bi-text-paragraph"></i> Get Highlighted Text</button>
-      <button id="btnImportStudent" class="secondary" style="margin-bottom: 0; font-size: 12px; flex: 1;"><i class="bi bi-stars"></i> Import Student Work from Text (AI)</button>
+    <div class="btn-row">
+      <button id="btnGetStudentText" class="secondary btn-tool"><i class="bi bi-text-paragraph"></i> Get Highlighted Text</button>
+      <button id="btnImportStudent" class="secondary btn-tool"><i class="bi bi-stars"></i> Import Student Work from Text (AI)</button>
     </div>
     
-    <div style="display: flex; gap: 5px; margin-bottom: 10px;">
-      <button id="btnStudentArea" class="secondary" style="margin-bottom: 0; font-size: 12px; flex: 1;"><i class="bi bi-crop"></i> Screenshot Area</button>
-      <button id="btnImportStudentImage" class="secondary" style="margin-bottom: 0; font-size: 12px; flex: 1;"><i class="bi bi-file-image"></i> Import Student Work from Screenshot (AI)</button>
+    <div class="btn-row-10">
+      <button id="btnStudentArea" class="secondary btn-tool"><i class="bi bi-crop"></i> Screenshot Area</button>
+      <button id="btnImportStudentImage" class="secondary btn-tool"><i class="bi bi-file-image"></i> Import Student Work from Screenshot (AI)</button>
     </div>
     
     <div id="chatInterfaceWrapper">
@@ -671,69 +1388,69 @@
     </div>
     
     <input type="file" id="studentUpload" accept="image/*" multiple style="display: none;">
-    <div id="studentImagesContainer" style="display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px;"></div>
+    <div id="studentImagesContainer" class="image-grid"></div>
   </div>
 
   <div class="card" id="batchGradeCard" style="display: none;">
     <h3><i class="bi bi-collection-fill"></i> 3. Batch Grading</h3>
     
-    <div id="batchPageStatus" style="padding: 10px; background: #eee; border-radius: 4px; margin-bottom: 10px; font-size: 12px; display: flex; align-items: center; gap: 8px;">
+    <div id="batchPageStatus" class="batch-status-box">
       <i class="bi bi-search"></i> <span id="batchPageStatusText">Checking page...</span>
     </div>
 
     <!-- Grading Instructions (Collapsible) -->
-    <details id="gradingInstructionsContainer" style="margin-bottom: 15px; border: 1px solid #ddd; border-radius: 4px; padding: 0; background: white;">
-      <summary style="padding: 8px 10px; cursor: pointer; background: #f9fafb; font-size: 12px; font-weight: bold; color: #555; display: flex; align-items: center; justify-content: space-between;">
-        <span><i class="bi bi-card-text"></i> Grading Instructions</span>
-        <i class="bi bi-chevron-down" style="font-size: 10px;"></i>
+    <details id="gradingInstructionsContainer" class="details-container">
+      <summary class="summary-header">
+        <span class="inline-flex-center"><i class="bi bi-card-text mr-small"></i> Grading Instructions</span>
+        <i class="bi bi-chevron-down text-xs-extra"></i>
       </summary>
-      <div style="padding: 10px; border-top: 1px solid #ddd;">
-        <div style="display: flex; gap: 5px; margin-bottom: 8px;">
-          <button id="btnPresetNonZero" class="secondary" style="font-size: 10px; padding: 4px 6px; width: auto; margin-bottom: 0;">Non-Zero Only</button>
-          <button id="btnPresetLenient" class="secondary" style="font-size: 10px; padding: 4px 6px; width: auto; margin-bottom: 0;">Lenient</button>
-          <button id="btnPresetStrict" class="secondary" style="font-size: 10px; padding: 4px 6px; width: auto; margin-bottom: 0;">Strict</button>
+      <div class="details-content">
+        <div class="flex-gap-small mb-10">
+          <button id="btnPresetNonZero" class="secondary btn-tool-auto">Non-Zero Only</button>
+          <button id="btnPresetLenient" class="secondary btn-tool-auto">Lenient</button>
+          <button id="btnPresetStrict" class="secondary btn-tool-auto">Strict</button>
         </div>
-        <textarea id="customInstructions" rows="4" placeholder="Enter specific instructions for the AI grader here..." style="font-size: 12px; resize: vertical; margin-bottom: 0; width: 100%; border: 1px solid #ddd; border-radius: 4px; padding: 8px;"></textarea>
+        <textarea id="customInstructions" rows="4" placeholder="Enter specific instructions for the AI grader here..." class="custom-instructions-area"></textarea>
       </div>
     </details>
 
     <!-- Resume Prompt (shown when state exists) -->
-    <div id="resumePrompt" style="display: none; margin-bottom: 10px; padding: 10px; background: #fffbeb; border: 1px solid #fbbf24; border-radius: 4px;">
-      <div style="font-size: 12px; margin-bottom: 8px;">
+    <div id="resumePrompt" class="resume-prompt-box">
+      <div class="text-sm mb-10">
         <i class="bi bi-clock-history"></i> <strong>Previous session found</strong><br>
-        <span id="resumePromptText" style="color: #666;"></span>
+        <span id="resumePromptText" class="text-muted"></span>
       </div>
-      <div style="display: flex; gap: 5px;">
-        <button id="btnResumeSession" class="secondary" style="flex: 1; font-size: 11px; padding: 6px; margin-bottom: 0; background: #fbbf24; color: #78350f;">
+    <div class="btn-row">
+        <button id="btnResumeSession" class="secondary btn-resume">
           <i class="bi bi-play-fill"></i> Resume
         </button>
-        <button id="btnStartFresh" class="secondary" style="flex: 1; font-size: 11px; padding: 6px; margin-bottom: 0;">
+        <button id="btnStartFresh" class="secondary btn-fresh">
           <i class="bi bi-arrow-clockwise"></i> Start Fresh
         </button>
       </div>
     </div>
 
-    <div style="margin-bottom: 10px; display: flex; align-items: center; gap: 5px;">
-       <label for="resumeStudent" style="width: auto; margin-bottom: 0;">Resume After:</label>
-       <input type="text" id="resumeStudent" placeholder="Student Name (optional)" style="margin-bottom: 0; flex: 1;">
+    <div class="flex-gap-small items-center mb-10">
+       <label for="resumeStudent" class="w-auto mb-0">Resume After:</label>
+       <input type="text" id="resumeStudent" placeholder="Student Name (optional)" class="mb-0 flex-1">
     </div>
 
-    <div id="batchProgress" style="display: none; margin-bottom: 10px;">
-      <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
+    <div id="batchProgress" class="mb-10" style="display: none;">
+      <div class="progress-info">
         <span id="batchProgressText">0/0</span>
         <span id="batchProgressPercent">0%</span>
       </div>
-      <div style="width: 100%; background: #eee; height: 8px; border-radius: 4px; overflow: hidden;">
-        <div id="batchProgressBar" style="width: 0%; background: #d97706; height: 100%; transition: width 0.3s;"></div>
+      <div class="progress-track">
+        <div id="batchProgressBar" class="progress-bar"></div>
       </div>
     </div>
 
-    <div style="display: flex; gap: 5px;">
-      <button id="btnStartBatch" style="flex: 1;" disabled><i class="bi bi-play-fill"></i> Start Batch</button>
-      <button id="btnStopBatch" class="secondary" style="flex: 0 0 auto; display: none; background: #fee2e2; color: #b91c1c;"><i class="bi bi-stop-fill"></i></button>
+    <div class="btn-row">
+      <button id="btnStartBatch" class="flex-1" disabled><i class="bi bi-play-fill"></i> Start Batch</button>
+      <button id="btnStopBatch" class="secondary w-auto btn-stop" style="display: none;"><i class="bi bi-stop-fill"></i></button>
     </div>
 
-    <div id="batchResults" style="margin-top: 10px; max-height: 200px; overflow-y: auto; font-size: 11px; border: 1px solid #eee; border-radius: 4px; padding: 5px; display: none; background: #f9f9f9;">
+    <div id="batchResults" class="batch-results-log">
       <!-- Results log -->
     </div>
   </div>
@@ -745,12 +1462,12 @@
   <!-- About Section -->
   <div class="card">
     <h3>About O.G.R.E</h3>
-    <p style="font-size: 12px; color: #666; margin-bottom: 5px;">
+    <p class="about-text">
       <strong>Version:</strong> 1.1.0<br>
       <strong>Description:</strong> AI Grading assistant using Ollama cloud.<br>
       <strong>Repository:</strong> <a href="https://github.com/shuff57/O.G.R.E-OllamaGradingReviewEvaluator" target="_blank">GitHub</a>
     </p>
-    <p style="font-size: 11px; color: #999; margin: 0;">
+    <p class="text-xs-extra text-muted m-0">
       Created by shuff57
     </p>
   </div>
@@ -760,19 +1477,19 @@
 
   <!-- Model Info Modal -->
   <div id="modelInfoModal" class="modal">
-    <div class="modal-content" style="max-width: 500px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-          <h3 style="margin:0;">Model Guide</h3>
-          <span class="close-model-info" style="cursor:pointer; font-size:24px;">&times;</span>
+    <div class="modal-content modal-content-sm">
+      <div class="modal-header">
+          <h3 class="m-0">Model Guide</h3>
+          <span class="close-model-info close-btn">&times;</span>
       </div>
-      <div style="font-size: 13px; color: #555; margin-bottom: 15px;">
-          <p style="margin: 0;"><strong>Cost Legend:</strong> <span style="color:green">Low</span> (Cheap/Fast) | <span style="color:orange">Medium</span> (Balanced) | <span style="color:red">High</span> (Smart/Slow)</p>
+      <div class="text-base text-muted mb-medium">
+          <p class="m-0"><strong>Cost Legend:</strong> <span class="text-success">Low</span> (Cheap/Fast) | <span class="text-warning">Medium</span> (Balanced) | <span class="text-error">High</span> (Smart/Slow)</p>
       </div>
       
-      <div style="margin-bottom:10px;">
-        <div style="display:flex; gap:5px; margin-bottom:5px; align-items:center;">
-            <span style="font-size:11px; font-weight:bold; width:50px;">Sort By:</span>
-            <select id="modelSortBy" style="flex:1; padding:4px; font-size:11px; margin-bottom:0;">
+      <div class="mb-10">
+        <div class="flex-gap-small items-center mb-small">
+            <span class="font-bold text-xs-extra w-50px">Sort By:</span>
+            <select id="modelSortBy" class="flex-1 p-1 text-xs-extra mb-0">
               <option value="default">Default</option>
               <option value="cost">Cost</option>
               <option value="speed">Speed</option>
@@ -781,14 +1498,14 @@
               <option value="coding">Coding Score</option>
               <option value="writing">Writing Score</option>
             </select>
-            <select id="modelSortOrder" style="width:90px; padding:4px; font-size:11px; margin-bottom:0;">
+            <select id="modelSortOrder" class="w-90px p-1 text-xs-extra mb-0">
               <option value="desc">High to Low</option>
               <option value="asc">Low to High</option>
             </select>
         </div>
-        <div style="display:flex; gap:5px; margin-bottom:0; align-items:center;">
-            <span style="font-size:11px; font-weight:bold; width:50px;">Then By:</span>
-            <select id="modelSortBySecondary" style="flex:1; padding:4px; font-size:11px; margin-bottom:0;">
+        <div class="flex-gap-small items-center mb-0">
+            <span class="font-bold text-xs-extra w-50px">Then By:</span>
+            <select id="modelSortBySecondary" class="flex-1 p-1 text-xs-extra mb-0">
               <option value="none">None</option>
               <option value="cost">Cost</option>
               <option value="speed">Speed</option>
@@ -797,14 +1514,14 @@
               <option value="coding">Coding Score</option>
               <option value="writing">Writing Score</option>
             </select>
-            <select id="modelSortOrderSecondary" style="width:90px; padding:4px; font-size:11px; margin-bottom:0;">
+            <select id="modelSortOrderSecondary" class="w-90px p-1 text-xs-extra mb-0">
               <option value="desc">High to Low</option>
               <option value="asc">Low to High</option>
             </select>
         </div>
       </div>
 
-      <div id="modelInfoList" style="max-height: 400px; overflow-y: auto;">
+      <div id="modelInfoList" class="scroll-list-400">
           <!-- JS populates this -->
       </div>
     </div>
@@ -812,91 +1529,91 @@
 
   <!-- GitHub Token Setup Modal -->
   <div id="githubInfoModal" class="modal">
-    <div class="modal-content" style="max-width: 450px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-        <h3 style="margin:0;"><i class="bi bi-github"></i> GitHub Token Setup</h3>
-        <span class="close-github-info" style="cursor:pointer; font-size:24px;">&times;</span>
+    <div class="modal-content modal-content-xs">
+      <div class="modal-header">
+        <h3 class="m-0"><i class="bi bi-github"></i> GitHub Token Setup</h3>
+        <span class="close-github-info close-btn">&times;</span>
       </div>
       
-      <div style="font-size: 13px; color: #333; line-height: 1.6;">
-        <div style="background: #e0f2fe; border: 1px solid #38bdf8; border-radius: 4px; padding: 10px; margin-bottom: 15px;">
-          <div style="font-size: 12px; color: #0c4a6e;">
-            <i class="bi bi-info-circle" style="color: #0284c7;"></i>
+      <div class="text-base text-primary line-height-relaxed">
+        <div class="info-box mb-medium">
+          <div class="text-xs-extra text-primary-dark">
+            <i class="bi bi-info-circle text-primary"></i>
             <strong>Note:</strong> This token is for <strong>repository integration</strong> (accessing code, making commits, etc.). 
             <strong>If you only want to use GitHub AI Models</strong>, configure that in the <strong>Config → GitHub tab</strong> instead (minimal scopes needed).
           </div>
         </div>
         
-        <p style="margin-top: 0;"><strong>Follow these steps to create a GitHub Personal Access Token:</strong></p>
+        <p class="mt-0"><strong>Follow these steps to create a GitHub Personal Access Token:</strong></p>
         
-        <ol style="padding-left: 20px; margin: 0;">
-          <li style="margin-bottom: 12px;">
+        <ol class="pl-20 m-0">
+          <li class="mb-medium">
             <strong>Visit GitHub Settings:</strong><br>
-            <a href="https://github.com/settings/tokens/new" target="_blank" style="color: #2563eb; text-decoration: none;">
+            <a href="https://github.com/settings/tokens/new" target="_blank" class="link-blue">
               https://github.com/settings/tokens/new
-              <i class="bi bi-box-arrow-up-right" style="font-size: 11px;"></i>
+              <i class="bi bi-box-arrow-up-right text-xs"></i>
             </a>
           </li>
           
-          <li style="margin-bottom: 12px;">
+          <li class="mb-medium">
             <strong>Fill in Token Details:</strong>
-            <ul style="margin: 5px 0; padding-left: 20px; font-size: 12px; color: #666;">
-              <li><strong>Note:</strong> <code style="background: #f3f4f6; padding: 2px 4px; border-radius: 2px;">O.G.R.E Repository Access</code></li>
+            <ul class="my-5 pl-20 text-xs text-muted">
+              <li><strong>Note:</strong> <code class="code-badge">O.G.R.E Repository Access</code></li>
               <li><strong>Expiration:</strong> Choose your preference (30 days, 90 days, or no expiration)</li>
             </ul>
           </li>
           
-          <li style="margin-bottom: 12px;">
+          <li class="mb-medium">
             <strong>Select Scopes (for repository features):</strong><br>
-            <span style="font-size: 12px; color: #666;">Check these two boxes:</span>
-            <div style="margin: 5px 0; padding-left: 10px;">
-              <div style="margin: 3px 0;">
-                <i class="bi bi-check-square" style="color: #16a34a;"></i>
-                <code style="background: #f3f4f6; padding: 2px 6px; border-radius: 2px;">repo</code>
-                <span style="font-size: 11px; color: #666;"> - Full control of repositories</span>
+            <span class="text-xs text-muted">Check these two boxes:</span>
+            <div class="my-5 pl-10">
+              <div class="my-3">
+                <i class="bi bi-check-square text-success"></i>
+                <code class="code-badge">repo</code>
+                <span class="text-xs text-muted"> - Full control of repositories</span>
               </div>
-              <div style="margin: 3px 0;">
-                <i class="bi bi-check-square" style="color: #16a34a;"></i>
-                <code style="background: #f3f4f6; padding: 2px 6px; border-radius: 2px;">user</code>
-                <span style="font-size: 11px; color: #666;"> - Read user profile data</span>
+              <div class="my-3">
+                <i class="bi bi-check-square text-success"></i>
+                <code class="code-badge">user</code>
+                <span class="text-xs text-muted"> - Read user profile data</span>
               </div>
             </div>
           </li>
           
-          <li style="margin-bottom: 12px;">
+          <li class="mb-medium">
             <strong>Generate Token:</strong><br>
-            <span style="font-size: 12px; color: #666;">Click the green "Generate token" button at the bottom of the page</span>
+            <span class="text-xs text-muted">Click the green "Generate token" button at the bottom of the page</span>
           </li>
           
-          <li style="margin-bottom: 12px;">
+          <li class="mb-medium">
             <strong>Copy Your Token:</strong><br>
-            <div style="background: #fef3c7; border: 1px solid #fbbf24; border-radius: 4px; padding: 8px; margin-top: 5px;">
-              <i class="bi bi-exclamation-triangle" style="color: #d97706;"></i>
-              <span style="font-size: 12px; color: #92400e;">
+            <div class="warning-box mt-5">
+              <i class="bi bi-exclamation-triangle text-warning"></i>
+              <span class="text-xs text-warning-dark">
                 <strong>Important:</strong> Copy the token immediately! You won't be able to see it again.
               </span>
             </div>
-            <div style="font-size: 12px; color: #666; margin-top: 5px;">
-              Token format: <code style="background: #f3f4f6; padding: 2px 6px; border-radius: 2px;">ghp_xxxxxxxxxxxx</code>
+            <div class="text-xs text-muted mt-5">
+              Token format: <code class="code-badge">ghp_xxxxxxxxxxxx</code>
             </div>
           </li>
           
-          <li style="margin-bottom: 0;">
+          <li class="mb-0">
             <strong>Paste in Extension:</strong><br>
-            <span style="font-size: 12px; color: #666;">Return to this extension and paste your token in the "GitHub Integration" section below</span>
+            <span class="text-xs text-muted">Return to this extension and paste your token in the "GitHub Integration" section below</span>
           </li>
         </ol>
         
-        <div style="background: #eff6ff; border: 1px solid #93c5fd; border-radius: 4px; padding: 10px; margin-top: 15px;">
-          <div style="font-size: 12px; color: #1e40af;">
-            <i class="bi bi-shield-check" style="color: #2563eb;"></i>
+        <div class="note-box mt-15">
+          <div class="text-xs text-primary-dark">
+            <i class="bi bi-shield-check text-primary"></i>
             <strong>Security:</strong> Your token is stored locally in Chrome's encrypted storage and never leaves your computer.
           </div>
         </div>
       </div>
       
-      <div class="modal-actions" style="margin-top: 15px;">
-        <button class="close-github-info secondary" style="padding: 8px 16px; font-size: 12px;">
+      <div class="modal-actions mt-15">
+        <button class="close-github-info secondary btn-sm p-2">
           Close
         </button>
       </div>
