@@ -3,11 +3,11 @@ import {
   buildOllamaRequest,
   buildOpenAIRequest,
   buildAnthropicRequest,
-  buildGeminiRequest,
+  buildGoogleGeminiRequest,
   parseOllamaResponse,
   parseOpenAIResponse,
   parseAnthropicResponse,
-  parseGeminiResponse,
+  parseGoogleGeminiResponse,
 } from '../providers.js';
 
 describe('Provider Request Builders', () => {
@@ -149,24 +149,24 @@ describe('Provider Request Builders', () => {
     });
   });
 
-  describe('buildGeminiRequest', () => {
+  describe('buildGoogleGeminiRequest', () => {
     test('creates correct URL with API key', () => {
       const config = { apiKey: 'AIza-test', model: 'gemini-1.5-pro' };
-      const result = buildGeminiRequest(config, messages);
+      const result = buildGoogleGeminiRequest(config, messages);
       
       expect(result.url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=AIza-test');
     });
 
     test('includes Content-Type header', () => {
       const config = { apiKey: 'AIza-test', model: 'gemini-1.5-pro' };
-      const result = buildGeminiRequest(config, messages);
+      const result = buildGoogleGeminiRequest(config, messages);
       
       expect(result.headers['Content-Type']).toBe('application/json');
     });
 
     test('converts system message to systemInstruction', () => {
       const config = { apiKey: 'AIza-test', model: 'gemini-1.5-pro' };
-      const result = buildGeminiRequest(config, messages);
+      const result = buildGoogleGeminiRequest(config, messages);
       
       expect(result.body.systemInstruction).toEqual({
         parts: [{ text: 'You are a grading assistant.' }]
@@ -175,7 +175,7 @@ describe('Provider Request Builders', () => {
 
     test('converts user messages to Gemini format', () => {
       const config = { apiKey: 'AIza-test', model: 'gemini-1.5-pro' };
-      const result = buildGeminiRequest(config, messages);
+      const result = buildGoogleGeminiRequest(config, messages);
       
       expect(result.body.contents).toEqual([
         { role: 'user', parts: [{ text: 'Grade this work.' }] }
@@ -188,7 +188,7 @@ describe('Provider Request Builders', () => {
         { role: 'user', content: 'Hello' },
         { role: 'assistant', content: 'Hi there' },
       ];
-      const result = buildGeminiRequest(config, messagesWithAssistant);
+      const result = buildGoogleGeminiRequest(config, messagesWithAssistant);
       
       expect(result.body.contents).toEqual([
         { role: 'user', parts: [{ text: 'Hello' }] },
@@ -199,7 +199,7 @@ describe('Provider Request Builders', () => {
     test('handles messages without system message', () => {
       const config = { apiKey: 'AIza-test', model: 'gemini-1.5-pro' };
       const userOnlyMessages = [{ role: 'user', content: 'Grade this work.' }];
-      const result = buildGeminiRequest(config, userOnlyMessages);
+      const result = buildGoogleGeminiRequest(config, userOnlyMessages);
       
       expect(result.body.systemInstruction).toBeUndefined();
       expect(result.body.contents).toEqual([
@@ -312,7 +312,7 @@ describe('Provider Response Parsers', () => {
     });
   });
 
-  describe('parseGeminiResponse', () => {
+  describe('parseGoogleGeminiResponse', () => {
     test('extracts text from valid response', () => {
       const data = {
         candidates: [
@@ -326,44 +326,44 @@ describe('Provider Response Parsers', () => {
         ]
       };
       
-      const result = parseGeminiResponse(data);
+      const result = parseGoogleGeminiResponse(data);
       expect(result).toBe('Score: 10/10\nPerfect!');
     });
 
     test('throws error when candidates is missing', () => {
       const data = {};
       
-      expect(() => parseGeminiResponse(data)).toThrow('Invalid Gemini response: missing candidates[0].content.parts[0].text');
+      expect(() => parseGoogleGeminiResponse(data)).toThrow('Invalid Google Gemini response: missing candidates[0].content.parts[0].text');
     });
 
     test('throws error when candidates is empty', () => {
       const data = { candidates: [] };
       
-      expect(() => parseGeminiResponse(data)).toThrow('Invalid Gemini response: missing candidates[0].content.parts[0].text');
+      expect(() => parseGoogleGeminiResponse(data)).toThrow('Invalid Google Gemini response: missing candidates[0].content.parts[0].text');
     });
 
     test('throws error when content is missing', () => {
       const data = { candidates: [{}] };
       
-      expect(() => parseGeminiResponse(data)).toThrow('Invalid Gemini response: missing candidates[0].content.parts[0].text');
+      expect(() => parseGoogleGeminiResponse(data)).toThrow('Invalid Google Gemini response: missing candidates[0].content.parts[0].text');
     });
 
     test('throws error when parts is missing', () => {
       const data = { candidates: [{ content: {} }] };
       
-      expect(() => parseGeminiResponse(data)).toThrow('Invalid Gemini response: missing candidates[0].content.parts[0].text');
+      expect(() => parseGoogleGeminiResponse(data)).toThrow('Invalid Google Gemini response: missing candidates[0].content.parts[0].text');
     });
 
     test('throws error when parts is empty', () => {
       const data = { candidates: [{ content: { parts: [] } }] };
       
-      expect(() => parseGeminiResponse(data)).toThrow('Invalid Gemini response: missing candidates[0].content.parts[0].text');
+      expect(() => parseGoogleGeminiResponse(data)).toThrow('Invalid Google Gemini response: missing candidates[0].content.parts[0].text');
     });
 
     test('throws error when text is missing', () => {
       const data = { candidates: [{ content: { parts: [{}] } }] };
       
-      expect(() => parseGeminiResponse(data)).toThrow('Invalid Gemini response: missing candidates[0].content.parts[0].text');
+      expect(() => parseGoogleGeminiResponse(data)).toThrow('Invalid Google Gemini response: missing candidates[0].content.parts[0].text');
     });
   });
 });

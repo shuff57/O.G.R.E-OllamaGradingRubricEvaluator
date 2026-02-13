@@ -6,11 +6,11 @@ describe('PROVIDERS Adapter Logic', () => {
   const mockImageBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
   const mockImageDataUrl = `data:image/png;base64,${mockImageBase64}`;
 
-  describe('ollama-cloud', () => {
-    const provider = PROVIDERS['ollama-cloud'];
-    const config = { apiUrl: 'https://api.ollama.com', apiKey: 'test-key', model: 'llama3' };
+  describe('ollama', () => {
+    const provider = PROVIDERS['ollama'];
 
-    it('should strip data uri scheme from images', () => {
+    it('should strip data uri scheme from images (cloud-style URL)', () => {
+      const config = { apiUrl: 'https://api.ollama.com', apiKey: 'test-key', model: 'llama3' };
       const messages = [{
         role: 'user',
         content: 'Describe this image',
@@ -25,18 +25,15 @@ describe('PROVIDERS Adapter Logic', () => {
     });
 
     it('should handle text-only messages', () => {
+        const config = { apiUrl: 'https://api.ollama.com', apiKey: 'test-key', model: 'llama3' };
         const messages = [{ role: 'user', content: 'Hello' }];
         const req = provider.buildChatRequest(config, messages);
         expect(req.body.messages[0].content).toBe('Hello');
         expect(req.body.messages[0].images).toBeUndefined();
     });
-  });
 
-  describe('ollama-local', () => {
-    const provider = PROVIDERS['ollama-local'];
-    const config = { apiUrl: 'http://localhost:11434', model: 'llama3' };
-
-    it('should strip data uri scheme from images', () => {
+    it('should strip data uri scheme from images (local URL)', () => {
+      const config = { apiUrl: 'http://localhost:11434', model: 'llama3' };
       const messages = [{
         role: 'user',
         content: 'Describe this image',
@@ -47,6 +44,27 @@ describe('PROVIDERS Adapter Logic', () => {
       
       expect(req.body.messages[0].images[0]).toBe(mockImageBase64);
       expect(req.body.messages[0].images[0]).not.toContain('data:image');
+    });
+
+    it('should default to localhost:11434 when no apiUrl provided', () => {
+      const config = { model: 'llama3' };
+      const messages = [{ role: 'user', content: 'Hello' }];
+      const req = provider.buildChatRequest(config, messages);
+      expect(req.url).toBe('http://localhost:11434/api/chat');
+    });
+
+    it('should include auth header when apiKey is provided', () => {
+      const config = { apiUrl: 'https://cloud.ollama.com', apiKey: 'my-key', model: 'llama3' };
+      const messages = [{ role: 'user', content: 'Hello' }];
+      const req = provider.buildChatRequest(config, messages);
+      expect(req.headers['Authorization']).toBe('Bearer my-key');
+    });
+
+    it('should not include auth header when no apiKey', () => {
+      const config = { apiUrl: 'http://localhost:11434', model: 'llama3' };
+      const messages = [{ role: 'user', content: 'Hello' }];
+      const req = provider.buildChatRequest(config, messages);
+      expect(req.headers['Authorization']).toBeUndefined();
     });
   });
 

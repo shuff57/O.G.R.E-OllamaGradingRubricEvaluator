@@ -1,10 +1,11 @@
 /**
  * providers.js - Multi-Provider Adapter for O.G.R.E Extension
  * 
- * Supported providers:
- *   - ollama-cloud:   User-provided Ollama Cloud endpoint
- *   - ollama-local:   Local Ollama at localhost:11434
+ * Supported providers (canonical IDs):
+ *   - ollama:         Ollama (cloud or local, determined by api_url)
  *   - openai:         OpenAI API
+ *   - anthropic:      Anthropic Claude
+ *   - google-gemini:  Google Gemini
  *   - github-models:  GitHub Copilot (api.githubcopilot.com)
  *
  * Each provider exposes:
@@ -62,22 +63,22 @@ function normalizeBaseUrl(url) {
 }
 
 // ---------------------------------------------------------------------------
-// Provider: Ollama Cloud
+// Provider: Ollama (unified — cloud or local determined by apiUrl)
 // ---------------------------------------------------------------------------
-const ollamaCloud = {
+const ollama = {
   getConfig() {
     return {
-      id: 'ollama-cloud',
-      name: 'Ollama Cloud',
+      id: 'ollama',
+      name: 'Ollama',
       fields: [
-        { key: 'apiUrl', label: 'API URL', type: 'text', required: true, placeholder: 'https://api.ollama.com' },
-        { key: 'apiKey', label: 'API Key', type: 'password', required: true },
+        { key: 'apiUrl', label: 'API URL', type: 'text', required: false, placeholder: 'http://localhost:11434', default: 'http://localhost:11434' },
+        { key: 'apiKey', label: 'API Key (optional)', type: 'password', required: false },
       ],
     };
   },
 
   async listModels(config) {
-    const base = normalizeBaseUrl(config.apiUrl);
+    const base = normalizeBaseUrl(config.apiUrl || 'http://localhost:11434');
     const headers = {};
     if (config.apiKey) headers['Authorization'] = `Bearer ${config.apiKey}`;
 
@@ -89,7 +90,7 @@ const ollamaCloud = {
 
   async testConnection(config) {
     try {
-      const base = normalizeBaseUrl(config.apiUrl);
+      const base = normalizeBaseUrl(config.apiUrl || 'http://localhost:11434');
       const headers = {};
       if (config.apiKey) headers['Authorization'] = `Bearer ${config.apiKey}`;
 
@@ -103,68 +104,9 @@ const ollamaCloud = {
   },
 
   buildChatRequest(config, messages, options = {}) {
-    const base = normalizeBaseUrl(config.apiUrl);
+    const base = normalizeBaseUrl(config.apiUrl || 'http://localhost:11434');
     const headers = { 'Content-Type': 'application/json' };
     if (config.apiKey) headers['Authorization'] = `Bearer ${config.apiKey}`;
-
-    // Transform messages to strip Data URL headers from images (Ollama expects raw base64)
-    const formattedMessages = messages.map(m => {
-      if (m.images && m.images.length > 0) {
-        return {
-          ...m,
-          images: m.images.map(img => img.replace(/^data:image\/[a-z]+;base64,/, ''))
-        };
-      }
-      return m;
-    });
-
-    const body = {
-      model: config.model,
-      messages: formattedMessages,
-      stream: options.stream ?? true,
-      options: options.modelOptions || {},
-    };
-
-    return { url: `${base}/api/chat`, headers, body };
-  },
-};
-
-// ---------------------------------------------------------------------------
-// Provider: Ollama Local
-// ---------------------------------------------------------------------------
-const ollamaLocal = {
-  getConfig() {
-    return {
-      id: 'ollama-local',
-      name: 'Ollama Local',
-      fields: [
-        { key: 'apiUrl', label: 'API URL', type: 'text', required: false, placeholder: 'http://localhost:11434', default: 'http://localhost:11434' },
-      ],
-    };
-  },
-
-  async listModels(config) {
-    const base = normalizeBaseUrl(config.apiUrl || 'http://localhost:11434');
-    const res = await proxyFetch(`${base}/api/tags`, {});
-    if (!res.ok) throw new Error(`Failed to list models: ${res.status} ${res.statusText}`);
-    const data = await res.json();
-    return (data.models || []).map((m) => ({ id: m.name || m.model, name: m.name || m.model }));
-  },
-
-  async testConnection(config) {
-    try {
-      const base = normalizeBaseUrl(config.apiUrl || 'http://localhost:11434');
-      const res = await proxyFetch(`${base}/api/tags`, {});
-      if (res.ok) return { ok: true };
-      return { ok: false, error: `${res.status} ${res.statusText}` };
-    } catch (err) {
-      return { ok: false, error: err.message };
-    }
-  },
-
-  buildChatRequest(config, messages, options = {}) {
-    const base = normalizeBaseUrl(config.apiUrl || 'http://localhost:11434');
-    const headers = { 'Content-Type': 'application/json' };
 
     // Transform messages to strip Data URL headers from images (Ollama expects raw base64)
     const formattedMessages = messages.map(m => {
@@ -584,8 +526,7 @@ const googleGemini = {
 // Provider Registry
 // ---------------------------------------------------------------------------
 export const PROVIDERS = {
-  'ollama-cloud': ollamaCloud,
-  'ollama-local': ollamaLocal,
+  'ollama': ollama,
   'openai': openai,
   'anthropic': anthropic,
   'google-gemini': googleGemini,
@@ -596,11 +537,11 @@ export const PROVIDERS = {
 // Active Provider persistence (chrome.storage.local)
 // ---------------------------------------------------------------------------
 const STORAGE_KEY = 'activeProvider';
-const DEFAULT_PROVIDER = 'ollama-cloud';
+const DEFAULT_PROVIDER = 'ollama';
 
 /**
  * Get the active provider id from chrome.storage.local.
- * Falls back to 'ollama-cloud' if not set or chrome.storage unavailable.
+ * Falls back to 'ollama' if not set or chrome.storage unavailable.
  * @returns {Promise<string>}
  */
 export async function getActiveProvider() {

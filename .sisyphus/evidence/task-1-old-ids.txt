@@ -1,0 +1,13 @@
+=== VERIFICATION: Old provider IDs (ollama-cloud, ollama-local) ===
+Expected: Only in migration logic (sidepanel.js) and comments
+
+./ogre-desktop/src/pages/Settings.svelte:44:  // Note: ollama-cloud and ollama-local were merged into single 'ollama' provider
+./sidepanel.js:1941:  // ollama-cloud + ollama-local → ollama
+./sidepanel.js:1942:  if (providerConfigs['ollama-cloud'] || providerConfigs['ollama-local']) {
+./sidepanel.js:1943:    const cloudCfg = providerConfigs['ollama-cloud'] || {};
+./sidepanel.js:1944:    const localCfg = providerConfigs['ollama-local'] || {};
+./sidepanel.js:1951:    delete providerConfigs['ollama-cloud'];
+./sidepanel.js:1952:    delete providerConfigs['ollama-local'];
+./sidepanel.js:1984:    'ollama-cloud': 'ollama',
+./sidepanel.js:1985:    'ollama-local': 'ollama',
+./UsersshuffAppDataLocalTempopencode/packages/ui/src/components/provider-icons/types.ts:31:  "ollama-cloud",

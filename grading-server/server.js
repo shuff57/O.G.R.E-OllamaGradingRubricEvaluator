@@ -18,11 +18,13 @@ import {
   buildOllamaRequest,
   buildOpenAIRequest,
   buildAnthropicRequest,
-  buildGeminiRequest,
+  buildGoogleGeminiRequest,
+  buildGitHubModelsRequest,
   parseOllamaResponse,
   parseOpenAIResponse,
   parseAnthropicResponse,
-  parseGeminiResponse,
+  parseGoogleGeminiResponse,
+  parseGitHubModelsResponse,
 } from './providers.js';
 
 const app = new Hono();
@@ -87,8 +89,11 @@ app.post('/grade', async (c) => {
         case 'anthropic':
           effectiveApiUrl = 'https://api.anthropic.com';
           break;
-        case 'gemini':
+        case 'google-gemini':
           effectiveApiUrl = 'https://generativelanguage.googleapis.com';
+          break;
+        case 'github-models':
+          effectiveApiUrl = 'https://api.githubcopilot.com';
           break;
       }
     }
@@ -136,8 +141,11 @@ app.post('/grade', async (c) => {
         case 'anthropic':
           requestObj = buildAnthropicRequest(providerConfig, messages);
           break;
-        case 'gemini':
-          requestObj = buildGeminiRequest(providerConfig, messages);
+        case 'google-gemini':
+          requestObj = buildGoogleGeminiRequest(providerConfig, messages);
+          break;
+        case 'github-models':
+          requestObj = buildGitHubModelsRequest(providerConfig, messages);
           break;
         default:
           return c.json({ error: `Unsupported provider: ${provider}` }, 400);
@@ -173,8 +181,11 @@ app.post('/grade', async (c) => {
         case 'anthropic':
           aiText = parseAnthropicResponse(responseData);
           break;
-        case 'gemini':
-          aiText = parseGeminiResponse(responseData);
+        case 'google-gemini':
+          aiText = parseGoogleGeminiResponse(responseData);
+          break;
+        case 'github-models':
+          aiText = parseGitHubModelsResponse(responseData);
           break;
       }
 

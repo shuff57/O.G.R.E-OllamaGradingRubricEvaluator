@@ -1,0 +1,115 @@
+=== TEST RESULTS: grading-server/test/providers.test.js ===
+
+
+[1m[46m RUN [49m[22m [36mv4.0.18 [39m[90mC:/Users/shuff/OneDrive/Documents/GitHub/O.G.R.E-OllamaGradingReviewEvaluator[39m
+
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildOllamaRequest[2m > [22mcreates correct URL with base URL[32m 1[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildOllamaRequest[2m > [22mincludes Authorization header when apiKey provided[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildOllamaRequest[2m > [22momits Authorization header when no apiKey[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildOllamaRequest[2m > [22mincludes Content-Type header[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildOllamaRequest[2m > [22mcreates body with model and messages[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildOllamaRequest[2m > [22mnormalizes base URL by removing trailing slash[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildOpenAIRequest[2m > [22mcreates correct URL[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildOpenAIRequest[2m > [22mincludes Authorization header with Bearer token[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildOpenAIRequest[2m > [22mincludes Content-Type header[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildOpenAIRequest[2m > [22mcreates body with model and messages[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildAnthropicRequest[2m > [22mcreates correct URL[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildAnthropicRequest[2m > [22mincludes x-api-key header[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildAnthropicRequest[2m > [22mincludes anthropic-version header[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildAnthropicRequest[2m > [22mincludes Content-Type header[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildAnthropicRequest[2m > [22mseparates system message from user messages[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildAnthropicRequest[2m > [22mincludes model and max_tokens[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildAnthropicRequest[2m > [22mhandles messages without system message[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildGoogleGeminiRequest[2m > [22mcreates correct URL with API key[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildGoogleGeminiRequest[2m > [22mincludes Content-Type header[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildGoogleGeminiRequest[2m > [22mconverts system message to systemInstruction[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildGoogleGeminiRequest[2m > [22mconverts user messages to Gemini format[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildGoogleGeminiRequest[2m > [22mconverts assistant role to model role[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildGoogleGeminiRequest[2m > [22mhandles messages without system message[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseOllamaResponse[2m > [22mextracts content from valid response[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseOllamaResponse[2m > [22mthrows error when message is missing[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseOllamaResponse[2m > [22mthrows error when content is missing[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseOpenAIResponse[2m > [22mextracts content from valid response[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseOpenAIResponse[2m > [22mthrows error when choices is missing[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseOpenAIResponse[2m > [22mthrows error when choices is empty[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseOpenAIResponse[2m > [22mthrows error when message is missing[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseOpenAIResponse[2m > [22mthrows error when content is missing[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseAnthropicResponse[2m > [22mextracts text from valid response[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseAnthropicResponse[2m > [22mthrows error when content is missing[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseAnthropicResponse[2m > [22mthrows error when content is empty[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseAnthropicResponse[2m > [22mthrows error when text is missing[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseGoogleGeminiResponse[2m > [22mextracts text from valid response[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseGoogleGeminiResponse[2m > [22mthrows error when candidates is missing[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseGoogleGeminiResponse[2m > [22mthrows error when candidates is empty[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseGoogleGeminiResponse[2m > [22mthrows error when content is missing[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseGoogleGeminiResponse[2m > [22mthrows error when parts is missing[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseGoogleGeminiResponse[2m > [22mthrows error when parts is empty[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseGoogleGeminiResponse[2m > [22mthrows error when text is missing[32m 0[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m42 passed[39m[22m[90m (42)[39m
+[2m   Start at [22m 21:50:27
+[2m   Duration [22m 230ms[2m (transform 28ms, setup 0ms, import 80ms, tests 7ms, environment 0ms)[22m
+
+=== TEST RESULTS: providers.test.js (root extension) ===
+
+
+[1m[46m RUN [49m[22m [36mv4.0.18 [39m[90mC:/Users/shuff/OneDrive/Documents/GitHub/O.G.R.E-OllamaGradingReviewEvaluator[39m
+
+ [32m✓[39m providers.test.js[2m > [22mPROVIDERS Adapter Logic[2m > [22mollama[2m > [22mshould strip data uri scheme from images (cloud-style URL)[32m 1[2mms[22m[39m
+ [32m✓[39m providers.test.js[2m > [22mPROVIDERS Adapter Logic[2m > [22mollama[2m > [22mshould handle text-only messages[32m 0[2mms[22m[39m
+ [32m✓[39m providers.test.js[2m > [22mPROVIDERS Adapter Logic[2m > [22mollama[2m > [22mshould strip data uri scheme from images (local URL)[32m 0[2mms[22m[39m
+ [32m✓[39m providers.test.js[2m > [22mPROVIDERS Adapter Logic[2m > [22mollama[2m > [22mshould default to localhost:11434 when no apiUrl provided[32m 0[2mms[22m[39m
+ [32m✓[39m providers.test.js[2m > [22mPROVIDERS Adapter Logic[2m > [22mollama[2m > [22mshould include auth header when apiKey is provided[32m 0[2mms[22m[39m
+ [32m✓[39m providers.test.js[2m > [22mPROVIDERS Adapter Logic[2m > [22mollama[2m > [22mshould not include auth header when no apiKey[32m 0[2mms[22m[39m
+ [32m✓[39m providers.test.js[2m > [22mPROVIDERS Adapter Logic[2m > [22mopenai[2m > [22mshould format images as image_url objects[32m 1[2mms[22m[39m
+ [32m✓[39m providers.test.js[2m > [22mPROVIDERS Adapter Logic[2m > [22mopenai[2m > [22mshould handle raw base64 by adding data uri scheme[32m 0[2mms[22m[39m
+ [32m✓[39m providers.test.js[2m > [22mPROVIDERS Adapter Logic[2m > [22mgithub-models[2m > [22mshould format images as image_url objects[32m 1[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildOllamaRequest[2m > [22mcreates correct URL with base URL[32m 1[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildOllamaRequest[2m > [22mincludes Authorization header when apiKey provided[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildOllamaRequest[2m > [22momits Authorization header when no apiKey[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildOllamaRequest[2m > [22mincludes Content-Type header[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildOllamaRequest[2m > [22mcreates body with model and messages[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildOllamaRequest[2m > [22mnormalizes base URL by removing trailing slash[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildOpenAIRequest[2m > [22mcreates correct URL[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildOpenAIRequest[2m > [22mincludes Authorization header with Bearer token[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildOpenAIRequest[2m > [22mincludes Content-Type header[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildOpenAIRequest[2m > [22mcreates body with model and messages[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildAnthropicRequest[2m > [22mcreates correct URL[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildAnthropicRequest[2m > [22mincludes x-api-key header[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildAnthropicRequest[2m > [22mincludes anthropic-version header[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildAnthropicRequest[2m > [22mincludes Content-Type header[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildAnthropicRequest[2m > [22mseparates system message from user messages[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildAnthropicRequest[2m > [22mincludes model and max_tokens[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildAnthropicRequest[2m > [22mhandles messages without system message[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildGoogleGeminiRequest[2m > [22mcreates correct URL with API key[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildGoogleGeminiRequest[2m > [22mincludes Content-Type header[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildGoogleGeminiRequest[2m > [22mconverts system message to systemInstruction[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildGoogleGeminiRequest[2m > [22mconverts user messages to Gemini format[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildGoogleGeminiRequest[2m > [22mconverts assistant role to model role[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Request Builders[2m > [22mbuildGoogleGeminiRequest[2m > [22mhandles messages without system message[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseOllamaResponse[2m > [22mextracts content from valid response[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseOllamaResponse[2m > [22mthrows error when message is missing[32m 1[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseOllamaResponse[2m > [22mthrows error when content is missing[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseOpenAIResponse[2m > [22mextracts content from valid response[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseOpenAIResponse[2m > [22mthrows error when choices is missing[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseOpenAIResponse[2m > [22mthrows error when choices is empty[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseOpenAIResponse[2m > [22mthrows error when message is missing[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseOpenAIResponse[2m > [22mthrows error when content is missing[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseAnthropicResponse[2m > [22mextracts text from valid response[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseAnthropicResponse[2m > [22mthrows error when content is missing[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseAnthropicResponse[2m > [22mthrows error when content is empty[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseAnthropicResponse[2m > [22mthrows error when text is missing[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseGoogleGeminiResponse[2m > [22mextracts text from valid response[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseGoogleGeminiResponse[2m > [22mthrows error when candidates is missing[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseGoogleGeminiResponse[2m > [22mthrows error when candidates is empty[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseGoogleGeminiResponse[2m > [22mthrows error when content is missing[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseGoogleGeminiResponse[2m > [22mthrows error when parts is missing[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseGoogleGeminiResponse[2m > [22mthrows error when parts is empty[32m 0[2mms[22m[39m
+ [32m✓[39m grading-server/test/providers.test.js[2m > [22mProvider Response Parsers[2m > [22mparseGoogleGeminiResponse[2m > [22mthrows error when text is missing[32m 0[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m2 passed[39m[22m[90m (2)[39m
+[2m      Tests [22m [1m[32m51 passed[39m[22m[90m (51)[39m
+[2m   Start at [22m 21:50:33
+[2m   Duration [22m 255ms[2m (transform 75ms, setup 0ms, import 184ms, tests 14ms, environment 0ms)[22m
+

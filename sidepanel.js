@@ -3,7 +3,7 @@ import BatchGrader from './batch-grader.js';
 import { signInWithGoogle, signInWithGitHub, signOut, getGoogleToken } from './oauth-client.js';
 
 // --- 1. Initialization & Storage ---
-let currentProviderId = 'ollama-cloud';
+let currentProviderId = 'ollama';
 let providerConfigs = {};
 let availableModels = []; // Cache models
 let currentMode = 'grader';
@@ -11,12 +11,11 @@ let batchAbortController = null; // For cancelling batch
 
 // Provider setup URLs for "Get API Key" links
 const PROVIDER_KEY_URLS = {
-  'anthropic': 'https://console.anthropic.com/settings/keys',
+  'ollama': null, // User provides their own endpoint
   'openai': 'https://platform.openai.com/api-keys',
+  'anthropic': 'https://console.anthropic.com/settings/keys',
   'google-gemini': 'https://aistudio.google.com/app/apikey',
   'github-models': 'https://github.com/settings/tokens/new?description=O.G.R.E%20Extension&scopes=repo,user',
-  'ollama-cloud': null, // User provides their own endpoint
-  'ollama-local': null, // Local installation
 };
 
 const OAUTH_STORAGE_KEYS = {
@@ -1927,16 +1926,35 @@ async function loadState() {
   if (result.providerConfigs) {
     providerConfigs = result.providerConfigs;
   } else {
-    // Migration
+    // Migration from very old format (pre-provider configs)
     providerConfigs = {
-      'ollama-cloud': {
-        apiUrl: result.apiUrl || 'https://ollama.com/api',
+      'ollama': {
+        apiUrl: result.apiUrl || 'http://localhost:11434',
         apiKey: result.apiKey || ''
       },
-      'ollama-local': { apiUrl: 'http://localhost:11434' },
       'openai': { apiKey: '' },
       'github-models': { apiKey: '' }
     };
+  }
+
+  // --- Migration: map old provider IDs to canonical IDs ---
+  // ollama-cloud + ollama-local → ollama
+  if (providerConfigs['ollama-cloud'] || providerConfigs['ollama-local']) {
+    const cloudCfg = providerConfigs['ollama-cloud'] || {};
+    const localCfg = providerConfigs['ollama-local'] || {};
+    // Merge: prefer cloud config if it has a custom URL, otherwise use local
+    if (!providerConfigs['ollama']) {
+      providerConfigs['ollama'] = cloudCfg.apiUrl && cloudCfg.apiUrl !== 'http://localhost:11434'
+        ? cloudCfg
+        : { apiUrl: localCfg.apiUrl || 'http://localhost:11434', apiKey: cloudCfg.apiKey || '' };
+    }
+    delete providerConfigs['ollama-cloud'];
+    delete providerConfigs['ollama-local'];
+  }
+  // gemini → google-gemini (if any old data)
+  if (providerConfigs['gemini'] && !providerConfigs['google-gemini']) {
+    providerConfigs['google-gemini'] = providerConfigs['gemini'];
+    delete providerConfigs['gemini'];
   }
 
   // Merge stored OAuth tokens into provider configs
@@ -1959,8 +1977,18 @@ async function loadState() {
     };
   }
 
-  // Set Active Provider
-  currentProviderId = result.activeProvider || 'ollama-cloud';
+  // Set Active Provider — migrate old IDs
+  let activeProvider = result.activeProvider || 'ollama';
+  // Map old IDs to canonical
+  const PROVIDER_ID_MIGRATION = {
+    'ollama-cloud': 'ollama',
+    'ollama-local': 'ollama',
+    'gemini': 'google-gemini',
+  };
+  if (PROVIDER_ID_MIGRATION[activeProvider]) {
+    activeProvider = PROVIDER_ID_MIGRATION[activeProvider];
+  }
+  currentProviderId = activeProvider;
   await setActiveProvider(currentProviderId);
   
   // Update Tabs UI

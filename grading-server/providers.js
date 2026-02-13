@@ -116,14 +116,14 @@ export function buildAnthropicRequest(config, messages) {
 }
 
 /**
- * Build Gemini API request
+ * Build Google Gemini API request
  * @param {Object} config - Provider configuration
  * @param {string} config.apiKey - API key for authentication
  * @param {string} config.model - Model name
  * @param {Array} messages - Array of message objects with role and content
  * @returns {Object} Request object with url, headers, and body
  */
-export function buildGeminiRequest(config, messages) {
+export function buildGoogleGeminiRequest(config, messages) {
   const headers = {
     'Content-Type': 'application/json',
   };
@@ -204,16 +204,57 @@ export function parseAnthropicResponse(data) {
 }
 
 /**
- * Parse Gemini API response
- * @param {Object} data - Response data from Gemini API
+ * Parse Google Gemini API response
+ * @param {Object} data - Response data from Google Gemini API
  * @returns {string} Extracted content
  * @throws {Error} If response format is invalid
  */
-export function parseGeminiResponse(data) {
+export function parseGoogleGeminiResponse(data) {
   if (!data.candidates || !data.candidates[0] || !data.candidates[0].content || 
       !data.candidates[0].content.parts || !data.candidates[0].content.parts[0] || 
       !data.candidates[0].content.parts[0].text) {
-    throw new Error('Invalid Gemini response: missing candidates[0].content.parts[0].text');
+    throw new Error('Invalid Google Gemini response: missing candidates[0].content.parts[0].text');
   }
   return data.candidates[0].content.parts[0].text;
+}
+
+/**
+ * Build GitHub Models (Copilot) API request
+ * @param {Object} config - Provider configuration
+ * @param {string} config.apiKey - GitHub token for authentication
+ * @param {string} config.model - Model name
+ * @param {Array} messages - Array of message objects with role and content
+ * @returns {Object} Request object with url, headers, and body
+ */
+export function buildGitHubModelsRequest(config, messages) {
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${config.apiKey}`,
+    'Copilot-Integration-Id': 'vscode-chat',
+  };
+
+  const body = {
+    model: config.model,
+    messages: messages,
+    stream: false,
+  };
+
+  return {
+    url: 'https://api.githubcopilot.com/chat/completions',
+    headers,
+    body,
+  };
+}
+
+/**
+ * Parse GitHub Models (Copilot) API response — uses OpenAI format
+ * @param {Object} data - Response data from GitHub Models API
+ * @returns {string} Extracted content
+ * @throws {Error} If response format is invalid
+ */
+export function parseGitHubModelsResponse(data) {
+  if (!data.choices || !data.choices[0] || !data.choices[0].message || !data.choices[0].message.content) {
+    throw new Error('Invalid GitHub Models response: missing choices[0].message.content');
+  }
+  return data.choices[0].message.content;
 }
