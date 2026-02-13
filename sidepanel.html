@@ -133,9 +133,9 @@
       --font-mono: 'JetBrains Mono', monospace; /* Keep mono for code */
 
       /* Visual Details - Bubbly (Capped for Side Panel) */
-      --radius-sm: 6px;
-      --radius-md: 8px;
-      --radius-lg: 12px;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 20px;
       --radius-full: 9999px;
 
       --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.05);
@@ -167,18 +167,74 @@
     }
 
 
-    .card { position: relative; background: var(--color-bg-card); padding: var(--spacing-2); border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 15px; }
+    .card { 
+      position: relative; 
+      background: var(--color-bg-card); 
+      padding: var(--spacing-2); 
+      border-radius: var(--radius-lg); 
+      box-shadow: none; 
+      margin-bottom: 15px; 
+      border: 1px solid var(--color-border);
+      overflow: hidden;
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--color-primary), var(--color-primary-hover));
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    [data-theme="dark"] .card::before,
+    @media (prefers-color-scheme: dark) { .card::before { opacity: 1; } }
     h3 { margin-top: 0; font-size: 14px; color: var(--color-text-primary); }
     label { font-size: 12px; font-weight: bold; color: var(--color-text-secondary); display: block; margin-bottom: var(--spacing-1); }
-    input, textarea, select { width: 100%; padding: 8px; box-sizing: border-box; margin-bottom: var(--spacing-2); border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+    input, textarea, select { 
+      width: 100%; 
+      padding: 8px; 
+      box-sizing: border-box; 
+      margin-bottom: var(--spacing-2); 
+      border: 1px solid var(--color-border); 
+      border-radius: var(--radius-sm);
+      background-color: var(--color-bg-main);
+      color: var(--color-text-primary);
+      transition: all 0.2s;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px var(--color-primary-bg);
+      outline: none;
+    }
     
-    /* Default (Grader) - Green Theme */
-    button { width: 100%; background: var(--color-mode-accent); color: var(--color-primary-text); border: none; padding: var(--spacing-2); border-radius: var(--radius-md); cursor: pointer; font-weight: bold; margin-bottom: var(--spacing-1); transition: background-color var(--transition-normal); }
-    button:hover { background: var(--color-mode-accent-hover); }
+    /* Default Button (Subtle/Bordered) */
+    button { 
+      display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+      width: 100%; 
+      background-color: var(--color-bg-sidebar); 
+      border: 1px solid var(--color-border); 
+      color: var(--color-text-primary);
+      padding: 0.5rem 1rem; 
+      border-radius: var(--radius-sm); 
+      cursor: pointer; 
+      font-weight: bold; 
+      margin-bottom: var(--spacing-1); 
+      transition: all 0.2s ease; 
+    }
+    button:hover { background-color: var(--color-bg-card-hover); border-color: var(--color-text-muted); }
     
+    /* Primary Action Button */
+    .btn-primary { 
+      background-color: var(--color-mode-accent); 
+      border-color: var(--color-mode-accent); 
+      color: var(--color-primary-text); 
+    }
+    .btn-primary:hover { opacity: 0.9; background-color: var(--color-mode-accent-hover); }
+
     /* Solver Mode - Blue Theme */
-    body.solver-mode button { background: var(--color-mode-accent); }
-    body.solver-mode button:hover { background: var(--color-mode-accent-hover); }
+    body.solver-mode .btn-primary { background: var(--color-mode-accent); }
+    body.solver-mode .btn-primary:hover { background: var(--color-mode-accent-hover); }
 
     button.secondary { background: var(--color-bg-card-hover); color: var(--color-text-primary); }
     button.secondary:hover { background: var(--color-border-hover); }
@@ -304,7 +360,7 @@
       padding: 20px;
       border: 1px solid var(--color-text-muted);
       width: 90%; 
-      border-radius: 8px;
+      border-radius: var(--radius-lg);
       box-shadow: 0 4px 8px rgba(0,0,0,0.2);
     }
     .modal-actions {
@@ -349,7 +405,7 @@
       display: flex;
       background: var(--color-border);
       padding: 3px;
-      border-radius: 6px;
+      border-radius: var(--radius-sm);
       margin-top: var(--spacing-2);
       border-top: none; /* Removed the line from container */
     }
@@ -512,7 +568,7 @@
     #chatInterfaceWrapper {
       transition: all 0.2s;
       border: 1px solid var(--color-border);
-      border-radius: 6px;
+      border-radius: var(--radius-lg);
       background: var(--color-bg-card);
       overflow: hidden;
       box-shadow: 0 2px 5px rgba(0,0,0,0.05);
@@ -703,11 +759,11 @@
     .rubric-th { border: 1px solid var(--color-border); padding: 5px; text-align: left; }
     .rubric-td { border: 1px solid var(--color-border); padding: 5px; }
 
-    .details-box { margin-bottom: 15px; border: 1px solid var(--color-border); border-radius: 4px; padding: 0; background: var(--color-bg-card); }
+    .details-box { margin-bottom: 15px; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0; background: var(--color-bg-card); }
     .summary-header { padding: 8px 10px; cursor: pointer; background: var(--color-bg-card-hover); font-size: 12px; font-weight: bold; color: var(--color-text-secondary); display: flex; align-items: center; justify-content: space-between; }
-    .resume-box { margin-bottom: 10px; padding: 10px; background: var(--color-warning-bg); border: 1px solid var(--color-warning); border-radius: 4px; }
+    .resume-box { margin-bottom: 10px; padding: 10px; background: var(--color-warning-bg); border: 1px solid var(--color-warning); border-radius: var(--radius-md); }
     
-    .progress-container { width: 100%; background: var(--color-border); height: 8px; border-radius: 4px; overflow: hidden; }
+    .progress-container { width: 100%; background: var(--color-border); height: 8px; border-radius: var(--radius-md); overflow: hidden; }
     .progress-bar { width: 0%; background: var(--color-mode-accent); height: 100%; transition: width 0.3s; }
 
     /* Refactoring Additions */
@@ -899,7 +955,7 @@
       align-items: center;
       gap: 8px;
       padding: 10px;
-      border-radius: 4px;
+      border-radius: var(--radius-md);
       margin-bottom: 10px;
       font-size: 12px;
     }
@@ -971,7 +1027,7 @@
     .batch-status-box {
       padding: 10px;
       background: #eee;
-      border-radius: 4px;
+      border-radius: var(--radius-md);
       margin-bottom: 10px;
       font-size: 12px;
       display: flex;
@@ -986,7 +1042,7 @@
     .details-container {
       margin-bottom: 15px; 
       border: 1px solid var(--color-border); 
-      border-radius: 4px; 
+      border-radius: var(--radius-md); 
       padding: 0; 
       background: var(--color-bg-card);
     }
@@ -1002,7 +1058,7 @@
       margin-bottom: 0; 
       width: 100%; 
       border: 1px solid var(--color-border); 
-      border-radius: 4px; 
+      border-radius: var(--radius-md); 
       padding: 8px;
     }
 
@@ -1012,7 +1068,7 @@
       padding: 10px; 
       background: #fffbeb; 
       border: 1px solid #fbbf24; 
-      border-radius: 4px;
+      border-radius: var(--radius-md);
     }
     [data-theme="dark"] .resume-prompt-box {
       background: rgba(251, 191, 36, 0.1);
@@ -1023,7 +1079,7 @@
       width: 100%; 
       background: #eee; 
       height: 8px; 
-      border-radius: 4px; 
+      border-radius: var(--radius-md); 
       overflow: hidden;
     }
     [data-theme="dark"] .progress-track {
@@ -1036,7 +1092,7 @@
       overflow-y: auto; 
       font-size: 11px; 
       border: 1px solid #eee; 
-      border-radius: 4px; 
+      border-radius: var(--radius-md); 
       padding: 5px; 
       display: none; 
       background: #f9f9f9;
@@ -1098,7 +1154,7 @@
       padding: 8px; 
       background: #e0f2fe; 
       border: 1px solid #bae6fd; 
-      border-radius: 4px; 
+      border-radius: var(--radius-md); 
       color: #0369a1; 
       font-size: 12px; 
       align-items: center; 
@@ -1122,7 +1178,7 @@
     .info-callout {
       background: #e0f2fe; 
       border: 1px solid #38bdf8; 
-      border-radius: 4px; 
+      border-radius: var(--radius-md); 
       padding: 10px; 
       margin-bottom: 15px;
     }
@@ -1144,23 +1200,13 @@
     .bg-header { background: var(--color-bg-card-hover); }
     [data-theme="light"] .bg-header { background: #f1f1f1; }
     .border-bottom-dashed { border-bottom: 1px dashed var(--color-border); }
-    .cost-badge { font-size: 10px; border: 1px solid currentColor; padding: 1px 5px; border-radius: 10px; text-transform: uppercase; }
+    .cost-badge { font-size: 10px; border: 1px solid currentColor; padding: 1px 5px; border-radius: var(--radius-sm); text-transform: uppercase; }
     .model-list-item { margin-bottom: 12px; padding-bottom: 12px; }
     /* =========================================
        Task 5: Polish — Decorative Touches
        ========================================= */
 
-    /* 1. Card Gradient Top-Border (Dark Mode) */
-    [data-theme="dark"] .card::before {
-      content: '';
-      position: absolute;
-      top: 0; left: 0;
-      width: 100%;
-      height: 2px;
-      background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
-      opacity: 0.5;
-      border-radius: 8px 8px 0 0; /* Match card radius */
-    }
+
 
     /* 2. Custom Scrollbar Styling */
     /* Track */
@@ -1191,12 +1237,31 @@
       background-size: 30px 30px;
     }
 
-    /* 7. Input Focus Ring */
-    input:focus, select:focus, textarea:focus {
-      outline: none;
-      box-shadow: 0 0 0 3px var(--color-primary-bg);
-      border-color: var(--color-primary);
-      transition: box-shadow var(--transition-normal), border-color var(--transition-normal);
+
+
+    /* Classes for JS-generated elements (Refactoring) */
+    .helper-link {
+      font-size: 12px;
+      color: var(--color-primary);
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .helper-link:hover { text-decoration: underline; }
+
+    .btn-test-connection {
+      margin-top: 10px;
+      padding: 8px 16px;
+      font-size: 13px;
+      cursor: pointer;
+      width: 100%;
+    }
+
+    .provider-status-message {
+      margin-top: 10px;
+      padding: 8px;
+      border-radius: var(--radius-md);
+      font-size: 13px;
+      display: none;
     }
   </style>
 </head>
@@ -1449,7 +1514,7 @@
     </div>
 
     <div class="btn-row">
-      <button id="btnStartBatch" class="flex-1" disabled><i class="bi bi-play-fill"></i> Start Batch</button>
+      <button id="btnStartBatch" class="flex-1 btn-primary" disabled><i class="bi bi-play-fill"></i> Start Batch</button>
       <button id="btnStopBatch" class="secondary w-auto btn-stop" style="display: none;"><i class="bi bi-stop-fill"></i></button>
     </div>
 

@@ -1508,8 +1508,6 @@ function renderProviderConfig(providerId) {
   const configDef = provider.getConfig();
   const currentConfig = providerConfigs[providerId] || {};
 
-
-
   configDef.fields.forEach(field => {
     const div = document.createElement('div');
     div.className = 'provider-field-group';
@@ -1531,10 +1529,7 @@ function renderProviderConfig(providerId) {
       helperLink.href = PROVIDER_KEY_URLS[providerId];
       helperLink.target = '_blank';
       helperLink.innerHTML = '🔗 Get API Key';
-      helperLink.style.fontSize = '12px';
-      helperLink.style.color = '#007bff';
-      helperLink.style.textDecoration = 'none';
-      helperLink.style.cursor = 'pointer';
+      helperLink.classList.add('helper-link');
       helperLink.title = 'Opens in new tab';
       helperLink.addEventListener('click', (e) => {
         e.preventDefault();
@@ -1602,22 +1597,14 @@ function renderProviderConfig(providerId) {
   // Add connection status indicator
   const statusDiv = document.createElement('div');
   statusDiv.id = `provider-status-${providerId}`;
-  statusDiv.className = 'provider-status';
-  statusDiv.style.marginTop = '10px';
-  statusDiv.style.padding = '8px';
-  statusDiv.style.borderRadius = '4px';
-  statusDiv.style.fontSize = '13px';
-  statusDiv.style.display = 'none';
+  statusDiv.className = 'provider-status provider-status-message';
   container.appendChild(statusDiv);
   
   // Add manual test button
   if (configDef.fields.some(f => f.key === 'apiKey' || f.key === 'apiUrl')) {
     const testBtn = document.createElement('button');
     testBtn.innerHTML = '🔄 Test Connection';
-    testBtn.style.marginTop = '10px';
-    testBtn.style.padding = '8px 16px';
-    testBtn.style.fontSize = '13px';
-    testBtn.style.cursor = 'pointer';
+    testBtn.classList.add('btn-test-connection');
     testBtn.addEventListener('click', () => testConnection(providerId));
     container.appendChild(testBtn);
   }
