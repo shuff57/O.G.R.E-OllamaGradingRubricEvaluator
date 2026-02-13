@@ -64,8 +64,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     MathfieldElement.fontsDirectory = 'lib/fonts';
   }
 
-  // Load saved settings from chrome.storage.local
-  await loadState();
+  // Load provider config (desktop first, fallback to chrome.storage.local)
+  await loadProviderConfig();
 
   // --- Theme Handling ---
   const themeToggle = document.getElementById('themeToggle');
@@ -1893,6 +1893,176 @@ function populateModelDropdown(models) {
   }
   
   updateThinkingControls();
+}
+
+// --- Desktop Connection (Provider Config Sync) ---
+
+/**
+ * Module-level state for desktop connection.
+ * desktopConnected: whether we successfully connected to desktop on last attempt
+ * handshakeToken: Bearer token for /api/* endpoints
+ */
+let desktopConnected = false;
+let handshakeToken = null;
+
+/**
+ * Attempt handshake with the grading-server desktop endpoint.
+ * Returns { connected: true, token } or { connected: false, reason: "..." }.
+ */
+async function connectToDesktop() {
+  try {
+    const response = await fetch('http://localhost:3456/api/handshake', {
+      headers: {
+        'Origin': chrome.runtime.getURL('') // chrome-extension://...
+      }
+    });
+    
+    if (!response.ok) {
+      const text = await response.text();
+      return { 
+        connected: false, 
+        reason: response.status === 503 
+          ? 'Desktop app not ready (server starting)' 
+          : `Handshake failed (${response.status}): ${text}` 
+      };
+    }
+    
+    const data = await response.json();
+    if (!data.token) {
+      return { connected: false, reason: 'No token in handshake response' };
+    }
+    
+    return { connected: true, token: data.token };
+  } catch (error) {
+    return { 
+      connected: false, 
+      reason: error.message.includes('fetch')
+        ? 'Desktop app not running (server unreachable)'
+        : `Connection error: ${error.message}`
+    };
+  }
+}
+
+/**
+ * Fetch provider config from desktop using handshake token.
+ * Returns provider config array or null on failure.
+ */
+async function fetchProvidersFromDesktop(token) {
+  try {
+    const response = await fetch('http://localhost:3456/api/providers', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    if (!response.ok) {
+      console.warn(`[Desktop] Provider fetch failed: ${response.status}`);
+      return null;
+    }
+    
+    const data = await response.json();
+    return data.providers || [];
+  } catch (error) {
+    console.warn('[Desktop] Provider fetch error:', error);
+    return null;
+  }
+}
+
+/**
+ * Orchestrator: Try to load provider config from desktop.
+ * If successful, populate providerConfigs from desktop.
+ * If failed, fall back to chrome.storage.local (loadState).
+ * 
+ * This replaces direct loadState() calls on panel open.
+ */
+async function loadProviderConfig() {
+  console.log('[Desktop] Attempting desktop connection...');
+  
+  // 1. Try handshake
+  const handshake = await connectToDesktop();
+  if (!handshake.connected) {
+    console.log(`[Desktop] Connection failed: ${handshake.reason}. Using fallback mode.`);
+    desktopConnected = false;
+    handshakeToken = null;
+    // Fallback to chrome.storage.local
+    await loadState();
+    return;
+  }
+  
+  console.log('[Desktop] Handshake successful');
+  handshakeToken = handshake.token;
+  
+  // 2. Fetch providers
+  const providers = await fetchProvidersFromDesktop(handshakeToken);
+  if (!providers || providers.length === 0) {
+    console.log('[Desktop] No providers from desktop. Using fallback mode.');
+    desktopConnected = false;
+    handshakeToken = null;
+    await loadState();
+    return;
+  }
+  
+  console.log(`[Desktop] Fetched ${providers.length} provider(s) from desktop`);
+  desktopConnected = true;
+  
+  // 3. Populate providerConfigs from desktop data
+  providerConfigs = {};
+  let activeProviderId = currentProviderId; // Default fallback
+  
+  providers.forEach(p => {
+    providerConfigs[p.id] = {
+      apiUrl: p.api_url || '',
+      apiKey: p.credentials?.api_key || '',
+      oauthToken: p.credentials?.access_token || ''
+    };
+    
+    if (p.is_active) {
+      activeProviderId = p.id;
+      // Update model dropdown if model is specified
+      if (p.model) {
+        const modelSelect = document.getElementById('modelName');
+        if (modelSelect) {
+          modelSelect.dataset.lastSelected = p.model;
+        }
+      }
+    }
+  });
+  
+  // 4. Switch to active provider
+  currentProviderId = activeProviderId;
+  
+  // 5. Load remaining state from chrome.storage.local (rubric, custom instructions, etc.)
+  await loadNonProviderState();
+}
+
+/**
+ * Load non-provider state (rubric, custom instructions, etc.) from chrome.storage.local.
+ * Used after desktop fetch to restore UI state that isn't managed by desktop.
+ */
+async function loadNonProviderState() {
+  const result = await chrome.storage.local.get([
+    'modelName', 'rubricMode', 'rubricText', 'rubricTable', 'rubricImages', 'customInstructions'
+  ]);
+  
+  // Restore rubric
+  if (result.rubricMode) {
+    const modeRadio = document.querySelector(`input[name="rubricMode"][value="${result.rubricMode}"]`);
+    if (modeRadio) modeRadio.checked = true;
+  }
+  if (result.rubricText) {
+    document.getElementById('rubricText').innerHTML = result.rubricText;
+  }
+  if (result.rubricTable) {
+    restoreRubricTableData(result.rubricTable);
+  }
+  if (result.rubricImages) {
+    rubricImages = result.rubricImages;
+  }
+  
+  // Restore custom instructions
+  if (result.customInstructions) {
+    document.getElementById('customInstructions').value = result.customInstructions;
+  }
 }
 
 function saveState() {

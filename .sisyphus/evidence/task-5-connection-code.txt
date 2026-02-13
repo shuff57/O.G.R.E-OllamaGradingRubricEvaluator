@@ -1,0 +1,81 @@
+# Task 5 Verification: Extension Desktop Connection Code
+
+## 1. connectToDesktop() function exists
+Line 1912:
+async function connectToDesktop() {
+
+API call (line 1914):
+    const response = await fetch('http://localhost:3456/api/handshake', {
+      headers: {
+        'Origin': chrome.runtime.getURL('') // chrome-extension://...
+      }
+    });
+
+Returns { connected: true, token } or { connected: false, reason: "..." }
+
+✅ PASS: Handshake function exists with correct endpoint and Origin header
+
+## 2. fetchProvidersFromDesktop() function exists
+Line 1950:
+async function fetchProvidersFromDesktop(token) {
+
+API call (lines 1952, 1954):
+    const response = await fetch('http://localhost:3456/api/providers', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+Returns data.providers array or null on failure
+
+✅ PASS: Provider fetch function exists with Bearer token auth
+
+## 3. loadProviderConfig() orchestrator exists
+Line 1978:
+async function loadProviderConfig() {
+
+Flow (lines 1982, 1996):
+  const handshake = await connectToDesktop();
+  if (!handshake.connected) { /* fallback to loadState() */ }
+  const providers = await fetchProvidersFromDesktop(handshakeToken);
+  if (!providers) { /* fallback to loadState() */ }
+
+Populates providerConfigs from desktop data
+Sets activeProviderId from is_active flag
+Loads non-provider state (rubric, custom instructions) from chrome.storage.local
+
+✅ PASS: Orchestrator tries desktop first, falls back to chrome.storage.local
+
+## 4. loadProviderConfig() called on panel open
+Line 68 (DOMContentLoaded):
+  await loadProviderConfig();
+
+✅ PASS: Panel open triggers desktop connection attempt
+
+## 5. Provider config consumed from desktop data
+Lines 2007-2019 (inside loadProviderConfig):
+  providers.forEach(p => {
+    providerConfigs[p.id] = {
+      apiUrl: p.api_url || '',
+      apiKey: p.credentials?.api_key || '',
+      oauthToken: p.credentials?.access_token || ''
+    };
+    
+    if (p.is_active) {
+      activeProviderId = p.id;
+      if (p.model) {
+        modelSelect.dataset.lastSelected = p.model;
+      }
+    }
+  });
+
+✅ PASS: Desktop-fetched config wired into existing provider state
+
+## Summary
+All code requirements for Task 5 are met:
+- connectToDesktop() handshakes with /api/handshake, validates chrome-extension:// Origin
+- fetchProvidersFromDesktop() calls /api/providers with Bearer token
+- loadProviderConfig() orchestrates: desktop → fallback → populate state
+- Called on panel open (DOMContentLoaded)
+- Desktop data mapped to providerConfigs object shape
+- Fallback to loadState() preserved for users without desktop app
