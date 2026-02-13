@@ -1,24 +1,18 @@
-# Build Fix Applied - 2026-02-13
 
-## Critical Configuration Fix
-**Fixed**: `tauri.conf.json` externalBin was empty
-- **Before**: `"externalBin": []`
-- **After**: `"externalBin": ["binaries/grading-server"]`
 
-## Impact
-This configuration tells Tauri to bundle the sidecar binary into the installer. Without this, the grading server wouldn't be included in the distributed app.
+## CI Build Triggered - 2026-02-13
+**Status**: Build O.G.R.E Desktop workflow running
+**Commit**: 7bbd543
+**Branch**: desktop
+**Trigger**: Push after fixing externalBin configuration
 
-## Naming Convention Reference
-- Config: `"binaries/grading-server"` (base name, no extension)
-- Disk file: `grading-server-x86_64-pc-windows-msvc.exe` (Tauri appends target triple + .exe)
-- Tauri resolves automatically based on target platform
+**History Rewrite**:
+- Removed 110MB grading-server-win.exe from entire git history using git filter-branch
+- Force-pushed clean history to origin/desktop
+- Push succeeded without file size errors
 
-## Next Steps
-1. Verify cargo check passes with new config
-2. Trigger CI build via GitHub Actions
-3. Download and verify installer artifact
-
-## Verification Command
-```bash
-cd ogre-desktop/src-tauri && cargo check
-```
+**Next Steps**:
+1. Wait for CI build to complete (~10-15 minutes)
+2. Download Windows installer artifact (.msi/.exe)
+3. Verify installer works correctly
+4. Mark remaining Definition of Done items as complete

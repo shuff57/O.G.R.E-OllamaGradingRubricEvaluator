@@ -458,10 +458,10 @@ function addRubricRow(criteria = '', desc = '', pts = '') {
   const tbody = document.querySelector('#rubricTable tbody');
   const tr = document.createElement('tr');
   tr.innerHTML = `
-    <td style="border: 1px solid #ddd; padding: 0;"><input type="text" class="r-criteria" style="border:none; margin:0; width:100%;" placeholder="Criteria" value="${criteria}"></td>
-    <td style="border: 1px solid #ddd; padding: 0;"><input type="text" class="r-desc" style="border:none; margin:0; width:100%;" placeholder="Description" value="${desc}"></td>
-    <td style="border: 1px solid #ddd; padding: 0;"><input type="text" class="r-pts" style="border:none; margin:0; width:100%;" placeholder="0" value="${pts}"></td>
-    <td style="border: 1px solid #ddd; padding: 0; text-align:center;"><button class="btn-del" style="background:none; color:red; border:none; cursor:pointer; padding:0; margin:0; width:auto;"><i class="bi bi-trash"></i></button></td>
+    <td class="rubric-td p-0"><input type="text" class="r-criteria input-reset" placeholder="Criteria" value="${criteria}"></td>
+    <td class="rubric-td p-0"><input type="text" class="r-desc input-reset" placeholder="Description" value="${desc}"></td>
+    <td class="rubric-td p-0"><input type="text" class="r-pts input-reset" placeholder="0" value="${pts}"></td>
+    <td class="rubric-td p-0 text-center"><button class="btn-del btn-icon-danger"><i class="bi bi-trash"></i></button></td>
   `;
   tr.querySelector('.btn-del').addEventListener('click', () => {
     tr.remove();
@@ -658,10 +658,10 @@ document.getElementById('btnImportRubric').addEventListener('click', async () =>
       parsed.rubric.forEach(item => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-          <td style="border: 1px solid #ddd; padding: 0;"><input type="text" class="r-criteria" style="border:none; margin:0; width:100%;" value="${item.criteria || ''}"></td>
-          <td style="border: 1px solid #ddd; padding: 0;"><input type="text" class="r-desc" style="border:none; margin:0; width:100%;" value="${item.description || ''}"></td>
-          <td style="border: 1px solid #ddd; padding: 0;"><input type="text" class="r-pts" style="border:none; margin:0; width:100%;" value="${item.points || 0}"></td>
-          <td style="border: 1px solid #ddd; padding: 0; text-align:center;"><button class="btn-del" style="background:none; color:red; border:none; cursor:pointer; padding:0; margin:0; width:auto;"><i class="bi bi-trash"></i></button></td>
+          <td class="rubric-td"><input type="text" class="r-criteria input-reset" value="${item.criteria || ''}"></td>
+          <td class="rubric-td"><input type="text" class="r-desc input-reset" value="${item.description || ''}"></td>
+          <td class="rubric-td"><input type="text" class="r-pts input-reset" value="${item.points || 0}"></td>
+          <td class="rubric-td" style="text-align:center;"><button class="btn-del btn-icon-danger"><i class="bi bi-trash"></i></button></td>
         `;
         tr.querySelector('.btn-del').addEventListener('click', () => tr.remove());
         tbody.appendChild(tr);
@@ -742,10 +742,10 @@ document.getElementById('btnImportRubricImage').addEventListener('click', async 
       parsed.rubric.forEach(item => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-          <td style="border: 1px solid #ddd; padding: 0;"><input type="text" class="r-criteria" style="border:none; margin:0; width:100%;" value="${item.criteria || ''}"></td>
-          <td style="border: 1px solid #ddd; padding: 0;"><input type="text" class="r-desc" style="border:none; margin:0; width:100%;" value="${item.description || ''}"></td>
-          <td style="border: 1px solid #ddd; padding: 0;"><input type="text" class="r-pts" style="border:none; margin:0; width:100%;" value="${item.points || 0}"></td>
-          <td style="border: 1px solid #ddd; padding: 0; text-align:center;"><button class="btn-del" style="background:none; color:red; border:none; cursor:pointer; padding:0; margin:0; width:auto;"><i class="bi bi-trash"></i></button></td>
+          <td class="rubric-td"><input type="text" class="r-criteria input-reset" value="${item.criteria || ''}"></td>
+          <td class="rubric-td"><input type="text" class="r-desc input-reset" value="${item.description || ''}"></td>
+          <td class="rubric-td"><input type="text" class="r-pts input-reset" value="${item.points || 0}"></td>
+          <td class="rubric-td" style="text-align:center;"><button class="btn-del btn-icon-danger"><i class="bi bi-trash"></i></button></td>
         `;
         tr.querySelector('.btn-del').addEventListener('click', () => tr.remove());
         tbody.appendChild(tr);
@@ -1371,7 +1371,45 @@ function renderGradingResponse(jsonString, container) {
     
     // Summary
     if (data.summary) {
-      html += `<div style="margin-bottom: 15px; font-style: italic;">${marked.parse(data.summary)}</div>`;
+      html += `<div class="grading-summary">${marked.parse(data.summary)}</div>`;
+    }
+
+    // Table
+    if (data.grading && Array.isArray(data.grading)) {
+      html += `<table class="grading-table">`;
+      html += `<thead>
+        <tr class="bg-header">
+          <th class="border-light grading-th">Criteria</th>
+          <th class="border-light grading-th-center">Status</th>
+          <th class="border-light grading-th">Evidence & Feedback</th>
+        </tr>
+      </thead><tbody>`;
+
+      data.grading.forEach(item => {
+        const statusText = item.status ? item.status.toLowerCase() : '';
+        let statusIcon = item.status || '';
+        
+        if (statusText.includes('pass')) {
+          statusIcon = '<i class="bi bi-check-circle-fill text-success"></i> Pass';
+        } else if (statusText.includes('fail')) {
+          statusIcon = '<i class="bi bi-x-circle-fill text-error"></i> Fail';
+        }
+
+        html += `<tr>
+          <td class="border-light grading-td"><strong>${item.criteria}</strong></td>
+          <td class="border-light grading-td-center">${statusIcon}</td>
+          <td class="border-light grading-td">
+            <div class="text-muted border-bottom-dashed grading-excerpt">"${item.excerpt || ''}"</div>
+            <div>${marked.parse(item.feedback || '')}</div>
+          </td>
+        </tr>`;
+      });
+      html += `</tbody></table>`;
+    }
+    
+    // Total Score
+    if (data.totalScore) {
+      html += `<div class="grading-total">Total Score: ${data.totalScore}</div>`;
     }
 
     // Table
@@ -1396,10 +1434,10 @@ function renderGradingResponse(jsonString, container) {
         }
 
         html += `<tr>
-          <td class="border-light" style="padding: 8px; vertical-align: top;"><strong>${item.criteria}</strong></td>
-          <td class="border-light" style="padding: 8px; text-align: center; vertical-align: top;">${statusIcon}</td>
-          <td class="border-light" style="padding: 8px; vertical-align: top;">
-            <div class="text-muted border-bottom-dashed" style="font-style: italic; margin-bottom: 8px; padding-bottom: 8px;">"${item.excerpt || ''}"</div>
+          <td class="border-light grading-td"><strong>${item.criteria}</strong></td>
+          <td class="border-light grading-td-center">${statusIcon}</td>
+          <td class="border-light grading-td">
+            <div class="text-muted border-bottom-dashed grading-excerpt">"${item.excerpt || ''}"</div>
             <div>${marked.parse(item.comment || '')}</div>
           </td>
         </tr>`;
@@ -1409,14 +1447,14 @@ function renderGradingResponse(jsonString, container) {
 
     // Total Score
     if (data.totalScore !== undefined) {
-      html += `<div style="font-weight: bold; font-size: 1.1em; margin-top: 10px;">Total Score: ${data.totalScore}</div>`;
+      html += `<div class="grading-total">Total Score: ${data.totalScore}</div>`;
     }
 
     container.innerHTML = html;
 
   } catch (e) {
     console.error("Error parsing grading JSON", e);
-    container.innerHTML = `<div style="color: red;">Error parsing grading response. Raw output below:</div><hr/>` + marked.parse(jsonString);
+    container.innerHTML = `<div class="text-error">Error parsing grading response. Raw output below:</div><hr/>` + marked.parse(jsonString);
   }
 }
 
@@ -2656,23 +2694,22 @@ function renderModelList() {
         else if(m.cost.toLowerCase().includes('medium')) { costClass = 'text-warning'; }
         else { costClass = 'text-success'; }
 
-        // Note: inline styles below replaced with classes where possible
         item.innerHTML = `
-            <div class="text-primary" style="font-weight:bold; display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-size:14px;">${m.name}</span>
+            <div class="text-primary model-card-header">
+                <span class="model-name">${m.name}</span>
                 <span class="${costClass} cost-badge">${m.cost} Cost</span>
             </div>
-            <div class="text-muted" style="font-size:12px; margin: 6px 0; font-style:italic; line-height: 1.4;">
+            <div class="text-muted model-desc">
                 "${m.desc}"
             </div>
-            <div class="text-muted" style="display:flex; gap:10px; font-size:11px; margin-bottom:6px;">
+            <div class="text-muted model-meta">
                 <span>⏱️ Speed: <b>${m.speed}</b></span>
             </div>
-            <div class="bg-white border-light" style="display:grid; grid-template-columns: repeat(4, 1fr); gap:2px; margin-top:6px; padding:6px; border-radius:6px;">
-                <div class="text-center"><div class="text-muted" style="font-size:9px;">MATH</div><div class="text-primary" style="font-weight:bold;">${m.scores.math}</div></div>
-                <div class="text-center"><div class="text-muted" style="font-size:9px;">SCI</div><div class="text-primary" style="font-weight:bold;">${m.scores.science}</div></div>
-                <div class="text-center"><div class="text-muted" style="font-size:9px;">CODE</div><div class="text-primary" style="font-weight:bold;">${m.scores.coding}</div></div>
-                <div class="text-center"><div class="text-muted" style="font-size:9px;">WRITE</div><div class="text-primary" style="font-weight:bold;">${m.scores.writing}</div></div>
+            <div class="bg-white border-light model-scores-grid">
+                <div class="text-center"><div class="text-muted model-score-label">MATH</div><div class="text-primary model-score-val">${m.scores.math}</div></div>
+                <div class="text-center"><div class="text-muted model-score-label">SCI</div><div class="text-primary model-score-val">${m.scores.science}</div></div>
+                <div class="text-center"><div class="text-muted model-score-label">CODE</div><div class="text-primary model-score-val">${m.scores.coding}</div></div>
+                <div class="text-center"><div class="text-muted model-score-label">WRITE</div><div class="text-primary model-score-val">${m.scores.writing}</div></div>
             </div>
         `;
         list.appendChild(item);
