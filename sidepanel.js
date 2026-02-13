@@ -135,6 +135,9 @@ function setupListeners() {
     });
   });
 
+  // Desktop Mode Listeners
+  setupDesktopListeners();
+
   // Preset Buttons for Grading Instructions
   document.getElementById('btnPresetNonZero')?.addEventListener('click', () => {
     document.getElementById('customInstructions').value = presets.nonZero;
@@ -343,7 +346,26 @@ document.getElementById('saveConfig').addEventListener('click', () => {
 
 // Handle Model Change for Thinking Controls
 const modelSelect = document.getElementById('modelName');
-modelSelect.addEventListener('change', updateThinkingControls);
+modelSelect.addEventListener('change', () => {
+  updateThinkingControls();
+  // Write-back model selection to desktop (fire-and-forget)
+  if (desktopConnected && handshakeToken) {
+    const model = document.getElementById('modelName').value || '';
+    fetch('http://localhost:3456/api/providers/active', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${handshakeToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        provider_id: currentProviderId,
+        model: model
+      })
+    }).catch(err => {
+      console.warn('[Desktop] Write-back failed:', err);
+    });
+  }
+});
 // Call on init
 updateThinkingControls();
 
@@ -1790,6 +1812,24 @@ async function switchProvider(providerId) {
   refreshModels();
   
   saveState();
+  
+  // Write-back active provider selection to desktop (fire-and-forget)
+  if (desktopConnected && handshakeToken) {
+    const model = document.getElementById('modelName').value || '';
+    fetch('http://localhost:3456/api/providers/active', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${handshakeToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        provider_id: providerId,
+        model: model
+      })
+    }).catch(err => {
+      console.warn('[Desktop] Write-back failed:', err);
+    });
+  }
 }
 
 // Update provider tab status indicator
@@ -1907,7 +1947,13 @@ let handshakeToken = null;
 
 /**
  * Attempt handshake with the grading-server desktop endpoint.
- * Returns { connected: true, token } or { connected: false, reason: "..." }.
+ * Returns { connected: true, token } or { connected: false, reason, statusCode }.
+ *
+ * Status codes for callers:
+ *   0   — network error (server not running)
+ *   503 — server running but no config pushed yet
+ *   403 — origin rejected
+ *   4xx — other client error
  */
 async function connectToDesktop() {
   try {
@@ -1918,34 +1964,37 @@ async function connectToDesktop() {
     });
     
     if (!response.ok) {
-      const text = await response.text();
+      const text = await response.text().catch(() => '');
       return { 
-        connected: false, 
+        connected: false,
+        statusCode: response.status,
         reason: response.status === 503 
-          ? 'Desktop app not ready (server starting)' 
+          ? 'Desktop app not ready yet'
+          : response.status === 403
+          ? 'Origin not allowed by desktop app'
           : `Handshake failed (${response.status}): ${text}` 
       };
     }
     
     const data = await response.json();
     if (!data.token) {
-      return { connected: false, reason: 'No token in handshake response' };
+      return { connected: false, statusCode: 0, reason: 'No token in handshake response' };
     }
     
     return { connected: true, token: data.token };
   } catch (error) {
+    // Network errors (ECONNREFUSED, TypeError from fetch, etc.)
     return { 
-      connected: false, 
-      reason: error.message.includes('fetch')
-        ? 'Desktop app not running (server unreachable)'
-        : `Connection error: ${error.message}`
+      connected: false,
+      statusCode: 0,
+      reason: 'Desktop app not running'
     };
   }
 }
 
 /**
  * Fetch provider config from desktop using handshake token.
- * Returns provider config array or null on failure.
+ * Returns { providers: [...] } on success, or { providers: null, statusCode } on failure.
  */
 async function fetchProvidersFromDesktop(token) {
   try {
@@ -1957,68 +2006,181 @@ async function fetchProvidersFromDesktop(token) {
     
     if (!response.ok) {
       console.warn(`[Desktop] Provider fetch failed: ${response.status}`);
-      return null;
+      return { providers: null, statusCode: response.status };
     }
     
     const data = await response.json();
-    return data.providers || [];
+    return { providers: data.providers || [], statusCode: 200 };
   } catch (error) {
     console.warn('[Desktop] Provider fetch error:', error);
-    return null;
+    return { providers: null, statusCode: 0 };
   }
 }
 
 /**
- * Orchestrator: Try to load provider config from desktop.
- * If successful, populate providerConfigs from desktop.
- * If failed, fall back to chrome.storage.local (loadState).
- * 
- * This replaces direct loadState() calls on panel open.
+ * Updates the provider configuration UI based on desktop connection state.
+ * Toggles between Simplified Desktop Mode and Manual Mode.
  */
-async function loadProviderConfig() {
-  console.log('[Desktop] Attempting desktop connection...');
-  
-  // 1. Try handshake
-  const handshake = await connectToDesktop();
-  if (!handshake.connected) {
-    console.log(`[Desktop] Connection failed: ${handshake.reason}. Using fallback mode.`);
-    desktopConnected = false;
-    handshakeToken = null;
-    // Fallback to chrome.storage.local
-    await loadState();
-    return;
+function updateProviderUI(connected) {
+  const desktopContent = document.getElementById('desktopModeContent');
+  const manualContent = document.getElementById('manualModeContent');
+  const disconnectedBanner = document.getElementById('manualModeBanner');
+  const desktopStatusBanner = document.getElementById('desktopStatusBanner');
+
+  if (!desktopContent || !manualContent) return;
+
+  if (connected) {
+    // Show Simplified UI
+    desktopContent.style.display = 'block';
+    manualContent.style.display = 'none';
+    
+    if (desktopStatusBanner) {
+        desktopStatusBanner.className = 'status-banner status-success';
+        desktopStatusBanner.innerHTML = '<i class="bi bi-check-circle-fill"></i> Connected to Desktop App';
+    }
+  } else {
+    // Show Manual UI
+    desktopContent.style.display = 'none';
+    manualContent.style.display = 'block';
+    
+    // Show warning banner in manual mode if we tried to connect but failed
+    if (disconnectedBanner) {
+      disconnectedBanner.style.display = 'flex'; // Use flex to match layout
+    }
   }
+}
+
+/**
+ * Populates the provider dropdown in Desktop Mode.
+ */
+function populateDesktopProviderDropdown(providers) {
+  const select = document.getElementById('desktopProviderSelect');
+  if (!select) return;
+
+  select.innerHTML = '';
   
-  console.log('[Desktop] Handshake successful');
-  handshakeToken = handshake.token;
-  
-  // 2. Fetch providers
-  const providers = await fetchProvidersFromDesktop(handshakeToken);
   if (!providers || providers.length === 0) {
-    console.log('[Desktop] No providers from desktop. Using fallback mode.');
-    desktopConnected = false;
-    handshakeToken = null;
-    await loadState();
+    const opt = document.createElement('option');
+    opt.text = "No providers available";
+    select.add(opt);
     return;
   }
+
+  let foundActive = false;
+  providers.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.text = p.name + (p.model ? ` (${p.model})` : '');
+    
+    // Check if this provider is effectively the active one
+    if (p.id === currentProviderId) {
+        opt.selected = true;
+        foundActive = true;
+    }
+    
+    select.add(opt);
+  });
   
-  console.log(`[Desktop] Fetched ${providers.length} provider(s) from desktop`);
+  // If currentProviderId matches none, select the first one
+  if (!foundActive && providers.length > 0) {
+      select.value = providers[0].id;
+      // Triggers change event to update state if needed, but we do it manually below
+      switchProvider(providers[0].id);
+  }
+}
+
+/**
+ * Sets up listeners for the Desktop Mode UI elements.
+ */
+function setupDesktopListeners() {
+  // Dropdown Change
+  const select = document.getElementById('desktopProviderSelect');
+  if (select) {
+    select.addEventListener('change', (e) => {
+      const providerId = e.target.value;
+      if (providerId) {
+        switchProvider(providerId);
+      }
+    });
+  }
+
+  // Disconnect Button (Switch to Manual)
+  const btnDisconnect = document.getElementById('btnDisconnectDesktop');
+  if (btnDisconnect) {
+    btnDisconnect.addEventListener('click', () => {
+       // Force manual mode
+       updateProviderUI(false);
+       // Hide the "Disconnected" banner since user voluntarily disconnected
+       const banner = document.getElementById('desktopDisconnectedBanner');
+       if (banner) banner.style.display = 'none';
+    });
+  }
+
+  // Refresh Button
+  const btnRefresh = document.getElementById('btnRefreshDesktop');
+  if (btnRefresh) {
+      btnRefresh.addEventListener('click', async () => {
+          btnRefresh.classList.add('spin-animation');
+          await loadProviderConfig();
+          btnRefresh.classList.remove('spin-animation');
+      });
+  }
+
+  // Retry Button (in Manual Mode banner)
+  const btnRetry = document.getElementById('btnRetryDesktop');
+  if (btnRetry) {
+      btnRetry.addEventListener('click', async () => {
+          btnRetry.disabled = true;
+          btnRetry.classList.add('spin-animation');
+          await loadProviderConfig();
+          btnRetry.classList.remove('spin-animation');
+          btnRetry.disabled = false;
+      });
+  }
+
+  // Open Desktop Config Button
+  const btnOpenConfig = document.getElementById('btnOpenDesktopConfig');
+  if (btnOpenConfig) {
+      btnOpenConfig.addEventListener('click', () => {
+          // Open the desktop app URL (assuming localhost:3456)
+          chrome.tabs.create({ url: 'http://localhost:3456' });
+      });
+  }
+}
+
+
+/**
+ * Helper: activate fallback (manual) mode.
+ * Sets module state and loads config from chrome.storage.local.
+ */
+async function activateFallbackMode() {
+  desktopConnected = false;
+  handshakeToken = null;
+  updateProviderUI(false);
+  await loadState(); // chrome.storage.local — the fallback path
+}
+
+/**
+ * Helper: apply desktop provider data to the UI after a successful fetch.
+ */
+function applyDesktopProviders(providers) {
   desktopConnected = true;
-  
-  // 3. Populate providerConfigs from desktop data
+  updateProviderUI(true);
+  populateDesktopProviderDropdown(providers);
+
+  // Populate providerConfigs from desktop data
   providerConfigs = {};
-  let activeProviderId = currentProviderId; // Default fallback
-  
+  let activeProviderId = currentProviderId;
+
   providers.forEach(p => {
     providerConfigs[p.id] = {
       apiUrl: p.api_url || '',
       apiKey: p.credentials?.api_key || '',
-      oauthToken: p.credentials?.access_token || ''
+      // No OAuth token reading in this path — API key only from desktop
     };
-    
+
     if (p.is_active) {
       activeProviderId = p.id;
-      // Update model dropdown if model is specified
       if (p.model) {
         const modelSelect = document.getElementById('modelName');
         if (modelSelect) {
@@ -2027,12 +2189,101 @@ async function loadProviderConfig() {
       }
     }
   });
-  
-  // 4. Switch to active provider
+
   currentProviderId = activeProviderId;
-  
-  // 5. Load remaining state from chrome.storage.local (rubric, custom instructions, etc.)
+}
+
+/**
+ * Orchestrator: Try to load provider config from desktop.
+ * Handles all failure modes gracefully before falling back to manual mode.
+ *
+ * Failure modes:
+ *   Network error (server not running) → immediate fallback
+ *   503 (no config pushed)            → wait 3s, then fallback
+ *   403 (origin rejected)             → console warn + fallback
+ *   401 on /api/providers             → re-handshake once, then fallback
+ *   Empty providers                   → fallback
+ */
+async function loadProviderConfig() {
+  console.log('[Desktop] Attempting desktop connection...');
+
+  // --- Step 1: Handshake ---
+  const handshake = await connectToDesktop();
+
+  if (!handshake.connected) {
+    // Handle specific handshake failures
+    if (handshake.statusCode === 503) {
+      // Server running but not ready — wait briefly then fall back
+      console.log('[Desktop] Server starting (503). Waiting 3 seconds...');
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      // Retry once
+      const retry = await connectToDesktop();
+      if (retry.connected) {
+        handshake.connected = true;
+        handshake.token = retry.token;
+      } else {
+        console.log('[Desktop] Still not ready after wait. Using manual mode.');
+        await activateFallbackMode();
+        return;
+      }
+    } else if (handshake.statusCode === 403) {
+      console.warn('[Desktop] Origin rejected (403). Extension origin not allowed. Using manual mode.');
+      await activateFallbackMode();
+      return;
+    } else {
+      // Network error or other — desktop not running (expected, not an error)
+      console.log('[Desktop] Desktop not running. Using manual mode.');
+      await activateFallbackMode();
+      return;
+    }
+  }
+
+  console.log('[Desktop] Handshake successful');
+  handshakeToken = handshake.token;
+
+  // --- Step 2: Fetch providers ---
+  const result = await fetchProvidersFromDesktop(handshakeToken);
+
+  if (result.statusCode === 401) {
+    // Token invalid (server may have restarted) — re-handshake once
+    console.log('[Desktop] Token rejected (401). Attempting re-handshake...');
+    const reHandshake = await connectToDesktop();
+    if (!reHandshake.connected) {
+      console.log('[Desktop] Re-handshake failed. Using manual mode.');
+      await activateFallbackMode();
+      return;
+    }
+    handshakeToken = reHandshake.token;
+    const retryResult = await fetchProvidersFromDesktop(handshakeToken);
+    if (!retryResult.providers || retryResult.providers.length === 0) {
+      console.log('[Desktop] Re-handshake succeeded but no providers. Using manual mode.');
+      await activateFallbackMode();
+      return;
+    }
+    // Success on retry
+    console.log(`[Desktop] Re-handshake recovered. Fetched ${retryResult.providers.length} provider(s)`);
+    applyDesktopProviders(retryResult.providers);
+  } else if (!result.providers || result.providers.length === 0) {
+    console.log('[Desktop] No providers from desktop. Using manual mode.');
+    await activateFallbackMode();
+    return;
+  } else {
+    // Happy path
+    console.log(`[Desktop] Fetched ${result.providers.length} provider(s) from desktop`);
+    applyDesktopProviders(result.providers);
+  }
+
+  // --- Step 3: Load non-provider state (rubric, etc.) ---
   await loadNonProviderState();
+
+  // --- Step 4: Populate hidden manual UI for config reading ---
+  renderProviderConfig(currentProviderId);
+  updateProviderTabStatus(currentProviderId);
+
+  const desktopSelect = document.getElementById('desktopProviderSelect');
+  if (desktopSelect && currentProviderId) {
+    desktopSelect.value = currentProviderId;
+  }
 }
 
 /**
@@ -2062,6 +2313,15 @@ async function loadNonProviderState() {
   // Restore custom instructions
   if (result.customInstructions) {
     document.getElementById('customInstructions').value = result.customInstructions;
+  }
+}
+
+function restoreRubricTableData(data) {
+  const tbody = document.querySelector('#rubricTable tbody');
+  if (!tbody) return;
+  tbody.innerHTML = "";
+  if (Array.isArray(data)) {
+    data.forEach(item => addRubricRow(item.criteria, item.description, item.points));
   }
 }
 
