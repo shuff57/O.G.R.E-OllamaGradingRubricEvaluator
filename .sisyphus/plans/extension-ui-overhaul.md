@@ -897,4 +897,4 @@ grep -c 'data-theme' sidepanel.html  # Expect: >= 3 (script + CSS selectors)
 - [x] Logo visible in both themes
 - [x] Custom scrollbar styled
 - [x] Card hover effects present
-- [ ] Dark mode gradient card borders present
+- [x] Dark mode gradient card borders present
