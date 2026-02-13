@@ -1,0 +1,93 @@
+============================================================
+Task 7: Extension Fallback Mode — Code Review Evidence
+Generated: 2026-02-13
+============================================================
+
+SCENARIO 3: Graceful handling of 503 (no config yet)
+-----------------------------------------------------
+grep -n "connectToDesktop\|503\|handshake\|activateFallbackMode" sidepanel.js
+
+Key lines in loadProviderConfig():
+  Line 2215: if (handshake.statusCode === 503) {
+  Line 2217:   console.log('[Desktop] Server starting (503). Waiting 3 seconds...');
+  Line 2218:   await new Promise(resolve => setTimeout(resolve, 3000));
+  Line 2220:   const retry = await connectToDesktop();
+  Line 2222-2223: if retry succeeds, use token; else fallback
+  Line 2226:   await activateFallbackMode();
+
+  connectToDesktop() distinguishes 503 from other errors:
+  Line 1954: *   503 — server running but no config pushed yet
+  Line 1971: reason: response.status === 503 ? 'Desktop app not ready yet' : ...
+
+VERDICT: 503 is handled gracefully — waits 3s, retries once, falls back to manual mode.
+         Not treated as fatal error. No error toast shown.
+
+SCENARIO 4: Re-handshake on 401
+--------------------------------
+grep -n "401\|re-handshake\|retry.*handshake\|Re-handshake\|Token rejected" sidepanel.js
+
+  Line 2204: *   401 on /api/providers → re-handshake once, then fallback
+  Line 2247: if (result.statusCode === 401) {
+  Line 2248:   // Token invalid (server may have restarted) — re-handshake once
+  Line 2249:   console.log('[Desktop] Token rejected (401). Attempting re-handshake...');
+  Line 2250:   const reHandshake = await connectToDesktop();
+  Line 2252:   console.log('[Desktop] Re-handshake failed. Using manual mode.');
+  Line 2253:   await activateFallbackMode();
+  Line 2256:   handshakeToken = reHandshake.token;
+  Line 2257:   const retryResult = await fetchProvidersFromDesktop(handshakeToken);
+  Line 2264:   console.log(`[Desktop] Re-handshake recovered. Fetched ${retryResult.providers.length} provider(s)`);
+
+VERDICT: 401 triggers a single re-handshake attempt before falling back.
+         If re-handshake succeeds, uses new token to re-fetch providers.
+         If re-handshake fails, falls back gracefully to manual mode.
+
+ADDITIONAL: Fallback mode (activateFallbackMode)
+-------------------------------------------------
+  Line 2156: async function activateFallbackMode() {
+  Line 2157:   desktopConnected = false;
+  Line 2158:   handshakeToken = null;
+  Line 2159:   updateProviderUI(false);
+  Line 2160:   await loadState(); // chrome.storage.local — the fallback path
+
+VERDICT: Fallback always sets desktopConnected=false, clears token,
+         shows manual mode UI, and loads from chrome.storage.local.
+
+ADDITIONAL: Desktop path does NOT read OAuth tokens
+----------------------------------------------------
+  applyDesktopProviders() builds providerConfigs with API key only:
+  Line ~2175:   apiKey: p.credentials?.api_key || '',
+  (No oauthToken line — removed per Task 7 requirement)
+
+VERDICT: OAuth dependency removed from desktop provider path.
+         loadState() still reads OAuth for manual mode (existing behavior, Task 9 will clean up).
+
+ADDITIONAL: Retry Connection button
+------------------------------------
+  HTML (sidepanel.html line 1241):
+    <button id="btnRetryDesktop" ...><i class="bi bi-arrow-clockwise"></i></button>
+
+  JS (sidepanel.js setupDesktopListeners):
+    btnRetry.addEventListener('click', async () => {
+        btnRetry.disabled = true;
+        btnRetry.classList.add('spin-animation');
+        await loadProviderConfig();
+        btnRetry.classList.remove('spin-animation');
+        btnRetry.disabled = false;
+    });
+
+VERDICT: Retry button visible in manual mode banner, calls loadProviderConfig()
+         which re-attempts the full connection flow.
+
+SCENARIO 1 & 2: Playwright Screenshots
+---------------------------------------
+NOTE: Playwright screenshots (task-7-no-desktop.png, task-7-recovery.png)
+require Chrome with the O.G.R.E extension loaded and side panel open.
+Playwriter MCP is not connected to a browser tab during this session.
+These screenshots should be captured during manual QA or a follow-up session
+with the extension loaded.
+
+The code paths verified above ensure:
+  - When desktop is not running: activateFallbackMode() is called, which loads
+    chrome.storage.local and shows manual mode UI with retry button visible.
+  - When retry is clicked after desktop starts: loadProviderConfig() re-runs the
+    full handshake flow and transitions to desktop mode on success.
