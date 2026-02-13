@@ -381,7 +381,7 @@ Task 4: Mode Selector Icons + Final Polish (independent but best done last)
 
 ---
 
-- [ ] 2. Collapse Provider Config Tabs into Compact Dropdown Selector
+- [x] 2. Collapse Provider Config Tabs into Compact Dropdown Selector
 
   **What to do**:
 

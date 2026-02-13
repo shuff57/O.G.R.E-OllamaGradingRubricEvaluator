@@ -89,12 +89,13 @@ const presets = {
 function setupListeners() {
   document.getElementById('btnRefreshModels').addEventListener('click', refreshModels);
   
-  // Tab Switching
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      switchProvider(e.target.dataset.provider);
+  // Provider Switching
+  const providerSelect = document.getElementById('providerSelect');
+  if (providerSelect) {
+    providerSelect.addEventListener('change', (e) => {
+      switchProvider(e.target.value);
     });
-  });
+  }
 
   // Desktop Mode Listeners
   setupDesktopListeners();
@@ -1669,10 +1670,9 @@ async function switchProvider(providerId) {
   currentProviderId = providerId;
   await setActiveProvider(providerId);
   
-  // Update Tabs
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.provider === providerId);
-  });
+  // Update Selector
+  const select = document.getElementById('providerSelect');
+  if (select) select.value = providerId;
   
   // Render Config
   renderProviderConfig(providerId);
@@ -1706,20 +1706,23 @@ async function switchProvider(providerId) {
 
 // Update provider tab status indicator
 function updateProviderTabStatus(providerId, status = null) {
-  const tab = document.querySelector(`.tab-btn[data-provider="${providerId}"]`);
-  if (!tab) return;
+  // Only update if it's the current provider
+  if (providerId !== currentProviderId) return;
+
+  const indicator = document.getElementById('providerStatus');
+  if (!indicator) return;
   
   // Remove existing status classes
-  tab.classList.remove('status-connected', 'status-error', 'status-testing');
+  indicator.className = 'provider-status-indicator';
   
   // If status provided, use it; otherwise check if configured
   if (status) {
-    tab.classList.add(`status-${status}`);
+    indicator.classList.add(`status-${status}`);
   } else {
      const config = providerConfigs[providerId];
      const hasConfig = config && (config.apiKey || config.apiUrl);
      if (hasConfig) {
-      tab.classList.add('status-connected');
+      indicator.classList.add('status-connected');
     }
   }
 }
@@ -2269,10 +2272,11 @@ async function loadState() {
   currentProviderId = activeProvider;
   await setActiveProvider(currentProviderId);
   
-  // Update Tabs UI
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.provider === currentProviderId);
-  });
+  // Update Selector UI
+  const providerSelect = document.getElementById('providerSelect');
+  if (providerSelect) {
+    providerSelect.value = currentProviderId;
+  }
   
   // Update status indicators for all providers
   Object.keys(providerConfigs).forEach(providerId => {
