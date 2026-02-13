@@ -1,43 +1,219 @@
-# Svelte + Vite
+# O.G.R.E Desktop
 
-This template should help get you started developing with Svelte in Vite.
+Native Windows desktop application for AI-powered grading with integrated server management.
 
-## Recommended IDE Setup
+## 📥 Download
 
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode).
+**[Latest Release](https://github.com/shuff57/O.G.R.E-OllamaGradingRubricEvaluator/releases/latest)**
 
-## Need an official Svelte framework?
+Choose your preferred installer:
+- **MSI Installer** (`.msi`) — Traditional Windows installer package
+- **NSIS Installer** (`.exe`) — Lightweight executable installer
 
-Check out [SvelteKit](https://github.com/sveltejs/kit#readme), which is also powered by Vite. Deploy anywhere with its serverless-first approach and adapt to various platforms, with out of the box support for TypeScript, SCSS, and Less, and easily-added support for mdsvex, GraphQL, PostCSS, Tailwind CSS, and more.
+## Features
 
-## Technical considerations
+- 🖥️ **Native Windows Application** — Fast, responsive desktop experience
+- 🔄 **Automatic Updates** — Get notified when new versions are available
+- ⚙️ **Integrated Grading Server** — Manages the backend server automatically
+- 🔒 **Secure** — Cryptographically signed updates
+- 🎨 **Modern UI** — Built with Svelte and Tauri for optimal performance
 
-**Why use this over SvelteKit?**
+## System Requirements
 
-- It brings its own routing solution which might not be preferable for some users.
-- It is first and foremost a framework that just happens to use Vite under the hood, not a Vite app.
+- **OS:** Windows 10 or later (64-bit)
+- **RAM:** 4 GB minimum, 8 GB recommended
+- **Disk Space:** 100 MB for application + storage for grading data
+- **Internet:** Required for AI provider connections
 
-This template contains as little as possible to get started with Vite + Svelte, while taking into account the developer experience with regards to HMR and intellisense. It demonstrates capabilities on par with the other `create-vite` templates and is a good starting point for beginners dipping their toes into a Vite + Svelte project.
+## Installation
 
-Should you later need the extended capabilities and extensibility provided by SvelteKit, the template has been structured similarly to SvelteKit so that it is easy to migrate.
+1. Download the installer from the [latest release page](https://github.com/shuff57/O.G.R.E-OllamaGradingRubricEvaluator/releases/latest)
+2. Run the downloaded `.msi` or `.exe` file
+3. Follow the installation wizard prompts
+4. Launch "O.G.R.E Desktop" from your Start Menu
 
-**Why include `.vscode/extensions.json`?**
+## Development
 
-Other templates indirectly recommend extensions via the README, but this file allows VS Code to prompt the user to install the recommended extension upon opening the project.
+### Prerequisites
 
-**Why enable `checkJs` in the JS template?**
+- [Node.js](https://nodejs.org/) v20 or later
+- [Rust](https://www.rust-lang.org/tools/install) (latest stable)
+- [Bun](https://bun.sh/) (for grading-server compilation)
 
-It is likely that most cases of changing variable types in runtime are likely to be accidental, rather than deliberate. This provides advanced typechecking out of the box. Should you like to take advantage of the dynamically-typed nature of JavaScript, it is trivial to change the configuration.
+### Setup
 
-**Why is HMR not preserving my local component state?**
+```bash
+# Clone the repository
+git clone https://github.com/shuff57/O.G.R.E-OllamaGradingRubricEvaluator.git
+cd O.G.R.E-OllamaGradingRubricEvaluator
 
-HMR state preservation comes with a number of gotchas! It has been disabled by default in both `svelte-hmr` and `@sveltejs/vite-plugin-svelte` due to its often surprising behavior. You can read the details [here](https://github.com/sveltejs/svelte-hmr/tree/master/packages/svelte-hmr#preservation-of-local-state).
+# Build the grading server sidecar
+cd grading-server
+bun install
+bun build --compile --target=bun-windows-x64 server.js --outfile ../ogre-desktop/src-tauri/binaries/grading-server-x86_64-pc-windows-msvc.exe
+cd ..
 
-If you have state that's important to retain within a component, consider creating an external store which would not be replaced by HMR.
-
-```js
-// store.js
-// An extremely simple external store
-import { writable } from 'svelte/store'
-export default writable(0)
+# Install desktop app dependencies
+cd ogre-desktop
+npm install
 ```
+
+### Development Mode
+
+```bash
+# Run in development mode (hot-reload enabled)
+npm run tauri:dev
+```
+
+This will:
+1. Start the Vite dev server (http://localhost:5173)
+2. Launch the Tauri app in development mode
+3. Enable hot-reload for frontend changes
+
+### Building for Production
+
+```bash
+# Build the production app
+npm run tauri:build
+```
+
+Installers will be created in:
+- `src-tauri/target/release/bundle/msi/` — MSI installer
+- `src-tauri/target/release/bundle/nsis/` — NSIS installer
+
+### Project Structure
+
+```
+ogre-desktop/
+├── src/                    # Svelte frontend source
+│   ├── App.svelte         # Main application component
+│   └── main.js            # Frontend entry point
+├── src-tauri/             # Rust backend
+│   ├── src/               # Rust source files
+│   ├── binaries/          # External binaries (grading-server)
+│   ├── icons/             # App icons
+│   ├── Cargo.toml         # Rust dependencies
+│   └── tauri.conf.json    # Tauri configuration
+├── public/                # Static assets
+├── dist/                  # Build output (generated)
+├── package.json           # Node dependencies and scripts
+└── vite.config.js         # Vite configuration
+```
+
+## Building and Releasing
+
+### Creating a Release
+
+See **[RELEASE.md](../RELEASE.md)** in the root directory for complete instructions.
+
+**Quick reference:**
+
+```bash
+# 1. Update version numbers
+# Edit package.json and src-tauri/tauri.conf.json
+
+# 2. Commit and tag
+git add package.json src-tauri/tauri.conf.json
+git commit -m "chore: bump version to 0.2.0"
+git push origin desktop
+
+git tag -a v0.2.0 -m "Release v0.2.0"
+git push origin v0.2.0
+
+# 3. GitHub Actions will automatically:
+#    - Build installers
+#    - Create a GitHub Release
+#    - Upload all artifacts
+```
+
+### Automatic Updates
+
+The app includes an automatic updater that:
+- Checks for new versions on startup
+- Downloads updates in the background
+- Prompts users to install updates
+- Verifies update signatures for security
+
+Update configuration is in `src-tauri/tauri.conf.json`:
+```json
+{
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/shuff57/O.G.R.E-OllamaGradingRubricEvaluator/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}
+```
+
+## Technology Stack
+
+- **Frontend:** Svelte 5 + Vite
+- **Backend:** Tauri v2 (Rust)
+- **Grading Server:** Bun (compiled to standalone executable)
+- **Updates:** Tauri updater plugin with signature verification
+- **Build:** GitHub Actions CI/CD
+
+## Troubleshooting
+
+### App Won't Launch
+
+- Check Windows Event Viewer for error details
+- Ensure you have the latest Windows updates installed
+- Try running as administrator
+
+### Update Fails
+
+- Check your internet connection
+- Verify firewall isn't blocking the app
+- Try manually downloading the latest version
+
+### Grading Server Issues
+
+- The server runs automatically when the app starts
+- Check Task Manager to ensure `grading-server.exe` is running
+- Logs are stored in the app data directory
+
+### Build Errors
+
+**Missing sidecar binary:**
+```bash
+cd grading-server
+bun install
+bun build --compile --target=bun-windows-x64 server.js --outfile ../ogre-desktop/src-tauri/binaries/grading-server-x86_64-pc-windows-msvc.exe
+```
+
+**Rust compilation errors:**
+```bash
+# Update Rust toolchain
+rustup update stable
+```
+
+**Node/npm issues:**
+```bash
+# Clear cache and reinstall
+rm -rf node_modules package-lock.json
+npm install
+```
+
+## Contributing
+
+Contributions are welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## License
+
+MIT License — see [LICENSE](../LICENSE) file for details.
+
+## Support
+
+- 📖 [Main Documentation](../README.md)
+- 🐛 [Report Issues](https://github.com/shuff57/O.G.R.E-OllamaGradingRubricEvaluator/issues)
+- 📦 [Latest Releases](https://github.com/shuff57/O.G.R.E-OllamaGradingRubricEvaluator/releases)
+- 📋 [Release Guide](../RELEASE.md)

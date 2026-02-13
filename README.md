@@ -1,14 +1,50 @@
 # O.G.R.E - Ollama Grading Review Evaluator
 
+![GitHub Release](https://img.shields.io/github/v/release/shuff57/O.G.R.E-OllamaGradingRubricEvaluator?label=Desktop%20App)
+[![Download Latest](https://img.shields.io/badge/Download-Latest%20Release-blue?logo=windows)](https://github.com/shuff57/O.G.R.E-OllamaGradingRubricEvaluator/releases/latest)
+![Build Status](https://img.shields.io/github/actions/workflow/status/shuff57/O.G.R.E-OllamaGradingRubricEvaluator/desktop-build.yml?branch=desktop)
+
 ## About
 **O.G.R.E** is a collection of AI-powered grading tools for educators:
 
-1. **Chrome Extension** — Grade student work (text and images) using Ollama Cloud API via a browser side panel with custom rubrics
-2. **Autonomous Grading Skill** (`/grade`) — AI agent that automatically grades batches of students on web-based platforms (MyOpenMath, etc.)
+1. **Desktop App** — Native Windows application with integrated grading server for the ultimate grading experience
+2. **Chrome Extension** — Grade student work (text and images) using AI via a browser side panel with custom rubrics
+3. **Autonomous Grading Skill** (`/grade`) — AI agent that automatically grades batches of students on web-based platforms (MyOpenMath, etc.)
 
-This repository contains both tools. Choose the one that fits your workflow:
+This repository contains all three tools. Choose the one that fits your workflow:
+- **Desktop App** → Full-featured native application with auto-updates (Windows)
 - **Extension** → Manual grading with AI assistance, one student at a time
 - **`/grade` skill** → Fully autonomous batch grading (30+ students in one session)
+
+---
+
+## 🖥️ Desktop App
+
+### Quick Start
+
+**[📥 Download for Windows](https://github.com/shuff57/O.G.R.E-OllamaGradingRubricEvaluator/releases/latest)**
+
+Choose your installer:
+- **MSI Installer** (Recommended) — Traditional Windows installer
+- **NSIS Installer** — Lightweight executable installer
+
+### Features
+- ✅ Native Windows application
+- ✅ Integrated grading server management
+- ✅ Automatic updates when new versions are released
+- ✅ All the power of the Chrome extension in a standalone app
+- ✅ Secure, cryptographically signed updates
+
+### System Requirements
+- Windows 10 or later (64-bit)
+- 100 MB free disk space
+- Internet connection for AI providers
+
+### Installation
+1. Download the installer from the [latest release](https://github.com/shuff57/O.G.R.E-OllamaGradingRubricEvaluator/releases/latest)
+2. Run the `.msi` or `.exe` file
+3. Follow the installation wizard
+4. The app will automatically check for updates on startup
 
 ---
 
