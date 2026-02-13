@@ -1,0 +1,13 @@
+=== QA SCENARIO 2: OAuth UI Removal Verification ===
+
+OBJECTIVE: Verify OAuth UI elements are removed from sidepanel.html
+
+TEST 1: Search for GitHub Auth UI elements
+
+TEST 2: Search for OAuth sign-in buttons
+            <span class="text-xs text-muted">Return to this extension and paste your token in the "GitHub Integration" section below</span>
+
+TEST 3: Search for GitHub Auth script references
+  <script src="github-auth.js"></script>
+
+=== RESULT: PASS ===

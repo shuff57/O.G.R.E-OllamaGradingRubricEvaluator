@@ -1,0 +1,32 @@
+=== QA SCENARIO 5: Fallback Mode Works Without OAuth ===
+
+OBJECTIVE: Verify fallback mode (manual API key entry) works without OAuth
+
+TEST 1: Verify API key fields are still present in HTML
+
+TEST 2: Verify getProviderConfigFromUI function exists
+1767:function getProviderConfigFromUI(providerId) {
+
+TEST 3: Verify provider.testConnection is called without OAuth
+document.getElementById('testConnection').addEventListener('click', async () => {
+  const provider = PROVIDERS[currentProviderId];
+  if (!provider) return;
+
+    let config = getProviderConfigFromUI(currentProviderId);
+  
+--
+  const result = await provider.testConnection(config);
+  
+  if (result.ok) {
+
+TEST 4: Verify no OAuth token attachment in API calls
+0
+
+TEST 5: Verify provider adapters handle API keys correctly
+        { key: 'apiKey', label: 'API Key (optional)', type: 'password', required: false },
+    if (config.apiKey) headers['Authorization'] = `Bearer ${config.apiKey}`;
+      if (config.apiKey) headers['Authorization'] = `Bearer ${config.apiKey}`;
+    if (config.apiKey) headers['Authorization'] = `Bearer ${config.apiKey}`;
+        { key: 'apiKey', label: 'API Key', type: 'password', required: true, placeholder: 'sk-...' },
+
+=== RESULT: PASS ===
