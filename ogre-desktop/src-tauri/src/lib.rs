@@ -80,6 +80,17 @@ fn spawn_sidecar(app_handle: &tauri::AppHandle, restart_count: Arc<Mutex<u32>>) 
 
                             // Emit event to frontend - frontend will handle DB persistence via TypeScript
                             // This avoids database locking conflicts between Rust and TypeScript SQL plugin usage
+                         } else if json.get("type").and_then(|t| t.as_str()) == Some("provider_changed") {
+                            // Detect provider_changed JSON from extension write-back
+                            let provider_id = json["provider_id"].as_str().unwrap_or("").to_string();
+                            let model = json["model"].as_str().unwrap_or("").to_string();
+                            
+                            // Emit event for frontend to persist active provider change
+                            let payload = serde_json::json!({
+                                "provider_id": provider_id,
+                                "model": model
+                            });
+                            let _ = handle_clone.emit("provider-changed", &payload);
                          }
                     }
                 }

@@ -7,7 +7,8 @@
   import SetupWizard from './pages/SetupWizard.svelte';
   import UpdateModal from './components/UpdateModal.svelte';
   import { getSetting } from './lib/db';
-  import { listenSessionComplete } from './lib/server';
+  import { listenSessionComplete, listenProviderChanged } from './lib/server';
+  import { updateActiveProvider } from './lib/db';
   import { checkForUpdates, type UpdateCheckResult } from './lib/updater';
   import type { Update } from '@tauri-apps/plugin-updater';
 
@@ -25,6 +26,7 @@
   // Child components can react to this to refresh their data
   let sessionVersion = 0;
   let unlistenSession: (() => void) | undefined;
+  let unlistenProviderChange: (() => void) | undefined;
 
   onMount(async () => {
     try {
@@ -43,6 +45,17 @@
       sessionVersion += 1;
     });
 
+    // Listen for provider-changed events from extension write-back
+    // Persist the active provider selection to SQLite
+    unlistenProviderChange = await listenProviderChanged(async (data) => {
+      try {
+        await updateActiveProvider(data.provider_id, data.model);
+        console.log(`Active provider updated: ${data.provider_id} (${data.model})`);
+      } catch (e) {
+        console.error('Failed to update active provider', e);
+      }
+    });
+
     // Check for updates after app loads (non-blocking)
     checkForUpdates().then((result: UpdateCheckResult) => {
       if (result.available && result.update) {
@@ -56,6 +69,7 @@
 
   onDestroy(() => {
     if (unlistenSession) unlistenSession();
+    if (unlistenProviderChange) unlistenProviderChange();
   });
 
   function navigate(page: string) {

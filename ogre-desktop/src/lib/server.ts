@@ -18,6 +18,12 @@ export interface SessionCompletePayload {
   custom_instructions: string;
 }
 
+/** Shape of the provider_changed payload from extension write-back. */
+export interface ProviderChangedPayload {
+  provider_id: string;
+  model: string;
+}
+
 /**
  * Listen for real-time log lines from the grading server sidecar.
  * Returns an unlisten function to stop listening.
@@ -42,4 +48,14 @@ export function listenServerStatus(callback: (status: ServerStatus) => void) {
  */
 export function listenSessionComplete(callback: (session: SessionCompletePayload) => void) {
   return listen<SessionCompletePayload>('session-complete', (event) => callback(event.payload));
+}
+
+/**
+ * Listen for provider-changed events from extension write-back
+ * (extension POSTs active provider selection to /api/providers/active,
+ * server writes to stdout, Rust parses and emits Tauri event).
+ * Returns an unlisten function.
+ */
+export function listenProviderChanged(callback: (data: ProviderChangedPayload) => void) {
+  return listen<ProviderChangedPayload>('provider-changed', (event) => callback(event.payload));
 }

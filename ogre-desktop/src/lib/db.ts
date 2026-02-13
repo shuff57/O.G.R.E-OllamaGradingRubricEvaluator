@@ -113,6 +113,19 @@ export async function deleteProviderConfig(id: string): Promise<void> {
   await database.execute("DELETE FROM provider_configs WHERE id = $1", [id]);
 }
 
+/**
+ * Update the active provider and model based on extension write-back.
+ * Sets is_active=0 for all providers, then is_active=1 + model for the specified provider.
+ */
+export async function updateActiveProvider(providerId: string, model: string): Promise<void> {
+  const database = await initDB();
+  await database.execute("UPDATE provider_configs SET is_active = 0");
+  await database.execute(
+    "UPDATE provider_configs SET is_active = 1, model = $1, updated_at = datetime('now') WHERE id = $2",
+    [model, providerId]
+  );
+}
+
 // ── Grading Sessions ────────────────────────────────────────────────────
 
 /**
