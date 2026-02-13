@@ -749,7 +749,7 @@ Wave 4 (After Wave 3):
 
 ---
 
-- [ ] 6. Setup Wizard (First-Run Provider Configuration)
+- [x] 6. Setup Wizard (First-Run Provider Configuration)
 
   **What to do**:
   - Create `src/pages/SetupWizard.svelte` — multi-step wizard shown on first launch
@@ -846,7 +846,7 @@ Wave 4 (After Wave 3):
 
 ---
 
-- [ ] 7. Settings Page (Edit Provider Config)
+- [x] 7. Settings Page (Edit Provider Config)
 
   **What to do**:
   - Create `src/pages/Settings.svelte` — editable provider configuration
@@ -934,7 +934,7 @@ Wave 4 (After Wave 3):
 
 ---
 
-- [ ] 8. Log Viewer (Sidecar stdout/stderr Streaming)
+- [x] 8. Log Viewer (Sidecar stdout/stderr Streaming)
 
   **What to do**:
   - Create `src/pages/Logs.svelte` — real-time scrolling log display
@@ -996,7 +996,7 @@ Wave 4 (After Wave 3):
 
 ---
 
-- [ ] 9. Grading History Table + SQLite CRUD
+- [x] 9. Grading History Table + SQLite CRUD
 
   **What to do**:
   - Create `src/pages/History.svelte` — sortable table of grading sessions
