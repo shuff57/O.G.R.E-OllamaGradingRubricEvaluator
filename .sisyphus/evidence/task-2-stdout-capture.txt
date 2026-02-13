@@ -1,0 +1,2 @@
+=== QA Scenario 15: Verify stdout provider_changed event ===
+{"type":"provider_changed","provider_id":"openai-prod","model":"gpt-4o-mini"}

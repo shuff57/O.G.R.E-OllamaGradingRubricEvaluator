@@ -30,18 +30,147 @@ import {
 const app = new Hono();
 const PORT = 3456;
 
+// ── In-memory provider config bridge state ──────────────────────────
+let providerConfigs = [];   // Array of {id, api_url, model, is_active, credentials}
+let handshakeToken = null;  // Set by desktop POST /internal/providers
+
 // CORS middleware for Chrome extension
 app.use('/*', cors({
   origin: '*', // Allow all origins (extension-friendly)
   allowMethods: ['GET', 'POST', 'OPTIONS'],
-  allowHeaders: ['Content-Type'],
+  allowHeaders: ['Content-Type', 'Authorization'],
 }));
+
+// ── Bearer token auth middleware for /api/* (except /api/handshake) ──
+app.use('/api/*', async (c, next) => {
+  // Skip auth for handshake endpoint
+  if (c.req.path === '/api/handshake') {
+    return next();
+  }
+
+  if (!handshakeToken) {
+    return c.json({ error: 'No provider configuration available' }, 503);
+  }
+
+  const authHeader = c.req.header('Authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return c.json({ error: 'Missing or invalid Authorization header' }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  if (token !== handshakeToken) {
+    return c.json({ error: 'Invalid token' }, 403);
+  }
+
+  return next();
+});
 
 /**
  * Health check endpoint
  */
 app.get('/health', (c) => {
   return c.json({ status: 'ok' });
+});
+
+// ── Provider Config Bridge Endpoints ────────────────────────────────
+
+/**
+ * GET /api/handshake
+ * Returns the handshake token for the Chrome extension.
+ * Validates that the caller is a chrome-extension:// origin.
+ * Returns 503 if no token has been set by desktop yet.
+ */
+app.get('/api/handshake', (c) => {
+  const origin = c.req.header('Origin') || '';
+  if (!origin.startsWith('chrome-extension://')) {
+    return c.json({ error: 'Forbidden: extension origin required' }, 403);
+  }
+
+  if (!handshakeToken) {
+    return c.json({ error: 'Desktop has not registered yet' }, 503);
+  }
+
+  return c.json({ token: handshakeToken });
+});
+
+/**
+ * GET /api/providers
+ * Returns current provider configs. Protected by Bearer token middleware.
+ */
+app.get('/api/providers', (c) => {
+  return c.json({ providers: providerConfigs });
+});
+
+/**
+ * POST /internal/providers
+ * Desktop pushes token + provider configs. Rejects chrome-extension:// origin.
+ * Body: { token: string, providers: Array<{id, api_url, model, is_active, credentials}> }
+ */
+app.post('/internal/providers', async (c) => {
+  const origin = c.req.header('Origin') || '';
+  if (origin.startsWith('chrome-extension://')) {
+    return c.json({ error: 'Forbidden: extensions cannot push provider config' }, 403);
+  }
+
+  try {
+    const body = await c.req.json();
+
+    if (!body.token || typeof body.token !== 'string') {
+      return c.json({ error: 'Missing or invalid field: token' }, 400);
+    }
+    if (!Array.isArray(body.providers)) {
+      return c.json({ error: 'Missing or invalid field: providers (must be array)' }, 400);
+    }
+
+    handshakeToken = body.token;
+    providerConfigs = body.providers;
+
+    return c.json({ ok: true, count: providerConfigs.length });
+  } catch (error) {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+});
+
+/**
+ * POST /api/providers/active
+ * Extension sets the active provider. Protected by Bearer token middleware.
+ * Body: { provider_id: string, model: string }
+ * Emits stdout JSON for desktop sidecar: {"type":"provider_changed","provider_id":"...","model":"..."}
+ */
+app.post('/api/providers/active', async (c) => {
+  try {
+    const body = await c.req.json();
+
+    if (!body.provider_id || typeof body.provider_id !== 'string') {
+      return c.json({ error: 'Missing or invalid field: provider_id' }, 400);
+    }
+    if (!body.model || typeof body.model !== 'string') {
+      return c.json({ error: 'Missing or invalid field: model' }, 400);
+    }
+
+    // Check provider exists before mutating state
+    const target = providerConfigs.find(p => p.id === body.provider_id);
+    if (!target) {
+      return c.json({ error: `Provider not found: ${body.provider_id}` }, 404);
+    }
+
+    // Update in-memory: set all providers inactive, then activate the selected one
+    for (const p of providerConfigs) {
+      p.is_active = (p.id === body.provider_id);
+    }
+    target.model = body.model;
+
+    // Emit stdout JSON for desktop sidecar parsing (same pattern as session_complete)
+    console.log(JSON.stringify({
+      type: 'provider_changed',
+      provider_id: body.provider_id,
+      model: body.model,
+    }));
+
+    return c.json({ ok: true });
+  } catch (error) {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
 });
 
 /**
