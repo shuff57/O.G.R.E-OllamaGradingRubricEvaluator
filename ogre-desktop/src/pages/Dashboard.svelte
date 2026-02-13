@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { listenServerStatus } from '../lib/server';
   import { getProviderConfigs, getGradingSessions } from '../lib/db';
+  import { pushOnStartup } from '../lib/provider-sync';
 
   /** Incremented by App.svelte when a new grading session is recorded */
   export let sessionVersion = 0;
@@ -34,6 +35,10 @@
     // Listen to server status events
     unlistenServer = await listenServerStatus((status) => {
       serverStatus = status;
+      // When server becomes running (startup or restart), push provider config
+      if (status === 'running') {
+        pushOnStartup();
+      }
     });
 
     // Poll health endpoint

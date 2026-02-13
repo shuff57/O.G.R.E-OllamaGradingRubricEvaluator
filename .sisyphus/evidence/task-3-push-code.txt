@@ -1,0 +1,69 @@
+# Task 3 Verification: Desktop Config Push Code
+
+## 1. Push function exists and reads from DB
+File: ogre-desktop/src/lib/provider-sync.ts
+
+Import line (10):
+import { getProviderConfigs, getOAuthToken } from "./db";
+
+Usage in pushProvidersToServer (lines 72, 77):
+    const providers = await getProviderConfigs();
+    const oauth = await getOAuthToken(mapProviderToOAuthKey(p.id));
+
+✅ PASS: Both db.ts functions are called
+
+## 2. Endpoint and token generation
+Lines 94, 98:
+      handshakeToken = crypto.randomUUID();
+    const res = await tauriFetch(`${SERVER_BASE}/internal/providers`, {
+
+✅ PASS: Generates UUID token and POSTs to correct endpoint
+
+## 3. Health check retry logic
+Function: waitForServerHealth (lines 32-58)
+- maxRetries parameter with default 10
+- delayMs parameter with default 1000
+- for loop with attempt counter
+- GET /health in try-catch
+- retry delay with setTimeout
+- Returns boolean
+
+pushOnStartup (lines 132-137):
+  const healthy = await waitForServerHealth();
+  if (healthy) {
+    await pushProvidersToServer();
+  }
+
+✅ PASS: Retry logic exists with backoff
+
+## 4. Push called after config operations in Settings.svelte
+Verified grep output shows 5 calls:
+- Line 175: After device flow OAuth success (GitHub/OpenAI/Google)
+- Line 213: After Claude code paste OAuth success
+- Line 252: After sign-out
+- Line 294: After saveProvider
+- Line 301: After deleteProvider
+
+✅ PASS: Config push happens on every config-altering action
+
+## 5. Push called on server startup in Dashboard.svelte
+Lines 5, 40:
+  import { pushOnStartup } from '../lib/provider-sync';
+  ...
+  unlistenServer = await listenServerStatus((status) => {
+    serverStatus = status;
+    // When server becomes running (startup or restart), push provider config
+    if (status === 'running') {
+      pushOnStartup();
+    }
+  });
+
+✅ PASS: Push triggered when server-status becomes 'running'
+
+## Summary
+All code requirements for Task 3 are met:
+- pushProvidersToServer() exists with DB reads, token generation, HTTP POST
+- waitForServerHealth() implements retry with backoff
+- pushOnStartup() orchestrates health + push
+- All Settings.svelte triggers added (save, delete, OAuth complete, sign-out)
+- Dashboard.svelte triggers push on server startup/restart

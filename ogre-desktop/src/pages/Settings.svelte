@@ -11,6 +11,7 @@
     fetchAvailableModels 
   } from '../lib/oauth';
   import type { DeviceFlowResult, CodePasteFlowResult } from '../lib/oauth';
+  import { pushProvidersToServer } from '../lib/provider-sync';
 
   let providers: ProviderConfig[] = [];
   let editingProvider: string | null = null;
@@ -171,6 +172,7 @@
         oauthStatus = { ...oauthStatus }; // Trigger reactivity
         console.log(`[Settings] oauthStatus after update:`, oauthStatus);
         fetchModels(providerId);
+        pushProvidersToServer();
         // Clear flow state
         if (deviceFlows[providerId]) {
           delete deviceFlows[providerId];
@@ -208,6 +210,7 @@
         oauthStatus['anthropic'] = true;
         oauthStatus = { ...oauthStatus }; // Trigger reactivity
         fetchModels('anthropic');
+        pushProvidersToServer();
         claudeFlow = null;
         claudeCodeInput = '';
       } else {
@@ -246,6 +249,7 @@
         oauthStatus[providerId] = false;
         oauthStatus = { ...oauthStatus }; // Trigger reactivity
         fetchedModels[providerId] = [];
+        pushProvidersToServer();
       }
     } catch (error) {
        console.error('Sign out failed:', error);
@@ -287,12 +291,14 @@
     });
     await loadProviders();
     editingProvider = null;
+    pushProvidersToServer();
   }
 
   async function deleteProvider(id: string) {
     if (!confirm(`Delete provider "${id}"? This cannot be undone.`)) return;
     await deleteProviderConfig(id);
     await loadProviders();
+    pushProvidersToServer();
   }
 
   async function testConnection(provider: ProviderConfig) {

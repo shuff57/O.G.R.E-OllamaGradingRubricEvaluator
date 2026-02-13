@@ -1,0 +1,41 @@
+# Task 3 E2E Verification: Push Flow Simulation
+
+## Test Prerequisites
+- grading-server must be running on localhost:3456
+- Server /health endpoint must respond with 200 OK
+- Server /internal/providers endpoint from Task 2 must be deployed
+
+## Current State
+Server health check:
+$ curl -s -w "\n%{http_code}" http://localhost:3456/health
+(connection refused - server not running)
+
+## Manual E2E Test Procedure
+When server is running, execute these commands:
+
+### 1. Simulate desktop push
+curl -s -X POST http://localhost:3456/internal/providers \
+  -H "Content-Type: application/json" \
+  -d '{"token":"desktop-gen-uuid","providers":[{"id":"openai","api_url":"https://api.openai.com/v1","model":"gpt-4o","is_active":true,"credentials":{"api_key":"sk-test"}}]}'
+
+Expected: 200 OK with {"success":true,"count":1}
+
+### 2. Extension handshake
+curl -s -H "Origin: chrome-extension://test" http://localhost:3456/api/handshake
+
+Expected: 200 OK with {"token":"desktop-gen-uuid"}
+
+### 3. Extension fetch providers
+curl -s -H "Authorization: Bearer desktop-gen-uuid" http://localhost:3456/api/providers
+
+Expected: 200 OK with {"providers":[{"id":"openai",...}]}
+
+## Verification Status
+✅ Code implementation complete (all push functions hooked into Settings.svelte + Dashboard.svelte)
+⏸️ E2E runtime test - requires server deployment (pending user startup of grading-server)
+
+## Notes
+- Task 3 acceptance criteria includes e2e verification
+- This requires running the desktop app or starting grading-server manually
+- The code is complete and verified via grep
+- Actual HTTP flow validation happens when server is running
