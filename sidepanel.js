@@ -1,6 +1,5 @@
 import { PROVIDERS, getActiveProvider, setActiveProvider } from './providers.js';
 import BatchGrader from './batch-grader.js';
-import { signInWithGoogle, signInWithGitHub, signOut, getGoogleToken } from './oauth-client.js';
 
 // --- 1. Initialization & Storage ---
 let currentProviderId = 'ollama';
@@ -18,45 +17,7 @@ const PROVIDER_KEY_URLS = {
   'github-models': 'https://github.com/settings/tokens/new?description=O.G.R.E%20Extension&scopes=repo,user',
 };
 
-const OAUTH_STORAGE_KEYS = {
-  GOOGLE_TOKEN: 'googleOAuthToken',
-  GOOGLE_REFRESH_TOKEN: 'googleRefreshToken',
-  GOOGLE_TOKEN_EXPIRY: 'googleTokenExpiry',
-  GITHUB_TOKEN: 'githubOAuthToken',
-};
 
-async function getStoredOAuthToken(providerId) {
-  if (providerId === 'google-gemini') {
-    try {
-      return await getGoogleToken();
-    } catch {
-      return null;
-    }
-  }
-
-  if (providerId === 'github-models') {
-    const stored = await chrome.storage.local.get(OAUTH_STORAGE_KEYS.GITHUB_TOKEN);
-    return stored[OAUTH_STORAGE_KEYS.GITHUB_TOKEN] || null;
-  }
-
-  return null;
-}
-
-async function attachOAuthToken(providerId, config) {
-  if (!['google-gemini', 'github-models'].includes(providerId)) return config;
-
-  if (!config.oauthToken) {
-    const token = await getStoredOAuthToken(providerId);
-    if (token) {
-      config.oauthToken = token;
-      providerConfigs[providerId] = { ...(providerConfigs[providerId] || {}), oauthToken: token };
-      const input = document.getElementById(`cfg_${providerId}_oauthToken`);
-      if (input) input.value = token;
-    }
-  }
-
-  return config;
-}
 
 document.addEventListener('DOMContentLoaded', async () => {
   // Configure MathLive fonts
@@ -401,7 +362,6 @@ document.getElementById('testConnection').addEventListener('click', async () => 
   if (!provider) return;
 
     let config = getProviderConfigFromUI(currentProviderId);
-    config = await attachOAuthToken(currentProviderId, config);
   
   showConfigStatus('Testing connection...', 'blue');
   
@@ -649,16 +609,15 @@ document.getElementById('btnImportRubric').addEventListener('click', async () =>
   }
 
   showRubricStatus("Parsing rubric from text...", "loading");
-  const btn = document.getElementById('btnImportRubric');
-  btn.disabled = true;
+   const btn = document.getElementById('btnImportRubric');
+   btn.disabled = true;
 
-  try {
-    const provider = PROVIDERS[currentProviderId];
-    if (!provider) throw new Error("No provider selected");
-    
-    let config = getProviderConfigFromUI(currentProviderId);
-    config = await attachOAuthToken(currentProviderId, config);
-    config.model = document.getElementById('modelName').value;
+   try {
+     const provider = PROVIDERS[currentProviderId];
+     if (!provider) throw new Error("No provider selected");
+     
+     let config = getProviderConfigFromUI(currentProviderId);
+     config.model = document.getElementById('modelName').value;
 
     const prompt = Prompts.getRubricExtractionPrompt(selection);
     const messages = [{ role: "user", content: prompt }];
@@ -736,14 +695,13 @@ document.getElementById('btnImportRubricImage').addEventListener('click', async 
   btn.disabled = true;
 
   try {
-    const provider = PROVIDERS[currentProviderId];
-    if (!provider) throw new Error("No provider selected");
-    
-    let config = getProviderConfigFromUI(currentProviderId);
-    config = await attachOAuthToken(currentProviderId, config);
-    config.model = document.getElementById('modelName').value;
+     const provider = PROVIDERS[currentProviderId];
+     if (!provider) throw new Error("No provider selected");
+     
+     let config = getProviderConfigFromUI(currentProviderId);
+     config.model = document.getElementById('modelName').value;
 
-    const prompt = Prompts.getRubricExtractionFromImagePrompt();
+     const prompt = Prompts.getRubricExtractionFromImagePrompt();
     const images = rubricImages.map(img => img.split(',')[1]);
 
     // Construct message with images (Ollama style - provider adapter will transform for OpenAI/GitHub)
@@ -1209,9 +1167,8 @@ async function streamChat(messages, mode) {
     return;
   }
 
-    let config = getProviderConfigFromUI(currentProviderId);
-    config = await attachOAuthToken(currentProviderId, config); // Attach token (Google/GitHub)
-    config.model = modelName;
+     let config = getProviderConfigFromUI(currentProviderId);
+     config.model = modelName;
 
     // Prepare Chat Bubble for Assistant
   const chatHistoryDisplay = document.getElementById('chatHistoryDisplay');
@@ -1551,78 +1508,7 @@ function renderProviderConfig(providerId) {
   const configDef = provider.getConfig();
   const currentConfig = providerConfigs[providerId] || {};
 
-  if (providerId === 'google-gemini' || providerId === 'github-models') {
-    const oauthWrapper = document.createElement('div');
-    oauthWrapper.className = 'oauth-section';
-    oauthWrapper.style.marginBottom = '12px';
 
-    const oauthTokenKey = providerId === 'google-gemini'
-      ? OAUTH_STORAGE_KEYS.GOOGLE_TOKEN
-      : OAUTH_STORAGE_KEYS.GITHUB_TOKEN;
-
-    const buttonLabel = providerId === 'google-gemini'
-      ? 'Sign in with Google'
-      : 'Sign in with GitHub';
-
-    const token = currentConfig.oauthToken;
-    if (token) {
-      const statusRow = document.createElement('div');
-      statusRow.style.display = 'flex';
-      statusRow.style.justifyContent = 'space-between';
-      statusRow.style.alignItems = 'center';
-      statusRow.style.fontSize = '13px';
-      statusRow.style.marginBottom = '6px';
-
-      const statusText = document.createElement('span');
-      statusText.textContent = '✅ Signed in';
-
-      const signOutBtn = document.createElement('button');
-      signOutBtn.textContent = 'Sign out';
-      signOutBtn.className = 'secondary';
-      signOutBtn.style.width = 'auto';
-      signOutBtn.style.padding = '6px 10px';
-      signOutBtn.style.margin = '0';
-      signOutBtn.addEventListener('click', async () => {
-        await signOut(providerId === 'google-gemini' ? 'google' : 'github');
-        await chrome.storage.local.remove([oauthTokenKey]);
-        providerConfigs[providerId] = { ...(providerConfigs[providerId] || {}), oauthToken: '' };
-        renderProviderConfig(providerId);
-        updateProviderTabStatus(providerId);
-      });
-
-      statusRow.appendChild(statusText);
-      statusRow.appendChild(signOutBtn);
-      oauthWrapper.appendChild(statusRow);
-    } else {
-      const oauthBtn = document.createElement('button');
-      oauthBtn.textContent = buttonLabel;
-      oauthBtn.style.marginBottom = '6px';
-      oauthBtn.addEventListener('click', async () => {
-        try {
-          updateProviderTabStatus(providerId, 'testing');
-          if (providerId === 'google-gemini') {
-            const newToken = await signInWithGoogle();
-            if (newToken) {
-              providerConfigs[providerId] = { ...(providerConfigs[providerId] || {}), oauthToken: newToken };
-            }
-          } else {
-            const newToken = await signInWithGitHub();
-            if (newToken) {
-              providerConfigs[providerId] = { ...(providerConfigs[providerId] || {}), oauthToken: newToken };
-            }
-          }
-          updateProviderTabStatus(providerId, 'connected');
-          renderProviderConfig(providerId);
-        } catch (err) {
-          updateProviderTabStatus(providerId, 'error');
-          showConfigStatus(err.message || 'OAuth sign-in failed', 'red');
-        }
-      });
-      oauthWrapper.appendChild(oauthBtn);
-    }
-
-    container.appendChild(oauthWrapper);
-  }
 
   configDef.fields.forEach(field => {
     const div = document.createElement('div');
@@ -1760,12 +1646,11 @@ async function testConnection(providerId) {
   statusDiv.style.color = '';
   statusDiv.innerHTML = '🔄 Testing connection...';
   
-  try {
-    const provider = PROVIDERS[providerId];
-    let config = getProviderConfigFromUI(providerId);
-    config = await attachOAuthToken(providerId, config);
-    
-    const result = await provider.testConnection(config);
+   try {
+     const provider = PROVIDERS[providerId];
+     let config = getProviderConfigFromUI(providerId);
+     
+     const result = await provider.testConnection(config);
     
     if (result.ok) {
       updateProviderTabStatus(providerId, 'connected');
@@ -1844,9 +1729,9 @@ function updateProviderTabStatus(providerId, status = null) {
   if (status) {
     tab.classList.add(`status-${status}`);
   } else {
-    const config = providerConfigs[providerId];
-    const hasConfig = config && (config.apiKey || config.apiUrl || config.oauthToken);
-    if (hasConfig) {
+     const config = providerConfigs[providerId];
+     const hasConfig = config && (config.apiKey || config.apiUrl);
+     if (hasConfig) {
       tab.classList.add('status-connected');
     }
   }
@@ -1861,11 +1746,10 @@ async function refreshModels() {
   btn.classList.add('spin-animation'); 
 
   try {
-    const provider = PROVIDERS[currentProviderId];
-    let config = getProviderConfigFromUI(currentProviderId);
-    config = await attachOAuthToken(currentProviderId, config);
-    
-    const models = await provider.listModels(config);
+     const provider = PROVIDERS[currentProviderId];
+     let config = getProviderConfigFromUI(currentProviderId);
+     
+     const models = await provider.listModels(config);
     availableModels = models;
     
     populateModelDropdown(models);
@@ -1891,12 +1775,7 @@ function getProviderConfigFromUI(providerId) {
         });
     }
     
-    // Preserve OAuth token from cache if not in UI
-    if (providerConfigs[providerId] && providerConfigs[providerId].oauthToken) {
-        config.oauthToken = providerConfigs[providerId].oauthToken;
-    }
-
-    // Update cache
+     // Update cache
     providerConfigs[providerId] = config;
     return config;
   }
@@ -2387,25 +2266,7 @@ async function loadState() {
     delete providerConfigs['gemini'];
   }
 
-  // Merge stored OAuth tokens into provider configs
-  const oauthStored = await chrome.storage.local.get([
-    OAUTH_STORAGE_KEYS.GOOGLE_TOKEN,
-    OAUTH_STORAGE_KEYS.GITHUB_TOKEN,
-  ]);
 
-  if (oauthStored[OAUTH_STORAGE_KEYS.GOOGLE_TOKEN]) {
-    providerConfigs['google-gemini'] = {
-      ...(providerConfigs['google-gemini'] || {}),
-      oauthToken: oauthStored[OAUTH_STORAGE_KEYS.GOOGLE_TOKEN],
-    };
-  }
-
-  if (oauthStored[OAUTH_STORAGE_KEYS.GITHUB_TOKEN]) {
-    providerConfigs['github-models'] = {
-      ...(providerConfigs['github-models'] || {}),
-      oauthToken: oauthStored[OAUTH_STORAGE_KEYS.GITHUB_TOKEN],
-    };
-  }
 
   // Set Active Provider — migrate old IDs
   let activeProvider = result.activeProvider || 'ollama';
@@ -2952,10 +2813,9 @@ async function startBatchGrading() {
           
           try {
               // Prepare config with OAuth token
-              let config = getProviderConfigFromUI(currentProviderId);
-              config = await attachOAuthToken(currentProviderId, config);
+               let config = getProviderConfigFromUI(currentProviderId);
 
-              // Grade
+               // Grade
               const result = await BatchGrader.gradeStudent(
                   provider, 
                   model, 

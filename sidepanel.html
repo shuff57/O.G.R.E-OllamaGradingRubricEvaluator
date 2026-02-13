@@ -1206,18 +1206,54 @@
     <img src="logo.png" class="brand-logo" alt="Logo">
     <h3><i class="bi bi-gear-fill"></i> Config</h3>
     
-    <!-- Provider Tabs -->
-    <div class="tabs" id="providerTabs">
-      <button class="tab-btn active" data-provider="ollama">Ollama</button>
-      <button class="tab-btn" data-provider="openai">OpenAI</button>
-      <button class="tab-btn" data-provider="anthropic">Claude</button>
-      <button class="tab-btn" data-provider="google-gemini">Gemini</button>
-      <button class="tab-btn" data-provider="github-models">GitHub</button>
+    <!-- Desktop Mode Content -->
+    <div id="desktopModeContent" style="display: none;">
+      <div class="status-banner status-success mb-medium">
+        <i class="bi bi-pc-display-horizontal"></i> 
+        <span class="flex-1"><strong>Desktop App Connected</strong></span>
+        <button id="btnDisconnectDesktop" class="btn-tool-auto secondary" title="Disconnect"><i class="bi bi-x-lg"></i></button>
+      </div>
+      
+      <div class="form-group mb-medium">
+        <label for="desktopProviderSelect">Active Provider</label>
+        <div class="flex-gap-small">
+          <select id="desktopProviderSelect" class="flex-1 mb-0">
+            <option value="" disabled selected>Loading providers...</option>
+          </select>
+          <button id="btnRefreshDesktop" class="secondary w-auto mb-0" title="Refresh Config"><i class="bi bi-arrow-clockwise"></i></button>
+        </div>
+      </div>
+
+      <div class="info-box mb-medium text-xs">
+        <i class="bi bi-info-circle-fill mr-small"></i>
+        Provider settings are managed in the O.G.R.E Desktop app.
+        <div class="mt-5 text-right">
+          <a href="#" id="btnOpenDesktopConfig" class="link-blue">Open Desktop Settings <i class="bi bi-box-arrow-up-right"></i></a>
+        </div>
+      </div>
     </div>
 
-    <!-- Provider Config Container (Dynamic Fields) -->
-    <div id="providerConfigContainer">
-      <!-- Fields injected by JS -->
+    <!-- Manual Mode Content (Wrapped) -->
+    <div id="manualModeContent">
+      <div class="status-banner status-warning mb-medium" id="manualModeBanner" style="display: none;">
+        <i class="bi bi-wifi-off"></i> 
+        <span class="flex-1">Desktop App Disconnected</span>
+        <button id="btnRetryDesktop" class="btn-tool-auto secondary" title="Retry Connection"><i class="bi bi-arrow-clockwise"></i></button>
+      </div>
+
+      <!-- Provider Tabs -->
+      <div class="tabs" id="providerTabs">
+        <button class="tab-btn active" data-provider="ollama">Ollama</button>
+        <button class="tab-btn" data-provider="openai">OpenAI</button>
+        <button class="tab-btn" data-provider="anthropic">Claude</button>
+        <button class="tab-btn" data-provider="google-gemini">Gemini</button>
+        <button class="tab-btn" data-provider="github-models">GitHub</button>
+      </div>
+
+      <!-- Provider Config Container (Dynamic Fields) -->
+      <div id="providerConfigContainer">
+        <!-- Fields injected by JS -->
+      </div>
     </div>
 
     <div class="flex-between mb-small mt-5">
@@ -1266,41 +1302,6 @@
       </div>
     </div>
 
-  </div>
-
-  <!-- GitHub Authentication Section -->
-  <div class="card">
-    <h3 class="flex-between">
-      <span><i class="bi bi-github"></i> GitHub Integration (Optional)</span>
-      <i class="bi bi-info-circle cursor-pointer text-muted text-sm" id="btnGitHubInfo" title="Click for setup instructions"></i>
-    </h3>
-    <div id="githubAuthContainer">
-      <!-- Signed Out State -->
-      <div id="githubSignedOut">
-        <p class="text-small text-muted mb-10">
-          Connect GitHub to enable repository features and API access.
-        </p>
-        <p class="text-xs text-muted mb-small">
-          <a href="https://github.com/settings/tokens/new" target="_blank" class="link-blue">Create Personal Access Token</a> (grant <code class="code-badge">repo</code> and <code class="code-badge">user</code> scopes)
-        </p>
-        <input type="password" id="githubTokenManual" placeholder="ghp_xxxxxxxxxxxx" class="mb-small font-mono text-xs">
-        <button id="btnSaveToken" class="secondary"><i class="bi bi-shield-lock"></i> Save Token</button>
-      </div>
-
-      <!-- Signed In State -->
-      <div id="githubSignedIn" style="display: none;">
-        <div class="flex-gap-medium items-center mb-10 github-success-box">
-          <img id="githubAvatar" src="" alt="Avatar" class="avatar-sm">
-          <div class="flex-1">
-            <div id="githubUsername" class="font-bold text-base text-success-dark"></div>
-            <div class="text-xs text-success">✓ Connected</div>
-          </div>
-        </div>
-        <button id="btnGitHubSignOut" class="secondary text-small p-2">
-          <i class="bi bi-box-arrow-right"></i> Sign Out
-        </button>
-      </div>
-    </div>
   </div>
 
   <div class="card" id="rubricCard">
@@ -1601,9 +1602,9 @@
           </li>
           
           <li class="mb-0">
-            <strong>Paste in Extension:</strong><br>
-            <span class="text-xs text-muted">Return to this extension and paste your token in the "GitHub Integration" section below</span>
-          </li>
+             <strong>Paste in Extension:</strong><br>
+             <span class="text-xs text-muted">Return to this extension and paste your token in the GitHub provider config above</span>
+           </li>
         </ol>
         
         <div class="note-box mt-15">
@@ -1626,97 +1627,6 @@
   <script src="lib/marked.min.js"></script>
   <script src="github-auth.js"></script>
   <script src="prompts.js"></script>
-  <script type="module" src="oauth-client.js"></script>
   <script type="module" src="sidepanel.js"></script>
-  
-  <!-- GitHub Auth UI Logic -->
-  <script>
-  // GitHub Auth Integration
-  (function() {
-    const githubAuth = new GitHubAuth();
-    
-    // UI Elements
-    const signedOutDiv = document.getElementById('githubSignedOut');
-    const signedInDiv = document.getElementById('githubSignedIn');
-    const btnSaveToken = document.getElementById('btnSaveToken');
-    const btnSignOut = document.getElementById('btnGitHubSignOut');
-    const tokenInput = document.getElementById('githubTokenManual');
-    const avatarImg = document.getElementById('githubAvatar');
-    const usernameDiv = document.getElementById('githubUsername');
-
-    // Update UI based on auth state
-    async function updateUI() {
-      const { token, user } = await githubAuth.loadFromStorage();
-      
-      if (token && user) {
-        signedOutDiv.style.display = 'none';
-        signedInDiv.style.display = 'block';
-        avatarImg.src = user.avatar_url;
-        usernameDiv.textContent = user.login;
-      } else {
-        signedOutDiv.style.display = 'block';
-        signedInDiv.style.display = 'none';
-      }
-    }
-
-    // Manual token save
-    btnSaveToken.addEventListener('click', async () => {
-      const token = tokenInput.value.trim();
-      if (!token) {
-        alert('Please enter a valid GitHub token');
-        return;
-      }
-
-      if (!token.startsWith('ghp_') && !token.startsWith('github_pat_')) {
-        if (!confirm('Token format looks unusual. Continue anyway?')) {
-          return;
-        }
-      }
-
-      try {
-        const originalText = btnSaveToken.innerHTML;
-        btnSaveToken.innerHTML = '<i class="bi bi-hourglass-split"></i> Verifying...';
-        btnSaveToken.disabled = true;
-        
-        // Save token temporarily
-        await githubAuth.saveToStorage(token, null);
-        
-        // Fetch user info to verify token
-        const user = await githubAuth.getUserInfo();
-        
-        alert(`✅ Successfully signed in as ${user.login}`);
-        tokenInput.value = '';
-        await updateUI();
-      } catch (error) {
-        alert('Invalid token: ' + error.message);
-        await githubAuth.signOut();
-      } finally {
-        btnSaveToken.innerHTML = '<i class="bi bi-shield-lock"></i> Save Token';
-        btnSaveToken.disabled = false;
-      }
-    });
-
-    // Allow Enter key to save token
-    tokenInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        btnSaveToken.click();
-      }
-    });
-
-    // Sign out button
-    btnSignOut.addEventListener('click', async () => {
-      if (confirm('Sign out of GitHub?')) {
-        await githubAuth.signOut();
-        await updateUI();
-      }
-    });
-
-    // Initialize UI on load
-    updateUI();
-
-    // Make githubAuth available globally for other scripts
-    window.githubAuth = githubAuth;
-  })();
-  </script>
 </body>
 </html>
