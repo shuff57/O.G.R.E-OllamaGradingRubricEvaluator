@@ -23,6 +23,9 @@
   let newProviderKey = '';
   let newProviderModel = '';
 
+  // Theme State
+  let currentTheme = 'dark';
+
   // OAuth / Auth Flow State
   let oauthStatus: Record<string, boolean> = {};
   let fetchedModels: Record<string, string[]> = {};
@@ -38,9 +41,10 @@
   let authErrors: Record<string, string> = {};
 
   // Available providers
+  // Note: ollama-cloud and ollama-local were merged into single 'ollama' provider
+  // Legacy providers with old IDs will still work but won't appear in add dropdown
   const PROVIDER_OPTIONS = [
-    { id: 'ollama-cloud', name: 'Ollama Cloud', requiresUrl: true, requiresKey: true, defaultUrl: '', canSignIn: false },
-    { id: 'ollama-local', name: 'Ollama Local', requiresUrl: true, requiresKey: false, defaultUrl: 'http://localhost:11434', canSignIn: false },
+    { id: 'ollama', name: 'Ollama', requiresUrl: true, requiresKey: false, defaultUrl: 'http://localhost:11434', canSignIn: false },
     { id: 'openai', name: 'OpenAI', requiresUrl: false, requiresKey: true, defaultUrl: '', canSignIn: true },
     { id: 'anthropic', name: 'Anthropic (Claude)', requiresUrl: false, requiresKey: true, defaultUrl: '', canSignIn: true },
     { id: 'google-gemini', name: 'Google Gemini', requiresUrl: false, requiresKey: true, defaultUrl: '', canSignIn: true },
@@ -64,9 +68,22 @@
     console.log('[Settings] onMount: Component mounted, starting initialization');
     await loadProviders();
     await loadColumnVisibility();
+    await loadTheme();
     
     await checkOAuthStatus();
   });
+
+  async function loadTheme() {
+    const theme = await getSetting('theme');
+    currentTheme = theme || 'dark';
+    document.documentElement.setAttribute('data-theme', currentTheme);
+  }
+
+  async function setTheme(theme: string) {
+    currentTheme = theme;
+    document.documentElement.setAttribute('data-theme', theme);
+    await setSetting('theme', theme);
+  }
 
   async function loadProviders() {
     providers = await getProviderConfigs();
@@ -77,11 +94,12 @@
     visibleColumns = columnsJson ? JSON.parse(columnsJson) : ['timestamp', 'provider', 'model', 'studentCount', 'meanScore', 'pageUrl'];
   }
 
-  function getProviderKey(id: string): "github" | "openai" | "anthropic" | "google" | null {
+  function getProviderKey(id: string): "github" | "openai" | "anthropic" | "google" | "ollama" | null {
     if (id === 'github-models') return 'github';
     if (id === 'openai') return 'openai';
     if (id === 'anthropic') return 'anthropic';
     if (id === 'google-gemini') return 'google';
+    if (id === 'ollama') return 'ollama';
     return null;
   }
 
@@ -285,6 +303,11 @@
       alert('API Key is required for this provider (or sign in via OAuth)');
       return;
     }
+    // Ollama special case: key only required for cloud endpoints
+    if (provider.id === 'ollama' && !provider.api_key && provider.api_url && !provider.api_url.includes('localhost')) {
+      const useCloudWithoutKey = confirm('You are using a cloud Ollama endpoint without an API key. This may fail. Continue anyway?');
+      if (!useCloudWithoutKey) return;
+    }
     if (option?.requiresUrl && !provider.api_url) {
       alert('API URL is required for this provider');
       return;
@@ -345,210 +368,270 @@
   }
 </script>
 
-<div class="settings-page">
-  <header>
-    <h2>Settings</h2>
+<div>
+  <header class="mb-6">
+    <h1>Settings</h1>
+    <p class="text-muted">Configure AI providers and application preferences</p>
   </header>
 
+  <!-- Appearance Section -->
+  <section class="card mb-6">
+    <h3>Appearance</h3>
+    <p class="mb-6">Customize the look and feel of the application.</p>
+    
+    <div class="theme-selector">
+      <button 
+        class="theme-btn {currentTheme === 'dark' ? 'active' : ''}" 
+        on:click={() => setTheme('dark')}
+      >
+        <span class="icon">🌙</span>
+        <div class="theme-info">
+          <span class="name">Dark Mode</span>
+          <span class="desc">Technical & Precise</span>
+        </div>
+        {#if currentTheme === 'dark'}
+          <span class="check">✓</span>
+        {/if}
+      </button>
+
+      <button 
+        class="theme-btn {currentTheme === 'light' ? 'active' : ''}" 
+        on:click={() => setTheme('light')}
+      >
+        <span class="icon">☀️</span>
+        <div class="theme-info">
+          <span class="name">Light Mode</span>
+          <span class="desc">Playful & Friendly</span>
+        </div>
+        {#if currentTheme === 'light'}
+          <span class="check">✓</span>
+        {/if}
+      </button>
+    </div>
+  </section>
+
   <!-- Provider Configuration Section -->
-  <section class="section">
+  <section class="card mb-6">
     <h3>AI Provider Configuration</h3>
+    <p class="mb-6">Manage connections to local or cloud-based AI providers.</p>
     
     {#if providers.length === 0 && !showAddForm}
-      <p class="empty-state">No providers configured. Click "Add Provider" to get started.</p>
+      <div class="empty-state">
+        <p>No providers configured yet.</p>
+        <button class="primary" on:click={() => showAddForm = true}>Add Your First Provider</button>
+      </div>
     {/if}
 
-    {#each providers as provider}
-      {@const option = PROVIDER_OPTIONS.find(p => p.id === provider.id)}
-      <div class="provider-card">
-        <div class="provider-header">
-          <h4>{option?.name || provider.id}</h4>
-          {#if editingProvider !== provider.id}
-            <div class="actions">
-              <button on:click={() => testConnection(provider)}>Test Connection</button>
-              <button on:click={() => editingProvider = provider.id}>Edit</button>
-              <button class="danger" on:click={() => deleteProvider(provider.id)}>Delete</button>
+    <div class="providers-list">
+      {#each providers as provider}
+        {@const option = PROVIDER_OPTIONS.find(p => p.id === provider.id)}
+        <div class="provider-item" class:editing={editingProvider === provider.id}>
+          <div class="provider-header">
+            <h4>{option?.name || provider.id}</h4>
+            {#if editingProvider !== provider.id}
+              <div class="actions">
+                <button class="secondary small" on:click={() => testConnection(provider)}>Test</button>
+                <button class="secondary small" on:click={() => editingProvider = provider.id}>Edit</button>
+                <button class="danger small" on:click={() => deleteProvider(provider.id)}>Delete</button>
+              </div>
+            {/if}
+          </div>
+
+          {#if editingProvider === provider.id}
+            <!-- Edit form -->
+            <div class="edit-form">
+              {#if option?.requiresUrl}
+                <label>
+                  API URL
+                  <input type="text" bind:value={provider.api_url} placeholder="https://api.example.com" />
+                </label>
+                {#if provider.id === 'ollama'}
+                  <div class="url-presets">
+                    <span class="preset-label">Quick presets:</span>
+                    <button type="button" class="preset-btn" on:click={() => provider.api_url = 'http://localhost:11434'}>
+                      Local (localhost:11434)
+                    </button>
+                    <button type="button" class="preset-btn" on:click={() => provider.api_url = 'https://ollama.com/api'}>
+                      Cloud (ollama.com/api)
+                    </button>
+                  </div>
+                {/if}
+              {/if}
+              
+              {#if option?.requiresKey}
+                {#if option.canSignIn}
+                   <div class="oauth-section">
+                     {#if oauthStatus[provider.id] && !useApiKey[provider.id]}
+                       <!-- SIGNED IN STATE -->
+                       <div class="oauth-status success">
+                          <span class="icon">✅</span> Signed in
+                          <button class="ghost small" on:click={() => handleSignOut(provider.id)}>Sign out</button>
+                       </div>
+                     {:else if deviceFlows[provider.id]}
+                       <!-- DEVICE FLOW ACTIVE -->
+                       <div class="device-flow-container">
+                         <p class="instructions">1. Go to: <a href={deviceFlows[provider.id].verificationUrl} target="_blank">{deviceFlows[provider.id].verificationUrl}</a></p>
+                         <p class="instructions">2. Enter code:</p>
+                         <div class="code-display">
+                            {deviceFlows[provider.id].userCode}
+                            <button class="ghost small" title="Copy" on:click={() => navigator.clipboard.writeText(deviceFlows[provider.id].userCode)}>📋</button>
+                         </div>
+                         <div class="polling-indicator">
+                            <span class="spinner">⏳</span> Waiting for authorization...
+                         </div>
+                         <button class="ghost small" on:click={() => cancelAuth(provider.id)}>Cancel</button>
+                       </div>
+                     {:else if provider.id === 'anthropic' && claudeFlow}
+                       <!-- CLAUDE CODE PASTE ACTIVE -->
+                       <div class="device-flow-container">
+                         <p class="instructions">Authentication page opened in browser.</p>
+                         <p class="instructions">Please copy the code from Claude and paste it here:</p>
+                         <div class="input-row">
+                            <input type="text" bind:value={claudeCodeInput} placeholder="Paste code here (sk-ant-...)" />
+                            <button class="primary small" disabled={!claudeCodeInput || authLoading['anthropic']} on:click={submitClaudeCode}>
+                              {#if authLoading['anthropic']}...{:else}Submit Code{/if}
+                            </button>
+                         </div>
+                         <button class="ghost small" on:click={() => cancelAuth(provider.id)}>Cancel</button>
+                       </div>
+                     {:else}
+                       <!-- NOT SIGNED IN / ACTIONS -->
+                       <div class="oauth-actions">
+                          {#if authErrors[provider.id]}
+                            <div class="error-banner">{authErrors[provider.id]}</div>
+                          {/if}
+
+                          {#if !useApiKey[provider.id]}
+                             <button class="btn oauth-btn" disabled={authLoading[provider.id]} on:click={() => startAuth(provider.id)}>
+                               {#if authLoading[provider.id]}
+                                 Loading...
+                               {:else}
+                                 Sign in with {option.name.split(' ')[0]}
+                               {/if}
+                             </button>
+                             <div class="divider"><span>OR</span></div>
+                          {/if}
+                          
+                          {#if useApiKey[provider.id]}
+                             <label>
+                                API Key (Optional)
+                                <input type="password" bind:value={provider.api_key} placeholder="sk-..." />
+                             </label>
+                             <button class="link-btn" on:click={() => useApiKey[provider.id] = false}>
+                               Use Sign In instead
+                             </button>
+                          {:else}
+                             <button class="link-btn" on:click={() => useApiKey[provider.id] = true}>
+                               Use API Key instead
+                             </button>
+                          {/if}
+                       </div>
+                     {/if}
+                   </div>
+                {:else}
+                  <label>
+                    API Key
+                    <input type="password" bind:value={provider.api_key} placeholder="sk-..." />
+                  </label>
+                {/if}
+              {:else if provider.id === 'ollama'}
+                <!-- Ollama optional API key -->
+                <label>
+                  API Key <span class="optional-badge">(Optional - only for cloud endpoints)</span>
+                  <input type="password" bind:value={provider.api_key} placeholder="Leave empty for local" />
+                </label>
+              {/if}
+
+              <label>
+                Model
+                {#if (option?.canSignIn && (oauthStatus[provider.id] || (useApiKey[provider.id] && provider.api_key))) || (provider.id === 'ollama' && provider.api_url)}
+                    <div class="model-select-container">
+                      {#if fetchingModels[provider.id]}
+                          <div class="loading">Loading models...</div>
+                      {:else if modelFetchErrors[provider.id]}
+                          <div class="error">
+                            Error: {modelFetchErrors[provider.id]}
+                            <button class="secondary small" on:click={() => fetchModels(provider.id)}>Retry</button>
+                          </div>
+                          <input type="text" bind:value={provider.model} placeholder={provider.id === 'ollama' ? 'llama2:latest' : 'gpt-4o'} />
+                      {:else if fetchedModels[provider.id]?.length > 0}
+                          <div class="select-wrapper">
+                              <select bind:value={provider.model}>
+                                  <option value="" disabled>Select a model</option>
+                                  {#each fetchedModels[provider.id] as modelId}
+                                      <option value={modelId}>{modelId}</option>
+                                  {/each}
+                              </select>
+                              <button class="secondary" title="Refresh Models" on:click={() => fetchModels(provider.id)}>
+                                  🔄
+                              </button>
+                          </div>
+                      {:else}
+                          <input type="text" bind:value={provider.model} placeholder={provider.id === 'ollama' ? 'llama2:latest' : 'gpt-4o'} />
+                          <button class="secondary small" on:click={() => fetchModels(provider.id)}>Fetch Models</button>
+                      {/if}
+                    </div>
+                {:else}
+                    <input type="text" bind:value={provider.model} placeholder={provider.id === 'ollama' ? 'llama2:latest' : 'gpt-4o'} />
+                {/if}
+              </label>
+
+              <label class="checkbox-label">
+                <input type="checkbox" checked={!!provider.is_active} 
+                       on:change={(e) => provider.is_active = e.currentTarget.checked ? 1 : 0} />
+                <span>Active</span>
+              </label>
+
+              <div class="form-actions">
+                <button class="primary" on:click={() => saveProvider(provider)}>Save Changes</button>
+                <button class="ghost" on:click={() => editingProvider = null}>Cancel</button>
+              </div>
+            </div>
+          {:else}
+            <!-- Display mode -->
+            <div class="provider-info">
+              {#if provider.api_url}
+                <div class="info-row">
+                  <span class="label">API URL:</span>
+                  <span class="value">{provider.api_url}</span>
+                </div>
+              {/if}
+              {#if provider.api_key}
+                <div class="info-row">
+                  <span class="label">API Key:</span>
+                  <span class="value">{'*'.repeat(20)}</span>
+                </div>
+              {/if}
+              {#if option?.canSignIn && oauthStatus[provider.id]}
+                 <div class="info-row">
+                   <span class="label">Auth:</span>
+                   <span class="value success">✅ Signed In</span>
+                 </div>
+              {/if}
+              <div class="info-row">
+                <span class="label">Model:</span>
+                <span class="value">{provider.model || 'Not set'}</span>
+              </div>
+              <div class="info-row">
+                <span class="label">Status:</span>
+                <span class="badge" class:active={provider.is_active}>
+                  {provider.is_active ? 'Active' : 'Inactive'}
+                </span>
+              </div>
             </div>
           {/if}
         </div>
+      {/each}
+    </div>
 
-        {#if editingProvider === provider.id}
-          <!-- Edit form -->
-          <div class="edit-form">
-            {#if option?.requiresUrl}
-              <label>
-                API URL
-                <input type="text" bind:value={provider.api_url} placeholder="https://api.example.com" />
-              </label>
-            {/if}
-            
-            {#if option?.requiresKey}
-              {#if option.canSignIn}
-                 <div class="oauth-section">
-                   {#if oauthStatus[provider.id] && !useApiKey[provider.id]}
-                     <!-- SIGNED IN STATE -->
-                     <div class="oauth-status success">
-                        <span class="icon">✅</span> Signed in
-                        <button class="small" on:click={() => handleSignOut(provider.id)}>Sign out</button>
-                     </div>
-                   {:else if deviceFlows[provider.id]}
-                     <!-- DEVICE FLOW ACTIVE -->
-                     <div class="device-flow-container">
-                       <p class="instructions">1. Go to: <a href={deviceFlows[provider.id].verificationUrl} target="_blank">{deviceFlows[provider.id].verificationUrl}</a></p>
-                       <p class="instructions">2. Enter code:</p>
-                       <div class="code-display">
-                          {deviceFlows[provider.id].userCode}
-                          <button class="icon-btn small" title="Copy" on:click={() => navigator.clipboard.writeText(deviceFlows[provider.id].userCode)}>📋</button>
-                       </div>
-                       <div class="polling-indicator">
-                          <span class="spinner">⏳</span> Waiting for authorization...
-                       </div>
-                       <button class="cancel-btn" on:click={() => cancelAuth(provider.id)}>Cancel</button>
-                     </div>
-                   {:else if provider.id === 'anthropic' && claudeFlow}
-                     <!-- CLAUDE CODE PASTE ACTIVE -->
-                     <div class="device-flow-container">
-                       <p class="instructions">Authentication page opened in browser.</p>
-                       <p class="instructions">Please copy the code from Claude and paste it here:</p>
-                       <div class="input-row">
-                          <input type="text" bind:value={claudeCodeInput} placeholder="Paste code here (sk-ant-...)" />
-                          <button class="primary small" disabled={!claudeCodeInput || authLoading['anthropic']} on:click={submitClaudeCode}>
-                            {#if authLoading['anthropic']}...{:else}Submit Code{/if}
-                          </button>
-                       </div>
-                       <button class="cancel-btn" on:click={() => cancelAuth(provider.id)}>Cancel</button>
-                     </div>
-                   {:else}
-                     <!-- NOT SIGNED IN / ACTIONS -->
-                     <div class="oauth-actions">
-                        {#if authErrors[provider.id]}
-                          <div class="error-banner">{authErrors[provider.id]}</div>
-                        {/if}
-
-                        {#if !useApiKey[provider.id]}
-                           <button class="oauth-btn" disabled={authLoading[provider.id]} on:click={() => startAuth(provider.id)}>
-                             {#if authLoading[provider.id]}
-                               Loading...
-                             {:else}
-                               Sign in with {option.name.split(' ')[0]}
-                             {/if}
-                           </button>
-                           <div class="divider"><span>OR</span></div>
-                        {/if}
-                        
-                        {#if useApiKey[provider.id]}
-                           <label>
-                              API Key (Optional)
-                              <input type="password" bind:value={provider.api_key} placeholder="sk-..." />
-                           </label>
-                           <button class="link-btn" on:click={() => useApiKey[provider.id] = false}>
-                             Use Sign In instead
-                           </button>
-                        {:else}
-                           <button class="link-btn" on:click={() => useApiKey[provider.id] = true}>
-                             Use API Key instead
-                           </button>
-                        {/if}
-                     </div>
-                   {/if}
-                 </div>
-              {:else}
-                <label>
-                  API Key
-                  <input type="password" bind:value={provider.api_key} placeholder="sk-..." />
-                </label>
-              {/if}
-            {/if}
-
-            <label>
-              Model
-              {#if option?.canSignIn && (oauthStatus[provider.id] || (useApiKey[provider.id] && provider.api_key))}
-                  <div class="model-select-container">
-                    {#if fetchingModels[provider.id]}
-                        <div class="loading">Loading models...</div>
-                    {:else if modelFetchErrors[provider.id]}
-                        <div class="error">
-                          Error: {modelFetchErrors[provider.id]}
-                          <button class="small" on:click={() => fetchModels(provider.id)}>Retry</button>
-                        </div>
-                        <input type="text" bind:value={provider.model} placeholder="gpt-4o" />
-                    {:else if fetchedModels[provider.id]?.length > 0}
-                        <div class="select-wrapper">
-                            <select bind:value={provider.model}>
-                                <option value="" disabled>Select a model</option>
-                                {#each fetchedModels[provider.id] as modelId}
-                                    <option value={modelId}>{modelId}</option>
-                                {/each}
-                            </select>
-                            <button class="icon-btn" title="Refresh Models" on:click={() => fetchModels(provider.id)}>
-                                🔄
-                            </button>
-                        </div>
-                    {:else}
-                        <input type="text" bind:value={provider.model} placeholder="gpt-4o" />
-                        <button class="small" on:click={() => fetchModels(provider.id)}>Fetch Models</button>
-                    {/if}
-                  </div>
-              {:else}
-                  <input type="text" bind:value={provider.model} placeholder="gpt-4o" />
-              {/if}
-            </label>
-
-            <label class="checkbox-label">
-              <input type="checkbox" checked={!!provider.is_active} 
-                     on:change={(e) => provider.is_active = e.currentTarget.checked ? 1 : 0} />
-              Active
-            </label>
-
-            <div class="form-actions">
-              <button class="primary" on:click={() => saveProvider(provider)}>Save</button>
-              <button on:click={() => editingProvider = null}>Cancel</button>
-            </div>
-          </div>
-        {:else}
-          <!-- Display mode -->
-          <div class="provider-info">
-            {#if provider.api_url}
-              <div class="info-row">
-                <span class="label">API URL:</span>
-                <span class="value">{provider.api_url}</span>
-              </div>
-            {/if}
-            {#if provider.api_key}
-              <div class="info-row">
-                <span class="label">API Key:</span>
-                <span class="value">{'*'.repeat(20)}</span>
-              </div>
-            {/if}
-            {#if option?.canSignIn && oauthStatus[provider.id]}
-               <div class="info-row">
-                 <span class="label">Auth:</span>
-                 <span class="value success">✅ Signed In</span>
-               </div>
-            {/if}
-            <div class="info-row">
-              <span class="label">Model:</span>
-              <span class="value">{provider.model || 'Not set'}</span>
-            </div>
-            <div class="info-row">
-              <span class="label">Status:</span>
-              <span class="value badge" class:active={provider.is_active}>
-                {provider.is_active ? 'Active' : 'Inactive'}
-              </span>
-            </div>
-          </div>
-        {/if}
-      </div>
-    {/each}
-
-    {#if !showAddForm}
+    {#if !showAddForm && providers.length > 0}
       <button class="add-btn" on:click={() => showAddForm = true}>
-        Add Provider
+        + Add Another Provider
       </button>
     {/if}
 
     {#if showAddForm}
-      <div class="add-form provider-card">
+      <div class="add-form provider-item editing">
         <h4>Add New Provider</h4>
         
         <div class="edit-form">
@@ -569,6 +652,17 @@
                 API URL
                 <input type="text" bind:value={newProviderUrl} placeholder="https://api.example.com" />
               </label>
+              {#if newProviderId === 'ollama'}
+                <div class="url-presets">
+                  <span class="preset-label">Quick presets:</span>
+                  <button type="button" class="preset-btn" on:click={() => newProviderUrl = 'http://localhost:11434'}>
+                    Local (localhost:11434)
+                  </button>
+                  <button type="button" class="preset-btn" on:click={() => newProviderUrl = 'https://ollama.com/api'}>
+                    Cloud (ollama.com/api)
+                  </button>
+                </div>
+              {/if}
             {/if}
 
             {#if newOption?.requiresKey}
@@ -585,16 +679,23 @@
                     <input type="password" bind:value={newProviderKey} placeholder="sk-..." />
                   </label>
                {/if}
+            {:else if newProviderId === 'ollama'}
+              <!-- Ollama optional API key -->
+              <label>
+                API Key <span class="optional-badge">(Optional - only for cloud endpoints)</span>
+                <input type="password" bind:value={newProviderKey} placeholder="Leave empty for local" />
+              </label>
             {/if}
 
             <label>
               Model
-              <input type="text" bind:value={newProviderModel} placeholder="gpt-4o" />
+              <input type="text" bind:value={newProviderModel} placeholder={newProviderId === 'ollama' ? 'llama2:latest' : 'gpt-4o'} />
+              <p class="hint">Save the provider first, then edit it to fetch available models.</p>
             </label>
 
             <div class="form-actions">
               <button class="primary" on:click={addNewProvider}>Add Provider</button>
-              <button on:click={() => { showAddForm = false; resetAddForm(); }}>Cancel</button>
+              <button class="ghost" on:click={() => { showAddForm = false; resetAddForm(); }}>Cancel</button>
             </div>
           {/if}
         </div>
@@ -603,9 +704,9 @@
   </section>
 
   <!-- Column Visibility Section -->
-  <section class="section">
+  <section class="card">
     <h3>History Table Columns</h3>
-    <p>Choose which columns to display in the grading history table:</p>
+    <p class="mb-4">Choose which columns to display in the grading history table:</p>
     
     <div class="column-toggles">
       {#each COLUMN_OPTIONS as column}
@@ -615,7 +716,7 @@
             checked={visibleColumns.includes(column.id)}
             on:change={() => toggleColumn(column.id)}
           />
-          {column.label}
+          <span>{column.label}</span>
         </label>
       {/each}
     </div>
@@ -623,469 +724,383 @@
 </div>
 
 <style>
-  .settings-page {
-    padding: 2rem;
-    max-width: 1200px;
-    margin: 0 auto;
+  /* Local overrides / specific components not in global app.css */
+
+  .theme-selector {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: var(--spacing-4);
   }
 
-  header {
-    margin-bottom: 2rem;
+  .theme-btn {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-4);
+    padding: var(--spacing-4);
+    background: var(--color-bg-main);
+    border: 2px solid var(--color-border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    text-align: left;
+    position: relative;
+    overflow: hidden;
   }
 
-  h2 {
-    font-size: 2rem;
-    color: #333;
-    margin: 0;
+  .theme-btn:hover {
+    border-color: var(--color-border-hover);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-sm);
   }
 
-  .section {
-    background: white;
-    border: 1px solid #e0e0e0;
-    border-radius: 8px;
-    padding: 1.5rem;
-    margin-bottom: 2rem;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  .theme-btn.active {
+    border-color: var(--color-primary);
+    background: var(--color-bg-card-hover);
+    box-shadow: 0 0 0 1px var(--color-primary);
   }
 
-  .section h3 {
-    margin: 0 0 1rem 0;
-    font-size: 1.25rem;
-    color: #333;
-    border-bottom: 2px solid #f0f0f0;
-    padding-bottom: 0.5rem;
+  .theme-btn .icon {
+    font-size: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    background: var(--color-bg-sidebar);
+    border-radius: var(--radius-full);
+    border: 1px solid var(--color-border);
   }
 
-  .section p {
-    color: #666;
-    margin-bottom: 1rem;
+  .theme-btn.active .icon {
+    background: var(--color-primary-bg);
+    border-color: var(--color-primary);
   }
 
-  .provider-card {
-    background: #f9f9f9;
-    border: 1px solid #e0e0e0;
-    border-radius: 6px;
-    padding: 1.5rem;
-    margin-bottom: 1rem;
-    transition: box-shadow 0.2s;
+  .theme-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .theme-info .name {
+    font-weight: 700;
+    color: var(--color-text-primary);
+    font-size: 1rem;
+  }
+
+  .theme-info .desc {
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+  }
+
+  .theme-btn .check {
+    color: var(--color-primary);
+    font-weight: bold;
+    font-size: 1.2rem;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: var(--spacing-12);
+    background: var(--color-bg-main);
+    border-radius: var(--radius-md);
+    border: 1px dashed var(--color-border);
+    color: var(--color-text-secondary);
+  }
+
+  .providers-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-4);
+  }
+
+  .provider-item {
+    background: var(--color-bg-main);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-4);
+    transition: border-color var(--transition-fast);
   }
   
-  .provider-card:hover {
-    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  .provider-item:hover, .provider-item.editing {
+    border-color: var(--color-border-hover);
+    box-shadow: var(--shadow-sm);
   }
 
   .provider-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1rem;
+    margin-bottom: var(--spacing-4);
   }
-
+  
   .provider-header h4 {
     margin: 0;
-    color: #333;
-    font-size: 1.1rem;
+    font-size: var(--font-size-lg);
+    color: var(--color-text-primary);
   }
+  
+  /* Remove margin bottom if it's the only child or we are in display mode with no other content below immediately */
+
 
   .actions {
     display: flex;
-    gap: 0.5rem;
+    gap: var(--spacing-2);
+  }
+  
+  /* Small button override if not in global */
+  button.small {
+    padding: 0.25rem 0.5rem;
+    font-size: var(--font-size-xs);
   }
 
   .provider-info {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
+    display: grid;
+    gap: var(--spacing-2);
   }
 
   .info-row {
     display: flex;
-    gap: 1rem;
+    gap: var(--spacing-4);
     align-items: center;
+    font-size: var(--font-size-sm);
   }
 
   .info-row .label {
-    font-weight: 600;
-    color: #666;
-    min-width: 100px;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    min-width: 80px;
   }
 
   .info-row .value {
-    color: #333;
-    font-family: 'Consolas', monospace;
+    color: var(--color-text-primary);
+    font-family: var(--font-family-mono);
   }
 
   .badge {
-    padding: 0.25rem 0.75rem;
-    border-radius: 12px;
-    font-size: 0.85rem;
-    background: #e0e0e0;
-    color: #666;
-    font-family: sans-serif;
+    padding: 0.125rem 0.625rem;
+    border-radius: var(--radius-full);
+    font-size: var(--font-size-xs);
+    background: var(--color-bg-card-hover);
+    color: var(--color-text-secondary);
     font-weight: 500;
+    border: 1px solid var(--color-border);
   }
 
   .badge.active {
-    background: #e6fffa;
-    color: #00796b;
-    border: 1px solid #b2dfdb;
+    background: rgba(16, 185, 129, 0.1); /* success with opacity */
+    color: var(--color-success);
+    border-color: rgba(16, 185, 129, 0.2);
   }
 
   .edit-form {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
-    background: white;
-    padding: 1rem;
-    border-radius: 4px;
-    border: 1px solid #eee;
+    gap: var(--spacing-4);
+    margin-top: var(--spacing-2);
   }
 
-  .edit-form label {
+  .checkbox-label {
     display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    font-weight: 500;
-    color: #555;
-    font-size: 0.9rem;
-  }
-  
-  .edit-form label.checkbox-label {
     flex-direction: row;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--spacing-2);
     cursor: pointer;
-  }
-
-  .edit-form input[type="text"],
-  .edit-form input[type="password"],
-  .edit-form select {
-    padding: 0.6rem;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    font-size: 1rem;
-    width: 100%;
-    box-sizing: border-box;
+    margin-bottom: 0;
   }
   
-  .edit-form input:focus,
-  .edit-form select:focus {
-    outline: none;
-    border-color: #007acc;
-    box-shadow: 0 0 0 2px rgba(0,122,204,0.1);
+  .checkbox-label input {
+    width: auto;
+    margin: 0;
   }
 
   .form-actions {
     display: flex;
-    gap: 1rem;
-    margin-top: 1rem;
-  }
-
-  button {
-    padding: 0.5rem 1rem;
-    background: white;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 0.9rem;
-    font-weight: 500;
-    transition: all 0.2s;
-  }
-
-  button:hover {
-    background: #f5f5f5;
-    border-color: #bbb;
-  }
-
-  button.primary {
-    background: #007acc;
-    color: white;
-    border-color: #007acc;
-  }
-
-  button.primary:hover {
-    background: #006bb3;
-    border-color: #006bb3;
-  }
-
-  button.danger {
-    background: white;
-    color: #d32f2f;
-    border-color: #d32f2f;
-  }
-
-  button.danger:hover {
-    background: #ffebee;
+    gap: var(--spacing-2);
+    margin-top: var(--spacing-4);
   }
 
   .add-btn {
     display: block;
     width: 100%;
-    padding: 1rem;
-    background: #f8f9fa;
-    border: 2px dashed #ddd;
-    color: #666;
-    margin-top: 1rem;
+    padding: var(--spacing-4);
+    background: transparent;
+    border: 2px dashed var(--color-border);
+    color: var(--color-text-muted);
+    margin-top: var(--spacing-4);
+    border-radius: var(--radius-md);
+    transition: all var(--transition-fast);
   }
 
   .add-btn:hover {
-    border-color: #007acc;
-    color: #007acc;
-    background: #f0f7ff;
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+    background: rgba(99, 102, 241, 0.05); /* primary with opacity */
   }
 
   .column-toggles {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 1rem;
-    margin-top: 1rem;
+    gap: var(--spacing-2);
   }
 
-  .checkbox-label {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    font-size: 0.95rem;
-    cursor: pointer;
-    padding: 0.5rem;
-    border-radius: 4px;
-    transition: background 0.2s;
-  }
-  
-  .checkbox-label:hover {
-    background: #f5f5f5;
-  }
-
-  .checkbox-label input {
-    cursor: pointer;
-    width: 18px;
-    height: 18px;
-  }
-
-  .empty-state {
-    color: #999;
-    font-style: italic;
-    padding: 2rem;
-    text-align: center;
-    background: #f9f9f9;
-    border-radius: 6px;
-  }
-
-  /* OAuth specific styles */
+  /* OAuth Specifics */
   .oauth-section {
-    margin: 0.5rem 0;
-    padding: 0.5rem;
-    border: 1px solid #f0f0f0;
-    border-radius: 4px;
-    background: #fafafa;
+    background: var(--color-bg-card-hover);
+    padding: var(--spacing-4);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border);
   }
 
   .oauth-status {
     display: flex;
     align-items: center;
-    gap: 1rem;
-    font-weight: 600;
+    gap: var(--spacing-4);
+    color: var(--color-text-primary);
+    font-weight: 500;
   }
-
+  
   .oauth-status.success {
-    color: #00796b;
+    color: var(--color-success);
   }
 
   .oauth-actions {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: var(--spacing-2);
   }
 
   .oauth-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
     width: 100%;
-    padding: 0.75rem;
-    background: #24292e;
+    background-color: #24292e; /* GitHub/Standard Dark */
     color: white;
     border: none;
-    font-weight: 600;
   }
-
+  
   .oauth-btn:hover {
-    background: #1b1f23;
+    background-color: #1b1f23;
   }
 
   .divider {
     display: flex;
     align-items: center;
-    text-align: center;
-    color: #999;
-    font-size: 0.8rem;
-    margin: 0.5rem 0;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-xs);
+    margin: var(--spacing-2) 0;
   }
 
   .divider::before,
   .divider::after {
     content: '';
     flex: 1;
-    border-bottom: 1px solid #eee;
+    border-bottom: 1px solid var(--color-border);
   }
 
   .divider span {
-    padding: 0 0.5rem;
+    padding: 0 var(--spacing-2);
   }
 
   .link-btn {
     background: none;
     border: none;
-    color: #007acc;
+    color: var(--color-primary);
     text-decoration: underline;
     padding: 0;
-    font-size: 0.85rem;
+    font-size: var(--font-size-xs);
+    cursor: pointer;
     text-align: left;
-    width: auto;
   }
-
+  
   .link-btn:hover {
-    background: none;
-    color: #005a9e;
+    color: var(--color-primary-hover);
   }
 
   .hint {
-    font-size: 0.85rem;
-    color: #888;
-    margin: 0;
+    font-size: var(--font-size-xs);
+    color: var(--color-text-muted);
+    margin: 0 0 var(--spacing-2) 0;
   }
 
   .model-select-container {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: var(--spacing-2);
   }
 
   .select-wrapper {
     display: flex;
-    gap: 0.5rem;
-  }
-
-  .icon-btn {
-    padding: 0.6rem;
-    width: auto;
-    flex-shrink: 0;
+    gap: var(--spacing-2);
   }
 
   .loading {
-    color: #666;
+    font-size: var(--font-size-xs);
+    color: var(--color-text-muted);
     font-style: italic;
-    font-size: 0.9rem;
   }
 
   .error {
-    color: #d32f2f;
-    font-size: 0.9rem;
+    color: var(--color-error);
+    font-size: var(--font-size-sm);
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-  }
-  
-  button.small {
-    padding: 0.25rem 0.5rem;
-    font-size: 0.8rem;
+    gap: var(--spacing-2);
   }
 
-  .value.success {
-    color: #00796b;
-    font-weight: 600;
-  }
-  .oauth-btn:disabled {
-    background: #555;
-    cursor: wait;
-  }
-  
   .error-banner {
-    color: #d32f2f;
-    background: #ffebee;
-    padding: 0.5rem;
-    border-radius: 4px;
-    font-size: 0.9rem;
-    border: 1px solid #ffcdd2;
+    background: rgba(239, 68, 68, 0.1); /* error opacity */
+    color: var(--color-error);
+    padding: var(--spacing-2);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-sm);
+    border: 1px solid rgba(239, 68, 68, 0.2);
   }
-  
-  /* Device Flow UI */
+
+  /* Device Flow */
   .device-flow-container {
-    background: #fff;
-    border: 1px solid #e0e0e0;
-    padding: 1rem;
-    border-radius: 4px;
+    background: var(--color-bg-main);
+    padding: var(--spacing-4);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border);
     display: flex;
     flex-direction: column;
-    gap: 0.8rem;
+    gap: var(--spacing-2);
   }
-  
-  .instructions {
-    margin: 0;
-    font-size: 0.95rem;
-    color: #444;
-  }
-  
+
   .code-display {
-    background: #24292e;
+    background: #000;
     color: #fff;
-    padding: 0.75rem;
-    border-radius: 4px;
-    font-family: 'Consolas', monospace;
-    font-size: 1.2rem;
-    letter-spacing: 1px;
+    padding: var(--spacing-2);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-lg);
     text-align: center;
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 0.5rem;
-    position: relative;
+    gap: var(--spacing-2);
   }
-  
-  .code-display .icon-btn {
-    position: absolute;
-    right: 0.5rem;
-    background: rgba(255,255,255,0.1);
-    border: none;
-    color: white;
-    padding: 0.3rem;
-  }
-  
-  .code-display .icon-btn:hover {
-    background: rgba(255,255,255,0.2);
-  }
-  
+
   .polling-indicator {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.5rem;
-    color: #666;
-    font-size: 0.9rem;
-    font-style: italic;
+    gap: var(--spacing-2);
+    color: var(--color-text-muted);
+    font-size: var(--font-size-sm);
   }
-  
+
   .spinner {
     animation: spin 2s linear infinite;
     display: inline-block;
   }
-  
+
   @keyframes spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
   }
-  
-  .cancel-btn {
-    align-self: center;
-    color: #666;
-    text-decoration: underline;
-    background: none;
-    border: none;
-    font-size: 0.9rem;
-  }
-  
+
   .input-row {
     display: flex;
-    gap: 0.5rem;
+    gap: var(--spacing-2);
   }
 </style>

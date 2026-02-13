@@ -1,79 +1,451 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Fredoka:wght@400;500;600;700&family=Outfit:wght@300;400;500;600&display=swap');
+
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+  /* =========================================
+     DARK MODE (Default / Technical / VS Code)
+     ========================================= */
+  --theme-name: 'dark';
+  
+  /* Colors */
+  --color-bg-main: #0d1117;     /* GitHub Dark Dimmed / VS Code deeply dark */
+  --color-bg-sidebar: #161b22;  /* Slightly lighter for sidebar */
+  --color-bg-card: #161b22;
+  --color-bg-card-hover: #21262d;
+  
+  --color-text-primary: #c9d1d9;
+  --color-text-secondary: #8b949e;
+  --color-text-muted: #484f58;
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  /* Syntax Highlighting Accents */
+  --color-primary: #58a6ff;     /* VS Code Blue */
+  --color-primary-hover: #79c0ff;
+  --color-primary-text: #0d1117;
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  --color-secondary: #d2a8ff;   /* Purple */
+  --color-accent: #79c0ff;      /* Cyan/Blue */
+  
+  --color-border: #30363d;
+  --color-border-hover: #8b949e;
+
+  /* Status Colors (Terminal Style) */
+  --color-success: #3fb950;     /* Terminal Green */
+  --color-warning: #d29922;     /* Terminal Yellow */
+  --color-error: #f85149;       /* Terminal Red */
+
+  --color-success-ring: rgba(63, 185, 80, 0.2);
+  --color-warning-ring: rgba(210, 153, 34, 0.2);
+  --color-error-ring: rgba(248, 81, 73, 0.2);
+
+  --color-primary-bg: rgba(88, 166, 255, 0.1);
+  --color-success-bg: rgba(63, 185, 80, 0.1);
+  --color-warning-bg: rgba(210, 153, 34, 0.1);
+  --color-error-bg: rgba(248, 81, 73, 0.1);
+
+  /* Typography - Technical */
+  --font-display: 'JetBrains Mono', monospace;
+  --font-body: 'JetBrains Mono', monospace; /* Monospace everything for that dev feel */
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Spacing & Layout */
+  --spacing-1: 0.25rem;
+  --spacing-2: 0.5rem;
+  --spacing-3: 0.75rem;
+  --spacing-4: 1rem;
+  --spacing-6: 1.5rem;
+  --spacing-8: 2rem;
+  --spacing-12: 3rem;
+
+  --sidebar-width: 280px;
+  --header-height: 64px;
+  
+  /* Visual Details */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-full: 9999px;
+
+  --shadow-sm: 0 1px 0 rgba(27, 31, 35, 0.04);
+  --shadow-md: 0 3px 6px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
+
+  --transition-fast: 100ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-spring: 300ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+  /* Special Effects */
+  --code-line-height: 1.5;
+  --border-style: solid;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
+/* =========================================
+   LIGHT MODE (Playful / Educator / Friendly)
+   ========================================= */
+[data-theme="light"] {
+  --theme-name: 'light';
+
+  /* Colors - Warm & Vibrant */
+  --color-bg-main: #fffcf5;      /* Cream / Warm Paper */
+  --color-bg-sidebar: #ffffff;
+  --color-bg-card: #ffffff;
+  --color-bg-card-hover: #fff9e6; /* Very subtle yellow tint on hover */
+
+  --color-text-primary: #2d3748;
+  --color-text-secondary: #718096;
+  --color-text-muted: #a0aec0;
+
+  /* Playful Accents */
+  --color-primary: #ff6b6b;      /* Coral / Post-it Red-Pink */
+  --color-primary-hover: #ff5252;
+  --color-primary-text: #ffffff;
+
+  --color-secondary: #4ecdc4;    /* Teal */
+  --color-accent: #ffe66d;       /* Bright Yellow */
+
+  --color-border: #edf2f7;
+  --color-border-hover: #cbd5e0;
+
+  /* Status Colors (Friendly) */
+  --color-success: #06d6a0;      /* Minty Green */
+  --color-warning: #ffd166;      /* Sunny Yellow */
+  --color-error: #ef476f;        /* Berry Red */
+
+  --color-success-ring: rgba(6, 214, 160, 0.3);
+  --color-warning-ring: rgba(255, 209, 102, 0.4);
+  --color-error-ring: rgba(239, 71, 111, 0.2);
+
+  --color-primary-bg: rgba(255, 107, 107, 0.1);
+  --color-success-bg: rgba(6, 214, 160, 0.1);
+  --color-warning-bg: rgba(255, 209, 102, 0.1);
+  --color-error-bg: rgba(239, 71, 111, 0.1);
+
+  /* Typography - Friendly */
+  --font-display: 'Fredoka', sans-serif;
+  --font-body: 'Outfit', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace; /* Keep mono for code */
+
+  /* Visual Details - Bubbly */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-full: 9999px;
+
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 6px 12px rgba(0, 0, 0, 0.08), 0 3px 6px rgba(0,0,0,0.05);
+  --shadow-lg: 0 15px 30px rgba(0, 0, 0, 0.1);
+
+  --border-style: solid;
 }
-a:hover {
-  color: #535bf2;
+
+*, *::before, *::after {
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
+  font-family: var(--font-body);
+  background-color: var(--color-bg-main);
+  color: var(--color-text-primary);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color var(--transition-normal), color var(--transition-normal);
+}
+
+/* Typography Overrides */
+h1, h2, h3, h4, h5, h6 {
+  margin-top: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--color-text-primary);
+  letter-spacing: -0.02em; /* Tighter for headings */
+}
+
+h1 { font-size: 2.25rem; margin-bottom: var(--spacing-6); }
+h2 { font-size: 1.875rem; margin-bottom: var(--spacing-4); }
+h3 { font-size: 1.5rem; margin-bottom: var(--spacing-4); }
+
+p {
+  margin-top: 0;
+  margin-bottom: var(--spacing-4);
+  color: var(--color-text-secondary);
+}
+
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+  font-weight: 600;
+  transition: color var(--transition-fast);
+  border-bottom: 2px solid transparent;
+}
+
+a:hover {
+  color: var(--color-primary-hover);
+  border-bottom-color: var(--color-primary-hover);
+}
+
+/* Layout Utilities */
+.app-container {
   display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background-image: 
+    radial-gradient(var(--color-border) 1px, transparent 1px);
+  background-size: 40px 40px; /* Dot grid background */
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+.main-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-8);
+  background-color: var(--color-bg-main);
 }
 
+/* Component: Card */
 .card {
-  padding: 2em;
+  background-color: var(--color-bg-card);
+  border: 1px var(--border-style) var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-6);
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--transition-spring), box-shadow var(--transition-normal);
+  position: relative;
+  overflow: hidden;
 }
 
-#app {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+/* Decorative top border for dark mode cards to look like code blocks */
+[data-theme="dark"] .card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+  opacity: 0.5;
 }
 
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
+.card:hover {
+  border-color: var(--color-border-hover);
+  box-shadow: var(--shadow-md);
+}
+
+/* Component: Button */
+button, .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.625rem 1.25rem;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  font-size: 0.9rem;
   cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+  transition: all var(--transition-fast);
+  border: 1px solid transparent;
+  gap: var(--spacing-2);
+  background-color: var(--color-bg-sidebar);
+  border-color: var(--color-border);
+  color: var(--color-text-primary);
+  font-family: var(--font-display); /* Use display font for buttons */
+  letter-spacing: 0.02em;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+button:hover, .btn:hover {
+  background-color: var(--color-bg-card-hover);
+  border-color: var(--color-border-hover);
+}
+
+.btn-primary, button.primary {
+  background-color: var(--color-primary);
+  color: var(--color-primary-text);
+  border-color: transparent;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.btn-primary:hover, button.primary:hover {
+  background-color: var(--color-primary-hover);
+  box-shadow: 0 6px 8px rgba(0,0,0,0.15);
+  border-color: transparent;
+}
+
+.btn-secondary, button.secondary {
+  background-color: var(--color-bg-sidebar);
+  border-color: var(--color-border);
+  color: var(--color-text-primary);
+}
+
+.btn-secondary:hover, button.secondary:hover {
+  background-color: var(--color-bg-card-hover);
+  border-color: var(--color-border-hover);
+}
+
+.btn-ghost, button.ghost {
+  background-color: transparent;
+  border-color: transparent;
+  color: var(--color-text-secondary);
+  box-shadow: none;
+}
+
+.btn-ghost:hover, button.ghost:hover {
+  background-color: var(--color-bg-card-hover);
+  color: var(--color-text-primary);
+}
+
+button.danger, .btn-danger {
+  background-color: transparent;
+  border-color: var(--color-error);
+  color: var(--color-error);
+}
+
+button.danger:hover, .btn-danger:hover {
+  background-color: var(--color-error);
+  color: white;
+  border-color: var(--color-error);
+}
+
+/* Form Elements */
+input, select, textarea {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-bg-main);
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  transition: all var(--transition-fast);
+}
+
+[data-theme="dark"] input, [data-theme="dark"] select, [data-theme="dark"] textarea {
+  background-color: #0d1117; /* Even darker for inputs in dark mode */
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-bg);
+}
+
+label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-2);
+  font-family: var(--font-display);
+}
+
+/* Utilities */
+.text-sm { font-size: 0.875rem; }
+.text-muted { color: var(--color-text-muted); }
+.font-bold { font-weight: 700; }
+.mb-4 { margin-bottom: var(--spacing-4); }
+.mt-4 { margin-top: var(--spacing-4); }
+.flex { display: flex; }
+.gap-4 { gap: var(--spacing-4); }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.w-full { width: 100%; }
+
+/* Badge / Tag Styles */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-family: var(--font-mono);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: var(--radius-full);
+  border: 2px solid var(--color-bg-main); /* Creates padding effect */
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
+/* Model Select Container & Wrappers */
+.model-select-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.select-wrapper {
+  display: flex;
+  gap: var(--spacing-2);
+  align-items: center;
+}
+
+.select-wrapper select {
+  flex: 1;
+}
+
+.select-wrapper button {
+  flex-shrink: 0;
+  padding: 0.75rem 1rem;
+  min-width: auto;
+}
+
+/* URL Presets & Optional Badge */
+.url-presets {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  margin-top: var(--spacing-2);
+  padding: var(--spacing-3);
+  background: var(--color-bg-card-hover);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.preset-label {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+  font-weight: 600;
+  font-family: var(--font-display);
+}
+
+.preset-btn {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-family: var(--font-mono);
+  font-weight: 500;
+}
+
+.preset-btn:hover {
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+  box-shadow: var(--shadow-md);
+}
+
+.optional-badge {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  font-weight: 400;
+  font-style: italic;
+  margin-left: var(--spacing-1);
 }

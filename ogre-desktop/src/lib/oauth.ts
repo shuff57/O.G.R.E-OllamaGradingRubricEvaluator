@@ -408,9 +408,32 @@ export async function startGoogleDeviceFlow(): Promise<DeviceFlowResult> {
 // ── Model Fetching ───────────────────────────────────────────────────────
 
 export async function fetchAvailableModels(
-  provider: "github" | "openai" | "anthropic" | "google",
-  token?: string
+  provider: "github" | "openai" | "anthropic" | "google" | "ollama",
+  token?: string,
+  apiUrl?: string
 ): Promise<string[]> {
+  // Ollama special case: needs API URL from provider config
+  if (provider === "ollama") {
+    const { getProviderConfig } = await import("./db");
+    const config = await getProviderConfig("ollama");
+    if (!config?.api_url) throw new Error("Ollama API URL not configured");
+    
+    const url = `${config.api_url.replace(/\/$/, '')}/api/tags`;
+    const headers: Record<string, string> = {};
+    
+    // Add Authorization header if API key is configured
+    if (config.api_key) {
+      headers['Authorization'] = `Bearer ${config.api_key}`;
+    }
+    
+    const res = await tauriFetch(url, { headers });
+    if (!res.ok) throw new Error(`Failed to fetch Ollama models: ${res.status}`);
+    const json = await res.json();
+    
+    // Ollama returns { models: [{ name: "llama2:latest", ... }, ...] }
+    return json.models?.map((m: any) => m.name) || [];
+  }
+
   // Use provided token or look up stored one
   let accessToken = token;
   if (!accessToken) {

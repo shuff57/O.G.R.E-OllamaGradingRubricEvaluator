@@ -56,6 +56,12 @@
         },
         {
           "url": "https://api.githubcopilot.com/*"
+        },
+        {
+          "url": "http://localhost:11434/*"
+        },
+        {
+          "url": "https://ollama.com/*"
         }
       ]
     }
