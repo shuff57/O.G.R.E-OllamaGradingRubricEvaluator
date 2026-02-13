@@ -859,7 +859,7 @@
     [data-theme="dark"] .info-box {
       background: var(--color-primary-bg);
       border-color: rgba(56, 189, 248, 0.3);
-      color: #38bdf8;
+      color: var(--color-info);
     }
     
     .warning-box {
@@ -872,7 +872,7 @@
     [data-theme="dark"] .warning-box {
       background: var(--color-warning-bg);
       border-color: rgba(251, 191, 36, 0.3);
-      color: #fbbf24;
+      color: var(--color-warning);
     }
     
     .note-box {
@@ -885,7 +885,7 @@
     [data-theme="dark"] .note-box {
       background: rgba(59, 130, 246, 0.1);
       border-color: rgba(59, 130, 246, 0.3);
-      color: #60a5fa;
+      color: var(--color-primary);
     }
     
     .code-badge {
@@ -896,7 +896,7 @@
     }
     [data-theme="dark"] .code-badge {
       background: var(--color-border);
-      color: #e6edf3;
+      color: var(--color-text-primary);
     }
     
     .modal-content-sm { max-width: 500px; }
@@ -905,7 +905,7 @@
     .close-btn { font-size: 24px; cursor: pointer; }
     
     .link-blue { color: var(--color-mode-accent); text-decoration: none; }
-    [data-theme="dark"] .link-blue { color: #58a6ff; }
+    [data-theme="dark"] .link-blue { color: var(--color-primary); }
 
     /* =========================================
        Status & Utility Classes (Dark Mode Compat)
@@ -1200,7 +1200,7 @@
     [data-theme="dark"] .rubric-status-box {
       background: rgba(3, 105, 161, 0.2);
       border-color: rgba(3, 105, 161, 0.4);
-      color: #7dd3fc;
+      color: var(--color-info);
     }
 
     .spinner-blue {
@@ -1361,7 +1361,7 @@
       width: auto !important;
     }
     .btn-icon-danger:hover {
-      color: #ff0000 !important;
+      color: var(--color-error) !important;
       opacity: 0.8;
     }
   </style>
