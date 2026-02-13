@@ -68,6 +68,34 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Load saved settings from chrome.storage.local
   await loadState();
 
+  // --- Theme Handling ---
+  const themeToggle = document.getElementById('themeToggle');
+  if (themeToggle) {
+    const themeIcon = themeToggle.querySelector('i');
+    
+    function applyTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      if (theme === 'light') {
+        themeIcon.className = 'bi bi-sun-fill text-warning';
+        themeIcon.style.color = ''; 
+      } else {
+        themeIcon.className = 'bi bi-moon-stars-fill text-muted';
+        themeIcon.style.color = ''; 
+      }
+    }
+
+    const savedThemeData = await chrome.storage.local.get('ogreTheme');
+    const currentTheme = savedThemeData.ogreTheme || 'dark';
+    applyTheme(currentTheme);
+
+    themeToggle.addEventListener('click', () => {
+      const current = document.documentElement.getAttribute('data-theme') || 'dark';
+      const next = current === 'dark' ? 'light' : 'dark';
+      applyTheme(next);
+      chrome.storage.local.set({ ogreTheme: next });
+    });
+  }
+
   // Initialize LaTeX Toolbars
   createLatexToolbar('rubricText', 'rubricControls');
   createLatexToolbar('studentText', 'studentControls');
@@ -400,18 +428,16 @@ function renderImages(target) {
     const img = document.createElement('img');
     img.src = base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`;
     img.style.width = '100%';
-    img.style.border = '1px solid #ccc';
-    img.style.borderRadius = '4px';
+    img.classList.add('border-light', 'rounded-sm');
     
     const btn = document.createElement('button');
     btn.innerHTML = '&times;';
     btn.style.position = 'absolute';
     btn.style.top = '-5px';
     btn.style.right = '-5px';
-    btn.style.background = 'red';
-    btn.style.color = 'white';
-    btn.style.border = 'none';
-    btn.style.borderRadius = '50%';
+    
+    btn.classList.add('bg-error', 'text-white', 'border-none', 'rounded-circle');
+    // Inline styles for layout only
     btn.style.width = '20px';
     btn.style.height = '20px';
     btn.style.cursor = 'pointer';
@@ -518,22 +544,28 @@ function showRubricStatus(text, type = 'loading') {
   txt.innerText = text;
   
   if (type === 'loading') {
-    el.style.background = '#e0f2fe';
-    el.style.borderColor = '#bae6fd';
-    el.style.color = '#0369a1';
+    el.classList.add('status-info');
+    el.classList.remove('status-success', 'status-error');
+    el.style.background = '';
+    el.style.borderColor = '';
+    el.style.color = '';
     spinner.style.display = 'block';
-    spinner.style.borderColor = '#0369a1';
+    spinner.style.borderColor = ''; // Inherit color
     spinner.style.borderTopColor = 'transparent';
   } else if (type === 'success') {
-    el.style.background = '#dcfce7';
-    el.style.borderColor = '#bbf7d0';
-    el.style.color = '#15803d';
+    el.classList.add('status-success');
+    el.classList.remove('status-info', 'status-error');
+    el.style.background = '';
+    el.style.borderColor = '';
+    el.style.color = '';
     spinner.style.display = 'none';
     setTimeout(() => { el.style.display = 'none'; }, 3000);
   } else if (type === 'error') {
-    el.style.background = '#fee2e2';
-    el.style.borderColor = '#fecaca';
-    el.style.color = '#b91c1c';
+    el.classList.add('status-error');
+    el.classList.remove('status-info', 'status-success');
+    el.style.background = '';
+    el.style.borderColor = '';
+    el.style.color = '';
     spinner.style.display = 'none';
   }
 }
@@ -972,8 +1004,10 @@ async function checkBatchPageStatus() {
   const resumePrompt = document.getElementById('resumePrompt');
   
   statusText.innerText = "Checking page compatibility...";
-  statusEl.style.background = '#eee';
-  statusEl.style.color = '#333';
+  statusEl.classList.add('status-info');
+  statusEl.classList.remove('status-success', 'status-error');
+  statusEl.style.background = '';
+  statusEl.style.color = '';
   btnStart.disabled = true;
   resumePrompt.style.display = 'none';
 
@@ -984,16 +1018,20 @@ async function checkBatchPageStatus() {
     // Simple URL check first
     if (tab.url.includes('gradeallq2.php')) { // MyOpenMath specific
        statusText.innerText = "Supported grading page detected!";
-       statusEl.style.background = '#dcfce7';
-       statusEl.style.color = '#15803d';
+       statusEl.classList.add('status-success');
+       statusEl.classList.remove('status-info', 'status-error');
+       statusEl.style.background = '';
+       statusEl.style.color = '';
        btnStart.disabled = false;
        
        // Check for saved state
        await checkResumeState(tab.url);
     } else {
        statusText.innerText = "Navigate to a MyOpenMath 'Grade All' page to use this feature.";
-       statusEl.style.background = '#fee2e2';
-       statusEl.style.color = '#b91c1c';
+       statusEl.classList.add('status-error'); // or warning
+       statusEl.classList.remove('status-info', 'status-success');
+       statusEl.style.background = '';
+       statusEl.style.color = '';
     }
   } catch (e) {
     statusText.innerText = "Error checking page.";
@@ -1166,8 +1204,9 @@ async function streamChat(messages, mode) {
   thinkingDetails.style.display = 'none';
   thinkingDetails.style.marginBottom = '10px';
   thinkingDetails.style.fontSize = '12px';
-  thinkingDetails.style.color = '#666';
-  thinkingDetails.style.borderLeft = '2px solid #ccc';
+  thinkingDetails.classList.add('text-muted', 'border-left-thick');
+  thinkingDetails.style.color = '';
+  thinkingDetails.style.borderLeft = '';
   thinkingDetails.style.paddingLeft = '8px';
   
   const thinkingSummary = document.createElement('summary');
@@ -1333,7 +1372,8 @@ async function streamChat(messages, mode) {
     console.error(err);
     showStatus(`Error connecting to AI: ${err.message}`, "red");
     contentContainer.innerText += `\n[Error: ${err.message}]`;
-    contentContainer.style.color = 'red';
+    contentContainer.classList.add('text-error');
+    contentContainer.style.color = '';
   }
 }
 
@@ -1359,10 +1399,10 @@ function renderGradingResponse(jsonString, container) {
     if (data.grading && Array.isArray(data.grading)) {
       html += `<table style="width:100%; border-collapse: collapse; font-size: 13px; margin-bottom: 15px;">`;
       html += `<thead>
-        <tr style="background: #f1f1f1;">
-          <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Criteria</th>
-          <th style="border: 1px solid #ddd; padding: 8px; text-align: center; width: 80px;">Status</th>
-          <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Evidence & Feedback</th>
+        <tr class="bg-header">
+          <th class="border-light" style="padding: 8px; text-align: left;">Criteria</th>
+          <th class="border-light" style="padding: 8px; text-align: center; width: 80px;">Status</th>
+          <th class="border-light" style="padding: 8px; text-align: left;">Evidence & Feedback</th>
         </tr>
       </thead><tbody>`;
 
@@ -1371,16 +1411,16 @@ function renderGradingResponse(jsonString, container) {
         let statusIcon = item.status || '';
         
         if (statusText.includes('pass')) {
-          statusIcon = '<i class="bi bi-check-circle-fill" style="color: #198754;"></i> Pass';
+          statusIcon = '<i class="bi bi-check-circle-fill text-success"></i> Pass';
         } else if (statusText.includes('fail')) {
-          statusIcon = '<i class="bi bi-x-circle-fill" style="color: #dc3545;"></i> Fail';
+          statusIcon = '<i class="bi bi-x-circle-fill text-error"></i> Fail';
         }
 
         html += `<tr>
-          <td style="border: 1px solid #ddd; padding: 8px; vertical-align: top;"><strong>${item.criteria}</strong></td>
-          <td style="border: 1px solid #ddd; padding: 8px; text-align: center; vertical-align: top;">${statusIcon}</td>
-          <td style="border: 1px solid #ddd; padding: 8px; vertical-align: top;">
-            <div style="font-style: italic; color: #555; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px dashed #eee;">"${item.excerpt || ''}"</div>
+          <td class="border-light" style="padding: 8px; vertical-align: top;"><strong>${item.criteria}</strong></td>
+          <td class="border-light" style="padding: 8px; text-align: center; vertical-align: top;">${statusIcon}</td>
+          <td class="border-light" style="padding: 8px; vertical-align: top;">
+            <div class="text-muted border-bottom-dashed" style="font-style: italic; margin-bottom: 8px; padding-bottom: 8px;">"${item.excerpt || ''}"</div>
             <div>${marked.parse(item.comment || '')}</div>
           </td>
         </tr>`;
@@ -1404,7 +1444,14 @@ function renderGradingResponse(jsonString, container) {
 function showStatus(text, color) {
   const el = document.getElementById('status');
   el.innerText = text;
-  el.style.color = color || 'black';
+  
+  el.classList.remove('text-error', 'text-success', 'text-warning');
+  el.style.color = '';
+
+  if (color === 'red') el.classList.add('text-error');
+  else if (color === 'green') el.classList.add('text-success');
+  else if (color === 'orange') el.classList.add('text-warning');
+  else if (color && color !== 'black') el.style.color = color;
 }
 
 let configStatusTimeout;
@@ -1412,7 +1459,15 @@ function showConfigStatus(text, color) {
   const el = document.getElementById('configStatus');
   if (el) {
     el.innerText = text;
-    el.style.color = color || 'black';
+    
+    el.classList.remove('text-error', 'text-success', 'text-warning');
+    el.style.color = '';
+
+    if (color === 'red') el.classList.add('text-error');
+    else if (color === 'green') el.classList.add('text-success');
+    else if (color === 'orange') el.classList.add('text-warning');
+    else if (color && color !== 'black') el.style.color = color;
+
     el.style.display = 'block';
     el.style.marginTop = '5px';
     
@@ -1678,8 +1733,10 @@ async function testConnection(providerId) {
   updateProviderTabStatus(providerId, 'testing');
   
   statusDiv.style.display = 'block';
-  statusDiv.style.backgroundColor = '#fff3cd';
-  statusDiv.style.color = '#856404';
+  statusDiv.classList.add('status-warning');
+  statusDiv.classList.remove('status-success', 'status-error');
+  statusDiv.style.backgroundColor = '';
+  statusDiv.style.color = '';
   statusDiv.innerHTML = '🔄 Testing connection...';
   
   try {
@@ -1691,20 +1748,26 @@ async function testConnection(providerId) {
     
     if (result.ok) {
       updateProviderTabStatus(providerId, 'connected');
-      statusDiv.style.backgroundColor = '#d4edda';
-      statusDiv.style.color = '#155724';
+      statusDiv.classList.add('status-success');
+      statusDiv.classList.remove('status-warning', 'status-error');
+      statusDiv.style.backgroundColor = '';
+      statusDiv.style.color = '';
       statusDiv.innerHTML = '✅ Connected successfully';
       setTimeout(() => { statusDiv.style.display = 'none'; }, 3000);
     } else {
       updateProviderTabStatus(providerId, 'error');
-      statusDiv.style.backgroundColor = '#f8d7da';
-      statusDiv.style.color = '#721c24';
+      statusDiv.classList.add('status-error');
+      statusDiv.classList.remove('status-warning', 'status-success');
+      statusDiv.style.backgroundColor = '';
+      statusDiv.style.color = '';
       statusDiv.innerHTML = `❌ ${result.error || 'Connection failed'}`;
     }
   } catch (err) {
     updateProviderTabStatus(providerId, 'error');
-    statusDiv.style.backgroundColor = '#f8d7da';
-    statusDiv.style.color = '#721c24';
+    statusDiv.classList.add('status-error');
+    statusDiv.classList.remove('status-warning', 'status-success');
+    statusDiv.style.backgroundColor = '';
+    statusDiv.style.color = '';
     statusDiv.innerHTML = `❌ ${err.message}`;
   }
 }
@@ -2238,30 +2301,31 @@ function renderModelList() {
     
     models.forEach(m => {
         const item = document.createElement('div');
-        item.style.marginBottom = '12px';
-        item.style.paddingBottom = '12px';
-        item.style.borderBottom = '1px solid #eee';
+        item.classList.add('model-list-item', 'border-bottom-light');
         
-        let costColor = 'green';
-        if(m.cost.toLowerCase().includes('high')) costColor = 'red';
-        else if(m.cost.toLowerCase().includes('medium')) costColor = 'orange';
+        let costClass = 'text-success';
+        
+        if(m.cost.toLowerCase().includes('high')) { costClass = 'text-error'; }
+        else if(m.cost.toLowerCase().includes('medium')) { costClass = 'text-warning'; }
+        else { costClass = 'text-success'; }
 
+        // Note: inline styles below replaced with classes where possible
         item.innerHTML = `
-            <div style="font-weight:bold; color:#333; display:flex; justify-content:space-between; align-items:center;">
+            <div class="text-primary" style="font-weight:bold; display:flex; justify-content:space-between; align-items:center;">
                 <span style="font-size:14px;">${m.name}</span>
-                <span style="color:${costColor}; font-size:10px; border:1px solid ${costColor}; padding:1px 5px; border-radius:10px; text-transform:uppercase;">${m.cost} Cost</span>
+                <span class="${costClass} cost-badge">${m.cost} Cost</span>
             </div>
-            <div style="font-size:12px; color:#555; margin: 6px 0; font-style:italic; line-height: 1.4;">
+            <div class="text-muted" style="font-size:12px; margin: 6px 0; font-style:italic; line-height: 1.4;">
                 "${m.desc}"
             </div>
-            <div style="display:flex; gap:10px; font-size:11px; color:#666; margin-bottom:6px;">
+            <div class="text-muted" style="display:flex; gap:10px; font-size:11px; margin-bottom:6px;">
                 <span>⏱️ Speed: <b>${m.speed}</b></span>
             </div>
-            <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:2px; margin-top:6px; background:#f5f5f5; padding:6px; border-radius:6px;">
-                <div style="text-align:center;"><div style="font-size:9px; color:#888;">MATH</div><div style="font-weight:bold; color:black;">${m.scores.math}</div></div>
-                <div style="text-align:center;"><div style="font-size:9px; color:#888;">SCI</div><div style="font-weight:bold; color:black;">${m.scores.science}</div></div>
-                <div style="text-align:center;"><div style="font-size:9px; color:#888;">CODE</div><div style="font-weight:bold; color:black;">${m.scores.coding}</div></div>
-                <div style="text-align:center;"><div style="font-size:9px; color:#888;">WRITE</div><div style="font-weight:bold; color:black;">${m.scores.writing}</div></div>
+            <div class="bg-white border-light" style="display:grid; grid-template-columns: repeat(4, 1fr); gap:2px; margin-top:6px; padding:6px; border-radius:6px;">
+                <div class="text-center"><div class="text-muted" style="font-size:9px;">MATH</div><div class="text-primary" style="font-weight:bold;">${m.scores.math}</div></div>
+                <div class="text-center"><div class="text-muted" style="font-size:9px;">SCI</div><div class="text-primary" style="font-weight:bold;">${m.scores.science}</div></div>
+                <div class="text-center"><div class="text-muted" style="font-size:9px;">CODE</div><div class="text-primary" style="font-weight:bold;">${m.scores.coding}</div></div>
+                <div class="text-center"><div class="text-muted" style="font-size:9px;">WRITE</div><div class="text-primary" style="font-weight:bold;">${m.scores.writing}</div></div>
             </div>
         `;
         list.appendChild(item);
@@ -2509,8 +2573,13 @@ function logBatch(msg, color = 'black') {
     const div = document.getElementById('batchResults');
     const line = document.createElement('div');
     line.innerText = msg;
-    line.style.color = color;
-    line.style.borderBottom = '1px solid #eee';
+    
+    if (color === 'red') line.classList.add('text-error');
+    else if (color === 'green') line.classList.add('text-success');
+    else if (color === 'orange') line.classList.add('text-warning');
+    else if (color !== 'black') line.style.color = color;
+
+    line.classList.add('border-bottom-light');
     line.style.padding = '2px 0';
     div.appendChild(line);
     div.scrollTop = div.scrollHeight;
