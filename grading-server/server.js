@@ -49,7 +49,7 @@ app.use('/api/*', async (c, next) => {
   }
 
   if (!handshakeToken) {
-    return c.json({ error: 'No provider configuration available' }, 503);
+    return c.json({ error: 'Desktop config not available' }, 503);
   }
 
   const authHeader = c.req.header('Authorization');
@@ -59,7 +59,7 @@ app.use('/api/*', async (c, next) => {
 
   const token = authHeader.slice(7);
   if (token !== handshakeToken) {
-    return c.json({ error: 'Invalid token' }, 403);
+    return c.json({ error: 'Invalid token' }, 401);
   }
 
   return next();
@@ -87,7 +87,7 @@ app.get('/api/handshake', (c) => {
   }
 
   if (!handshakeToken) {
-    return c.json({ error: 'Desktop has not registered yet' }, 503);
+    return c.json({ error: 'Desktop config not pushed yet' }, 503);
   }
 
   return c.json({ token: handshakeToken });
@@ -125,7 +125,7 @@ app.post('/internal/providers', async (c) => {
     handshakeToken = body.token;
     providerConfigs = body.providers;
 
-    return c.json({ ok: true, count: providerConfigs.length });
+    return c.json({ success: true, count: providerConfigs.length });
   } catch (error) {
     return c.json({ error: 'Invalid JSON body' }, 400);
   }
@@ -167,7 +167,7 @@ app.post('/api/providers/active', async (c) => {
       model: body.model,
     }));
 
-    return c.json({ ok: true });
+    return c.json({ success: true });
   } catch (error) {
     return c.json({ error: 'Invalid JSON body' }, 400);
   }

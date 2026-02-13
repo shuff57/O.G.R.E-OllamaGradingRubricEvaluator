@@ -1,3 +1,2 @@
-=== QA Scenario 6: GET /api/handshake - 200 (token available now) ===
-{"token":"test-secret-token-abc123"}
-HTTP_STATUS: 200
+{"token":"test-uuid-123"}
+200
