@@ -687,7 +687,7 @@ Task 4: Mode Selector Icons + Final Polish (independent but best done last)
 
 ---
 
-- [ ] 4. Mode Selector Polish: Add Icons + Final Spacing Adjustments
+- [x] 4. Mode Selector Polish: Add Icons + Final Spacing Adjustments
 
   **What to do**:
 
