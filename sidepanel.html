@@ -1126,19 +1126,51 @@
     }
     
     .batch-results-log {
-      margin-top: 10px; 
-      max-height: 200px; 
-      overflow-y: auto; 
-      font-size: 11px; 
-      border: 1px solid var(--color-border); 
-      border-radius: var(--radius-md); 
-      padding: 5px; 
-      display: none; 
+      margin-top: 10px;
+      max-height: 200px;
+      overflow-y: auto;
+      font-size: 11px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: 5px;
+      display: none;
       background: var(--color-bg-secondary);
     }
     [data-theme="dark"] .batch-results-log {
       background: var(--color-bg-card);
       border-color: var(--color-border);
+    }
+
+    /* Batch activity indicator */
+    .batch-activity {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 0;
+      color: var(--color-text-secondary);
+    }
+    .batch-activity .spinner-dots {
+      display: inline-flex;
+      gap: 3px;
+    }
+    .batch-activity .spinner-dots span {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: var(--color-mode-accent, #e6a817);
+      animation: batchPulse 1.4s infinite ease-in-out both;
+    }
+    .batch-activity .spinner-dots span:nth-child(1) { animation-delay: -0.32s; }
+    .batch-activity .spinner-dots span:nth-child(2) { animation-delay: -0.16s; }
+    .batch-activity .spinner-dots span:nth-child(3) { animation-delay: 0s; }
+    @keyframes batchPulse {
+      0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+      40% { transform: scale(1); opacity: 1; }
+    }
+    .batch-activity .elapsed {
+      font-size: 10px;
+      color: var(--color-text-muted);
+      margin-left: auto;
     }
     
     .about-text {

@@ -6,8 +6,9 @@
   import Settings from './pages/Settings.svelte';
   import SetupWizard from './pages/SetupWizard.svelte';
   import UpdateModal from './components/UpdateModal.svelte';
-  import { getSetting } from './lib/db';
+  import { getSetting, insertGradingSession } from './lib/db';
   import { listenSessionComplete, listenProviderChanged } from './lib/server';
+  import type { SessionCompletePayload } from './lib/server';
   import { updateActiveProvider } from './lib/db';
   import { checkForUpdates, type UpdateCheckResult } from './lib/updater';
   import type { Update } from '@tauri-apps/plugin-updater';
@@ -40,8 +41,26 @@
     }
 
     // Listen for session-complete events from the sidecar
-    // Rust side already persists to DB — this just triggers UI refresh
-    unlistenSession = await listenSessionComplete(() => {
+    // Persist to SQLite and trigger UI refresh
+    unlistenSession = await listenSessionComplete(async (session: SessionCompletePayload) => {
+      try {
+        await insertGradingSession({
+          provider_id: session.provider_id,
+          model: session.model,
+          student_count: session.student_count,
+          mean_score: session.mean_score,
+          min_score: session.min_score,
+          max_score: session.max_score,
+          median_score: session.median_score,
+          max_possible_score: session.max_possible_score,
+          page_url: session.page_url,
+          question_id: session.question_id,
+          custom_instructions: session.custom_instructions,
+        });
+        console.log(`Grading session recorded: ${session.student_count} students`);
+      } catch (e) {
+        console.error('Failed to persist grading session:', e);
+      }
       sessionVersion += 1;
     });
 

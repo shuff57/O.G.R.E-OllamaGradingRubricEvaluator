@@ -1,4 +1,4 @@
-import { PROVIDERS, getActiveProvider, setActiveProvider, proxyFetch } from './providers.js';
+import { PROVIDERS, getActiveProvider, setActiveProvider, proxyFetch, callProviderAI } from './providers.js';
 import BatchGrader from './batch-grader.js';
 import {
   startGitHubDeviceFlow,
@@ -475,7 +475,7 @@ const modelSelect = document.getElementById('modelName');
 modelSelect.addEventListener('change', () => {
   updateThinkingControls();
   // Write-back model selection to desktop (fire-and-forget)
-  if (desktopConnected && handshakeToken) {
+  if (serverConnected && handshakeToken) {
     const model = document.getElementById('modelName').value || '';
     fetch('http://localhost:3456/api/providers/active', {
       method: 'POST',
@@ -1067,7 +1067,10 @@ let solverTurn = 0;
 
 async function switchMode(mode) {
   currentMode = mode;
-  document.body.className = ''; // Reset classes
+  // Reset mode classes but preserve desktop-connected
+  const wasDesktop = document.body.classList.contains('desktop-connected');
+  document.body.className = '';
+  if (wasDesktop) document.body.classList.add('desktop-connected');
   
   const studentText = document.getElementById('studentText');
   const rubricCard = document.getElementById('rubricCard');
@@ -1147,6 +1150,7 @@ async function checkBatchPageStatus() {
   const btnStart = document.getElementById('btnStartBatch');
   const resumePrompt = document.getElementById('resumePrompt');
   
+  console.log('[Batch] checkBatchPageStatus called');
   statusText.innerText = "Checking page compatibility...";
   statusEl.classList.add('status-info');
   statusEl.classList.remove('status-success', 'status-error');
@@ -1159,8 +1163,9 @@ async function checkBatchPageStatus() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab || !tab.url) return;
 
-    // Simple URL check first
-    if (tab.url.includes('gradeallq2.php')) { // MyOpenMath specific
+    // Simple URL check — MyOpenMath grading pages or demo test page
+    console.log('[Batch] Tab URL:', tab.url);
+    if (tab.url.includes('gradeallq2.php') || tab.url.includes('demo-grading-page.html')) {
        statusText.innerText = "Supported grading page detected!";
        statusEl.classList.add('status-success');
        statusEl.classList.remove('status-info', 'status-error');
@@ -1850,7 +1855,7 @@ async function switchProvider(providerId) {
   saveState();
   
   // Write-back active provider selection to desktop (fire-and-forget)
-  if (desktopConnected && handshakeToken) {
+  if (serverConnected && handshakeToken) {
     const model = document.getElementById('modelName').value || '';
     fetch('http://localhost:3456/api/providers/active', {
       method: 'POST',
@@ -1908,10 +1913,19 @@ async function refreshModels() {
     
     populateModelDropdown(models);
     showConfigStatus(`Found ${models.length} models`, 'green');
+
+    // Update desktop dropdown text to show the selected model
+    if (serverConnected) {
+      const desktopOpt = document.querySelector(`#desktopProviderSelect option[value="${currentProviderId}"]`);
+      const selectedModel = document.getElementById('modelName').value;
+      if (desktopOpt && selectedModel) {
+        desktopOpt.text = getProviderDisplayName(currentProviderId) + ` (${selectedModel})`;
+      }
+    }
   } catch (err) {
-    console.error(err);
+    console.error('[refreshModels] Error for', currentProviderId, ':', err);
     modelSelect.innerHTML = '<option value="">Error loading models</option>';
-    showConfigStatus('Error loading models', 'red');
+    showConfigStatus(`Error loading models: ${err.message}`, 'red');
   } finally {
     modelSelect.disabled = false;
     btn.classList.remove('spin-animation');
@@ -1919,6 +1933,16 @@ async function refreshModels() {
 }
 
 function getProviderConfigFromUI(providerId) {
+  // When server-connected, prefer cached providerConfigs (populated by applyDesktopProviders)
+  // over DOM fields which may be hidden/empty in Batch mode
+  if (serverConnected && providerConfigs[providerId]) {
+    const cached = { ...providerConfigs[providerId] };
+    if (oauthTokens[providerId]) {
+      cached.oauthToken = oauthTokens[providerId];
+    }
+    return cached;
+  }
+
   if (providerId === currentProviderId) {
     const config = {};
     const provider = PROVIDERS[providerId];
@@ -1928,12 +1952,12 @@ function getProviderConfigFromUI(providerId) {
             if (el) config[field.key] = el.value;
         });
     }
-    
+
     // Inject OAuth token if available (providers.js getAuthToken prefers oauthToken over apiKey)
     if (oauthTokens[providerId]) {
       config.oauthToken = oauthTokens[providerId];
     }
-    
+
      // Update cache
     providerConfigs[providerId] = config;
     return config;
@@ -1981,11 +2005,11 @@ function populateModelDropdown(models) {
 // --- Desktop Connection (Provider Config Sync) ---
 
 /**
- * Module-level state for desktop connection.
- * desktopConnected: whether we successfully connected to desktop on last attempt
+ * Module-level state for server connection.
+ * serverConnected: whether we successfully connected to the grading server on last attempt
  * handshakeToken: Bearer token for /api/* endpoints
  */
-let desktopConnected = false;
+let serverConnected = false;
 let handshakeToken = null;
 
 /**
@@ -1998,7 +2022,7 @@ let handshakeToken = null;
  *   403 — origin rejected
  *   4xx — other client error
  */
-async function connectToDesktop() {
+async function connectToServer() {
   try {
     const response = await fetch('http://localhost:3456/api/handshake', {
       headers: {
@@ -2012,9 +2036,9 @@ async function connectToDesktop() {
         connected: false,
         statusCode: response.status,
         reason: response.status === 503 
-          ? 'Desktop app not ready yet'
+          ? 'Grading server not ready yet'
           : response.status === 403
-          ? 'Origin not allowed by desktop app'
+          ? 'Origin not allowed by grading server'
           : `Handshake failed (${response.status}): ${text}` 
       };
     }
@@ -2030,7 +2054,7 @@ async function connectToDesktop() {
     return { 
       connected: false,
       statusCode: 0,
-      reason: 'Desktop app not running'
+      reason: 'Grading server not running'
     };
   }
 }
@@ -2061,7 +2085,7 @@ async function fetchProvidersFromDesktop(token) {
 }
 
 /**
- * Updates the provider configuration UI based on desktop connection state.
+ * Updates the provider configuration UI based on server connection state.
  * Toggles between Simplified Desktop Mode and Manual Mode.
  */
 function updateProviderUI(connected) {
@@ -2095,7 +2119,7 @@ function updateProviderUI(connected) {
     
     if (desktopStatusBanner) {
         desktopStatusBanner.className = 'status-banner status-success';
-        desktopStatusBanner.innerHTML = '<i class="bi bi-check-circle-fill"></i> Connected to Desktop App';
+        desktopStatusBanner.innerHTML = '<i class="bi bi-check-circle-fill"></i> Connected to Grading Server';
     }
     
     // Update info display
@@ -2246,7 +2270,7 @@ function setupDesktopListeners() {
  */
 async function activateFallbackMode() {
   console.log('[Desktop] activateFallbackMode called');
-  desktopConnected = false;
+  serverConnected = false;
   handshakeToken = null;
   updateProviderUI(false);
   await loadState(); // chrome.storage.local — the fallback path
@@ -2270,7 +2294,10 @@ function getProviderDisplayName(id) {
 }
 
 function applyDesktopProviders(providers) {
-  desktopConnected = true;
+  serverConnected = true;
+
+  // Store full providers array for batch grading model lookups
+  window.desktopProvidersList = providers;
 
   // Populate desktop info for UI
   const activeProvider = providers.find(p => p.is_active) || (providers.length > 0 ? providers[0] : null);
@@ -2292,8 +2319,11 @@ function applyDesktopProviders(providers) {
     providerConfigs[p.id] = {
       apiUrl: p.api_url || '',
       apiKey: p.credentials?.api_key || '',
-      // No OAuth token reading in this path — API key only from desktop
     };
+    // Inject desktop OAuth access_token into oauthTokens so getAuthToken() works
+    if (p.credentials?.access_token) {
+      oauthTokens[p.id] = p.credentials.access_token;
+    }
 
     if (p.is_active) {
       activeProviderId = p.id;
@@ -2321,10 +2351,10 @@ function applyDesktopProviders(providers) {
  *   Empty providers                   → fallback
  */
 async function loadProviderConfig() {
-  console.log('[Desktop] Attempting desktop connection...');
+  console.log('[Server] Attempting server connection...');
 
   // --- Step 1: Handshake ---
-  const handshake = await connectToDesktop();
+  const handshake = await connectToServer();
 
   if (!handshake.connected) {
     // Handle specific handshake failures
@@ -2333,22 +2363,22 @@ async function loadProviderConfig() {
       console.log('[Desktop] Server starting (503). Waiting 3 seconds...');
       await new Promise(resolve => setTimeout(resolve, 3000));
       // Retry once
-      const retry = await connectToDesktop();
+      const retry = await connectToServer();
       if (retry.connected) {
         handshake.connected = true;
         handshake.token = retry.token;
       } else {
-        console.log('[Desktop] Still not ready after wait. Using manual mode.');
+        console.log('[Server] Still not ready after wait. Using manual mode.');
         await activateFallbackMode();
         return;
       }
     } else if (handshake.statusCode === 403) {
-      console.warn('[Desktop] Origin rejected (403). Extension origin not allowed. Using manual mode.');
+      console.warn('[Server] Origin rejected (403). Extension origin not allowed. Using manual mode.');
       await activateFallbackMode();
       return;
     } else {
-      // Network error or other — desktop not running (expected, not an error)
-      console.log('[Desktop] Desktop not running. Using manual mode.');
+      // Network error or other — server not running (expected, not an error)
+      console.log('[Server] Server not running. Using manual mode.');
       await activateFallbackMode();
       return;
     }
@@ -2363,7 +2393,7 @@ async function loadProviderConfig() {
   if (result.statusCode === 401) {
     // Token invalid (server may have restarted) — re-handshake once
     console.log('[Desktop] Token rejected (401). Attempting re-handshake...');
-    const reHandshake = await connectToDesktop();
+    const reHandshake = await connectToServer();
     if (!reHandshake.connected) {
       console.log('[Desktop] Re-handshake failed. Using manual mode.');
       await activateFallbackMode();
@@ -2400,6 +2430,10 @@ async function loadProviderConfig() {
   if (desktopSelect && currentProviderId) {
     desktopSelect.value = currentProviderId;
   }
+
+  // Refresh model list for active provider after a brief delay
+  // (background.js service worker may not be ready immediately during init)
+  setTimeout(() => refreshModels(), 500);
 }
 
 /**
@@ -2915,7 +2949,7 @@ document.querySelector('.close-model-info').addEventListener('click', () => {
 });
 
 // GitHub Info Modal Handlers
-document.getElementById('btnGitHubInfo').addEventListener('click', () => {
+document.getElementById('btnGitHubInfo')?.addEventListener('click', () => {
   document.getElementById('githubInfoModal').style.display = 'block';
 });
 
@@ -3288,48 +3322,111 @@ document.getElementById('btnStartFresh').addEventListener('click', async () => {
 });
 
 async function startBatchGrading() {
+  console.log('[Batch] startBatchGrading called, isBatchRunning:', isBatchRunning);
   if (isBatchRunning) return;
-  
-  const provider = PROVIDERS[currentProviderId];
-  if (!provider) {
-    showStatus("No provider selected.", "red");
+
+  // Check if grading server is available
+  const serverOk = await fetch('http://localhost:3456/health').then(r => r.ok).catch(() => false);
+  if (!serverOk) {
+    logBatch("Grading server not running. Falling back to direct grading...");
+    await fallbackDirectGrading();
     return;
   }
-  
-  const model = document.getElementById('modelName').value;
-  const customInstructions = document.getElementById('customInstructions').value; 
+
+  // Get handshake token from server if we don't have one
+  if (!handshakeToken) {
+    try {
+      const hsRes = await fetch('http://localhost:3456/api/handshake');
+      if (hsRes.ok) {
+        const hsData = await hsRes.json();
+        handshakeToken = hsData.token;
+      }
+    } catch { /* fallback will handle */ }
+  }
+  if (!handshakeToken) {
+    logBatch("Cannot authenticate with grading server. Falling back to direct grading...");
+    await fallbackDirectGrading();
+    return;
+  }
+
+  // Resolve model: DOM select → desktopProvidersList → server query
+  let model = '';
+
+  // 1. Try the model dropdown (most up-to-date if user selected one)
+  const modelEl = document.getElementById('modelName');
+  if (modelEl) {
+    const domVal = modelEl.value;
+    if (domVal && domVal !== 'Loading...' && domVal !== 'No models found' && domVal !== 'Error loading models') {
+      model = domVal;
+    }
+  }
+
+  // 2. Try desktopProvidersList (from initial push)
+  if (!model && window.desktopProvidersList) {
+    const desktopProvider = window.desktopProvidersList.find(p => p.id === currentProviderId);
+    if (desktopProvider && desktopProvider.model) {
+      model = desktopProvider.model;
+    }
+  }
+
+  // 3. Try lastSelected dataset
+  if (!model && modelEl && modelEl.dataset.lastSelected) {
+    model = modelEl.dataset.lastSelected;
+  }
+
+  // 4. Last resort: query server for current provider config
+  if (!model) {
+    try {
+      const provRes = await fetch('http://localhost:3456/api/providers', {
+        headers: { 'Authorization': `Bearer ${handshakeToken}` },
+      });
+      if (provRes.ok) {
+        const provData = await provRes.json();
+        const active = provData.providers?.find(p => p.id === currentProviderId);
+        if (active && active.model) model = active.model;
+      }
+    } catch { /* ignore */ }
+  }
+
+  if (!model) {
+    const domVal = modelEl?.value || '(no element)';
+    const desktopModel = window.desktopProvidersList?.find(p => p.id === currentProviderId)?.model || '(none)';
+    logBatch(`No model selected. DOM="${domVal}", desktop="${desktopModel}", provider=${currentProviderId}`, "red");
+    logBatch("Please select a model from the dropdown, then retry.", "red");
+    return;
+  }
+
+  const customInstructions = document.getElementById('customInstructions').value;
   const resumeAfter = document.getElementById('resumeStudent').value;
-  
+
   // UI State
   isBatchRunning = true;
   document.getElementById('btnStartBatch').style.display = 'none';
   document.getElementById('btnStopBatch').style.display = 'block';
   document.getElementById('batchProgress').style.display = 'block';
   document.getElementById('batchResults').style.display = 'block';
-  document.getElementById('batchResults').innerHTML = '';
-  
+  document.getElementById('batchResults').textContent = '';
+
   const progressBar = document.getElementById('batchProgressBar');
   const progressText = document.getElementById('batchProgressText');
   const progressPercent = document.getElementById('batchProgressPercent');
-  
+
   progressBar.style.width = '0%';
   progressText.innerText = 'Initializing...';
-  
-  let gradedStudents = [];
-  
+
   try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       const pageUrl = tab.url;
-      
+
       // 1. Extract Rubric
       logBatch("Extracting rubric...");
       const rubric = await BatchGrader.extractRubric(tab.id);
       logBatch("Rubric extracted.");
-      
+
       // 2. Extract Students
       logBatch("Extracting students...");
       const allStudents = await BatchGrader.extractStudents(tab.id);
-      
+
       // 3. Filter & Resume Logic
       let startIndex = 0;
       if (resumeAfter) {
@@ -3346,96 +3443,269 @@ async function startBatchGrading() {
               logBatch(`Warning: Could not find student "${resumeAfter}" - starting from beginning`, "orange");
           }
       }
-      
+
       const toGrade = allStudents.slice(startIndex).filter(s => !s.hasFeedback);
       const total = toGrade.length;
-      
+
       if (total === 0) {
           logBatch("No ungraded students found.", "green");
-          // Clear state if all done
           await BatchGrader.clearBatchGradeState(pageUrl);
           stopBatchGrading();
           return;
       }
-      
-      logBatch(`Found ${total} students to grade.`);
-      
-      // 4. Grading Loop
-      for (let i = 0; i < total; i++) {
+
+      const providerName = getProviderDisplayName(currentProviderId);
+      logBatch(`Connected: ${providerName} / ${model}`);
+      logBatch(`Sending ${total} students to grading server (SSE)...`);
+
+      // Show activity indicator while server processes
+      const activity = showBatchActivity('batch');
+      progressText.innerText = `0/${total}`;
+
+      // Build rubric with custom instructions
+      const serverRubric = { ...rubric };
+      if (customInstructions) {
+        serverRubric.essayPrompt = (serverRubric.essayPrompt || '') +
+          '\n\nADDITIONAL GRADING INSTRUCTIONS:\n' + customInstructions;
+      }
+
+      // Single SSE POST to grading server
+      const response = await fetch('http://localhost:3456/api/grade', {
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${handshakeToken}`,
+          },
+          body: JSON.stringify({
+              provider: currentProviderId,
+              model: model,
+              rubric: serverRubric,
+              students: toGrade.map(s => ({
+                  index: s.index,
+                  name: s.name,
+                  response: s.response,
+              })),
+          }),
+      });
+
+      if (!response.ok) {
+          const err = await response.json().catch(() => ({}));
+          throw new Error(err.error || `Server error: ${response.status}`);
+      }
+
+      // Read SSE stream
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let gradedStudents = [];
+      let filledCount = 0;
+      let doneData = null;
+
+      while (true) {
           if (!isBatchRunning) {
+              reader.cancel();
               logBatch("Batch grading cancelled.", "orange");
               break;
           }
-          
-          const student = toGrade[i];
-          progressText.innerText = `${i + 1}/${total}`;
-          const pct = Math.round(((i + 1) / total) * 100);
-          progressBar.style.width = `${pct}%`;
-          progressPercent.innerText = `${pct}%`;
-          
-          logBatch(`Grading ${student.name}...`);
-          
-          try {
-              // Prepare config with OAuth token
-               let config = getProviderConfigFromUI(currentProviderId);
 
-               // Grade
-              const result = await BatchGrader.gradeStudent(
-                  provider, 
-                  model, 
-                  rubric, 
-                  student.name, 
-                  student.response, 
-                  customInstructions,
-                  config // Pass explicit config
-              );
-              
-              // Fill
-              if (isBatchRunning) {
-                   await BatchGrader.fillGrade(tab.id, student.index, result.score, result.feedback);
-                   logBatch(`✓ ${student.name}: ${result.score}/${rubric.maxScore}`, "green");
-                   
-                   gradedStudents.push({ name: student.name, score: result.score });
-                   
-                   // Save every 5
-                   if ((i + 1) % 5 === 0) {
-                       logBatch("Auto-saving...");
-                       await BatchGrader.clickQuickSave(tab.id);
-                       
-                       // Save state after Quick Save
-                       const lastGraded = gradedStudents[gradedStudents.length - 1];
-                       await BatchGrader.saveBatchGradeState(pageUrl, lastGraded.name, gradedStudents.length);
-                       
-                       // Wait a bit
-                       await new Promise(r => setTimeout(r, 1500));
-                   }
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+
+          // Parse SSE events from buffer
+          const lines = buffer.split('\n');
+          buffer = lines.pop(); // Keep incomplete line in buffer
+
+          let currentEvent = '';
+          let currentData = '';
+
+          for (const line of lines) {
+              if (line.startsWith('event: ')) {
+                  currentEvent = line.slice(7).trim();
+              } else if (line.startsWith('data: ')) {
+                  currentData = line.slice(6);
+              } else if (line === '' && currentEvent && currentData) {
+                  // Complete SSE event
+                  const parsed = JSON.parse(currentData);
+
+                  if (currentEvent === 'progress') {
+                      if (parsed.phase === 'grading') {
+                          activity.updateText(`Grading chunk ${parsed.chunkIndex + 1}/${parsed.totalChunks} (${parsed.studentCount} students)...`);
+                          logBatch(`Chunk ${parsed.chunkIndex + 1}/${parsed.totalChunks}: grading ${parsed.studentCount} students...`);
+                      } else if (parsed.phase === 'outlier-review') {
+                          activity.updateText(`Outlier review (${parsed.outlierCount} students)...`);
+                          logBatch(`Reviewing ${parsed.outlierCount} outlier(s)...`);
+                      }
+                  } else if (currentEvent === 'chunk') {
+                      // Fill chunk results into page immediately
+                      const chunkResults = parsed.results || [];
+                      logBatch(`Chunk ${parsed.chunkIndex + 1} complete — ${chunkResults.length} results`);
+
+                      for (const result of chunkResults) {
+                          if (!isBatchRunning) break;
+
+                          const student = toGrade.find(s => s.index === result.studentIndex);
+                          if (!student) {
+                              logBatch(`Warning: no student found for index ${result.studentIndex}`, "orange");
+                              continue;
+                          }
+
+                          filledCount++;
+                          progressText.innerText = `Filling ${filledCount}/${total}`;
+                          const pct = Math.round((filledCount / total) * 100);
+                          progressBar.style.width = `${pct}%`;
+                          progressPercent.innerText = `${pct}%`;
+
+                          try {
+                              await BatchGrader.fillGrade(tab.id, student.index, result.score, result.feedback);
+                              logBatch(`\u2713 ${student.name}: ${result.score}/${rubric.maxScore}`, "green");
+                              gradedStudents.push({ name: student.name, score: result.score });
+                          } catch (err) {
+                              console.error(err);
+                              logBatch(`Error filling ${student.name}: ${err.message}`, "red");
+                          }
+                      }
+
+                      // Quick Save after filling this chunk
+                      if (gradedStudents.length > 0) {
+                          logBatch("Saving...");
+                          await BatchGrader.clickQuickSave(tab.id);
+                          const lastGraded = gradedStudents[gradedStudents.length - 1];
+                          await BatchGrader.saveBatchGradeState(pageUrl, lastGraded.name, gradedStudents.length);
+                          await new Promise(r => setTimeout(r, 1500));
+                      }
+                  } else if (currentEvent === 'outlier') {
+                      // Re-fill adjusted outlier scores
+                      const adjustedResults = parsed.adjustedResults || [];
+                      if (adjustedResults.length > 0) {
+                          logBatch(`Re-filling ${adjustedResults.length} adjusted outlier score(s)...`);
+                          for (const result of adjustedResults) {
+                              const student = toGrade.find(s => s.index === result.studentIndex);
+                              if (!student) continue;
+                              try {
+                                  await BatchGrader.fillGrade(tab.id, student.index, result.score, result.feedback);
+                                  logBatch(`\u2713 ${student.name}: adjusted to ${result.score}/${rubric.maxScore}`, "green");
+                              } catch (err) {
+                                  logBatch(`Error filling ${student.name}: ${err.message}`, "red");
+                              }
+                          }
+                          await BatchGrader.clickQuickSave(tab.id);
+                          await new Promise(r => setTimeout(r, 1500));
+                      }
+                  } else if (currentEvent === 'done') {
+                      doneData = parsed;
+                  } else if (currentEvent === 'error') {
+                      throw new Error(parsed.message || 'Server grading error');
+                  }
+
+                  currentEvent = '';
+                  currentData = '';
               }
-          } catch (err) {
-              console.error(err);
-              logBatch(`Error grading ${student.name}: ${err.message}`, "red");
           }
-          
-          // Delay
-          await new Promise(r => setTimeout(r, 1000));
       }
-      
-      // Final Save
+
+      activity.stop();
+
+      // Show final stats
+      if (doneData) {
+          if (doneData.anchors) {
+              logBatch(`Anchors: Excellent=${doneData.anchors.excellent}, Adequate=${doneData.anchors.adequate}, Minimal=${doneData.anchors.minimal}`);
+          }
+          if (doneData.stats) {
+              logBatch(`Stats: mean=${doneData.stats.mean}, stdDev=${doneData.stats.stdDev}, outliers=${doneData.stats.outliers}, adjusted=${doneData.stats.adjusted}`);
+          }
+          if (doneData.metadata) {
+              logBatch(`Graded in ${doneData.metadata.elapsedSeconds}s (${doneData.metadata.chunks} chunk(s))`);
+          }
+      }
+
+      // Final state
       if (isBatchRunning && gradedStudents.length > 0) {
-          logBatch("Final save...");
-          await BatchGrader.clickQuickSave(tab.id);
-          
-          // Save final state
-          const lastGraded = gradedStudents[gradedStudents.length - 1];
-          await BatchGrader.saveBatchGradeState(pageUrl, lastGraded.name, gradedStudents.length);
-          
           logBatch("Batch grading complete!", "green");
-          
-          // Clear state if all students were graded
+
           if (gradedStudents.length === total) {
               await BatchGrader.clearBatchGradeState(pageUrl);
           }
       }
-      
+
+  } catch (e) {
+      logBatch(`Fatal Error: ${e.message}`, "red");
+  } finally {
+      stopBatchGrading();
+  }
+}
+
+/**
+ * Fallback: grade students 1:1 via BatchGrader when the server is not available.
+ * Uses the original fast loop through proxyFetch (background.js CORS proxy).
+ */
+async function fallbackDirectGrading() {
+  if (isBatchRunning) return;
+
+  // Resolve model from UI
+  let model = '';
+  const modelEl = document.getElementById('modelName');
+  if (modelEl) {
+    const domVal = modelEl.value;
+    if (domVal && domVal !== 'Loading...' && domVal !== 'No models found' && domVal !== 'Error loading models') {
+      model = domVal;
+    }
+  }
+  if (!model && modelEl && modelEl.dataset.lastSelected) {
+    model = modelEl.dataset.lastSelected;
+  }
+  if (!model) {
+    logBatch("No model selected. Please select a model from the dropdown, then retry.", "red");
+    return;
+  }
+
+  // UI State
+  isBatchRunning = true;
+  document.getElementById('btnStartBatch').style.display = 'none';
+  document.getElementById('btnStopBatch').style.display = 'block';
+  document.getElementById('batchProgress').style.display = 'block';
+  document.getElementById('batchResults').style.display = 'block';
+  document.getElementById('batchResults').textContent = '';
+
+  const progressBar = document.getElementById('batchProgressBar');
+  const progressText = document.getElementById('batchProgressText');
+  const progressPercent = document.getElementById('batchProgressPercent');
+
+  progressBar.style.width = '0%';
+  progressText.innerText = 'Initializing (fallback mode)...';
+
+  try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const pageUrl = tab.url;
+      const customInstructions = document.getElementById('customInstructions').value;
+      const resumeAfter = document.getElementById('resumeStudent').value;
+
+      logBatch(`Fallback mode: grading 1:1 with ${getProviderDisplayName(currentProviderId)} / ${model}...`);
+
+      // BatchGrader.batchGrade handles extraction, grading, filling, and saving
+      // onProgress signature: (completedCount, totalCount, studentName, score, feedback)
+      await BatchGrader.batchGrade(tab.id, currentProviderId, model, {
+          pageUrl,
+          customInstructions,
+          resumeAfter: resumeAfter || null,
+          onProgress: (completed, total, name, score) => {
+              const pct = Math.round((completed / total) * 100);
+              progressBar.style.width = `${pct}%`;
+              progressText.innerText = `${completed}/${total}`;
+              progressPercent.innerText = `${pct}%`;
+              logBatch(`\u2713 ${name}: ${score}`, "green");
+          },
+          onError: (name, err) => {
+              logBatch(`Error grading ${name}: ${err.message || err}`, "red");
+          },
+          onSave: (count) => {
+              logBatch(`Saved (${count} graded so far)`);
+          },
+      });
+
+      logBatch("Batch grading complete! (fallback mode)", "green");
+
   } catch (e) {
       logBatch(`Fatal Error: ${e.message}`, "red");
   } finally {
@@ -3455,7 +3725,7 @@ function logBatch(msg, color = 'black') {
     const div = document.getElementById('batchResults');
     const line = document.createElement('div');
     line.innerText = msg;
-    
+
     if (color === 'red') line.classList.add('text-error');
     else if (color === 'green') line.classList.add('text-success');
     else if (color === 'orange') line.classList.add('text-warning');
@@ -3465,6 +3735,67 @@ function logBatch(msg, color = 'black') {
     line.style.padding = '2px 0';
     div.appendChild(line);
     div.scrollTop = div.scrollHeight;
+
+    // Forward to desktop server logs (fire-and-forget)
+    forwardLogToServer(msg);
+}
+
+/** Forward a log message to the grading server so it appears in the Logs page */
+function forwardLogToServer(message) {
+    if (!serverConnected || !handshakeToken) return;
+    fetch('http://localhost:3456/api/log', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${handshakeToken}`,
+        },
+        body: JSON.stringify({ message }),
+    }).catch(() => {}); // silently ignore errors
+}
+
+/** Show a pulsing activity indicator with elapsed timer. Returns a handle to stop it. */
+function showBatchActivity(studentName) {
+    const div = document.getElementById('batchResults');
+    // Remove any existing activity indicator
+    const old = div.querySelector('.batch-activity');
+    if (old) old.remove();
+
+    const row = document.createElement('div');
+    row.className = 'batch-activity';
+
+    // Build dots using DOM
+    const dots = document.createElement('span');
+    dots.className = 'spinner-dots';
+    for (let d = 0; d < 3; d++) dots.appendChild(document.createElement('span'));
+    row.appendChild(dots);
+
+    const textEl = document.createElement('span');
+    textEl.className = 'activity-text';
+    textEl.textContent = 'Grading ' + studentName + '...';
+    row.appendChild(textEl);
+
+    const elapsedEl = document.createElement('span');
+    elapsedEl.className = 'elapsed';
+    row.appendChild(elapsedEl);
+
+    div.appendChild(row);
+    div.scrollTop = div.scrollHeight;
+
+    const start = Date.now();
+    const timer = setInterval(() => {
+        const secs = Math.floor((Date.now() - start) / 1000);
+        elapsedEl.textContent = secs + 's';
+    }, 1000);
+
+    return {
+        stop() {
+            clearInterval(timer);
+            row.remove();
+        },
+        updateText(text) {
+            textEl.textContent = text;
+        }
+    };
 }
 
 

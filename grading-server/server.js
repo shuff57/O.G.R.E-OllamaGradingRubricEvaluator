@@ -6,9 +6,11 @@
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { streamSSE } from 'hono/streaming';
 import {
   generateScoringAnchors,
   buildBatchPrompt,
+  buildOutlierReviewPrompt,
   parseBatchResponse,
   detectOutliers,
   chunkStudents,
@@ -26,13 +28,117 @@ import {
   parseGoogleGeminiResponse,
   parseGitHubModelsResponse,
 } from './providers.js';
+import { loadConfig, saveConfig, watchConfig } from './config.js';
 
 const app = new Hono();
 const PORT = 3456;
 
-// ── In-memory provider config bridge state ──────────────────────────
-let providerConfigs = [];   // Array of {id, api_url, model, is_active, credentials}
-let handshakeToken = null;  // Set by desktop POST /internal/providers
+// ── Provider config state (loaded from config file, hot-reloaded on changes) ──
+const initialConfig = loadConfig();
+let providerConfigs = initialConfig.providers;
+let handshakeToken = initialConfig.token;
+console.log(`[config] Loaded ${providerConfigs.length} provider(s), token=${handshakeToken.slice(0, 8)}...`);
+
+
+/**
+ * Call an AI provider directly from the server (bypasses extension proxy).
+ * Used for providers that don't require browser auth context (Ollama, OpenAI, etc.)
+ */
+async function callProviderDirect(provider, config, messages, timestamp) {
+  let requestObj;
+  switch (provider.toLowerCase()) {
+    case 'ollama': requestObj = buildOllamaRequest(config, messages); break;
+    case 'openai': requestObj = buildOpenAIRequest(config, messages); break;
+    case 'anthropic': requestObj = buildAnthropicRequest(config, messages); break;
+    case 'google-gemini': requestObj = buildGoogleGeminiRequest(config, messages); break;
+    case 'github-models': requestObj = buildGitHubModelsRequest(config, messages); break;
+    default: throw new Error(`Cannot call ${provider} directly`);
+  }
+
+  console.log(`[${timestamp}] [direct] Calling ${provider} AI (${config.model})...`);
+  const start = Date.now();
+  const response = await fetch(requestObj.url, {
+    method: 'POST',
+    headers: requestObj.headers,
+    body: JSON.stringify(requestObj.body),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    throw new Error(`${provider} API error ${response.status}: ${errorText.slice(0, 200)}`);
+  }
+
+  const data = await response.json();
+  const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+  console.log(`[${timestamp}] [direct] AI response received in ${elapsed}s`);
+
+  // Extract text based on provider format
+  switch (provider.toLowerCase()) {
+    case 'ollama': return parseOllamaResponse(data);
+    case 'openai': return parseOpenAIResponse(data);
+    case 'anthropic': return parseAnthropicResponse(data);
+    case 'google-gemini': return parseGoogleGeminiResponse(data);
+    case 'github-models': return parseGitHubModelsResponse(data);
+    default: throw new Error(`No parser for provider: ${provider}`);
+  }
+}
+
+/**
+ * Build intelligent bridge responses aligned to scoring anchors.
+ * Selects 2-3 examples per anchor tier (excellent, adequate, minimal)
+ * so the next chunk has strong calibration references.
+ */
+function buildBridgeResponses(chunkResults, chunkStudents, anchors, maxScore) {
+  const getName = (r) => chunkStudents.find(s => s.index === r.studentIndex)?.name || `Student ${r.studentIndex}`;
+
+  // Define anchor score ranges
+  const excellentThreshold = anchors.excellent.score - 1;  // e.g., 8+ for 9/10 anchor
+  const adequateRange = [anchors.minimal.score + 1, anchors.excellent.score - 1]; // middle band
+  const minimalThreshold = anchors.minimal.score + 1; // e.g., 4 or below for 3/10 anchor
+
+  // Bucket results by tier
+  const excellent = chunkResults.filter(r => r.score >= excellentThreshold);
+  const adequate = chunkResults.filter(r => r.score >= adequateRange[0] && r.score <= adequateRange[1]);
+  const minimal = chunkResults.filter(r => r.score < minimalThreshold);
+
+  // Pick up to 2 from each tier, preferring variety in scores
+  function pickFromTier(tier, label, count = 2) {
+    if (tier.length === 0) return [];
+    // Sort by score and pick spread (first and last if enough)
+    const sorted = [...tier].sort((a, b) => a.score - b.score);
+    const picks = [];
+    if (sorted.length >= 2 && count >= 2) {
+      picks.push(sorted[0], sorted[sorted.length - 1]);
+    } else {
+      picks.push(sorted[0]);
+    }
+    return picks.slice(0, count).map(r => ({
+      ...r,
+      name: getName(r),
+      tier: label,
+    }));
+  }
+
+  const bridges = [
+    ...pickFromTier(excellent, 'excellent', 2),
+    ...pickFromTier(adequate, 'adequate', 2),
+    ...pickFromTier(minimal, 'minimal', 2),
+  ];
+
+  // If we got less than 3 total (sparse distribution), fall back to sorted spread
+  if (bridges.length < 3) {
+    const sorted = [...chunkResults].sort((a, b) => a.score - b.score);
+    const fallback = [
+      sorted[0],
+      sorted[Math.floor(sorted.length / 2)],
+      sorted[sorted.length - 1],
+    ];
+    return [...new Map(fallback.map(r => [r.studentIndex, { ...r, name: getName(r), tier: 'spread' }])).values()];
+  }
+
+  // Deduplicate by studentIndex
+  return [...new Map(bridges.map(b => [b.studentIndex, b])).values()];
+}
 
 // CORS middleware for Chrome extension
 app.use('/*', cors({
@@ -46,10 +152,6 @@ app.use('/api/*', async (c, next) => {
   // Skip auth for handshake endpoint
   if (c.req.path === '/api/handshake') {
     return next();
-  }
-
-  if (!handshakeToken) {
-    return c.json({ error: 'Desktop config not available' }, 503);
   }
 
   const authHeader = c.req.header('Authorization');
@@ -90,10 +192,6 @@ app.get('/api/handshake', (c) => {
     return c.json({ error: 'Forbidden: extension origin required' }, 403);
   }
 
-  if (!handshakeToken) {
-    return c.json({ error: 'Desktop config not pushed yet' }, 503);
-  }
-
   return c.json({ token: handshakeToken });
 });
 
@@ -128,6 +226,9 @@ app.post('/internal/providers', async (c) => {
 
     handshakeToken = body.token;
     providerConfigs = body.providers;
+
+    // Persist to config file so server survives restarts
+    saveConfig({ token: handshakeToken, providers: providerConfigs });
 
     return c.json({ success: true, count: providerConfigs.length });
   } catch (error) {
@@ -164,6 +265,9 @@ app.post('/api/providers/active', async (c) => {
     }
     target.model = body.model;
 
+    // Persist to config file
+    saveConfig({ token: handshakeToken, providers: providerConfigs });
+
     // Emit stdout JSON for desktop sidecar parsing (same pattern as session_complete)
     console.log(JSON.stringify({
       type: 'provider_changed',
@@ -178,208 +282,312 @@ app.post('/api/providers/active', async (c) => {
 });
 
 /**
- * Main grading endpoint
- * POST /grade
- * Body: { provider, apiUrl, apiKey, model, rubric, students, config }
+ * Diagnostic: test GitHub Copilot API token
+ * GET /api/test-github
  */
-app.post('/grade', async (c) => {
-  const startTime = Date.now();
-  const timestamp = new Date().toLocaleTimeString();
+app.get('/api/test-github', async (c) => {
+  const ghProvider = providerConfigs.find(p => p.id === 'github-models');
+  if (!ghProvider) return c.json({ error: 'No github-models provider configured' }, 404);
+
+  const token = ghProvider.credentials?.api_key || ghProvider.credentials?.access_token || '';
+  const tokenPreview = token ? `${token.slice(0, 6)}...${token.slice(-4)}` : '(empty)';
+  console.log(`[test-github] Token preview: ${tokenPreview}`);
+  console.log(`[test-github] Full provider config keys:`, Object.keys(ghProvider.credentials || {}));
 
   try {
-    const body = await c.req.json();
-    
-    // Validate required fields
-    const { provider, model, rubric, students, config } = body;
-    
-    if (!provider) {
-      return c.json({ error: 'Missing required field: provider' }, 400);
-    }
-    if (!model) {
-      return c.json({ error: 'Missing required field: model' }, 400);
-    }
-    if (!rubric) {
-      return c.json({ error: 'Missing required field: rubric' }, 400);
-    }
-    if (!students || !Array.isArray(students) || students.length === 0) {
-      return c.json({ error: 'Missing or invalid field: students (must be non-empty array)' }, 400);
-    }
-
-    const apiUrl = body.apiUrl || '';
-    const apiKey = body.apiKey || '';
-    const maxScore = parseFloat(rubric.maxScore) || 10;
-
-    // Set default API URLs per provider
-    let effectiveApiUrl = apiUrl;
-    if (!effectiveApiUrl) {
-      switch (provider.toLowerCase()) {
-        case 'ollama':
-          effectiveApiUrl = 'http://localhost:11434';
-          break;
-        case 'openai':
-          effectiveApiUrl = 'https://api.openai.com';
-          break;
-        case 'anthropic':
-          effectiveApiUrl = 'https://api.anthropic.com';
-          break;
-        case 'google-gemini':
-          effectiveApiUrl = 'https://generativelanguage.googleapis.com';
-          break;
-        case 'github-models':
-          effectiveApiUrl = 'https://api.githubcopilot.com';
-          break;
-      }
-    }
-
-    console.log(`[${timestamp}] Grading ${students.length} students for ${provider}...`);
-
-    // Step 1: Generate scoring anchors
-    const anchors = generateScoringAnchors(rubric);
-    console.log(`[${timestamp}] Generated anchors: Excellent (${anchors.excellent.score}), Adequate (${anchors.adequate.score}), Minimal (${anchors.minimal.score})`);
-
-    // Step 2: Chunk students (20 per batch)
-    const chunks = chunkStudents(students, 20);
-    console.log(`[${timestamp}] Split into ${chunks.length} chunk(s)`);
-
-    // Step 3: Grade each chunk
-    const allResults = [];
-    let bridgeResponses = null;
-
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      console.log(`[${new Date().toLocaleTimeString()}] Grading chunk ${i + 1}/${chunks.length} (${chunk.students.length} students)...`);
-
-      // Build prompt for this chunk
-      const prompt = buildBatchPrompt(rubric, chunk.students, anchors);
-
-      // Build messages array for AI
-      const messages = [{ role: 'user', content: prompt }];
-
-      // Build provider-specific request
-      let requestObj;
-      
-      const providerConfig = {
-        apiUrl: effectiveApiUrl,
-        apiKey,
-        model,
-      };
-
-      switch (provider.toLowerCase()) {
-        case 'ollama':
-          requestObj = buildOllamaRequest(providerConfig, messages);
-          break;
-        case 'openai':
-          requestObj = buildOpenAIRequest(providerConfig, messages);
-          break;
-        case 'anthropic':
-          requestObj = buildAnthropicRequest(providerConfig, messages);
-          break;
-        case 'google-gemini':
-          requestObj = buildGoogleGeminiRequest(providerConfig, messages);
-          break;
-        case 'github-models':
-          requestObj = buildGitHubModelsRequest(providerConfig, messages);
-          break;
-        default:
-          return c.json({ error: `Unsupported provider: ${provider}` }, 400);
-      }
-
-      // Call AI provider
-      const response = await fetch(requestObj.url, {
-        method: 'POST',
-        headers: requestObj.headers,
-        body: JSON.stringify(requestObj.body),
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`[${new Date().toLocaleTimeString()}] Provider error:`, response.status, errorText);
-        return c.json({
-          error: `Provider API error: ${response.status}`,
-          details: errorText,
-        }, response.status);
-      }
-
-      const responseData = await response.json();
-
-      // Parse provider-specific response
-      let aiText;
-      switch (provider.toLowerCase()) {
-        case 'ollama':
-          aiText = parseOllamaResponse(responseData);
-          break;
-        case 'openai':
-          aiText = parseOpenAIResponse(responseData);
-          break;
-        case 'anthropic':
-          aiText = parseAnthropicResponse(responseData);
-          break;
-        case 'google-gemini':
-          aiText = parseGoogleGeminiResponse(responseData);
-          break;
-        case 'github-models':
-          aiText = parseGitHubModelsResponse(responseData);
-          break;
-      }
-
-      // Parse batch response into results
-      const chunkResults = parseBatchResponse(aiText, chunk.students, maxScore);
-      allResults.push(chunkResults);
-
-      // Select bridge responses for next chunk (2-3 diverse scores)
-      if (i < chunks.length - 1) {
-        const sorted = [...chunkResults].sort((a, b) => a.score - b.score);
-        bridgeResponses = [
-          sorted[0], // Lowest
-          sorted[Math.floor(sorted.length / 2)], // Middle
-          sorted[sorted.length - 1], // Highest
-        ];
-      }
-    }
-
-    // Step 4: Merge results from all chunks
-    const results = mergeResults(allResults);
-
-    // Step 5: Calculate statistics and detect outliers
-    const outlierAnalysis = detectOutliers(results);
-    
-    // Step 6: Second-pass review for outliers (if any detected)
-    if (outlierAnalysis.outliers.length > 0) {
-      console.log(`[${new Date().toLocaleTimeString()}] Detected ${outlierAnalysis.outliers.length} outlier(s) for second-pass review`);
-      // TODO: Implement second-pass grading for outliers
-      // For now, we'll just log them
-    }
-
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.log(`[${new Date().toLocaleTimeString()}] ✓ Graded ${students.length} students in ${elapsed}s`);
-
-    // Return results
-    return c.json({
-      results,
-      anchors: {
-        excellent: anchors.excellent.score,
-        adequate: anchors.adequate.score,
-        minimal: anchors.minimal.score,
-      },
-      stats: {
-        mean: outlierAnalysis.mean,
-        stdDev: outlierAnalysis.stdDev,
-        outliers: outlierAnalysis.outliers.length,
-      },
-      metadata: {
-        totalStudents: students.length,
-        chunks: chunks.length,
-        elapsedSeconds: parseFloat(elapsed),
+    // Test 1: list models
+    const modelsRes = await fetch('https://api.githubcopilot.com/models', {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Copilot-Integration-Id': 'vscode-chat',
       },
     });
+    const modelsStatus = modelsRes.status;
+    const modelsText = await modelsRes.text();
+    console.log(`[test-github] /models: ${modelsStatus}`);
 
-  } catch (error) {
-    console.error(`[${new Date().toLocaleTimeString()}] Error:`, error.message);
+    // Test 2: minimal chat completion
+    const chatRes = await fetch('https://api.githubcopilot.com/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+        'Copilot-Integration-Id': 'vscode-chat',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4.5',
+        messages: [{ role: 'user', content: 'Say hello in exactly 3 words.' }],
+        stream: false,
+      }),
+    });
+    const chatStatus = chatRes.status;
+    const chatText = await chatRes.text();
+    console.log(`[test-github] /chat/completions: ${chatStatus} ${chatText.slice(0, 300)}`);
+
     return c.json({
-      error: 'Internal server error',
-      details: error.message,
-    }, 500);
+      tokenPreview,
+      models: { status: modelsStatus },
+      chat: { status: chatStatus, body: chatText.slice(0, 500) },
+    });
+  } catch (err) {
+    return c.json({ error: err.message, tokenPreview });
   }
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// SSE Streaming Batch Grading — single POST, progressive chunk results
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Resolve provider config from in-memory state for direct AI calls.
+ * Returns { apiUrl, apiKey, model } or throws if provider not found.
+ */
+function resolveProviderConfig(providerId, model) {
+  const p = providerConfigs.find(pc => pc.id === providerId);
+  const apiUrl = p?.api_url || '';
+  const apiKey = p?.credentials?.api_key || p?.credentials?.access_token || '';
+
+  let effectiveApiUrl = apiUrl;
+  if (!effectiveApiUrl) {
+    switch (providerId.toLowerCase()) {
+      case 'ollama': effectiveApiUrl = 'http://localhost:11434'; break;
+      case 'openai': effectiveApiUrl = 'https://api.openai.com'; break;
+      case 'anthropic': effectiveApiUrl = 'https://api.anthropic.com'; break;
+      case 'google-gemini': effectiveApiUrl = 'https://generativelanguage.googleapis.com'; break;
+      case 'github-models': effectiveApiUrl = 'https://api.githubcopilot.com'; break;
+    }
+  }
+
+  return { apiUrl: effectiveApiUrl, apiKey, model };
+}
+
+/**
+ * SSE Batch Grading Endpoint
+ * POST /api/grade
+ * Body: { provider, model, rubric, students }
+ * Response: text/event-stream (SSE)
+ *
+ * Events:
+ *   progress  — { phase, chunkIndex, totalChunks, studentCount }
+ *   chunk     — { chunkIndex, results: [{studentIndex, score, feedback}] }
+ *   outlier   — { adjustedResults: [{studentIndex, score, feedback}] }
+ *   done      — { stats, anchors, metadata }
+ *   error     — { message }
+ */
+app.post('/api/grade', async (c) => {
+  const startTime = Date.now();
+  const timestamp = () => new Date().toLocaleTimeString();
+
+  // Parse body before entering SSE stream (so we can return 400 for bad input)
+  let body;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+
+  const { provider, model, rubric, students } = body;
+
+  if (!provider) return c.json({ error: 'Missing required field: provider' }, 400);
+  if (!model) return c.json({ error: 'Missing required field: model' }, 400);
+  if (!rubric) return c.json({ error: 'Missing required field: rubric' }, 400);
+  if (!students || !Array.isArray(students) || students.length === 0) {
+    return c.json({ error: 'Missing or invalid field: students (must be non-empty array)' }, 400);
+  }
+
+  const maxScore = parseFloat(rubric.maxScore) || 10;
+  let sseId = 0;
+
+  return streamSSE(c, async (stream) => {
+    try {
+      // Resolve provider config
+      const providerConfig = resolveProviderConfig(provider, model);
+      const keySource = providerConfig.apiKey ? 'configured' : 'none';
+      console.log(`[${timestamp()}] [sse] Grading ${students.length} students | provider=${provider} model=${model} keySource=${keySource}`);
+
+      // Step 1: Generate scoring anchors
+      const anchors = generateScoringAnchors(rubric);
+      console.log(`[${timestamp()}] [sse] Anchors: Excellent (${anchors.excellent.score}), Adequate (${anchors.adequate.score}), Minimal (${anchors.minimal.score})`);
+
+      // Step 2: Chunk students
+      const chunks = chunkStudents(students, 20);
+      console.log(`[${timestamp()}] [sse] Split into ${chunks.length} chunk(s)`);
+
+      // Step 3: Grade each chunk, streaming results progressively
+      const allResults = [];
+      let bridgeResponses = null;
+
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+
+        // Send progress event
+        await stream.writeSSE({
+          event: 'progress',
+          data: JSON.stringify({
+            phase: 'grading',
+            chunkIndex: i,
+            totalChunks: chunks.length,
+            studentCount: chunk.students.length,
+            totalStudents: students.length,
+          }),
+          id: String(sseId++),
+        });
+
+        console.log(`[${timestamp()}] [sse] Grading chunk ${i + 1}/${chunks.length} (${chunk.students.length} students)...`);
+
+        // Build prompt with anchors and bridge responses from prior chunk
+        const prompt = buildBatchPrompt(rubric, chunk.students, anchors, bridgeResponses);
+        const messages = [{ role: 'user', content: prompt }];
+
+        // Call AI provider directly
+        const aiText = await callProviderDirect(provider, providerConfig, messages, timestamp());
+
+        // Parse response
+        const chunkResults = parseBatchResponse(aiText, chunk.students, maxScore);
+        allResults.push(chunkResults);
+
+        // Log scores
+        for (const r of chunkResults) {
+          const name = chunk.students.find(s => s.index === r.studentIndex)?.name || `Student ${r.studentIndex}`;
+          console.log(`[${timestamp()}] [sse] ✓ ${name}: ${r.score}/${maxScore}`);
+        }
+
+        // Build bridge responses for next chunk
+        if (i < chunks.length - 1) {
+          bridgeResponses = buildBridgeResponses(chunkResults, chunk.students, anchors, maxScore);
+          console.log(`[${timestamp()}] [sse] Bridge (${bridgeResponses.length}): ${bridgeResponses.map(b => `${b.name}=${b.score}[${b.tier}]`).join(', ')}`);
+        }
+
+        // Stream chunk results to client
+        await stream.writeSSE({
+          event: 'chunk',
+          data: JSON.stringify({
+            chunkIndex: i,
+            results: chunkResults,
+          }),
+          id: String(sseId++),
+        });
+      }
+
+      // Step 4: Merge and detect outliers
+      const results = mergeResults(allResults);
+      const outlierAnalysis = detectOutliers(results);
+
+      // Step 5: Outlier review (if any)
+      let adjustedCount = 0;
+      if (outlierAnalysis.outliers.length > 0) {
+        console.log(`[${timestamp()}] [sse] ${outlierAnalysis.outliers.length} outlier(s) detected`);
+        for (const o of outlierAnalysis.outliers) {
+          const name = students.find(s => s.index === o.studentIndex)?.name || `Student ${o.studentIndex}`;
+          console.log(`[${timestamp()}] [sse]   ⚠ ${name}: ${o.score}/${maxScore} (${o.deviation.toFixed(1)}σ)`);
+        }
+
+        await stream.writeSSE({
+          event: 'progress',
+          data: JSON.stringify({
+            phase: 'outlier-review',
+            outlierCount: outlierAnalysis.outliers.length,
+          }),
+          id: String(sseId++),
+        });
+
+        // Build outlier review data
+        const outlierStudents = outlierAnalysis.outliers.map(o => {
+          const student = students.find(s => s.index === o.studentIndex);
+          const result = results.find(r => r.studentIndex === o.studentIndex);
+          return {
+            index: o.studentIndex,
+            name: student?.name || `Student ${o.studentIndex}`,
+            response: student?.response || '(No response submitted)',
+            originalScore: result?.score ?? o.score,
+            originalFeedback: result?.feedback || '',
+          };
+        });
+
+        const outlierPrompt = buildOutlierReviewPrompt(rubric, outlierStudents, anchors, {
+          mean: outlierAnalysis.mean,
+          stdDev: outlierAnalysis.stdDev,
+          totalStudents: students.length,
+        }, maxScore);
+
+        try {
+          const outlierText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: outlierPrompt }], timestamp());
+          const outlierResults = parseBatchResponse(outlierText, outlierStudents, maxScore);
+
+          const adjustedResults = [];
+          for (const or of outlierResults) {
+            const mainResult = results.find(r => r.studentIndex === or.studentIndex);
+            if (mainResult && or.score !== mainResult.score) {
+              const name = students.find(s => s.index === or.studentIndex)?.name || `Student ${or.studentIndex}`;
+              console.log(`[${timestamp()}] [sse]   ✎ ${name}: ${mainResult.score} → ${or.score}/${maxScore}`);
+              mainResult.score = or.score;
+              mainResult.feedback = or.feedback || mainResult.feedback;
+              mainResult.adjusted = true;
+              adjustedCount++;
+              adjustedResults.push({ studentIndex: or.studentIndex, score: or.score, feedback: or.feedback });
+            }
+          }
+
+          if (adjustedResults.length > 0) {
+            await stream.writeSSE({
+              event: 'outlier',
+              data: JSON.stringify({ adjustedResults }),
+              id: String(sseId++),
+            });
+          }
+
+          console.log(`[${timestamp()}] [sse] Outlier review: ${adjustedCount} adjusted`);
+        } catch (outlierError) {
+          console.warn(`[${timestamp()}] [sse] Outlier review failed: ${outlierError.message}, keeping original scores`);
+        }
+      }
+
+      // Step 6: Done
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.log(`[${timestamp()}] [sse] ✓ Done: ${students.length} students in ${elapsed}s`);
+
+      await stream.writeSSE({
+        event: 'done',
+        data: JSON.stringify({
+          stats: {
+            mean: outlierAnalysis.mean,
+            stdDev: outlierAnalysis.stdDev,
+            outliers: outlierAnalysis.outliers.length,
+            adjusted: adjustedCount,
+          },
+          anchors: {
+            excellent: anchors.excellent.score,
+            adequate: anchors.adequate.score,
+            minimal: anchors.minimal.score,
+          },
+          metadata: {
+            totalStudents: students.length,
+            chunks: chunks.length,
+            elapsedSeconds: parseFloat(elapsed),
+          },
+        }),
+        id: String(sseId++),
+      });
+
+      // Emit session_complete for desktop sidecar
+      console.log(JSON.stringify({
+        type: 'session_complete',
+        provider_id: provider,
+        model,
+        student_count: students.length,
+        mean_score: outlierAnalysis.mean,
+        elapsed_seconds: parseFloat(elapsed),
+      }));
+
+    } catch (error) {
+      console.error(`[${timestamp()}] [sse] Error:`, error.message);
+      await stream.writeSSE({
+        event: 'error',
+        data: JSON.stringify({ message: error.message }),
+        id: String(sseId++),
+      });
+    }
+  });
 });
 
 /**
@@ -402,6 +610,28 @@ app.post('/session', async (c) => {
   } catch (error) {
     console.error(`[${new Date().toLocaleTimeString()}] Session log error:`, error.message);
     return c.json({ error: 'Failed to log session' }, 500);
+  }
+});
+
+/**
+ * Log forwarding endpoint (for desktop app live logs)
+ * POST /api/log
+ * Body: { message: string } or { messages: string[] }
+ * Writes to stdout so the Rust sidecar picks it up and forwards to the Logs page.
+ */
+app.post('/api/log', async (c) => {
+  try {
+    const body = await c.req.json();
+    if (body.messages && Array.isArray(body.messages)) {
+      for (const msg of body.messages) {
+        console.log(`[ext] ${msg}`);
+      }
+    } else if (body.message) {
+      console.log(`[ext] ${body.message}`);
+    }
+    return c.json({ ok: true });
+  } catch {
+    return c.json({ ok: false }, 400);
   }
 });
 
@@ -470,6 +700,14 @@ const server = serve({
 
 Waiting for grading requests...
 `);
+
+  // Watch config file for external changes (e.g., desktop app saves settings)
+  watchConfig((newConfig) => {
+    const oldCount = providerConfigs.length;
+    providerConfigs = newConfig.providers;
+    handshakeToken = newConfig.token;
+    console.log(`[config] Hot-reloaded: ${providerConfigs.length} provider(s) (was ${oldCount})`);
+  });
 });
 
 // Handle server startup errors (e.g., port already in use)

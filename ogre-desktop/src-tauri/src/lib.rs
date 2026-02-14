@@ -18,10 +18,16 @@ const MAX_RESTART_ATTEMPTS: u32 = 3;
 /// Spawn the grading-server sidecar, wire up log forwarding and crash recovery.
 fn spawn_sidecar(app_handle: &tauri::AppHandle, restart_count: Arc<Mutex<u32>>) {
     let handle = app_handle.clone();
+
+    // Pass the Tauri app data dir so the server reads/writes ogre-server.json there
+    let config_dir = handle.path().app_data_dir()
+        .expect("failed to resolve app data dir");
+
     let sidecar_command = handle
         .shell()
         .sidecar("grading-server")
-        .expect("failed to create sidecar command");
+        .expect("failed to create sidecar command")
+        .env("OGRE_CONFIG_DIR", config_dir.to_string_lossy().to_string());
 
     let (mut rx, child) = sidecar_command
         .spawn()

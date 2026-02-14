@@ -709,37 +709,68 @@ ${response}`;
  * Handles JSON wrapped in markdown code fences.
  */
 function parseGradingResponse(aiText, maxScore) {
-  let cleanJson = aiText.trim();
+  const max = parseFloat(maxScore) || 10;
+  let text = aiText.trim();
 
-  // Strip markdown code fences if present
+  // Strip <think>...</think> reasoning blocks (common in Kimi, DeepSeek, etc.)
+  text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+
+  // Try to extract JSON from markdown code fences first
+  let cleanJson = text;
   const jsonMatch = cleanJson.match(/```json\s*([\s\S]*?)\s*```/) ||
                     cleanJson.match(/```\s*([\s\S]*?)\s*```/);
   if (jsonMatch) {
     cleanJson = jsonMatch[1].trim();
   }
 
+  // Attempt 1: Direct JSON parse
   try {
     const data = JSON.parse(cleanJson);
-    const max = parseFloat(maxScore) || 10;
-    let score = parseInt(data.score, 10);
+    return clampAndReturn(data, max);
+  } catch { /* continue */ }
 
-    // Clamp score to valid range
+  // Attempt 2: Find the last JSON object in the text (skip think-block leftovers)
+  const jsonObjects = [...text.matchAll(/\{[^{}]*"score"[^{}]*\}/gi)];
+  if (jsonObjects.length > 0) {
+    const lastJson = jsonObjects[jsonObjects.length - 1][0];
+    try {
+      const data = JSON.parse(lastJson);
+      return clampAndReturn(data, max);
+    } catch {
+      // JSON has invalid escapes (e.g., LaTeX \( \sigma) — fix common cases
+      try {
+        const fixed = lastJson.replace(/\\(?!["\\/bfnrtu])/g, '\\\\');
+        const data = JSON.parse(fixed);
+        return clampAndReturn(data, max);
+      } catch { /* continue */ }
+    }
+  }
+
+  // Attempt 3: Extract score from "score": N pattern (JSON-style, more specific)
+  const jsonScoreMatch = text.match(/"score"\s*:\s*"?(\d+)"?/i);
+  if (jsonScoreMatch) {
+    let score = parseInt(jsonScoreMatch[1], 10);
     if (isNaN(score) || score < 0) score = 0;
     if (score > max) score = Math.round(max);
-
-    const feedback = (data.feedback || '').trim() || 'Graded by AI.';
-
-    return { score, feedback };
-  } catch {
-    // Fallback: try to extract score and feedback from freeform text
-    const scoreMatch = aiText.match(/score[:\s]*(\d+)/i);
-    const score = scoreMatch ? parseInt(scoreMatch[1], 10) : 0;
-
-    // Use the full AI text as feedback if JSON parsing fails
-    const feedback = aiText.trim().substring(0, 500) || 'Graded by AI (response parsing error).';
-
-    return { score, feedback };
+    // Try to extract feedback field too
+    const fbMatch = text.match(/"feedback"\s*:\s*"([\s\S]*?)(?:"|$)/i);
+    const feedback = fbMatch ? fbMatch[1].trim() : text.substring(0, 500);
+    return { score, feedback: feedback || 'Graded by AI.' };
   }
+
+  // Attempt 4: Freeform text — look for "Score: N" pattern
+  const scoreMatch = text.match(/\bscore[:\s]*(\d+)/i);
+  const score = scoreMatch ? Math.min(parseInt(scoreMatch[1], 10), max) : 0;
+  const feedback = text.substring(0, 500) || 'Graded by AI (response parsing error).';
+  return { score, feedback };
+}
+
+function clampAndReturn(data, max) {
+  let score = parseInt(data.score, 10);
+  if (isNaN(score) || score < 0) score = 0;
+  if (score > max) score = Math.round(max);
+  const feedback = (data.feedback || '').trim() || 'Graded by AI.';
+  return { score, feedback };
 }
 
 /**

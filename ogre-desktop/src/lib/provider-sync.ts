@@ -63,8 +63,12 @@ export async function waitForServerHealth(
  * Read all provider configs + OAuth tokens from SQLite and POST them
  * to the grading server's internal endpoint.
  *
- * Generates a UUID handshake token on first call; re-uses it afterwards
- * so the Chrome extension's cached token stays valid across pushes.
+ * On first call, fetches the server's existing handshake token (loaded from
+ * its config file) so the token stays stable across server restarts.
+ * Falls back to generating a new UUID if the server can't be reached.
+ *
+ * The server persists the config to ogre-server.json on disk, so settings
+ * survive server restarts without needing the desktop to push again.
  */
 export async function pushProvidersToServer(): Promise<boolean> {
   try {
@@ -89,12 +93,25 @@ export async function pushProvidersToServer(): Promise<boolean> {
       })
     );
 
-    // 3. Generate or reuse handshake token
+    // 3. Reuse server's existing token (from config file) to keep it stable,
+    //    or generate a new one if we haven't fetched it yet
     if (!handshakeToken) {
-      handshakeToken = crypto.randomUUID();
+      try {
+        const hsRes = await tauriFetch(`${SERVER_BASE}/api/handshake`);
+        if (hsRes.ok) {
+          const hsData = await hsRes.json();
+          handshakeToken = hsData.token;
+          console.log("[provider-sync] Reusing server's existing token");
+        }
+      } catch {
+        // Server not reachable — will generate new token
+      }
+      if (!handshakeToken) {
+        handshakeToken = crypto.randomUUID();
+      }
     }
 
-    // 4. POST to grading server
+    // 4. POST to grading server (server persists to config file automatically)
     const res = await tauriFetch(`${SERVER_BASE}/internal/providers`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -114,7 +131,7 @@ export async function pushProvidersToServer(): Promise<boolean> {
 
     const data = await res.json();
     console.log(
-      `[provider-sync] Pushed ${data.count ?? enriched.length} provider(s) to server`
+      `[provider-sync] Pushed ${data.count ?? enriched.length} provider(s) to server (config persisted to disk)`
     );
     return true;
   } catch (err) {

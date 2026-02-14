@@ -578,3 +578,40 @@ export async function setActiveProvider(providerId) {
   }
   await chrome.storage.local.set({ [STORAGE_KEY]: providerId });
 }
+
+/**
+ * Call a provider's AI endpoint with given messages (non-streaming).
+ * Uses the browser's native fetch, which works with GitHub Copilot etc.
+ * @param {string} providerId - Provider key (e.g. 'github-models')
+ * @param {Object} config - Provider config from UI { apiUrl, apiKey, model, ... }
+ * @param {Array} messages - Array of { role, content } message objects
+ * @returns {Promise<string>} Extracted text content from AI response
+ */
+export async function callProviderAI(providerId, config, messages) {
+  const provider = PROVIDERS[providerId];
+  if (!provider) throw new Error(`Unknown provider: ${providerId}`);
+
+  const req = provider.buildChatRequest(config, messages, { stream: false });
+  const response = await fetch(req.url, {
+    method: 'POST',
+    headers: req.headers,
+    body: JSON.stringify(req.body),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    throw new Error(`AI API error ${response.status}: ${errorText.slice(0, 200)}`);
+  }
+
+  const data = await response.json();
+
+  // Extract text based on provider response format
+  if (data.message?.content) return data.message.content;                           // Ollama
+  if (data.choices?.[0]?.message?.content) return data.choices[0].message.content;  // OpenAI / GitHub
+  if (data.content?.[0]?.text) return data.content[0].text;                         // Anthropic
+  if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
+    return data.candidates[0].content.parts[0].text;                                // Gemini
+  }
+
+  throw new Error('Could not extract text from AI response');
+}
