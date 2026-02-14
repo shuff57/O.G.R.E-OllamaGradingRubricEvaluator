@@ -275,7 +275,7 @@
       }
     } catch (error) {
       console.error('Failed to fetch models:', error);
-      modelFetchErrors[providerId] = error instanceof Error ? error.message : 'Unknown error';
+      modelFetchErrors[providerId] = error instanceof Error ? error.message : (typeof error === 'string' ? error : JSON.stringify(error) || 'Unknown error');
     } finally {
       fetchingModels[providerId] = false;
     }

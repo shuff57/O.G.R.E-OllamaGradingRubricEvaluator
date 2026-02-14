@@ -417,21 +417,31 @@ export async function fetchAvailableModels(
     const { getProviderConfig } = await import("./db");
     const config = await getProviderConfig("ollama");
     if (!config?.api_url) throw new Error("Ollama API URL not configured");
-    
-    const url = `${config.api_url.replace(/\/$/, '')}/api/tags`;
+
+    const baseUrl = config.api_url.replace(/\/$/, '');
+    const url = `${baseUrl}/api/tags`;
     const headers: Record<string, string> = {};
-    
+
     // Add Authorization header if API key is configured
     if (config.api_key) {
       headers['Authorization'] = `Bearer ${config.api_key}`;
     }
-    
-    const res = await tauriFetch(url, { headers });
-    if (!res.ok) throw new Error(`Failed to fetch Ollama models: ${res.status}`);
-    const json = await res.json();
-    
-    // Ollama returns { models: [{ name: "llama2:latest", ... }, ...] }
-    return json.models?.map((m: any) => m.name) || [];
+
+    try {
+      const res = await tauriFetch(url, { headers });
+      if (!res.ok) throw new Error(`Ollama returned HTTP ${res.status}. Is Ollama running?`);
+      const json = await res.json();
+
+      // Ollama returns { models: [{ name: "llama2:latest", ... }, ...] }
+      return json.models?.map((m: any) => m.name) || [];
+    } catch (err) {
+      // tauriFetch can throw non-Error objects (strings, Tauri IPC errors)
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('connection') || msg.includes('refused') || msg.includes('network')) {
+        throw new Error(`Cannot connect to Ollama at ${baseUrl}. Is Ollama running?`);
+      }
+      throw new Error(msg || `Failed to fetch Ollama models from ${baseUrl}`);
+    }
   }
 
   // Use provided token or look up stored one

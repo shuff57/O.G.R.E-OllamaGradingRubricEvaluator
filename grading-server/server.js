@@ -77,12 +77,16 @@ app.get('/health', (c) => {
 /**
  * GET /api/handshake
  * Returns the handshake token for the Chrome extension.
- * Validates that the caller is a chrome-extension:// origin.
+ * Chrome extensions with host_permissions may not send an Origin header,
+ * so we accept requests with a chrome-extension:// origin OR no origin
+ * (localhost-only server; the handshake token is the real security gate).
  * Returns 503 if no token has been set by desktop yet.
  */
 app.get('/api/handshake', (c) => {
   const origin = c.req.header('Origin') || '';
-  if (!origin.startsWith('chrome-extension://')) {
+  // Block non-extension web origins (e.g. random websites) but allow
+  // missing origin (Chrome extension host_permissions bypass) and extension origins
+  if (origin && !origin.startsWith('chrome-extension://') && !origin.startsWith('http://localhost') && !origin.startsWith('http://127.0.0.1')) {
     return c.json({ error: 'Forbidden: extension origin required' }, 403);
   }
 

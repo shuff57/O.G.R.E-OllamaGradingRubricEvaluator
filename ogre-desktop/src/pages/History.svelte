@@ -334,7 +334,7 @@
     border-collapse: collapse;
     font-size: 0.9375rem;
     text-align: left;
-    background: white;
+    background: var(--color-bg-card);
   }
 
   th {
@@ -427,7 +427,7 @@
   }
 
   .text-muted {
-    color: #9ca3af;
+    color: var(--color-text-muted);
     font-style: italic;
     font-size: 0.85em;
   }
@@ -444,12 +444,12 @@
 
   .page-btn {
     padding: 0.5rem 1rem;
-    border: 1px solid var(--border-color, #d1d5db);
-    background: white;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg-card);
     border-radius: 6px;
     cursor: pointer;
     font-size: 0.875rem;
-    color: var(--text-color, #374151);
+    color: var(--color-text-primary);
     transition: all 0.2s;
   }
 

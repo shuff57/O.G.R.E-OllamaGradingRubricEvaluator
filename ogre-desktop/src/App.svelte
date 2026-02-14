@@ -166,8 +166,8 @@
 
   .sidebar {
     width: 250px;
-    background-color: #2c3e50;
-    color: white;
+    background-color: var(--color-bg-sidebar);
+    color: var(--color-text-primary);
     display: flex;
     flex-direction: column;
     padding: 1rem;
@@ -179,7 +179,7 @@
     font-weight: bold;
     margin-bottom: 2rem;
     padding-left: 1rem;
-    color: #ecf0f1;
+    color: var(--color-text-primary);
   }
 
   nav {
@@ -191,7 +191,7 @@
   nav button {
     background: none;
     border: none;
-    color: #bdc3c7;
+    color: var(--color-text-secondary);
     text-align: left;
     padding: 0.75rem 1rem;
     cursor: pointer;
@@ -201,19 +201,19 @@
   }
 
   nav button:hover {
-    background-color: #34495e;
-    color: white;
+    background-color: var(--color-bg-card-hover);
+    color: var(--color-text-primary);
   }
 
   nav button.active {
-    background-color: #3498db;
-    color: white;
+    background-color: var(--color-primary);
+    color: var(--color-primary-text);
     font-weight: 500;
   }
 
   .content {
     flex: 1;
     overflow-y: auto;
-    background-color: white;
+    background-color: var(--color-bg-main);
   }
 </style>

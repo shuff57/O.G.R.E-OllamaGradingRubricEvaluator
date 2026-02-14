@@ -42,11 +42,18 @@
     });
 
     // Poll health endpoint
+    let hasPushedOnStartup = false;
     const checkServerHealth = async () => {
       try {
         const response = await fetch('http://localhost:3456/health');
         if (response.ok) {
           serverStatus = 'running';
+          // Push provider config on first health success (covers case where
+          // the server-status event fired before Dashboard mounted)
+          if (!hasPushedOnStartup) {
+            hasPushedOnStartup = true;
+            pushOnStartup();
+          }
         }
       } catch {
         serverStatus = 'stopped';
@@ -120,18 +127,18 @@
     align-items: baseline;
     gap: 1rem;
     margin-bottom: 2rem;
-    border-bottom: 2px solid #eee;
+    border-bottom: 2px solid var(--color-border);
     padding-bottom: 1rem;
   }
 
   h1 {
     margin: 0;
-    color: #333;
+    color: var(--color-text-primary);
     font-size: 2rem;
   }
 
   .version {
-    color: #888;
+    color: var(--color-text-muted);
     font-size: 0.9rem;
     font-family: monospace;
   }
@@ -141,10 +148,10 @@
     display: flex;
     gap: 2rem;
     margin-bottom: 3rem;
-    background: #f8f9fa;
+    background: var(--color-bg-card);
     padding: 1.5rem;
     border-radius: 8px;
-    border: 1px solid #e9ecef;
+    border: 1px solid var(--color-border);
   }
 
   .indicator {
@@ -152,31 +159,31 @@
     align-items: center;
     gap: 0.75rem;
     font-weight: 500;
-    color: #495057;
+    color: var(--color-text-primary);
   }
 
   .status-dot {
     width: 12px;
     height: 12px;
     border-radius: 50%;
-    background: #dc3545; /* Red by default */
-    box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.2);
+    background: var(--color-error);
+    box-shadow: 0 0 0 2px var(--color-error-bg);
     transition: background-color 0.3s ease;
   }
 
   .indicator.ok .status-dot {
-    background: #28a745; /* Green */
-    box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.2);
+    background: var(--color-success);
+    box-shadow: 0 0 0 2px var(--color-success-bg);
   }
 
   .indicator.warn .status-dot {
-    background: #ffc107; /* Yellow */
-    box-shadow: 0 0 0 2px rgba(255, 193, 7, 0.2);
+    background: var(--color-warning);
+    box-shadow: 0 0 0 2px var(--color-warning-bg);
   }
 
   /* Quick Stats */
   .quick-stats h2 {
-    color: #495057;
+    color: var(--color-text-primary);
     margin-bottom: 1.5rem;
     font-size: 1.5rem;
   }
@@ -188,10 +195,10 @@
   }
 
   .stat {
-    background: white;
+    background: var(--color-bg-card);
     padding: 1.5rem;
     border-radius: 8px;
-    border: 1px solid #dee2e6;
+    border: 1px solid var(--color-border);
     box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     display: flex;
     flex-direction: column;
@@ -199,7 +206,7 @@
   }
 
   .stat .label {
-    color: #6c757d;
+    color: var(--color-text-secondary);
     font-size: 0.9rem;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -208,6 +215,6 @@
   .stat .value {
     font-size: 2rem;
     font-weight: bold;
-    color: #212529;
+    color: var(--color-text-primary);
   }
 </style>

@@ -95,7 +95,7 @@
   }
 
   .modal {
-    background: white;
+    background: var(--color-bg-card);
     border-radius: 8px;
     padding: 2rem;
     max-width: 480px;
@@ -106,37 +106,37 @@
   h2 {
     margin: 0 0 0.75rem;
     font-size: 1.25rem;
-    color: #2c3e50;
+    color: var(--color-text-primary);
   }
 
   .version-info {
-    color: #555;
+    color: var(--color-text-secondary);
     margin: 0 0 1rem;
   }
 
   .notes-container h3 {
     font-size: 0.85rem;
-    color: #888;
+    color: var(--color-text-muted);
     margin: 0 0 0.5rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
   }
 
   .notes {
-    background: #f8f9fa;
-    border: 1px solid #e9ecef;
+    background: var(--color-bg-main);
+    border: 1px solid var(--color-border);
     border-radius: 4px;
     padding: 0.75rem;
     max-height: 160px;
     overflow-y: auto;
     font-size: 0.9rem;
     white-space: pre-wrap;
-    color: #333;
+    color: var(--color-text-primary);
     margin-bottom: 1rem;
   }
 
   .error {
-    color: #e74c3c;
+    color: var(--color-error);
     font-size: 0.9rem;
     margin: 0.5rem 0;
   }
@@ -151,7 +151,7 @@
   .progress-bar {
     flex: 1;
     height: 8px;
-    background: #e9ecef;
+    background: var(--color-bg-main);
     border-radius: 4px;
     overflow: hidden;
   }

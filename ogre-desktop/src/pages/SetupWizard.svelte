@@ -1,7 +1,8 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import { saveProviderConfig, setSetting } from '../lib/db';
-  import { signInWithGoogle, signInWithGitHub, fetchAvailableModels } from '../lib/oauth';
+  import { fetchAvailableModels } from '../lib/oauth';
+  import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 
   const dispatch = createEventDispatcher();
 
@@ -17,25 +18,15 @@
 
   let providers = [
     { 
-      id: 'ollama_cloud', 
-      name: 'Ollama Cloud', 
-      enabled: false, 
-      apiKey: '', 
-      apiUrl: '', 
-      model: '', 
-      keyUrl: '',
-      placeholderKey: 'Enter API Key',
-      placeholderUrl: 'https://your-ollama-instance.com'
-    },
-    { 
-      id: 'ollama_local', 
-      name: 'Ollama Local', 
+      id: 'ollama', 
+      name: 'Ollama', 
       enabled: false, 
       apiKey: '', 
       apiUrl: 'http://localhost:11434', 
       model: '', 
       keyUrl: '',
-      placeholderUrl: 'http://localhost:11434'
+      placeholderKey: 'Optional (only for cloud)',
+      placeholderUrl: 'http://localhost:11434 or https://your-cloud-instance.com'
     },
     { 
       id: 'openai', 
@@ -87,13 +78,16 @@
 
   async function detectOllamaLocal() {
     try {
-      const response = await fetch('http://localhost:11434/api/tags');
+      // Must set Origin header — Ollama rejects Tauri's default Origin (http://tauri.localhost)
+      const response = await tauriFetch('http://localhost:11434/api/tags', {
+        headers: { 'Origin': 'http://localhost:11434' }
+      });
       if (response.ok) {
         ollamaLocalDetected = true;
-        const localProvider = providers.find(p => p.id === 'ollama_local');
-        if (localProvider) {
-          localProvider.enabled = true;
-          localProvider.apiUrl = 'http://localhost:11434';
+        const ollamaProvider = providers.find(p => p.id === 'ollama');
+        if (ollamaProvider) {
+          ollamaProvider.enabled = true;
+          ollamaProvider.apiUrl = 'http://localhost:11434';
           providers = providers; // trigger update
         }
       }
@@ -103,25 +97,8 @@
   }
 
   async function handleOAuthSignIn(providerId: string) {
-    loading = true;
-    error = '';
-    try {
-      if (providerId === 'google-gemini') {
-        await signInWithGoogle();
-        oauthSignedIn['google-gemini'] = true;
-      } else if (providerId === 'github-models') {
-        await signInWithGitHub();
-        oauthSignedIn['github-models'] = true;
-      }
-      
-      // Auto fetch models after sign in
-      await fetchModels(providerId);
-    } catch (err: any) {
-      error = err.message || 'Sign in failed';
-      // Fallback to API key if sign in fails? User can just toggle manually.
-    } finally {
-      loading = false;
-    }
+    // OAuth sign-in removed from setup wizard - use Settings page instead
+    error = 'Please complete setup, then use Settings to configure OAuth providers';
   }
 
   async function fetchModels(providerId: string) {
@@ -130,14 +107,57 @@
     modelFetchErrors[providerId] = '';
     
     try {
-      const oauthProvider = providerId === 'google-gemini' ? 'google' : 'github';
-      // @ts-ignore - fetchAvailableModels expects specific string literal type
-      const models = await fetchAvailableModels(oauthProvider);
-      fetchedModels[providerId] = models.map(m => ({ id: m, name: m }));
-      fetchedModels = fetchedModels; // trigger update
+      // For Ollama, fetch directly from the API
+      if (providerId === 'ollama') {
+        const provider = providers.find(p => p.id === providerId);
+        if (!provider || !provider.apiUrl) {
+          throw new Error('Ollama API URL not configured');
+        }
+        
+        const baseUrl = provider.apiUrl.replace(/\/$/, '');
+        const url = `${baseUrl}/api/tags`;
+        const headers: Record<string, string> = {
+          // Ollama rejects Tauri's default Origin header (http://tauri.localhost)
+          'Origin': new URL(baseUrl).origin,
+        };
+        
+        // Add Authorization header if API key is configured (for cloud)
+        if (provider.apiKey) {
+          headers['Authorization'] = `Bearer ${provider.apiKey}`;
+        }
+        
+        const response = await tauriFetch(url, { headers });
+        if (!response.ok) {
+          throw new Error(`Failed to fetch models: ${response.status} ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        const models = data.models?.map((m: any) => m.name) || [];
+        
+        fetchedModels[providerId] = models.map(m => ({ id: m, name: m }));
+        fetchedModels = fetchedModels;
+        
+        // Auto-select first model if none selected
+        if (!provider.model && models.length > 0) {
+          provider.model = models[0];
+          providers = providers;
+        }
+      } else {
+        // For OAuth providers (Google, GitHub)
+        const oauthProvider = providerId === 'google-gemini' ? 'google' : 'github';
+        const models = await fetchAvailableModels(oauthProvider);
+        fetchedModels[providerId] = models.map(m => ({ id: m, name: m }));
+        fetchedModels = fetchedModels;
+        
+        const provider = providers.find(p => p.id === providerId);
+        if (provider && !provider.model && models.length > 0) {
+          provider.model = models[0];
+          providers = providers;
+        }
+      }
     } catch (err: any) {
       console.error(err);
-      modelFetchErrors[providerId] = 'Failed to fetch models.';
+      modelFetchErrors[providerId] = err.message || 'Failed to fetch models.';
       modelFetchErrors = modelFetchErrors;
     } finally {
       fetchingModels[providerId] = false;
@@ -162,12 +182,9 @@
       }
 
       for (const p of enabledProviders) {
-        if (p.id === 'ollama_cloud') {
-          if (!p.apiUrl) { error = 'Ollama Cloud requires an API URL.'; return; }
-          if (!p.apiKey) { error = 'Ollama Cloud requires an API Key.'; return; }
-        }
-        if (p.id === 'ollama_local' && !p.apiUrl) {
-          error = 'Ollama Local requires an API URL.'; return;
+        if (p.id === 'ollama') {
+          if (!p.apiUrl) { error = 'Ollama requires an API URL.'; return; }
+          // API key is optional - only needed for cloud instances
         }
         // OAuth providers validation
         if ((p.id === 'google-gemini' || p.id === 'github-models')) {
@@ -275,14 +292,17 @@
 
               {#if provider.enabled}
                 <div class="card-body">
-                  {#if ['ollama_cloud', 'ollama_local'].includes(provider.id)}
+                  {#if provider.id === 'ollama'}
                     <div class="form-group">
                       <label>API URL</label>
                       <input type="text" bind:value={provider.apiUrl} placeholder={provider.placeholderUrl}>
                     </div>
-                  {/if}
-                  
-                  {#if provider.oauth}
+                    <div class="form-group">
+                      <label>API Key (Optional)</label>
+                      <input type="password" bind:value={provider.apiKey} placeholder={provider.placeholderKey}>
+                      <span class="hint">Only needed for cloud Ollama instances</span>
+                    </div>
+                  {:else if provider.oauth}
                     <!-- OAuth Provider UI -->
                     {#if provider.useApiKey}
                        <div class="form-group">
@@ -309,10 +329,10 @@
                                 {#if loading}Signing in...{:else}Sign in with {provider.name}{/if}
                              </button>
                           {/if}
-                          <button class="link-btn" on:click={() => toggleAuthMethod(provider)}>Or use API Key</button>
-                       </div>
-                    {/if}
-                  {:else if provider.id !== 'ollama_local'}
+                           <button class="link-btn" on:click={() => toggleAuthMethod(provider)}>Or use API Key</button>
+                        </div>
+                     {/if}
+                  {:else}
                     <!-- Standard API Key Provider -->
                     <div class="form-group">
                       <label>API Key</label>
@@ -352,8 +372,8 @@
               <div class="form-group">
                 <label>Model Name</label>
                 
-                {#if provider.oauth && !provider.useApiKey && oauthSignedIn[provider.id]}
-                    <!-- OAuth Dropdown -->
+                {#if (provider.oauth && !provider.useApiKey && oauthSignedIn[provider.id]) || provider.id === 'ollama'}
+                    <!-- Dropdown for OAuth or Ollama providers -->
                     {#if fetchingModels[provider.id]}
                         <div class="loading-models">Fetching models...</div>
                     {:else if fetchedModels[provider.id]?.length > 0}
@@ -368,14 +388,18 @@
                         </div>
                     {:else}
                          <div class="error-container">
-                             <span class="error-text">{modelFetchErrors[provider.id] || 'No models found.'}</span>
-                             <input type="text" bind:value={provider.model} placeholder="Enter model ID manually">
-                             <button class="link-btn small" on:click={() => fetchModels(provider.id)}>Retry Fetch</button>
+                             {#if modelFetchErrors[provider.id]}
+                               <span class="error-text">{modelFetchErrors[provider.id]}</span>
+                             {/if}
+                             <button class="btn-secondary small" on:click={() => fetchModels(provider.id)}>
+                               {modelFetchErrors[provider.id] ? 'Retry' : 'Fetch Models'}
+                             </button>
+                             <input type="text" bind:value={provider.model} placeholder="Or enter model name manually">
                          </div>
                     {/if}
                 {:else}
-                   <!-- Text Input -->
-                   <input type="text" bind:value={provider.model} placeholder="e.g. gpt-4o, llama3, claude-3-sonnet">
+                   <!-- Text Input for other providers -->
+                   <input type="text" bind:value={provider.model} placeholder="e.g. gpt-4o, claude-3-sonnet">
                    <span class="hint">Check your provider's documentation for exact model names.</span>
                 {/if}
               </div>

@@ -2161,7 +2161,7 @@ function populateDesktopProviderDropdown(providers) {
   providers.forEach(p => {
     const opt = document.createElement('option');
     opt.value = p.id;
-    opt.text = p.name + (p.model ? ` (${p.model})` : '');
+    opt.text = getProviderDisplayName(p.id) + (p.model ? ` (${p.model})` : '');
     
     // Check if this provider is effectively the active one
     if (p.id === currentProviderId) {
@@ -2256,14 +2256,27 @@ async function activateFallbackMode() {
 /**
  * Helper: apply desktop provider data to the UI after a successful fetch.
  */
+// Map provider IDs to friendly display names
+const PROVIDER_DISPLAY_NAMES = {
+  'ollama': 'Ollama',
+  'openai': 'OpenAI',
+  'anthropic': 'Anthropic',
+  'google-gemini': 'Google Gemini',
+  'github-models': 'GitHub',
+};
+
+function getProviderDisplayName(id) {
+  return PROVIDER_DISPLAY_NAMES[id] || id;
+}
+
 function applyDesktopProviders(providers) {
   desktopConnected = true;
-  
+
   // Populate desktop info for UI
   const activeProvider = providers.find(p => p.is_active) || (providers.length > 0 ? providers[0] : null);
   if (activeProvider) {
     window.desktopProviderInfo = {
-      provider: activeProvider.name,
+      provider: getProviderDisplayName(activeProvider.id),
       model: activeProvider.model
     };
   }
