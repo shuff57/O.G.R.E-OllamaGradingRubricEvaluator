@@ -96,7 +96,7 @@ export async function deleteDeviceFlowToken(provider) {
 
 // ── GitHub Device Flow ───────────────────────────────────────────────────
 
-const GITHUB_CLIENT_ID = '178c6fc778ccc68e1d6a';
+const GITHUB_CLIENT_ID = 'Iv1.b507a08c87ecfe98';
 const GITHUB_DEVICE_CODE_URL = 'https://github.com/login/device/code';
 const GITHUB_ACCESS_TOKEN_URL = 'https://github.com/login/oauth/access_token';
 

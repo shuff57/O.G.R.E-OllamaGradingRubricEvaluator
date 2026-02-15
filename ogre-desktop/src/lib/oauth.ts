@@ -49,10 +49,10 @@ function generateState(): string {
 
 // ── GitHub Device Flow ───────────────────────────────────────────────────
 
-// GitHub CLI OAuth App (public client for device flow)
-// This is the official GitHub CLI app ID - safe to use for device flow
-// See: https://github.com/cli/cli/blob/trunk/pkg/cmd/auth/login.go
-const GITHUB_CLIENT_ID = "178c6fc778ccc68e1d6a";
+// GitHub Copilot OAuth App (public client for device flow)
+// This is the official VS Code Copilot app ID - enables Copilot API access
+// See: https://github.com/Alorse/copilot-to-api
+const GITHUB_CLIENT_ID = "Iv1.b507a08c87ecfe98";
 const GITHUB_DEVICE_CODE_URL = "https://github.com/login/device/code";
 const GITHUB_ACCESS_TOKEN_URL = "https://github.com/login/oauth/access_token";
 

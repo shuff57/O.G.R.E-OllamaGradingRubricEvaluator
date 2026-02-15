@@ -22,6 +22,7 @@ import {
   buildAnthropicRequest,
   buildGoogleGeminiRequest,
   buildGitHubModelsRequest,
+  getCopilotSessionToken,
   parseOllamaResponse,
   parseOpenAIResponse,
   parseAnthropicResponse,
@@ -50,6 +51,11 @@ console.log(`[config] Loaded ${providerConfigs.length} provider(s), token=${hand
  * Used for providers that don't require browser auth context (Ollama, OpenAI, etc.)
  */
 async function callProviderDirect(provider, config, messages, timestamp) {
+  // Exchange GitHub OAuth token for Copilot session token
+  if (provider.toLowerCase() === 'github-models') {
+    config = { ...config, apiKey: await getCopilotSessionToken(config.apiKey) };
+  }
+
   let requestObj;
   switch (provider.toLowerCase()) {
     case 'ollama': requestObj = buildOllamaRequest(config, messages); break;
@@ -294,16 +300,21 @@ app.get('/api/test-github', async (c) => {
   const ghProvider = providerConfigs.find(p => p.id === 'github-models');
   if (!ghProvider) return c.json({ error: 'No github-models provider configured' }, 404);
 
-  const token = ghProvider.credentials?.api_key || ghProvider.credentials?.access_token || '';
-  const tokenPreview = token ? `${token.slice(0, 6)}...${token.slice(-4)}` : '(empty)';
-  console.log(`[test-github] Token preview: ${tokenPreview}`);
+  const oauthToken = ghProvider.credentials?.api_key || ghProvider.credentials?.access_token || '';
+  const tokenPreview = oauthToken ? `${oauthToken.slice(0, 6)}...${oauthToken.slice(-4)}` : '(empty)';
+  console.log(`[test-github] OAuth token preview: ${tokenPreview}`);
   console.log(`[test-github] Full provider config keys:`, Object.keys(ghProvider.credentials || {}));
 
   try {
+    // Step 1: Exchange OAuth token for Copilot session token
+    console.log(`[test-github] Exchanging OAuth token for Copilot session token...`);
+    const sessionToken = await getCopilotSessionToken(oauthToken);
+    console.log(`[test-github] Session token obtained (${sessionToken.slice(0, 10)}...)`);
+
     // Test 1: list models
     const modelsRes = await fetch('https://api.githubcopilot.com/models', {
       headers: {
-        'Authorization': `Bearer ${token}`,
+        'Authorization': `Bearer ${sessionToken}`,
         'Copilot-Integration-Id': 'vscode-chat',
       },
     });
@@ -316,7 +327,7 @@ app.get('/api/test-github', async (c) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+        'Authorization': `Bearer ${sessionToken}`,
         'Copilot-Integration-Id': 'vscode-chat',
       },
       body: JSON.stringify({
