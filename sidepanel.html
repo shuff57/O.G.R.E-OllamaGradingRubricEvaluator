@@ -449,8 +449,8 @@
     .mode-selector input#modeBatch:checked + label { color: var(--color-mode-accent); } /* Amber/Orange for Batch */
 
     /* Review Mode Toggle Colors */
-    .review-toggle input#reviewOff:checked + label { color: var(--color-text-secondary); }
-    .review-toggle input#reviewOn:checked + label { color: var(--color-mode-accent); }
+    .review-toggle input#fillAuto:checked + label { color: var(--color-mode-accent); }
+    .review-toggle input#fillReview:checked + label { color: #f59e0b; }
 
     /* Icon styling for mode selector */
     .mode-selector label i {
@@ -1131,7 +1131,7 @@
     
     .batch-results-log {
       margin-top: 10px;
-      max-height: 200px;
+      max-height: 400px;
       overflow-y: auto;
       font-size: 11px;
       border: 1px solid var(--color-border);
@@ -1879,6 +1879,13 @@
       </div>
     </details>
 
+    <div class="mode-selector review-toggle" style="margin-bottom: 8px;">
+      <input type="radio" name="batchFillMode" id="fillAuto" value="auto" checked>
+      <label for="fillAuto"><i class="bi bi-lightning-fill"></i> Auto</label>
+      <input type="radio" name="batchFillMode" id="fillReview" value="review">
+      <label for="fillReview"><i class="bi bi-eye-fill"></i> Review</label>
+    </div>
+
     <!-- Resume Prompt (shown when state exists) -->
     <div id="resumePrompt" class="resume-prompt-box">
       <div class="text-sm mb-10">
@@ -1910,54 +1917,18 @@
       </div>
     </div>
 
-    <!-- Playwriter Automation Status (Always On) -->
-    <div class="settings-row" style="margin-bottom: 12px; padding: 8px 12px; background: var(--color-bg-secondary); border-radius: 4px;">
-      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-        <i class="bi bi-robot"></i>
-        <span style="font-weight: 500;">Browser Automation (Playwriter MCP)</span>
-      </div>
 
-      <!-- Playwriter Status Indicator -->
-      <div id="playwriterStatus" style="padding: 8px; border-left: 3px solid var(--color-text-secondary); border-radius: 3px; font-size: 0.85em; background: var(--color-bg-main);">
-        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-          <span id="playwriterStatusIcon">🔌</span>
-          <strong id="playwriterStatusText">Checking connection...</strong>
-        </div>
-        <div id="playwriterStatusDetails" style="color: var(--color-text-secondary); font-size: 0.9em;">Server will control browser automatically via embedded Playwriter MCP</div>
-      </div>
-    </div>
-
-    <!-- Review Control -->
-    <div class="settings-row" style="margin-bottom: 12px;">
-      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 0.9em; color: var(--color-text-secondary);">
-        <i class="bi bi-eye"></i>
-        <span>Review results before filling</span>
-      </div>
-      <div class="mode-selector review-toggle">
-        <input type="radio" name="reviewMode" id="reviewOff" value="off" checked>
-        <label for="reviewOff"><i class="bi bi-play-fill"></i> Auto</label>
-
-        <input type="radio" name="reviewMode" id="reviewOn" value="on">
-        <label for="reviewOn"><i class="bi bi-pause-circle"></i> Review</label>
-      </div>
-      <div id="reviewModeInfo" style="display: none; margin-top: 8px; padding: 8px; background: var(--color-info-bg); border-left: 3px solid var(--color-info); border-radius: 3px; font-size: 0.85em;">
-        <div style="color: var(--color-text-secondary);">
-          AI will grade students, then pause for your approval before filling each batch into the page.
-        </div>
-      </div>
-    </div>
-
-    <!-- Review Panel (shown when results are ready for review) -->
+    <!-- Review Panel (shown per-student when review mode is on) -->
     <div id="reviewPanel" style="display: none; margin-bottom: 12px; padding: 12px; background: var(--color-warning-bg); border: 1px solid var(--color-warning); border-radius: 4px;">
-      <div style="margin-bottom: 8px;">
-        <strong style="color: var(--color-warning);"><i class="bi bi-pause-circle"></i> Review Required</strong>
+      <div style="margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+        <strong style="color: var(--color-warning);"><i class="bi bi-eye-fill"></i> Review</strong>
+        <span id="reviewCounter" style="font-size: 0.8em; color: var(--color-text-secondary);"></span>
       </div>
       <div id="reviewSummary" style="margin-bottom: 10px; font-size: 0.9em; color: var(--color-text-primary);">
-        <!-- Will be populated with batch summary -->
       </div>
       <div class="btn-row" style="margin-bottom: 0;">
-        <button id="btnApproveAndFill" class="btn-primary flex-1"><i class="bi bi-check-lg"></i> Approve & Fill</button>
-        <button id="btnSkipBatch" class="secondary flex-1"><i class="bi bi-skip-forward"></i> Skip Batch</button>
+        <button id="btnApproveAndFill" class="btn-primary flex-1"><i class="bi bi-check-lg"></i> Approve</button>
+        <button id="btnSkipBatch" class="secondary flex-1"><i class="bi bi-skip-forward"></i> Skip</button>
       </div>
     </div>
 

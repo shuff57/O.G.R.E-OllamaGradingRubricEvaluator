@@ -230,11 +230,22 @@ function setupListeners() {
       if (isCollapsed) {
         batchContent.classList.remove('collapsed');
         batchCollapseIcon.classList.remove('collapsed');
+        // Animate to scrollHeight, then switch to none so content can grow freely
         batchContent.style.maxHeight = batchContent.scrollHeight + 'px';
+        batchContent.addEventListener('transitionend', function handler() {
+          if (!batchContent.classList.contains('collapsed')) {
+            batchContent.style.maxHeight = 'none';
+          }
+          batchContent.removeEventListener('transitionend', handler);
+        });
       } else {
-        batchContent.classList.add('collapsed');
-        batchCollapseIcon.classList.add('collapsed');
-        batchContent.style.maxHeight = '0';
+        // Set explicit height first so transition can animate from it
+        batchContent.style.maxHeight = batchContent.scrollHeight + 'px';
+        requestAnimationFrame(() => {
+          batchContent.classList.add('collapsed');
+          batchCollapseIcon.classList.add('collapsed');
+          batchContent.style.maxHeight = '0';
+        });
       }
 
       chrome.storage.local.set({ batchCollapsed: !isCollapsed });
@@ -1128,9 +1139,9 @@ async function switchMode(mode) {
     // Fix collapsible height after showing batch card
     const batchContent = document.getElementById('batchContent');
     if (batchContent && !batchContent.classList.contains('collapsed')) {
-      // Recalculate maxHeight now that the card is visible
+      // Set to none so content can grow freely as logs/panels appear
       setTimeout(() => {
-        batchContent.style.maxHeight = batchContent.scrollHeight + 'px';
+        batchContent.style.maxHeight = 'none';
       }, 0);
     }
 
@@ -3312,11 +3323,8 @@ document.getElementById('btnStartBatch').addEventListener('click', () => {
 });
 document.getElementById('btnStopBatch').addEventListener('click', stopBatchGrading);
 
-// Automation Mode (Always Enabled)
-// Playwriter MCP automation is always active - no toggle needed
-
 // Review Mode Toggle
-document.querySelectorAll('input[name="reviewMode"]').forEach(radio => {
+document.querySelectorAll('input[name="reviewMode"]')?.forEach(radio => {
   radio.addEventListener('change', (e) => {
     const enabled = e.target.value === 'on';
     const infoBox = document.getElementById('reviewModeInfo');
@@ -3387,36 +3395,42 @@ document.getElementById('btnStartFresh').addEventListener('click', async () => {
 });
 
 /**
- * Show review panel and wait for user approval
- * @param {Array} batchResults - Array of graded student results
+ * Show review panel for a single student and wait for user decision.
+ * Content is from the grading server's AI output (trusted internal source).
+ * @param {Object} result - Single student result {name, score, maxScore, feedback}
+ * @param {number} index - Current index in the batch (0-based)
+ * @param {number} total - Total students in this batch
  * @returns {Promise<{action: 'approve'|'skip'}>}
  */
-async function requestBatchReview(batchResults) {
+async function requestStudentReview(result, index, total) {
   return new Promise((resolve) => {
-    // Store batch and resolver
-    pendingReviewBatch = batchResults;
+    pendingReviewBatch = result;
     reviewResolve = resolve;
 
-    // Build summary
-    const summaryHTML = batchResults.map((r, i) => {
-      const truncatedFeedback = r.feedback.substring(0, 80) + (r.feedback.length > 80 ? '...' : '');
-      return `<div style="padding: 4px 0; border-bottom: 1px solid var(--color-border);">
-        <strong>${r.name || `Student ${i + 1}`}:</strong> ${r.score}/${r.maxScore || 10}<br>
-        <span style="font-size: 0.85em; color: var(--color-text-secondary);">${truncatedFeedback}</span>
-      </div>`;
-    }).join('');
+    const counter = document.getElementById('reviewCounter');
+    counter.textContent = `${index + 1} of ${total}`;
 
-    document.getElementById('reviewSummary').innerHTML = `
-      <div style="margin-bottom: 8px;">
-        <strong>${batchResults.length} student${batchResults.length > 1 ? 's' : ''} graded</strong>
-      </div>
-      ${summaryHTML}
-    `;
+    const summary = document.getElementById('reviewSummary');
+    summary.textContent = '';
 
-    // Show panel
+    const nameRow = document.createElement('div');
+    nameRow.style.cssText = 'margin-bottom: 6px;';
+    const nameStrong = document.createElement('strong');
+    nameStrong.textContent = result.name;
+    const scoreSpan = document.createElement('span');
+    scoreSpan.style.fontSize = '1.1em';
+    scoreSpan.textContent = `: ${result.score}/${result.maxScore || 10}`;
+    nameRow.appendChild(nameStrong);
+    nameRow.appendChild(scoreSpan);
+
+    const feedbackDiv = document.createElement('div');
+    feedbackDiv.style.cssText = 'font-size: 0.85em; color: var(--color-text-secondary); max-height: 120px; overflow-y: auto; white-space: pre-wrap;';
+    feedbackDiv.textContent = result.feedback;
+
+    summary.appendChild(nameRow);
+    summary.appendChild(feedbackDiv);
+
     document.getElementById('reviewPanel').style.display = 'block';
-
-    logBatch(`⏸️ Review required for ${batchResults.length} student(s)`, "orange");
   });
 }
 
@@ -3535,12 +3549,7 @@ async function startBatchGrading() {
   const customInstructions = document.getElementById('customInstructions').value;
   const resumeAfter = document.getElementById('resumeStudent').value;
 
-  // Check if review mode is enabled
-  const reviewMode = document.querySelector('input[name="reviewMode"]:checked')?.value === 'on';
-
-  // Extension-based grading (simplified - no Playwriter/automation endpoints)
-  // Use BatchGrader.batchGrade() which handles extraction, grading, and filling
-  const automationMode = false; // Disabled - using simplified extension-based approach
+  // Extension-based grading — BatchGrader handles extraction, grading, and filling
 
   // UI State
   isBatchRunning = true;
@@ -3563,150 +3572,6 @@ async function startBatchGrading() {
       console.log('[Batch] Active tab:', tab.id, 'URL:', pageUrl);
       logBatch(`📄 Page: ${pageUrl}`);
 
-      // ====================================================================
-      // AUTOMATION MODE (Playwriter MCP)
-      // ====================================================================
-      if (automationMode) {
-        logBatch("🤖 Automation Mode: Server will control browser via Playwriter MCP", "blue");
-        progressText.innerText = 'Connecting to automation server...';
-
-        // ----------------------------------------------------------------
-        // REVIEW MODE: Grade → Review → Fill
-        // ----------------------------------------------------------------
-        if (reviewMode) {
-          logBatch("👁️ Review mode enabled: Will pause for approval before filling", "blue");
-
-          try {
-            // Step 1: Grade only (no filling)
-            progressText.innerText = 'Grading students...';
-            logBatch("📊 Sending grading request to server...");
-            console.log('[Batch] Calling BatchGrader.gradeOnlyWithReview with:', {
-              tabId: tab.id,
-              providerId: currentProviderId,
-              model,
-              resumeAfter,
-              customInstructions: customInstructions.substring(0, 50) + '...',
-              serverUrl: 'http://localhost:3456'
-            });
-
-            const { sessionToken, results, stats, duration } = await BatchGrader.gradeOnlyWithReview(
-              tab.id,
-              currentProviderId,
-              model,
-              {
-                resumeAfter,
-                customInstructions,
-                serverUrl: 'http://localhost:3456'
-              }
-            );
-            console.log('[Batch] Grading complete:', { sessionToken, resultCount: results.length, stats, duration });
-
-            logBatch(`✓ Graded ${results.length} students in ${duration}s`, "green");
-            if (stats) {
-              logBatch(`Average score: ${stats.averageScore}`, "blue");
-            }
-
-            // Step 2: Show review panel and wait for user decision
-            progressText.innerText = 'Waiting for review...';
-            const decision = await requestBatchReview(results);
-
-            if (decision.action === 'approve') {
-              // Step 3: Fill approved results
-              progressText.innerText = 'Filling approved results...';
-              logBatch("Filling results into page...", "blue");
-
-              const { filled } = await BatchGrader.fillApprovedResults(sessionToken, results, {
-                serverUrl: 'http://localhost:3456'
-              });
-
-              logBatch(`✅ Successfully filled ${filled} results`, "green");
-              progressText.innerText = `Complete: ${filled} filled`;
-              progressBar.style.width = '100%';
-              progressPercent.innerText = '100%';
-
-              await BatchGrader.clearBatchGradeState(pageUrl);
-              stopBatchGrading();
-
-            } else if (decision.action === 'skip') {
-              logBatch("❌ Batch skipped by user", "orange");
-              progressText.innerText = 'Cancelled';
-              await BatchGrader.clearBatchGradeState(pageUrl);
-              stopBatchGrading();
-            }
-
-          } catch (error) {
-            logBatch(`Review mode error: ${error.message}`, "red");
-            stopBatchGrading();
-          }
-
-          return; // Exit early - review mode complete
-        }
-
-        // ----------------------------------------------------------------
-        // AUTO MODE: Full automation (grade and fill automatically)
-        // ----------------------------------------------------------------
-        try {
-          const { sessionToken, connection } = await BatchGrader.automatedBatchGrade(
-            tab.id,
-            currentProviderId,
-            model,
-            {
-              resumeAfter,
-              serverUrl: 'http://localhost:3456',
-              onProgress: (data) => {
-                const { phase, message, current, total } = data;
-                logBatch(`[${phase}] ${message}`);
-                if (current !== undefined && total !== undefined) {
-                  progressText.innerText = `${current}/${total}`;
-                  const percent = Math.floor((current / total) * 100);
-                  progressPercent.innerText = `${percent}%`;
-                  progressBar.style.width = `${percent}%`;
-                }
-              },
-              onStudent: (data) => {
-                const { index, name, score, feedback } = data;
-                logBatch(`✓ ${name}: ${score} - ${feedback.substring(0, 60)}...`, "green");
-              },
-              onSave: (data) => {
-                const { savedCount, message } = data;
-                logBatch(`💾 ${message}`, "blue");
-              },
-              onComplete: async (data) => {
-                const { totalGraded, stats } = data;
-                logBatch(`✅ Batch complete: ${totalGraded} students graded`, "green");
-                if (stats) {
-                  logBatch(`Average score: ${stats.averageScore}`, "blue");
-                }
-                await BatchGrader.clearBatchGradeState(pageUrl);
-                stopBatchGrading();
-              },
-              onError: (error) => {
-                logBatch(`❌ Automation error: ${error.message}`, "red");
-                stopBatchGrading();
-              }
-            }
-          );
-
-          logBatch(`Session granted: ${sessionToken.substring(0, 8)}...`);
-
-          // Store connection for stop button
-          window.currentAutomationConnection = connection;
-
-        } catch (error) {
-          logBatch(`Automation failed: ${error.message}`, "red");
-          if (error.message.includes('Playwriter') || error.message.includes('session')) {
-            logBatch("Make sure Playwriter extension is enabled (green icon) on this tab", "orange");
-          }
-          stopBatchGrading();
-          return;
-        }
-
-        return; // Exit early - automation mode handles everything
-      }
-
-      // ====================================================================
-      // MANUAL MODE (Original Flow)
-      // ====================================================================
       // 1. Extract Rubric
       logBatch("Extracting rubric...");
       const rubric = await BatchGrader.extractRubric(tab.id);
@@ -3827,9 +3692,11 @@ async function startBatchGrading() {
                           logBatch(`Reviewing ${parsed.outlierCount} outlier(s)...`);
                       }
                   } else if (currentEvent === 'chunk') {
-                      // Fill chunk results into page immediately
                       const chunkResults = parsed.results || [];
                       logBatch(`Chunk ${parsed.chunkIndex + 1} complete — ${chunkResults.length} results`);
+
+                      const reviewOn = document.getElementById('fillReview')?.checked;
+                      let chunkFilled = 0;
 
                       for (const result of chunkResults) {
                           if (!isBatchRunning) break;
@@ -3840,7 +3707,18 @@ async function startBatchGrading() {
                               continue;
                           }
 
+                          // Per-student review: show score & feedback, wait for approve/skip
+                          if (reviewOn) {
+                              const reviewData = { ...result, name: student.name, maxScore: rubric.maxScore };
+                              const decision = await requestStudentReview(reviewData, chunkResults.indexOf(result), chunkResults.length);
+                              if (decision.action === 'skip') {
+                                  logBatch(`⏭️ Skipped ${student.name}`, "orange");
+                                  continue;
+                              }
+                          }
+
                           filledCount++;
+                          chunkFilled++;
                           progressText.innerText = `Filling ${filledCount}/${total}`;
                           const pct = Math.round((filledCount / total) * 100);
                           progressBar.style.width = `${pct}%`;
@@ -3848,7 +3726,7 @@ async function startBatchGrading() {
 
                           try {
                               await BatchGrader.fillGrade(tab.id, student.index, result.score, result.feedback);
-                              logBatch(`\u2713 ${student.name}: ${result.score}/${rubric.maxScore}`, "green");
+                              logBatch(`✓ ${student.name}: ${result.score}/${rubric.maxScore}`, "green");
                               gradedStudents.push({ name: student.name, score: result.score });
                           } catch (err) {
                               console.error(err);
@@ -3857,7 +3735,7 @@ async function startBatchGrading() {
                       }
 
                       // Quick Save after filling this chunk
-                      if (gradedStudents.length > 0) {
+                      if (chunkFilled > 0 && gradedStudents.length > 0) {
                           logBatch("Saving...");
                           await BatchGrader.clickQuickSave(tab.id);
                           const lastGraded = gradedStudents[gradedStudents.length - 1];
@@ -3869,18 +3747,35 @@ async function startBatchGrading() {
                       const adjustedResults = parsed.adjustedResults || [];
                       if (adjustedResults.length > 0) {
                           logBatch(`Re-filling ${adjustedResults.length} adjusted outlier score(s)...`);
+
+                          const reviewOutliers = document.getElementById('fillReview')?.checked;
+                          let outliersFilled = 0;
+
                           for (const result of adjustedResults) {
                               const student = toGrade.find(s => s.index === result.studentIndex);
                               if (!student) continue;
+
+                              if (reviewOutliers) {
+                                  const reviewData = { ...result, name: student.name, maxScore: rubric.maxScore };
+                                  const decision = await requestStudentReview(reviewData, adjustedResults.indexOf(result), adjustedResults.length);
+                                  if (decision.action === 'skip') {
+                                      logBatch(`⏭️ Skipped outlier ${student.name}`, "orange");
+                                      continue;
+                                  }
+                              }
+
                               try {
                                   await BatchGrader.fillGrade(tab.id, student.index, result.score, result.feedback);
-                                  logBatch(`\u2713 ${student.name}: adjusted to ${result.score}/${rubric.maxScore}`, "green");
+                                  logBatch(`✓ ${student.name}: adjusted to ${result.score}/${rubric.maxScore}`, "green");
+                                  outliersFilled++;
                               } catch (err) {
                                   logBatch(`Error filling ${student.name}: ${err.message}`, "red");
                               }
                           }
-                          await BatchGrader.clickQuickSave(tab.id);
-                          await new Promise(r => setTimeout(r, 1500));
+                          if (outliersFilled > 0) {
+                              await BatchGrader.clickQuickSave(tab.id);
+                              await new Promise(r => setTimeout(r, 1500));
+                          }
                       }
                   } else if (currentEvent === 'done') {
                       doneData = parsed;
@@ -4005,13 +3900,6 @@ async function fallbackDirectGrading() {
 function stopBatchGrading() {
   isBatchRunning = false;
 
-  // Close automation connection if active
-  if (window.currentAutomationConnection) {
-    window.currentAutomationConnection.close();
-    window.currentAutomationConnection = null;
-    logBatch("Automation connection closed", "blue");
-  }
-
   document.getElementById('btnStartBatch').style.display = 'block';
   document.getElementById('btnStopBatch').style.display = 'none';
   // Check page status again to re-enable/disable correctly
@@ -4095,57 +3983,5 @@ function showBatchActivity(studentName) {
     };
 }
 
-// ============================================================================
-// Playwriter MCP Status Checker
-// ============================================================================
-
-/**
- * Check grading server status (which includes Playwriter CDP relay)
- */
-async function updatePlaywriterStatus() {
-  const statusIcon = document.getElementById('playwriterStatusIcon');
-  const statusText = document.getElementById('playwriterStatusText');
-  const statusContainer = document.getElementById('playwriterStatus');
-
-  if (!statusIcon || !statusText || !statusContainer) {
-    return; // UI elements not loaded yet
-  }
-
-  try {
-    // Check if grading server is running
-    const response = await fetch('http://localhost:3456/health', {
-      method: 'GET',
-      signal: AbortSignal.timeout(2000)
-    });
-
-    if (response.ok) {
-      // Server is running (includes Playwriter CDP relay)
-      statusIcon.textContent = '✅';
-      statusText.innerHTML = '<strong>Ready</strong>';
-      statusContainer.style.borderLeftColor = 'var(--color-success)';
-      statusContainer.style.background = 'var(--color-success-bg)';
-    } else {
-      // Server responded but not healthy
-      statusIcon.textContent = '⚠️';
-      statusText.innerHTML = '<strong>Server Error</strong>';
-      statusContainer.style.borderLeftColor = 'var(--color-warning)';
-      statusContainer.style.background = 'var(--color-warning-bg)';
-    }
-  } catch (error) {
-    // Server not reachable
-    statusIcon.textContent = '🔌';
-    statusText.innerHTML = '<strong>Disconnected</strong>';
-    statusContainer.style.borderLeftColor = 'var(--color-warning)';
-    statusContainer.style.background = 'var(--color-warning-bg)';
-  }
-}
-
-// Check status on page load
-document.addEventListener('DOMContentLoaded', () => {
-  updatePlaywriterStatus();
-
-  // Update status every 5 seconds
-  setInterval(updatePlaywriterStatus, 5000);
-});
 
 

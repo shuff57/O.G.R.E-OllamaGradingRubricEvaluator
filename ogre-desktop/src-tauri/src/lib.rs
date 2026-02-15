@@ -69,23 +69,8 @@ fn spawn_sidecar(app_handle: &tauri::AppHandle, restart_count: Arc<Mutex<u32>>) 
                     // Detect session_complete JSON to record history
                     if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
                          if json.get("type").and_then(|t| t.as_str()) == Some("session_complete") {
-                            let provider_id = json["provider_id"].as_str().unwrap_or("unknown").to_string();
-                            let model = json["model"].as_str().unwrap_or("unknown").to_string();
-                            let student_count = json["student_count"].as_i64().unwrap_or(0);
-                            let mean_score = json["mean_score"].as_f64().unwrap_or(0.0);
-                            let min_score = json["min_score"].as_f64().unwrap_or(0.0);
-                            let max_score = json["max_score"].as_f64().unwrap_or(0.0);
-                            let median_score = json["median_score"].as_f64().unwrap_or(0.0);
-                            let max_possible_score = json["max_possible_score"].as_f64().unwrap_or(10.0);
-                            let page_url = json["page_url"].as_str().unwrap_or("").to_string();
-                            let question_id = json["question_id"].as_str().unwrap_or("").to_string();
-                            let custom_instructions = json["custom_instructions"].as_str().unwrap_or("").to_string();
-                            
-                            // Emit event for frontend
+                            // Emit event for frontend - frontend handles DB persistence via TypeScript
                             let _ = handle_clone.emit("session-complete", &json);
-
-                            // Emit event to frontend - frontend will handle DB persistence via TypeScript
-                            // This avoids database locking conflicts between Rust and TypeScript SQL plugin usage
                          } else if json.get("type").and_then(|t| t.as_str()) == Some("provider_changed") {
                             // Detect provider_changed JSON from extension write-back
                             let provider_id = json["provider_id"].as_str().unwrap_or("").to_string();
