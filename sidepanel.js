@@ -4040,54 +4040,43 @@ function showBatchActivity(studentName) {
 // ============================================================================
 
 /**
- * Check Playwriter MCP connection status and update UI
+ * Check grading server status (which includes Playwriter CDP relay)
  */
 async function updatePlaywriterStatus() {
   const statusIcon = document.getElementById('playwriterStatusIcon');
   const statusText = document.getElementById('playwriterStatusText');
-  const statusDetails = document.getElementById('playwriterStatusDetails');
   const statusContainer = document.getElementById('playwriterStatus');
 
-  if (!statusIcon || !statusText || !statusDetails || !statusContainer) {
+  if (!statusIcon || !statusText || !statusContainer) {
     return; // UI elements not loaded yet
   }
 
   try {
-    const response = await chrome.runtime.sendMessage({ action: 'playwriter:status' });
+    // Check if grading server is running
+    const response = await fetch('http://localhost:3456/health', {
+      method: 'GET',
+      signal: AbortSignal.timeout(2000)
+    });
 
-    if (response.success && response.status) {
-      const { connected, activeTabsCount } = response.status;
-
-      if (connected) {
-        // Connected
-        statusIcon.textContent = '✅';
-        statusText.textContent = 'Playwriter Connected';
-        statusDetails.textContent = `Ready for automation (${activeTabsCount} active tab${activeTabsCount !== 1 ? 's' : ''})`;
-        statusContainer.style.borderLeftColor = 'var(--color-success)';
-        statusContainer.style.background = 'var(--color-success-bg)';
-      } else {
-        // Not connected
-        statusIcon.textContent = '🔌';
-        statusText.textContent = 'Playwriter Disconnected';
-        statusDetails.textContent = 'Start grading server or desktop app to enable automation';
-        statusContainer.style.borderLeftColor = 'var(--color-warning)';
-        statusContainer.style.background = 'var(--color-warning-bg)';
-      }
+    if (response.ok) {
+      // Server is running (includes Playwriter CDP relay)
+      statusIcon.textContent = '✅';
+      statusText.innerHTML = '<strong>Ready</strong>';
+      statusContainer.style.borderLeftColor = 'var(--color-success)';
+      statusContainer.style.background = 'var(--color-success-bg)';
     } else {
-      // Error checking status
+      // Server responded but not healthy
       statusIcon.textContent = '⚠️';
-      statusText.textContent = 'Status Check Failed';
-      statusDetails.textContent = response.error || 'Unknown error';
-      statusContainer.style.borderLeftColor = 'var(--color-error)';
-      statusContainer.style.background = 'var(--color-error-bg)';
+      statusText.innerHTML = '<strong>Server Error</strong>';
+      statusContainer.style.borderLeftColor = 'var(--color-warning)';
+      statusContainer.style.background = 'var(--color-warning-bg)';
     }
   } catch (error) {
-    // Extension communication error
-    statusIcon.textContent = '❌';
-    statusText.textContent = 'Connection Error';
-    statusDetails.textContent = error.message;
-    statusContainer.style.borderLeftColor = 'var(--color-error)';
-    statusContainer.style.background = 'var(--color-error-bg)';
+    // Server not reachable
+    statusIcon.textContent = '🔌';
+    statusText.innerHTML = '<strong>Disconnected</strong>';
+    statusContainer.style.borderLeftColor = 'var(--color-warning)';
+    statusContainer.style.background = 'var(--color-warning-bg)';
   }
 }
 
