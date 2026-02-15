@@ -1,0 +1,91 @@
+# Dependabot configuration for automatic dependency updates
+# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+  # Monitor npm dependencies for updates
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"  # Check for updates weekly
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 5
+
+    # Group Playwriter updates separately for easy review
+    groups:
+      playwriter-updates:
+        patterns:
+          - "playwriter*"
+        update-types:
+          - "minor"
+          - "patch"
+
+    # Commit message prefix
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+
+    # Auto-label PRs
+    labels:
+      - "dependencies"
+      - "npm"
+
+    # Reviewers (optional - add GitHub usernames if desired)
+    # reviewers:
+    #   - "your-github-username"
+
+  # Monitor grading-server npm dependencies
+  - package-ecosystem: "npm"
+    directory: "/grading-server"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 5
+
+    commit-message:
+      prefix: "deps(grading-server)"
+      include: "scope"
+
+    labels:
+      - "dependencies"
+      - "npm"
+      - "grading-server"
+
+  # Monitor desktop app npm dependencies
+  - package-ecosystem: "npm"
+    directory: "/ogre-desktop"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 5
+
+    commit-message:
+      prefix: "deps(desktop)"
+      include: "scope"
+
+    labels:
+      - "dependencies"
+      - "npm"
+      - "desktop"
+
+  # Monitor GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+
+    commit-message:
+      prefix: "ci"
+
+    labels:
+      - "dependencies"
+      - "github-actions"

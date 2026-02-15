@@ -32,6 +32,7 @@
       "icons/icon.ico"
     ],
     "externalBin": ["binaries/grading-server"],
+    "resources": ["binaries/server-bundle"],
     "createUpdaterArtifacts": true
   },
   "plugins": {

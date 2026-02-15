@@ -219,13 +219,14 @@ function setupListeners() {
   const batchHeader = document.getElementById('batchHeader');
   const batchContent = document.getElementById('batchContent');
   const batchCollapseIcon = document.getElementById('batchCollapseIcon');
-  
+
   if (batchHeader && batchContent && batchCollapseIcon) {
-    batchContent.style.maxHeight = batchContent.scrollHeight + 'px';
-    
+    // Don't set initial maxHeight here - will be set when switching to batch mode
+    // because the card is hidden on load (scrollHeight would be 0)
+
     batchHeader.addEventListener('click', () => {
       const isCollapsed = batchContent.classList.contains('collapsed');
-      
+
       if (isCollapsed) {
         batchContent.classList.remove('collapsed');
         batchCollapseIcon.classList.remove('collapsed');
@@ -235,10 +236,10 @@ function setupListeners() {
         batchCollapseIcon.classList.add('collapsed');
         batchContent.style.maxHeight = '0';
       }
-      
+
       chrome.storage.local.set({ batchCollapsed: !isCollapsed });
     });
-    
+
     chrome.storage.local.get('batchCollapsed').then(result => {
       if (result.batchCollapsed) {
         batchContent.classList.add('collapsed');
@@ -1118,12 +1119,21 @@ async function switchMode(mode) {
 
   } else if (mode === 'batch') {
     document.body.classList.add('batch-mode');
-    
+
     rubricCard.style.display = 'none';
     studentWorkCard.style.display = 'none';
     runAssessmentCard.style.display = 'none';
     batchGradeCard.style.display = 'block';
-    
+
+    // Fix collapsible height after showing batch card
+    const batchContent = document.getElementById('batchContent');
+    if (batchContent && !batchContent.classList.contains('collapsed')) {
+      // Recalculate maxHeight now that the card is visible
+      setTimeout(() => {
+        batchContent.style.maxHeight = batchContent.scrollHeight + 'px';
+      }, 0);
+    }
+
     checkBatchPageStatus();
 
   } else {
@@ -3291,6 +3301,50 @@ let isBatchRunning = false;
 document.getElementById('btnStartBatch').addEventListener('click', startBatchGrading);
 document.getElementById('btnStopBatch').addEventListener('click', stopBatchGrading);
 
+// Automation Mode (Always Enabled)
+// Playwriter MCP automation is always active - no toggle needed
+
+// Review Mode Toggle
+document.querySelectorAll('input[name="reviewMode"]').forEach(radio => {
+  radio.addEventListener('change', (e) => {
+    const enabled = e.target.value === 'on';
+    const infoBox = document.getElementById('reviewModeInfo');
+
+    if (enabled) {
+      infoBox.style.display = 'block';
+      logBatch("👁️ Review mode enabled - will pause before filling results", "blue");
+    } else {
+      infoBox.style.display = 'none';
+      logBatch("Auto-fill mode - results will be filled automatically", "blue");
+    }
+  });
+});
+
+// Review Panel State
+let pendingReviewBatch = null;
+let reviewResolve = null;
+
+// Review Panel Handlers
+document.getElementById('btnApproveAndFill')?.addEventListener('click', () => {
+  if (reviewResolve) {
+    logBatch("✓ Batch approved - filling results into page", "green");
+    reviewResolve({ action: 'approve' });
+    document.getElementById('reviewPanel').style.display = 'none';
+    pendingReviewBatch = null;
+    reviewResolve = null;
+  }
+});
+
+document.getElementById('btnSkipBatch')?.addEventListener('click', () => {
+  if (reviewResolve) {
+    logBatch("⏭️ Batch skipped - moving to next batch", "orange");
+    reviewResolve({ action: 'skip' });
+    document.getElementById('reviewPanel').style.display = 'none';
+    pendingReviewBatch = null;
+    reviewResolve = null;
+  }
+});
+
 // Resume prompt handlers
 document.getElementById('btnResumeSession').addEventListener('click', () => {
   const resumePrompt = document.getElementById('resumePrompt');
@@ -3320,6 +3374,40 @@ document.getElementById('btnStartFresh').addEventListener('click', async () => {
     console.error('Failed to clear state:', err);
   }
 });
+
+/**
+ * Show review panel and wait for user approval
+ * @param {Array} batchResults - Array of graded student results
+ * @returns {Promise<{action: 'approve'|'skip'}>}
+ */
+async function requestBatchReview(batchResults) {
+  return new Promise((resolve) => {
+    // Store batch and resolver
+    pendingReviewBatch = batchResults;
+    reviewResolve = resolve;
+
+    // Build summary
+    const summaryHTML = batchResults.map((r, i) => {
+      const truncatedFeedback = r.feedback.substring(0, 80) + (r.feedback.length > 80 ? '...' : '');
+      return `<div style="padding: 4px 0; border-bottom: 1px solid var(--color-border);">
+        <strong>${r.name || `Student ${i + 1}`}:</strong> ${r.score}/${r.maxScore || 10}<br>
+        <span style="font-size: 0.85em; color: var(--color-text-secondary);">${truncatedFeedback}</span>
+      </div>`;
+    }).join('');
+
+    document.getElementById('reviewSummary').innerHTML = `
+      <div style="margin-bottom: 8px;">
+        <strong>${batchResults.length} student${batchResults.length > 1 ? 's' : ''} graded</strong>
+      </div>
+      ${summaryHTML}
+    `;
+
+    // Show panel
+    document.getElementById('reviewPanel').style.display = 'block';
+
+    logBatch(`⏸️ Review required for ${batchResults.length} student(s)`, "orange");
+  });
+}
 
 async function startBatchGrading() {
   console.log('[Batch] startBatchGrading called, isBatchRunning:', isBatchRunning);
@@ -3399,6 +3487,13 @@ async function startBatchGrading() {
   const customInstructions = document.getElementById('customInstructions').value;
   const resumeAfter = document.getElementById('resumeStudent').value;
 
+  // Check if review mode is enabled
+  const reviewMode = document.querySelector('input[name="reviewMode"]:checked')?.value === 'on';
+
+  // Automation mode is always enabled (Playwriter MCP)
+  // But when review mode is ON, we extract/grade first, then review, then fill
+  const automationMode = true;
+
   // UI State
   isBatchRunning = true;
   document.getElementById('btnStartBatch').style.display = 'none';
@@ -3418,6 +3513,140 @@ async function startBatchGrading() {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       const pageUrl = tab.url;
 
+      // ====================================================================
+      // AUTOMATION MODE (Playwriter MCP)
+      // ====================================================================
+      if (automationMode) {
+        logBatch("🤖 Automation Mode: Server will control the browser via Playwriter MCP");
+        progressText.innerText = 'Connecting to automation server...';
+
+        // ----------------------------------------------------------------
+        // REVIEW MODE: Grade → Review → Fill
+        // ----------------------------------------------------------------
+        if (reviewMode) {
+          logBatch("👁️ Review mode: Will pause for approval before filling results", "blue");
+
+          try {
+            // Step 1: Grade only (no filling)
+            progressText.innerText = 'Grading students...';
+
+            const { sessionToken, results, stats, duration } = await BatchGrader.gradeOnlyWithReview(
+              tab.id,
+              currentProviderId,
+              model,
+              {
+                resumeAfter,
+                customInstructions,
+                serverUrl: 'http://localhost:3456'
+              }
+            );
+
+            logBatch(`✓ Graded ${results.length} students in ${duration}s`, "green");
+            if (stats) {
+              logBatch(`Average score: ${stats.averageScore}`, "blue");
+            }
+
+            // Step 2: Show review panel and wait for user decision
+            progressText.innerText = 'Waiting for review...';
+            const decision = await requestBatchReview(results);
+
+            if (decision.action === 'approve') {
+              // Step 3: Fill approved results
+              progressText.innerText = 'Filling approved results...';
+              logBatch("Filling results into page...", "blue");
+
+              const { filled } = await BatchGrader.fillApprovedResults(sessionToken, results, {
+                serverUrl: 'http://localhost:3456'
+              });
+
+              logBatch(`✅ Successfully filled ${filled} results`, "green");
+              progressText.innerText = `Complete: ${filled} filled`;
+              progressBar.style.width = '100%';
+              progressPercent.innerText = '100%';
+
+              await BatchGrader.clearBatchGradeState(pageUrl);
+              stopBatchGrading();
+
+            } else if (decision.action === 'skip') {
+              logBatch("❌ Batch skipped by user", "orange");
+              progressText.innerText = 'Cancelled';
+              await BatchGrader.clearBatchGradeState(pageUrl);
+              stopBatchGrading();
+            }
+
+          } catch (error) {
+            logBatch(`Review mode error: ${error.message}`, "red");
+            stopBatchGrading();
+          }
+
+          return; // Exit early - review mode complete
+        }
+
+        // ----------------------------------------------------------------
+        // AUTO MODE: Full automation (grade and fill automatically)
+        // ----------------------------------------------------------------
+        try {
+          const { sessionToken, connection } = await BatchGrader.automatedBatchGrade(
+            tab.id,
+            currentProviderId,
+            model,
+            {
+              resumeAfter,
+              serverUrl: 'http://localhost:3456',
+              onProgress: (data) => {
+                const { phase, message, current, total } = data;
+                logBatch(`[${phase}] ${message}`);
+                if (current !== undefined && total !== undefined) {
+                  progressText.innerText = `${current}/${total}`;
+                  const percent = Math.floor((current / total) * 100);
+                  progressPercent.innerText = `${percent}%`;
+                  progressBar.style.width = `${percent}%`;
+                }
+              },
+              onStudent: (data) => {
+                const { index, name, score, feedback } = data;
+                logBatch(`✓ ${name}: ${score} - ${feedback.substring(0, 60)}...`, "green");
+              },
+              onSave: (data) => {
+                const { savedCount, message } = data;
+                logBatch(`💾 ${message}`, "blue");
+              },
+              onComplete: async (data) => {
+                const { totalGraded, stats } = data;
+                logBatch(`✅ Batch complete: ${totalGraded} students graded`, "green");
+                if (stats) {
+                  logBatch(`Average score: ${stats.averageScore}`, "blue");
+                }
+                await BatchGrader.clearBatchGradeState(pageUrl);
+                stopBatchGrading();
+              },
+              onError: (error) => {
+                logBatch(`❌ Automation error: ${error.message}`, "red");
+                stopBatchGrading();
+              }
+            }
+          );
+
+          logBatch(`Session granted: ${sessionToken.substring(0, 8)}...`);
+
+          // Store connection for stop button
+          window.currentAutomationConnection = connection;
+
+        } catch (error) {
+          logBatch(`Automation failed: ${error.message}`, "red");
+          if (error.message.includes('Playwriter') || error.message.includes('session')) {
+            logBatch("Make sure Playwriter extension is enabled (green icon) on this tab", "orange");
+          }
+          stopBatchGrading();
+          return;
+        }
+
+        return; // Exit early - automation mode handles everything
+      }
+
+      // ====================================================================
+      // MANUAL MODE (Original Flow)
+      // ====================================================================
       // 1. Extract Rubric
       logBatch("Extracting rubric...");
       const rubric = await BatchGrader.extractRubric(tab.id);
@@ -3715,6 +3944,14 @@ async function fallbackDirectGrading() {
 
 function stopBatchGrading() {
   isBatchRunning = false;
+
+  // Close automation connection if active
+  if (window.currentAutomationConnection) {
+    window.currentAutomationConnection.close();
+    window.currentAutomationConnection = null;
+    logBatch("Automation connection closed", "blue");
+  }
+
   document.getElementById('btnStartBatch').style.display = 'block';
   document.getElementById('btnStopBatch').style.display = 'none';
   // Check page status again to re-enable/disable correctly
@@ -3797,5 +4034,69 @@ function showBatchActivity(studentName) {
         }
     };
 }
+
+// ============================================================================
+// Playwriter MCP Status Checker
+// ============================================================================
+
+/**
+ * Check Playwriter MCP connection status and update UI
+ */
+async function updatePlaywriterStatus() {
+  const statusIcon = document.getElementById('playwriterStatusIcon');
+  const statusText = document.getElementById('playwriterStatusText');
+  const statusDetails = document.getElementById('playwriterStatusDetails');
+  const statusContainer = document.getElementById('playwriterStatus');
+
+  if (!statusIcon || !statusText || !statusDetails || !statusContainer) {
+    return; // UI elements not loaded yet
+  }
+
+  try {
+    const response = await chrome.runtime.sendMessage({ action: 'playwriter:status' });
+
+    if (response.success && response.status) {
+      const { connected, activeTabsCount } = response.status;
+
+      if (connected) {
+        // Connected
+        statusIcon.textContent = '✅';
+        statusText.textContent = 'Playwriter Connected';
+        statusDetails.textContent = `Ready for automation (${activeTabsCount} active tab${activeTabsCount !== 1 ? 's' : ''})`;
+        statusContainer.style.borderLeftColor = 'var(--color-success)';
+        statusContainer.style.background = 'var(--color-success-bg)';
+      } else {
+        // Not connected
+        statusIcon.textContent = '🔌';
+        statusText.textContent = 'Playwriter Disconnected';
+        statusDetails.textContent = 'Start grading server or desktop app to enable automation';
+        statusContainer.style.borderLeftColor = 'var(--color-warning)';
+        statusContainer.style.background = 'var(--color-warning-bg)';
+      }
+    } else {
+      // Error checking status
+      statusIcon.textContent = '⚠️';
+      statusText.textContent = 'Status Check Failed';
+      statusDetails.textContent = response.error || 'Unknown error';
+      statusContainer.style.borderLeftColor = 'var(--color-error)';
+      statusContainer.style.background = 'var(--color-error-bg)';
+    }
+  } catch (error) {
+    // Extension communication error
+    statusIcon.textContent = '❌';
+    statusText.textContent = 'Connection Error';
+    statusDetails.textContent = error.message;
+    statusContainer.style.borderLeftColor = 'var(--color-error)';
+    statusContainer.style.background = 'var(--color-error-bg)';
+  }
+}
+
+// Check status on page load
+document.addEventListener('DOMContentLoaded', () => {
+  updatePlaywriterStatus();
+
+  // Update status every 5 seconds
+  setInterval(updatePlaywriterStatus, 5000);
+});
 
 

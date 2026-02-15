@@ -1,0 +1,534 @@
+/**
+ * Core grading logic for O.G.R.E Grading Server
+ * Handles batch grading with scoring anchors, chunking, and outlier detection
+ */
+
+/**
+ * Generate scoring anchors (Excellent, Adequate, Minimal) for calibration
+ * @param {Object} rubric - Rubric with essayPrompt, checklistItems, rubricItems, maxScore
+ * @returns {Object} - { excellent, adequate, minimal } with score and description
+ */
+export function generateScoringAnchors(rubric) {
+  const maxScore = parseFloat(rubric.maxScore) || 10;
+  
+  // Generate scores for each anchor level
+  const excellentScore = Math.round(maxScore * 0.9); // 90% - near perfect
+  const adequateScore = Math.round(maxScore * 0.65); // 65% - solid understanding
+  const minimalScore = Math.round(maxScore * 0.3); // 30% - bare minimum
+
+  // Build descriptions based on rubric criteria
+  let excellentDesc = 'Demonstrates comprehensive understanding with all key concepts addressed clearly.';
+  let adequateDesc = 'Shows solid grasp of main concepts with minor gaps or unclear explanations.';
+  let minimalDesc = 'Addresses some basic concepts but lacks depth or contains significant errors.';
+
+  // Enhance descriptions with rubric-specific criteria if available
+  if (rubric.checklistItems && rubric.checklistItems.length > 0) {
+    const categories = rubric.checklistItems.map(item => item.category).filter(Boolean);
+    if (categories.length > 0) {
+      excellentDesc += ` Covers: ${categories.join(', ')}.`;
+      adequateDesc += ` Partially covers: ${categories.slice(0, 2).join(', ')}.`;
+      minimalDesc += ` Minimal coverage of: ${categories[0] || 'key concepts'}.`;
+    }
+  }
+
+  return {
+    excellent: {
+      score: excellentScore,
+      description: excellentDesc,
+    },
+    adequate: {
+      score: adequateScore,
+      description: adequateDesc,
+    },
+    minimal: {
+      score: minimalScore,
+      description: minimalDesc,
+    },
+  };
+}
+
+/**
+ * Build batch grading prompt for all students with scoring anchors
+ * @param {Object} rubric - Rubric object
+ * @param {Array} students - Array of student objects with index, name, response
+ * @param {Object} anchors - Scoring anchors from generateScoringAnchors()
+ * @param {Array|null} bridgeResponses - Graded examples from previous chunk for consistency
+ * @returns {String} - Complete prompt for AI grading
+ */
+export function buildBatchPrompt(rubric, students, anchors, bridgeResponses = null) {
+  const maxScore = rubric.maxScore || '10';
+
+  let prompt = `You are an expert grading assistant. Grade ALL students in this batch against the provided rubric.
+
+GRADING PHILOSOPHY:
+- Grade generously for high school students showing understanding
+- Award substantial partial credit for correct reasoning with minor errors
+- Focus on mathematical thinking and effort, not perfect execution
+- Any substantive attempt earns at least 40% of max score
+
+MAX SCORE: ${maxScore}
+
+QUESTION/PROMPT:
+${rubric.essayPrompt || '(No prompt provided)'}
+`;
+
+  // Add checklist items if present
+  if (rubric.checklistItems && rubric.checklistItems.length > 0) {
+    prompt += '\nGRADING CHECKLIST:\n';
+    for (const item of rubric.checklistItems) {
+      if (item.category) prompt += `- ${item.category} (${item.points} points)\n`;
+      if (item.items) {
+        for (const sub of item.items) {
+          prompt += `  - ${sub}\n`;
+        }
+      }
+    }
+  }
+
+  // Add rubric targets if present
+  if (rubric.rubricItems && rubric.rubricItems.length > 0) {
+    prompt += '\nKEY CONCEPTS TO ADDRESS:\n';
+    for (const item of rubric.rubricItems) {
+      if (item.category) prompt += `${item.category}:\n`;
+      if (item.items) {
+        for (const sub of item.items) {
+          prompt += `  - ${sub}\n`;
+        }
+      }
+    }
+  }
+
+  // Add model response if present
+  if (rubric.modelText) {
+    prompt += `\nMODEL RESPONSE (for reference):\n${rubric.modelText}\n`;
+  }
+
+  // Add scoring anchors for calibration
+  prompt += `
+SCORING ANCHORS (use these as calibration references):
+- Excellent (${anchors.excellent.score}/${maxScore}): ${anchors.excellent.description}
+- Adequate (${anchors.adequate.score}/${maxScore}): ${anchors.adequate.description}
+- Minimal (${anchors.minimal.score}/${maxScore}): ${anchors.minimal.description}
+
+Compare each student response to these anchors to ensure consistency.
+`;
+
+  // Add bridge responses from previous chunk for cross-chunk consistency
+  if (bridgeResponses && bridgeResponses.length > 0) {
+    prompt += `
+CALIBRATION EXAMPLES (from previously graded batch — you MUST match this scoring standard):
+`;
+    // Group by tier for clearer presentation
+    const tiers = {};
+    for (const br of bridgeResponses) {
+      const tier = br.tier || 'other';
+      if (!tiers[tier]) tiers[tier] = [];
+      tiers[tier].push(br);
+    }
+
+    const tierLabels = { excellent: 'HIGH QUALITY', adequate: 'AVERAGE QUALITY', minimal: 'LOW QUALITY', spread: 'REFERENCE' };
+    for (const [tier, examples] of Object.entries(tiers)) {
+      prompt += `\n${tierLabels[tier] || tier.toUpperCase()}:\n`;
+      for (const br of examples) {
+        prompt += `  - "${br.name || 'Student ' + br.studentIndex}" = ${br.score}/${maxScore}: ${(br.feedback || '').substring(0, 300)}\n`;
+      }
+    }
+
+    prompt += `
+CONSISTENCY RULES:
+- A response of SIMILAR quality to a calibration example MUST receive a SIMILAR score (within 1 point).
+- A response BETTER than the "high quality" examples should score the same or higher.
+- A response WORSE than the "low quality" examples should score the same or lower.
+- Score distribution should be comparable to the previous batch.
+`;
+  }
+
+  // Add all students to the prompt
+  prompt += '\nSTUDENTS TO GRADE:\n\n';
+  for (const student of students) {
+    prompt += `--- Student ${student.index}: ${student.name} ---\n`;
+    prompt += `${student.response || '(No response submitted)'}\n\n`;
+  }
+
+  // Response format instructions — use actual student indices so AI doesn't guess
+  const firstIdx = students[0]?.index ?? 0;
+  const secondIdx = students.length > 1 ? (students[1]?.index ?? firstIdx + 1) : firstIdx + 1;
+  prompt += `
+RESPONSE FORMAT:
+You MUST respond with a valid JSON array ONLY. No markdown, no code fences, no explanation.
+Return one object per student using the EXACT studentIndex shown above each response.
+
+[
+  {
+    "studentIndex": ${firstIdx},
+    "score": <integer 0 to ${maxScore}>,
+    "feedback": "<constructive feedback string, use \\\\( ... \\\\) for LaTeX math>"
+  },
+  {
+    "studentIndex": ${secondIdx},
+    "score": <integer>,
+    "feedback": "<feedback>"
+  }
+  // ... continue for all ${students.length} students
+]
+
+CRITICAL: Return results for ALL ${students.length} students. Use the studentIndex from each "--- Student N:" header.`;
+
+  return prompt;
+}
+
+/**
+ * Parse batch AI response into structured results
+ * Handles JSON extraction from markdown code fences, score clamping, empty responses
+ * @param {String} aiText - Raw AI response text
+ * @param {Array} students - Original students array for fallback
+ * @param {Number} maxScore - Maximum possible score
+ * @returns {Array} - Array of { studentIndex, score, feedback }
+ */
+export function parseBatchResponse(aiText, students, maxScore) {
+  let text = aiText.trim();
+
+  // Strip <think>...</think> reasoning blocks (Kimi, DeepSeek, etc.)
+  text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+
+  // Strip markdown code fences if present
+  const fenceMatch = text.match(/```json\s*([\s\S]*?)\s*```/) ||
+                     text.match(/```\s*([\s\S]*?)\s*```/);
+  if (fenceMatch) {
+    text = fenceMatch[1].trim();
+  }
+
+  // Helper: attempt JSON parse with progressive fixes
+  function tryParse(str) {
+    // Direct parse
+    try {
+      const p = JSON.parse(str);
+      if (Array.isArray(p)) return p;
+      // Unwrap common wrapper objects
+      if (p && typeof p === 'object') {
+        const arr = p.results || p.students || p.grades || p.data;
+        if (Array.isArray(arr)) return arr;
+      }
+    } catch { /* continue */ }
+    // Fix LaTeX backslashes
+    try {
+      const fixed = str.replace(/\\(?!["\\/bfnrtu])/g, '\\\\');
+      const p = JSON.parse(fixed);
+      if (Array.isArray(p)) return p;
+      if (p && typeof p === 'object') {
+        const arr = p.results || p.students || p.grades || p.data;
+        if (Array.isArray(arr)) return arr;
+      }
+    } catch { /* continue */ }
+    // Fix trailing commas
+    try {
+      const fixed = str.replace(/,\s*([}\]])/g, '$1').replace(/\\(?!["\\/bfnrtu])/g, '\\\\');
+      const p = JSON.parse(fixed);
+      if (Array.isArray(p)) return p;
+    } catch { /* continue */ }
+    return null;
+  }
+
+  // Attempt 1: Parse full text
+  let parsed = tryParse(text);
+  if (parsed) return validateBatchResults(parsed, students, maxScore);
+
+  // Attempt 2: Extract JSON array from surrounding text
+  const arrayMatch = text.match(/\[[\s\S]*\]/);
+  if (arrayMatch) {
+    parsed = tryParse(arrayMatch[0]);
+    if (parsed) return validateBatchResults(parsed, students, maxScore);
+  }
+
+  // Attempt 3: Regex extraction of individual student objects
+  const objPattern = /\{\s*"studentIndex"\s*:\s*(\d+)\s*,\s*"score"\s*:\s*(\d+)\s*,\s*"feedback"\s*:\s*"([^"]*)"/g;
+  const regexResults = [];
+  let m;
+  while ((m = objPattern.exec(text)) !== null) {
+    regexResults.push({
+      studentIndex: parseInt(m[1], 10),
+      score: parseInt(m[2], 10),
+      feedback: m[3],
+    });
+  }
+  if (regexResults.length > 0) {
+    console.warn(`Parsed ${regexResults.length}/${students.length} via regex fallback`);
+    return validateBatchResults(regexResults, students, maxScore);
+  }
+
+  // Attempt 4: Score-line patterns like "Student 5: 8/10"
+  const linePattern = /student\s*(\d+)[^:]*:\s*(\d+)\s*\/\s*\d+/gi;
+  const lineResults = [];
+  while ((m = linePattern.exec(text)) !== null) {
+    lineResults.push({
+      studentIndex: parseInt(m[1], 10),
+      score: parseInt(m[2], 10),
+      feedback: 'Score extracted from non-JSON response.',
+    });
+  }
+  if (lineResults.length > 0) {
+    console.warn(`Parsed ${lineResults.length}/${students.length} via score-line fallback`);
+    return validateBatchResults(lineResults, students, maxScore);
+  }
+
+  console.error(`Failed to parse batch response (${text.length} chars). Preview: ${text.slice(0, 500)}`);
+
+  // Fallback: return default results for all students
+  return students.map((student, idx) => ({
+    studentIndex: student.index !== undefined ? student.index : idx,
+    score: 0,
+    feedback: 'Error parsing AI response. Please try again.',
+  }));
+}
+
+function validateBatchResults(parsed, students, maxScore) {
+  // Build expected index set for validation
+  const expectedIndices = new Set(students.map(s => s.index));
+
+  // Always use POSITIONAL mapping: Nth AI result → Nth student in chunk.
+  // AI often ignores studentIndex instructions (returns 0-based for every chunk).
+  // Positional mapping is reliable because the prompt says "EXACT order they appear above."
+  const results = parsed.map((item, idx) => {
+    let score = parseInt(item.score, 10);
+    if (isNaN(score) || score < 0) score = 0;
+    if (score > maxScore) score = Math.round(maxScore);
+    const feedback = (item.feedback || '').trim() || 'Graded by AI.';
+
+    // Use the actual student index from the chunk, not the AI's studentIndex
+    const studentIndex = idx < students.length
+      ? (students[idx].index !== undefined ? students[idx].index : idx)
+      : (item.studentIndex !== undefined ? item.studentIndex : idx);
+
+    return { studentIndex, score, feedback };
+  });
+
+  if (results.length !== students.length) {
+    console.warn(`Warning: Expected ${students.length} results, got ${results.length}`);
+  }
+
+  // Log if AI indices didn't match expected (for debugging)
+  const aiIndices = parsed.map(item => item.studentIndex);
+  const mismatch = aiIndices.some((ai, i) => i < students.length && ai !== students[i].index);
+  if (mismatch) {
+    console.warn(`AI indices [${aiIndices.join(',')}] remapped to chunk indices [${results.map(r => r.studentIndex).join(',')}]`);
+  }
+
+  return results;
+}
+
+/**
+ * Detect outliers using 2σ (2 standard deviations) threshold
+ * @param {Array} results - Array of grading results with score
+ * @returns {Object} - { mean, stdDev, outliers: [{ studentIndex, score, deviation }] }
+ */
+export function detectOutliers(results) {
+  if (!results || results.length === 0) {
+    return { mean: 0, stdDev: 0, outliers: [] };
+  }
+
+  // Calculate mean
+  const scores = results.map(r => r.score);
+  const mean = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+
+  // Calculate standard deviation
+  const squaredDiffs = scores.map(score => Math.pow(score - mean, 2));
+  const variance = squaredDiffs.reduce((sum, sq) => sum + sq, 0) / scores.length;
+  const stdDev = Math.sqrt(variance);
+
+  // Find outliers beyond 2σ
+  const threshold = 2 * stdDev;
+  const outlierResults = results
+    .map((result, idx) => {
+      const deviation = Math.abs(result.score - mean);
+      return {
+        ...result,
+        deviation,
+        isOutlier: deviation > threshold,
+        originalIndex: idx,
+      };
+    })
+    .filter(r => r.isOutlier)
+    .sort((a, b) => b.deviation - a.deviation) // Sort by most extreme first
+    .slice(0, 5); // Limit to max 5 outliers
+
+  return {
+    mean: parseFloat(mean.toFixed(2)),
+    stdDev: parseFloat(stdDev.toFixed(2)),
+    outliers: outlierResults.map(r => ({
+      studentIndex: r.studentIndex,
+      score: r.score,
+      deviation: parseFloat(r.deviation.toFixed(2)),
+    })),
+  };
+}
+
+/**
+ * Build a focused re-grading prompt for outlier students
+ * Includes batch statistics and original feedback so the AI can recalibrate
+ * @param {Object} rubric - Rubric object
+ * @param {Array} outlierStudents - Array of { index, name, response, originalScore, originalFeedback }
+ * @param {Object} anchors - Scoring anchors from generateScoringAnchors()
+ * @param {Object} stats - { mean, stdDev } from the batch
+ * @param {Number} maxScore - Maximum possible score
+ * @returns {String} - Complete prompt for outlier re-grading
+ */
+export function buildOutlierReviewPrompt(rubric, outlierStudents, anchors, stats, maxScore) {
+  let prompt = `You are an expert grading assistant performing a SECOND-PASS REVIEW of flagged student responses.
+
+These students received scores that were statistical outliers (more than 2 standard deviations from the batch mean). Your job is to re-evaluate each one carefully and determine if the original score was correct or should be adjusted.
+
+BATCH CONTEXT:
+- Batch mean score: ${stats.mean}/${maxScore}
+- Standard deviation: ${stats.stdDev}
+- Total students in batch: ${stats.totalStudents}
+
+GRADING PHILOSOPHY:
+- Grade generously for high school students showing understanding
+- Award substantial partial credit for correct reasoning with minor errors
+- Focus on mathematical thinking and effort, not perfect execution
+- Any substantive attempt earns at least 40% of max score
+
+MAX SCORE: ${maxScore}
+
+QUESTION/PROMPT:
+${rubric.essayPrompt || '(No prompt provided)'}
+`;
+
+  // Add checklist items if present
+  if (rubric.checklistItems && rubric.checklistItems.length > 0) {
+    prompt += '\nGRADING CHECKLIST:\n';
+    for (const item of rubric.checklistItems) {
+      if (item.category) prompt += `- ${item.category} (${item.points} points)\n`;
+      if (item.items) {
+        for (const sub of item.items) {
+          prompt += `  - ${sub}\n`;
+        }
+      }
+    }
+  }
+
+  // Add rubric targets if present
+  if (rubric.rubricItems && rubric.rubricItems.length > 0) {
+    prompt += '\nKEY CONCEPTS TO ADDRESS:\n';
+    for (const item of rubric.rubricItems) {
+      if (item.category) prompt += `${item.category}:\n`;
+      if (item.items) {
+        for (const sub of item.items) {
+          prompt += `  - ${sub}\n`;
+        }
+      }
+    }
+  }
+
+  // Add model response if present
+  if (rubric.modelText) {
+    prompt += `\nMODEL RESPONSE (for reference):\n${rubric.modelText}\n`;
+  }
+
+  // Add scoring anchors
+  prompt += `
+SCORING ANCHORS:
+- Excellent (${anchors.excellent.score}/${maxScore}): ${anchors.excellent.description}
+- Adequate (${anchors.adequate.score}/${maxScore}): ${anchors.adequate.description}
+- Minimal (${anchors.minimal.score}/${maxScore}): ${anchors.minimal.description}
+`;
+
+  // Add each outlier student with their original score for context
+  prompt += '\nSTUDENTS TO RE-EVALUATE:\n\n';
+  for (const student of outlierStudents) {
+    prompt += `--- Student ${student.index}: ${student.name} ---\n`;
+    prompt += `ORIGINAL SCORE: ${student.originalScore}/${maxScore}\n`;
+    prompt += `ORIGINAL FEEDBACK: ${student.originalFeedback}\n`;
+    prompt += `RESPONSE:\n${student.response || '(No response submitted)'}\n\n`;
+  }
+
+  prompt += `
+INSTRUCTIONS:
+- Re-read each student's response carefully
+- Compare against the rubric, scoring anchors, and the batch mean (${stats.mean})
+- If the original score seems correct, return the SAME score
+- If the original score was too high or too low, return an ADJUSTED score
+- Provide updated feedback explaining your reasoning
+
+RESPONSE FORMAT:
+You MUST respond with a valid JSON array ONLY. No markdown, no code fences, no explanation.
+
+[
+  {
+    "studentIndex": <original student index>,
+    "score": <integer 0 to ${maxScore}>,
+    "feedback": "<updated feedback, use \\\\( ... \\\\) for LaTeX math>",
+    "adjusted": <true if score changed, false if kept same>
+  }
+]
+
+CRITICAL: Return results for ALL ${outlierStudents.length} student(s) in the array.`;
+
+  return prompt;
+}
+
+/**
+ * Split students into chunks with anchor bridging
+ * @param {Array} students - Array of student objects
+ * @param {Number} chunkSize - Max students per chunk (default 20)
+ * @returns {Array} - Array of chunk objects { students, needsAnchors, chunkIndex }
+ */
+export function chunkStudents(students, chunkSize = 20) {
+  if (!students || students.length === 0) {
+    return [];
+  }
+
+  if (students.length <= chunkSize) {
+    return [{
+      students,
+      needsAnchors: false,
+      chunkIndex: 0,
+    }];
+  }
+
+  const chunks = [];
+  for (let i = 0; i < students.length; i += chunkSize) {
+    const chunk = students.slice(i, i + chunkSize);
+    chunks.push({
+      students: chunk,
+      needsAnchors: i > 0, // First chunk doesn't need anchors, subsequent ones do
+      chunkIndex: chunks.length,
+    });
+  }
+
+  return chunks;
+}
+
+/**
+ * Grade a single chunk of students (placeholder for integration with providers)
+ * This will be called by server.js with the actual AI provider integration
+ * @param {Object} chunk - Chunk object from chunkStudents()
+ * @param {Object} rubric - Rubric object
+ * @param {Object} anchors - Scoring anchors
+ * @param {Array} bridgeResponses - Optional: anchor responses from previous chunk
+ * @returns {Promise<Array>} - Array of grading results
+ */
+export async function gradeChunk(chunk, rubric, anchors, bridgeResponses = null) {
+  // This is a placeholder - actual implementation will be in server.js
+  // where we have access to provider adapters and API calls
+  throw new Error('gradeChunk must be called from server context with provider integration');
+}
+
+/**
+ * Merge results from multiple chunks into a single array
+ * @param {Array} chunkResults - Array of result arrays from gradeChunk()
+ * @returns {Array} - Combined and sorted results by studentIndex
+ */
+export function mergeResults(chunkResults) {
+  if (!chunkResults || chunkResults.length === 0) {
+    return [];
+  }
+
+  // Flatten all chunk results
+  const allResults = chunkResults.flat();
+
+  // Sort by studentIndex to preserve original order
+  allResults.sort((a, b) => a.studentIndex - b.studentIndex);
+
+  return allResults;
+}
