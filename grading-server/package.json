@@ -22,8 +22,6 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.19.9",
-    "@modelcontextprotocol/sdk": "^1.26.0",
-    "hono": "^4.11.9",
-    "playwriter": "^0.0.62"
+    "hono": "^4.11.9"
   }
 }

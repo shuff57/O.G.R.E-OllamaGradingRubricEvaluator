@@ -1173,19 +1173,24 @@ async function checkBatchPageStatus() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab || !tab.url) return;
 
-    // Simple URL check — MyOpenMath grading pages or demo test page
+    // Simple URL check — MyOpenMath grading pages or demo test pages
     console.log('[Batch] Tab URL:', tab.url);
-    if (tab.url.includes('gradeallq2.php') || tab.url.includes('demo-grading-page.html')) {
+    const isGradingPage = tab.url.includes('gradeallq2.php') ||
+                         tab.url.includes('demo-grading-page.html') ||
+                         tab.url.includes('mock-myopenmath');
+    if (isGradingPage) {
        statusText.innerText = "Supported grading page detected!";
        statusEl.classList.add('status-success');
        statusEl.classList.remove('status-info', 'status-error');
        statusEl.style.background = '';
        statusEl.style.color = '';
        btnStart.disabled = false;
+       console.log('[Batch] ✅ Button enabled - grading page detected');
        
        // Check for saved state
        await checkResumeState(tab.url);
     } else {
+       console.log('[Batch] ❌ Not a grading page - button disabled. URL:', tab.url);
        statusText.innerText = "";
        statusEl.style.display = 'none';
        statusEl.classList.remove('status-error', 'status-info', 'status-success');
@@ -3298,7 +3303,13 @@ function setupDeviceFlowListeners() {
 
 let isBatchRunning = false;
 
-document.getElementById('btnStartBatch').addEventListener('click', startBatchGrading);
+document.getElementById('btnStartBatch').addEventListener('click', () => {
+  console.log('🔵 [DEBUG] Start Batch button clicked!');
+  startBatchGrading().catch(err => {
+    console.error('🔴 [DEBUG] startBatchGrading threw error:', err);
+    logBatch(`❌ Error: ${err.message}`, 'red');
+  });
+});
 document.getElementById('btnStopBatch').addEventListener('click', stopBatchGrading);
 
 // Automation Mode (Always Enabled)
@@ -3411,41 +3422,72 @@ async function requestBatchReview(batchResults) {
 
 async function startBatchGrading() {
   console.log('[Batch] startBatchGrading called, isBatchRunning:', isBatchRunning);
-  if (isBatchRunning) return;
+  logBatch("🚀 Starting batch grading...", "blue");
+
+  if (isBatchRunning) {
+    logBatch("⚠️ Batch grading already in progress", "orange");
+    return;
+  }
 
   // Check if grading server is available
-  const serverOk = await fetch('http://localhost:3456/health').then(r => r.ok).catch(() => false);
+  logBatch("📡 Checking grading server connection...");
+  console.log('[Batch] Checking server at http://localhost:3456/health');
+
+  const serverOk = await fetch('http://localhost:3456/health')
+    .then(r => {
+      console.log('[Batch] Server health check response:', r.status, r.ok);
+      return r.ok;
+    })
+    .catch(err => {
+      console.error('[Batch] Server health check failed:', err);
+      return false;
+    });
+
   if (!serverOk) {
-    logBatch("Grading server not running. Falling back to direct grading...");
+    logBatch("❌ Grading server not running on port 3456", "red");
+    logBatch("💡 Please start the server with: cd grading-server && bun run dev", "orange");
+    logBatch("Falling back to direct grading...", "orange");
     await fallbackDirectGrading();
     return;
   }
+
+  logBatch("✓ Grading server connected", "green");
 
   // Get handshake token from server if we don't have one
   if (!handshakeToken) {
+    logBatch("🔐 Authenticating with server...");
     try {
       const hsRes = await fetch('http://localhost:3456/api/handshake');
+      console.log('[Batch] Handshake response:', hsRes.status);
       if (hsRes.ok) {
         const hsData = await hsRes.json();
         handshakeToken = hsData.token;
+        console.log('[Batch] Got handshake token:', handshakeToken?.substring(0, 20) + '...');
       }
-    } catch { /* fallback will handle */ }
+    } catch (err) {
+      console.error('[Batch] Handshake error:', err);
+    }
   }
   if (!handshakeToken) {
-    logBatch("Cannot authenticate with grading server. Falling back to direct grading...");
+    logBatch("❌ Cannot authenticate with grading server", "red");
+    logBatch("Falling back to direct grading...", "orange");
     await fallbackDirectGrading();
     return;
   }
+  logBatch("✓ Authenticated with server", "green");
 
   // Resolve model: DOM select → desktopProvidersList → server query
+  logBatch("🎯 Resolving model selection...");
   let model = '';
 
   // 1. Try the model dropdown (most up-to-date if user selected one)
   const modelEl = document.getElementById('modelName');
   if (modelEl) {
     const domVal = modelEl.value;
+    console.log('[Batch] Model dropdown value:', domVal);
     if (domVal && domVal !== 'Loading...' && domVal !== 'No models found' && domVal !== 'Error loading models') {
       model = domVal;
+      console.log('[Batch] Using model from dropdown:', model);
     }
   }
 
@@ -3479,10 +3521,16 @@ async function startBatchGrading() {
   if (!model) {
     const domVal = modelEl?.value || '(no element)';
     const desktopModel = window.desktopProvidersList?.find(p => p.id === currentProviderId)?.model || '(none)';
-    logBatch(`No model selected. DOM="${domVal}", desktop="${desktopModel}", provider=${currentProviderId}`, "red");
-    logBatch("Please select a model from the dropdown, then retry.", "red");
+    logBatch(`❌ No model selected`, "red");
+    logBatch(`   DOM value: "${domVal}"`, "red");
+    logBatch(`   Desktop provider model: "${desktopModel}"`, "red");
+    logBatch(`   Provider ID: ${currentProviderId}`, "red");
+    logBatch("💡 Please select a model from the dropdown and try again", "orange");
     return;
   }
+
+  logBatch(`✓ Using model: ${model}`, "green");
+  console.log('[Batch] Resolved model:', model, 'from provider:', currentProviderId);
 
   const customInstructions = document.getElementById('customInstructions').value;
   const resumeAfter = document.getElementById('resumeStudent').value;
@@ -3490,9 +3538,9 @@ async function startBatchGrading() {
   // Check if review mode is enabled
   const reviewMode = document.querySelector('input[name="reviewMode"]:checked')?.value === 'on';
 
-  // Automation mode is always enabled (Playwriter MCP)
-  // But when review mode is ON, we extract/grade first, then review, then fill
-  const automationMode = true;
+  // Extension-based grading (simplified - no Playwriter/automation endpoints)
+  // Use BatchGrader.batchGrade() which handles extraction, grading, and filling
+  const automationMode = false; // Disabled - using simplified extension-based approach
 
   // UI State
   isBatchRunning = true;
@@ -3512,23 +3560,34 @@ async function startBatchGrading() {
   try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       const pageUrl = tab.url;
+      console.log('[Batch] Active tab:', tab.id, 'URL:', pageUrl);
+      logBatch(`📄 Page: ${pageUrl}`);
 
       // ====================================================================
       // AUTOMATION MODE (Playwriter MCP)
       // ====================================================================
       if (automationMode) {
-        logBatch("🤖 Automation Mode: Server will control the browser via Playwriter MCP");
+        logBatch("🤖 Automation Mode: Server will control browser via Playwriter MCP", "blue");
         progressText.innerText = 'Connecting to automation server...';
 
         // ----------------------------------------------------------------
         // REVIEW MODE: Grade → Review → Fill
         // ----------------------------------------------------------------
         if (reviewMode) {
-          logBatch("👁️ Review mode: Will pause for approval before filling results", "blue");
+          logBatch("👁️ Review mode enabled: Will pause for approval before filling", "blue");
 
           try {
             // Step 1: Grade only (no filling)
             progressText.innerText = 'Grading students...';
+            logBatch("📊 Sending grading request to server...");
+            console.log('[Batch] Calling BatchGrader.gradeOnlyWithReview with:', {
+              tabId: tab.id,
+              providerId: currentProviderId,
+              model,
+              resumeAfter,
+              customInstructions: customInstructions.substring(0, 50) + '...',
+              serverUrl: 'http://localhost:3456'
+            });
 
             const { sessionToken, results, stats, duration } = await BatchGrader.gradeOnlyWithReview(
               tab.id,
@@ -3540,6 +3599,7 @@ async function startBatchGrading() {
                 serverUrl: 'http://localhost:3456'
               }
             );
+            console.log('[Batch] Grading complete:', { sessionToken, resultCount: results.length, stats, duration });
 
             logBatch(`✓ Graded ${results.length} students in ${duration}s`, "green");
             if (stats) {

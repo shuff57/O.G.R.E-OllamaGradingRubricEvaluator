@@ -29,14 +29,9 @@ import {
   parseGitHubModelsResponse,
 } from './providers.js';
 import {
-  initMCPServer,
-  isMCPServerRunning,
-  stopMCPServer,
   grantSession,
   validateSession,
   revokeSession,
-  extractGradingData,
-  fillGrades,
 } from './automation.js';
 import { loadConfig, saveConfig, watchConfig } from './config.js';
 
@@ -432,6 +427,18 @@ app.post('/api/automation/revoke-access', async (c) => {
  *   error     — { message }
  */
 app.post('/api/automation/grade', async (c) => {
+  // DEPRECATED: This endpoint used Playwriter for browser automation
+  // Use /api/grade instead with extension-based extraction and filling
+  return c.json({
+    error: 'Endpoint deprecated',
+    message: 'This automation endpoint has been removed. Use /api/grade instead.',
+    migration: {
+      new_endpoint: '/api/grade',
+      approach: 'Extension handles extraction and filling via chrome.scripting'
+    }
+  }, 410);
+
+  // Old implementation below (unreachable - kept for reference)
   const startTime = Date.now();
 
   // Parse body before entering SSE stream
@@ -644,6 +651,14 @@ app.post('/api/automation/grade', async (c) => {
  * Used for review mode - allows user to approve results before filling
  */
 app.post('/api/automation/grade-only', async (c) => {
+  // DEPRECATED: Use /api/grade with extension-based extraction
+  return c.json({
+    error: 'Endpoint deprecated',
+    message: 'Use /api/grade instead',
+    migration: { new_endpoint: '/api/grade' }
+  }, 410);
+
+  // Old implementation below (unreachable - kept for reference)
   const startTime = Date.now();
 
   let body;
@@ -771,6 +786,14 @@ app.post('/api/automation/grade-only', async (c) => {
  * Used after user approves results in review mode
  */
 app.post('/api/automation/fill', async (c) => {
+  // DEPRECATED: Extension now fills grades directly via chrome.scripting
+  return c.json({
+    error: 'Endpoint deprecated',
+    message: 'Extension handles filling directly - server no longer fills grades',
+    migration: { approach: 'Use BatchGrader.fillGrade() in extension' }
+  }, 410);
+
+  // Old implementation below (unreachable - kept for reference)
   let body;
   try {
     body = await c.req.json();
@@ -1187,17 +1210,6 @@ const server = serve({
 Waiting for grading requests...
 `);
 
-  // Initialize embedded Playwriter MCP server for browser automation
-  initMCPServer()
-    .then(() => {
-      console.log('[MCP] ✓ Embedded Playwriter server ready');
-      console.log('[MCP] ✓ O.G.R.E extension can connect to: ws://localhost:19988');
-    })
-    .catch((err) => {
-      console.error('[MCP] Failed to start Playwriter server:', err.message);
-      console.error('[MCP] Automation features will be unavailable');
-    });
-
   // Watch config file for external changes (e.g., desktop app saves settings)
   watchConfig((newConfig) => {
     const oldCount = providerConfigs.length;
@@ -1240,17 +1252,9 @@ server.on('error', (err) => {
   waitForKeypress();
 });
 
-// Graceful shutdown - stop MCP server
+// Graceful shutdown
 async function gracefulShutdown(signal) {
   console.log(`\n[Server] Received ${signal}, shutting down gracefully...`);
-
-  try {
-    await stopMCPServer();
-    console.log('[Server] MCP server stopped');
-  } catch (error) {
-    console.error('[Server] Error stopping MCP server:', error.message);
-  }
-
   process.exit(0);
 }
 
