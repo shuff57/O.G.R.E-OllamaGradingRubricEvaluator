@@ -1,0 +1,5 @@
+# Dependencies (installed during build)
+node_modules/
+
+# Build artifacts
+*.log
