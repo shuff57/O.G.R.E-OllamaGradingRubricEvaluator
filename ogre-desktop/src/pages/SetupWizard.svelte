@@ -1,7 +1,14 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import { saveProviderConfig, setSetting } from '../lib/db';
-  import { fetchAvailableModels } from '../lib/oauth';
+  import {
+    fetchAvailableModels,
+    startGitHubDeviceFlow,
+    startChatGPTDeviceFlow,
+    startClaudeCodePasteFlow,
+    startGoogleDeviceFlow
+  } from '../lib/oauth';
+  import type { DeviceFlowResult, CodePasteFlowResult } from '../lib/oauth';
   import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 
   const dispatch = createEventDispatcher();
@@ -16,45 +23,54 @@
   let modelFetchErrors: Record<string, string> = {};
   let oauthSignedIn: Record<string, boolean> = {};
 
+  // Device flow state
+  let deviceFlows: Record<string, DeviceFlowResult> = {};
+  let claudeFlow: CodePasteFlowResult | null = null;
+  let claudeCodeInput = '';
+  let authLoading: Record<string, boolean> = {};
+  let authErrors: Record<string, string> = {};
+
   let providers = [
-    { 
-      id: 'ollama', 
-      name: 'Ollama', 
-      enabled: false, 
-      apiKey: '', 
-      apiUrl: 'http://localhost:11434', 
-      model: '', 
+    {
+      id: 'ollama',
+      name: 'Ollama',
+      enabled: false,
+      apiKey: '',
+      apiUrl: 'http://localhost:11434',
+      model: '',
       keyUrl: '',
       placeholderKey: 'Optional (only for cloud)',
       placeholderUrl: 'http://localhost:11434 or https://your-cloud-instance.com'
     },
-    { 
-      id: 'openai', 
-      name: 'OpenAI', 
-      enabled: false, 
-      apiKey: '', 
-      apiUrl: '', 
-      model: '', 
+    {
+      id: 'openai',
+      name: 'OpenAI',
+      enabled: false,
+      apiKey: '',
+      apiUrl: '',
+      model: '',
       keyUrl: 'https://platform.openai.com/api-keys',
       placeholderKey: 'sk-...'
     },
-    { 
-      id: 'anthropic', 
-      name: 'Anthropic', 
-      enabled: false, 
-      apiKey: '', 
-      apiUrl: '', 
-      model: '', 
+    {
+      id: 'anthropic',
+      name: 'Anthropic',
+      enabled: false,
+      apiKey: '',
+      apiUrl: '',
+      model: '',
       keyUrl: 'https://console.anthropic.com/',
-      placeholderKey: 'sk-ant-...'
+      placeholderKey: 'sk-ant-...',
+      oauth: true,
+      useApiKey: false
     },
-    { 
-      id: 'google-gemini', 
-      name: 'Google Gemini', 
-      enabled: false, 
-      apiKey: '', 
-      apiUrl: '', 
-      model: '', 
+    {
+      id: 'google-gemini',
+      name: 'Google Gemini',
+      enabled: false,
+      apiKey: '',
+      apiUrl: '',
+      model: '',
       keyUrl: 'https://aistudio.google.com/apikey',
       placeholderKey: 'AIza...',
       oauth: true,
@@ -63,10 +79,10 @@
     {
       id: 'github-models',
       name: 'GitHub Models',
-      enabled: false, 
-      apiKey: '', 
-      apiUrl: '', 
-      model: '', 
+      enabled: false,
+      apiKey: '',
+      apiUrl: '',
+      model: '',
       keyUrl: 'https://github.com/settings/tokens',
       placeholderKey: 'ghp_...',
       oauth: true,
@@ -97,15 +113,116 @@
   }
 
   async function handleOAuthSignIn(providerId: string) {
-    // OAuth sign-in removed from setup wizard - use Settings page instead
-    error = 'Please complete setup, then use Settings to configure OAuth providers';
+    authErrors[providerId] = '';
+    authLoading[providerId] = true;
+    authErrors = { ...authErrors };
+    authLoading = { ...authLoading };
+
+    try {
+      if (providerId === 'github-models') {
+        const flow = await startGitHubDeviceFlow();
+        handleDeviceFlow(providerId, flow);
+      } else if (providerId === 'openai') {
+        const flow = await startChatGPTDeviceFlow();
+        handleDeviceFlow(providerId, flow);
+      } else if (providerId === 'google-gemini') {
+        const flow = await startGoogleDeviceFlow();
+        handleDeviceFlow(providerId, flow);
+      } else if (providerId === 'anthropic') {
+        const flow = await startClaudeCodePasteFlow();
+        claudeFlow = flow;
+        claudeCodeInput = '';
+      }
+    } catch (err: any) {
+      console.error('Auth start failed:', err);
+      authErrors[providerId] = err instanceof Error ? err.message : String(err);
+      authErrors = { ...authErrors };
+    } finally {
+      authLoading[providerId] = false;
+      authLoading = { ...authLoading };
+    }
+  }
+
+  async function handleDeviceFlow(providerId: string, flow: DeviceFlowResult) {
+    deviceFlows[providerId] = flow;
+    deviceFlows = { ...deviceFlows };
+
+    try {
+      const result = await flow.poll();
+      if (result.success) {
+        oauthSignedIn[providerId] = true;
+        oauthSignedIn = { ...oauthSignedIn };
+        // Auto-fetch models after successful sign-in
+        fetchModels(providerId);
+        // Clear flow state
+        delete deviceFlows[providerId];
+        deviceFlows = { ...deviceFlows };
+      } else if (result.error !== 'Cancelled') {
+        authErrors[providerId] = result.error || 'Authentication failed';
+        authErrors = { ...authErrors };
+      }
+    } catch (err: any) {
+      if (deviceFlows[providerId]) {
+        authErrors[providerId] = err instanceof Error ? err.message : String(err);
+        authErrors = { ...authErrors };
+      }
+    } finally {
+      if (deviceFlows[providerId]) {
+        delete deviceFlows[providerId];
+        deviceFlows = { ...deviceFlows };
+      }
+    }
+  }
+
+  async function submitClaudeCode() {
+    if (!claudeFlow || !claudeCodeInput) return;
+
+    authLoading['anthropic'] = true;
+    authErrors['anthropic'] = '';
+    authLoading = { ...authLoading };
+    authErrors = { ...authErrors };
+
+    try {
+      const result = await claudeFlow.exchangeCode(claudeCodeInput);
+      if (result.success) {
+        oauthSignedIn['anthropic'] = true;
+        oauthSignedIn = { ...oauthSignedIn };
+        fetchModels('anthropic');
+        claudeFlow = null;
+        claudeCodeInput = '';
+      } else {
+        authErrors['anthropic'] = result.error || 'Code exchange failed';
+        authErrors = { ...authErrors };
+      }
+    } catch (err: any) {
+      authErrors['anthropic'] = err instanceof Error ? err.message : String(err);
+      authErrors = { ...authErrors };
+    } finally {
+      authLoading['anthropic'] = false;
+      authLoading = { ...authLoading };
+    }
+  }
+
+  function cancelAuth(providerId: string) {
+    if (providerId === 'anthropic' && claudeFlow) {
+      claudeFlow.cancel();
+      claudeFlow = null;
+    } else if (deviceFlows[providerId]) {
+      deviceFlows[providerId].cancel();
+      delete deviceFlows[providerId];
+      deviceFlows = { ...deviceFlows };
+    }
+    authLoading[providerId] = false;
+    authErrors[providerId] = '';
+    authLoading = { ...authLoading };
+    authErrors = { ...authErrors };
   }
 
   async function fetchModels(providerId: string) {
     fetchingModels[providerId] = true;
     fetchingModels = fetchingModels; // trigger update
     modelFetchErrors[providerId] = '';
-    
+
     try {
       // For Ollama, fetch directly from the API
       if (providerId === 'ollama') {
@@ -113,42 +230,49 @@
         if (!provider || !provider.apiUrl) {
           throw new Error('Ollama API URL not configured');
         }
-        
+
         const baseUrl = provider.apiUrl.replace(/\/$/, '');
         const url = `${baseUrl}/api/tags`;
         const headers: Record<string, string> = {
           // Ollama rejects Tauri's default Origin header (http://tauri.localhost)
           'Origin': new URL(baseUrl).origin,
         };
-        
+
         // Add Authorization header if API key is configured (for cloud)
         if (provider.apiKey) {
           headers['Authorization'] = `Bearer ${provider.apiKey}`;
         }
-        
+
         const response = await tauriFetch(url, { headers });
         if (!response.ok) {
           throw new Error(`Failed to fetch models: ${response.status} ${response.statusText}`);
         }
-        
+
         const data = await response.json();
         const models = data.models?.map((m: any) => m.name) || [];
-        
+
         fetchedModels[providerId] = models.map(m => ({ id: m, name: m }));
         fetchedModels = fetchedModels;
-        
+
         // Auto-select first model if none selected
         if (!provider.model && models.length > 0) {
           provider.model = models[0];
           providers = providers;
         }
       } else {
-        // For OAuth providers (Google, GitHub)
-        const oauthProvider = providerId === 'google-gemini' ? 'google' : 'github';
+        // For OAuth providers
+        const providerKeyMap: Record<string, "github" | "openai" | "anthropic" | "google"> = {
+          'github-models': 'github',
+          'openai': 'openai',
+          'anthropic': 'anthropic',
+          'google-gemini': 'google',
+        };
+        const oauthProvider = providerKeyMap[providerId];
+        if (!oauthProvider) throw new Error('Unknown provider');
         const models = await fetchAvailableModels(oauthProvider);
         fetchedModels[providerId] = models.map(m => ({ id: m, name: m }));
         fetchedModels = fetchedModels;
-        
+
         const provider = providers.find(p => p.id === providerId);
         if (provider && !provider.model && models.length > 0) {
           provider.model = models[0];
@@ -157,7 +281,13 @@
       }
     } catch (err: any) {
       console.error(err);
-      modelFetchErrors[providerId] = err.message || 'Failed to fetch models.';
+      const msg = err.message || 'Failed to fetch models.';
+      // Friendly error for Ollama connection failures
+      if (providerId === 'ollama' && (msg.includes('connect') || msg.includes('refused') || msg.includes('network') || msg.includes('fetch'))) {
+        modelFetchErrors[providerId] = 'Could not connect to Ollama. Make sure Ollama is running.';
+      } else {
+        modelFetchErrors[providerId] = msg;
+      }
       modelFetchErrors = modelFetchErrors;
     } finally {
       fetchingModels[providerId] = false;
@@ -172,7 +302,7 @@
 
   function nextStep() {
     error = '';
-    
+
     if (currentStep === 2) {
       // Validate Step 2
       const enabledProviders = providers.filter(p => p.enabled);
@@ -187,17 +317,23 @@
           // API key is optional - only needed for cloud instances
         }
         // OAuth providers validation
-        if ((p.id === 'google-gemini' || p.id === 'github-models')) {
-           // If using API key, check it. If using OAuth, check if signed in.
+        // @ts-ignore
+        if (p.oauth) {
            // @ts-ignore
            if (p.useApiKey) {
              if (!p.apiKey) { error = `${p.name} requires an API Key.`; return; }
            } else {
              if (!oauthSignedIn[p.id]) { error = `Please sign in to ${p.name} or use an API Key.`; return; }
            }
-        } else if (['openai', 'anthropic'].includes(p.id) && !p.apiKey) {
+        } else if (['openai'].includes(p.id) && !p.apiKey) {
            error = `${p.name} requires an API Key.`; return;
         }
+      }
+
+      // Auto-fetch Ollama models when advancing to step 3
+      const ollamaProvider = enabledProviders.find(p => p.id === 'ollama');
+      if (ollamaProvider && !fetchedModels['ollama']?.length && !fetchingModels['ollama']) {
+        fetchModels('ollama');
       }
     }
 
@@ -303,7 +439,7 @@
                       <span class="hint">Only needed for cloud Ollama instances</span>
                     </div>
                   {:else if provider.oauth}
-                    <!-- OAuth Provider UI -->
+                    <!-- OAuth Provider UI — Sign-in is primary, API key is secondary -->
                     {#if provider.useApiKey}
                        <div class="form-group">
                         <label>API Key</label>
@@ -319,21 +455,51 @@
                        <div class="oauth-section">
                           {#if oauthSignedIn[provider.id]}
                              <div class="signed-in-badge">
-                                <span>✅ Signed in</span>
+                                <span>Signed in</span>
                              </div>
                              {#if fetchedModels[provider.id]?.length}
                                 <span class="hint">{fetchedModels[provider.id].length} models available</span>
                              {/if}
+                          {:else if deviceFlows[provider.id]}
+                             <!-- Device flow active: show code + polling -->
+                             <div class="device-flow-box">
+                               <p class="instructions">1. A browser tab opened. Enter this code:</p>
+                               <div class="code-display">
+                                  {deviceFlows[provider.id].userCode}
+                                  <button class="copy-btn" on:click={() => navigator.clipboard.writeText(deviceFlows[provider.id].userCode)}>Copy</button>
+                               </div>
+                               <p class="instructions">2. Authorize access in the browser, then wait...</p>
+                               <div class="polling-indicator">
+                                  <span class="spinner-icon">&#8987;</span> Waiting for authorization...
+                               </div>
+                               <button class="link-btn" on:click={() => cancelAuth(provider.id)}>Cancel</button>
+                             </div>
+                          {:else if provider.id === 'anthropic' && claudeFlow}
+                             <!-- Claude code paste flow -->
+                             <div class="device-flow-box">
+                               <p class="instructions">Authorization page opened in browser.</p>
+                               <p class="instructions">Copy the code from Claude and paste it here:</p>
+                               <div class="code-input-row">
+                                  <input type="text" bind:value={claudeCodeInput} placeholder="Paste code here...">
+                                  <button class="btn-primary small" disabled={!claudeCodeInput || authLoading['anthropic']} on:click={submitClaudeCode}>
+                                    {#if authLoading['anthropic']}...{:else}Submit{/if}
+                                  </button>
+                               </div>
+                               <button class="link-btn" on:click={() => cancelAuth(provider.id)}>Cancel</button>
+                             </div>
                           {:else}
-                             <button class="btn-oauth" on:click={() => handleOAuthSignIn(provider.id)} disabled={loading}>
-                                {#if loading}Signing in...{:else}Sign in with {provider.name}{/if}
+                             {#if authErrors[provider.id]}
+                               <div class="error-message" style="margin-bottom: 0.5rem; text-align: left; font-size: 0.85rem;">{authErrors[provider.id]}</div>
+                             {/if}
+                             <button class="btn-oauth" on:click={() => handleOAuthSignIn(provider.id)} disabled={authLoading[provider.id]}>
+                                {#if authLoading[provider.id]}Loading...{:else}Sign in with {provider.name}{/if}
                              </button>
                           {/if}
                            <button class="link-btn" on:click={() => toggleAuthMethod(provider)}>Or use API Key</button>
                         </div>
                      {/if}
                   {:else}
-                    <!-- Standard API Key Provider -->
+                    <!-- Standard API Key Provider (OpenAI) -->
                     <div class="form-group">
                       <label>API Key</label>
                       <input type="password" bind:value={provider.apiKey} placeholder={provider.placeholderKey}>
@@ -799,6 +965,84 @@
 
   .error-text {
     color: #e74c3c;
+    font-size: 0.85rem;
+  }
+
+  /* Device Flow (Setup Wizard) */
+  .device-flow-box {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    background: #f0f4f8;
+    border-radius: 6px;
+    border: 1px solid #d0d7de;
+  }
+
+  .device-flow-box .instructions {
+    margin: 0;
+    font-size: 0.9rem;
+    color: #333;
+  }
+
+  .code-display {
+    background: #1a1a2e;
+    color: #e0e0e0;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    font-family: 'Consolas', monospace;
+    font-size: 1.25rem;
+    text-align: center;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.75rem;
+    letter-spacing: 0.1em;
+  }
+
+  .copy-btn {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.5rem;
+    background: #3498db;
+    color: white;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+
+  .copy-btn:hover {
+    background: #2980b9;
+  }
+
+  .polling-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    color: #666;
+    font-size: 0.85rem;
+  }
+
+  .spinner-icon {
+    animation: spin 2s linear infinite;
+    display: inline-block;
+  }
+
+  .code-input-row {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .code-input-row input {
+    flex: 1;
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 0.9rem;
+  }
+
+  .btn-primary.small {
+    padding: 0.4rem 0.8rem;
     font-size: 0.85rem;
   }
 </style>
