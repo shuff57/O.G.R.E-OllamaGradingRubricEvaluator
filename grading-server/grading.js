@@ -65,18 +65,33 @@ export function generateScoringAnchors(rubric) {
 export function buildBatchPrompt(rubric, students, anchors, bridgeResponses = null) {
   const maxScore = rubric.maxScore || '10';
 
+  // Separate custom instructions from essayPrompt if they were appended
+  let essayPrompt = rubric.essayPrompt || '(No prompt provided)';
+  let customInstructions = rubric.customInstructions || '';
+
+  // Extract ADDITIONAL GRADING INSTRUCTIONS if embedded in essayPrompt
+  const instrMatch = essayPrompt.match(/\n\nADDITIONAL GRADING INSTRUCTIONS:\n([\s\S]+)$/);
+  if (instrMatch) {
+    customInstructions = instrMatch[1].trim();
+    essayPrompt = essayPrompt.replace(/\n\nADDITIONAL GRADING INSTRUCTIONS:\n[\s\S]+$/, '').trim();
+  }
+
   let prompt = `You are an expert grading assistant. Grade ALL students in this batch against the provided rubric.
 
 GRADING PHILOSOPHY:
-- Grade generously for high school students showing understanding
+These are high school seniors, not college students or experts. Grade generously:
+- Give full credit for demonstrating understanding, even if the explanation lacks polish
 - Award substantial partial credit for correct reasoning with minor errors
 - Focus on mathematical thinking and effort, not perfect execution
-- Any substantive attempt earns at least 40% of max score
+- Distinguish conceptual misunderstandings (serious) from minor mistakes (not serious)
+- Wrong terminology with correct concept = most of the points
+- Minor errors or omissions lose at most 1 point per category
+- Any substantive attempt that engages with the prompt earns at least 40% of max score
 
 MAX SCORE: ${maxScore}
 
 QUESTION/PROMPT:
-${rubric.essayPrompt || '(No prompt provided)'}
+${essayPrompt}
 `;
 
   // Add checklist items if present
@@ -181,6 +196,14 @@ Return one object per student using the EXACT studentIndex shown above each resp
 ]
 
 CRITICAL: Return results for ALL ${students.length} students. Use the studentIndex from each "--- Student N:" header.`;
+
+  // Add custom instructions as a prominent override section at the end
+  if (customInstructions) {
+    prompt += `
+
+IMPORTANT — INSTRUCTOR OVERRIDE INSTRUCTIONS (you MUST follow these):
+${customInstructions}`;
+  }
 
   return prompt;
 }
@@ -383,6 +406,13 @@ export function detectOutliers(results) {
  * @returns {String} - Complete prompt for outlier re-grading
  */
 export function buildOutlierReviewPrompt(rubric, outlierStudents, anchors, stats, maxScore) {
+  // Separate custom instructions from essayPrompt if they were appended
+  let essayPrompt = rubric.essayPrompt || '(No prompt provided)';
+  const instrMatch = essayPrompt.match(/\n\nADDITIONAL GRADING INSTRUCTIONS:\n([\s\S]+)$/);
+  if (instrMatch) {
+    essayPrompt = essayPrompt.replace(/\n\nADDITIONAL GRADING INSTRUCTIONS:\n[\s\S]+$/, '').trim();
+  }
+
   let prompt = `You are an expert grading assistant performing a SECOND-PASS REVIEW of flagged student responses.
 
 These students received scores that were statistical outliers (more than 2 standard deviations from the batch mean). Your job is to re-evaluate each one carefully and determine if the original score was correct or should be adjusted.
@@ -393,15 +423,19 @@ BATCH CONTEXT:
 - Total students in batch: ${stats.totalStudents}
 
 GRADING PHILOSOPHY:
-- Grade generously for high school students showing understanding
+These are high school seniors, not college students or experts. Grade generously:
+- Give full credit for demonstrating understanding, even if the explanation lacks polish
 - Award substantial partial credit for correct reasoning with minor errors
 - Focus on mathematical thinking and effort, not perfect execution
-- Any substantive attempt earns at least 40% of max score
+- Distinguish conceptual misunderstandings (serious) from minor mistakes (not serious)
+- Wrong terminology with correct concept = most of the points
+- Minor errors or omissions lose at most 1 point per category
+- Any substantive attempt that engages with the prompt earns at least 40% of max score
 
 MAX SCORE: ${maxScore}
 
 QUESTION/PROMPT:
-${rubric.essayPrompt || '(No prompt provided)'}
+${essayPrompt}
 `;
 
   // Add checklist items if present

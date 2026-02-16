@@ -87,13 +87,16 @@ const Prompts = {
     * @returns {string} The system instruction for batch grading.
     */
    getBatchGradingSystemPrompt: (rubric, maxScore, customInstructions) => {
-     let prompt = `You are a generous grading assistant for high school seniors. Grade the student work below against the rubric.
+     let prompt = `You are a generous grading assistant. Grade the student work below against the rubric.
 
 GRADING PHILOSOPHY:
+These are high school seniors, not college students or experts. Grade generously:
 - Give full credit for demonstrating understanding, even if the explanation lacks polish
 - Award substantial partial credit for correct reasoning with minor errors
 - Focus on mathematical thinking and effort, not perfect execution
 - Distinguish conceptual misunderstandings (serious) from minor mistakes (not serious)
+- Wrong terminology with correct concept = most of the points
+- Minor errors or omissions lose at most 1 point per category
 - Any substantive attempt that engages with the prompt earns at least 40% of max score
 
 RUBRIC:

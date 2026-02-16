@@ -61,10 +61,14 @@ export function buildBatchPrompt(rubric, students, anchors, bridgeResponses = nu
   let prompt = `You are an expert grading assistant. Grade ALL students in this batch against the provided rubric.
 
 GRADING PHILOSOPHY:
-- Grade generously for high school students showing understanding
+These are high school seniors, not college students or experts. Grade generously:
+- Give full credit for demonstrating understanding, even if the explanation lacks polish
 - Award substantial partial credit for correct reasoning with minor errors
 - Focus on mathematical thinking and effort, not perfect execution
-- Any substantive attempt earns at least 40% of max score
+- Distinguish conceptual misunderstandings (serious) from minor mistakes (not serious)
+- Wrong terminology with correct concept = most of the points
+- Minor errors or omissions lose at most 1 point per category
+- Any substantive attempt that engages with the prompt earns at least 40% of max score
 
 MAX SCORE: ${maxScore}
 
@@ -383,10 +387,14 @@ BATCH CONTEXT:
 - Total students in batch: ${stats.totalStudents}
 
 GRADING PHILOSOPHY:
-- Grade generously for high school students showing understanding
+These are high school seniors, not college students or experts. Grade generously:
+- Give full credit for demonstrating understanding, even if the explanation lacks polish
 - Award substantial partial credit for correct reasoning with minor errors
 - Focus on mathematical thinking and effort, not perfect execution
-- Any substantive attempt earns at least 40% of max score
+- Distinguish conceptual misunderstandings (serious) from minor mistakes (not serious)
+- Wrong terminology with correct concept = most of the points
+- Minor errors or omissions lose at most 1 point per category
+- Any substantive attempt that engages with the prompt earns at least 40% of max score
 
 MAX SCORE: ${maxScore}
 

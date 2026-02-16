@@ -1,8 +1,11 @@
 /**
  * batch-grader.js - Core batch grading engine
  *
- * Extracts students from MyOpenMath grading pages, grades them via AI,
+ * Extracts students from grading pages, grades them via AI,
  * and fills scores/feedback back into the page.
+ *
+ * Supports multiple LMS platforms via site profiles (see site-profiles.js).
+ * Selectors are loaded dynamically from the active profile.
  *
  * Uses chrome.scripting.executeScript for DOM extraction/manipulation
  * and chrome.runtime.sendMessage for background proxy API calls.
@@ -10,38 +13,27 @@
  * All functions are pure logic — no UI code.
  */
 
+import { getActiveProfile, DEFAULT_MYOPENMATH_PROFILE } from './site-profiles.js';
 
 // ---------------------------------------------------------------------------
-// DOM Selectors (from grade-selectors.md — not hardcoded, centralised here)
-// ---------------------------------------------------------------------------
-const SELECTORS = {
-  studentSection: 'div[data-lastchange]',
-  studentName: 'b',
-  questionRegion: 'div[role="region"][aria-label^="Question"]',
-  scoreInput: 'input[aria-label="Score"]',
-  feedbackBox: 'div.fbbox[role="textbox"][aria-label="Feedback"][contenteditable]',
-  feedbackHidden: 'input[type="hidden"][name^="fb-"]',
-  fullCreditLink: 'a.fullcredlink',
-};
-
-// ---------------------------------------------------------------------------
-// extractStudents(tabId) — extract all student data from the grading page
+// extractStudents(tabId, selectors) — extract all student data from the grading page
 // ---------------------------------------------------------------------------
 /**
  * Extract student names, scores, feedback status, and responses from the page.
  * @param {number} tabId - Chrome tab ID containing the grading page
+ * @param {object} selectors - CSS selectors from the active site profile
  * @returns {Promise<Array<{index: number, name: string, currentScore: string, hasFeedback: boolean, response: string}>>}
  */
-async function extractStudents(tabId) {
+async function extractStudents(tabId, selectors) {
   const results = await chrome.scripting.executeScript({
     target: { tabId },
     func: (sel) => {
       const students = Array.from(document.querySelectorAll(sel.studentSection));
       return students.map((s, i) => {
-        const region = s.querySelector(sel.questionRegion);
+        const region = sel.questionRegion ? s.querySelector(sel.questionRegion) : null;
         // Part 1 content div is the second child of the region (index 1)
         const responseDiv = region?.children[1]?.children[1];
-        const fbBox = s.querySelector(sel.feedbackBox);
+        const fbBox = sel.feedbackBox ? s.querySelector(sel.feedbackBox) : null;
         return {
           index: i,
           name: s.querySelector(sel.studentName)?.textContent.trim() || `Student ${i + 1}`,
@@ -51,64 +43,73 @@ async function extractStudents(tabId) {
         };
       });
     },
-    args: [SELECTORS],
+    args: [selectors],
   });
 
   if (!results || !results[0] || results[0].result === undefined) {
-    throw new Error('Failed to extract students. Is this a MyOpenMath grading page?');
+    throw new Error('Failed to extract students. Check that the site profile selectors are correct.');
   }
   return results[0].result;
 }
 
 // ---------------------------------------------------------------------------
-// extractRubric(tabId) — extract rubric from the first student section
+// extractRubric(tabId, selectors) — extract rubric from the first student section
 // ---------------------------------------------------------------------------
 /**
  * Extract rubric data (prompt, checklist, targets, model response, max score)
  * from the first student section on the page.
  * @param {number} tabId - Chrome tab ID
+ * @param {object} selectors - CSS selectors from the active site profile
  * @returns {Promise<{essayPrompt: string, checklistItems: Array, rubricItems: Array, modelText: string|null, maxScore: string}>}
  */
-async function extractRubric(tabId) {
+async function extractRubric(tabId, selectors) {
   const results = await chrome.scripting.executeScript({
     target: { tabId },
     func: (sel) => {
       const first = document.querySelector(sel.studentSection);
       if (!first) return null;
 
-      const region = first.querySelector(sel.questionRegion);
-      if (!region) return null;
+      const region = sel.questionRegion ? first.querySelector(sel.questionRegion) : null;
 
-      // Part 1: question prompt + grading checklist
-      const part1Div = region.children[1];
-      const promptDiv = part1Div?.children[0];
+      // Default values for platforms without structured rubric
+      let checklistItems = [];
+      let rubricItems = [];
+      let modelText = null;
+      let essayPrompt = '';
 
-      // Grading checklist (collapsed <details> in Part 1)
-      const checkDiv = promptDiv?.querySelector('details')?.querySelector('div');
-      const checklistItems = checkDiv
-        ? Array.from(checkDiv.querySelectorAll('tr')).map(tr => ({
-            category: tr.querySelector('b')?.textContent.trim() || '',
-            items: Array.from(tr.querySelectorAll('label')).map(l => l.textContent.trim()),
-          })).filter(x => x.category || x.items.length)
-        : [];
+      if (region) {
+        // MyOpenMath-style: structured question region with parts
+        // Part 1: question prompt + grading checklist
+        const part1Div = region.children[1];
+        const promptDiv = part1Div?.children[0];
 
-      // Part 2: rubric targets + model response
-      const part2Div = region.children[3];
-      const rubDiv = part2Div?.querySelector('details')?.querySelector('div');
-      const rubricItems = rubDiv
-        ? Array.from(rubDiv.querySelectorAll('tr')).map(tr => ({
-            category: tr.querySelector('b')?.textContent.trim() || '',
-            items: Array.from(tr.querySelectorAll('li')).map(l => l.textContent.trim()),
-          })).filter(x => x.category || x.items.length)
-        : [];
-      const modelText = rubDiv?.querySelector('div')?.textContent.trim() || null;
+        // Grading checklist (collapsed <details> in Part 1)
+        const checkDiv = promptDiv?.querySelector('details')?.querySelector('div');
+        checklistItems = checkDiv
+          ? Array.from(checkDiv.querySelectorAll('tr')).map(tr => ({
+              category: tr.querySelector('b')?.textContent.trim() || '',
+              items: Array.from(tr.querySelectorAll('label')).map(l => l.textContent.trim()),
+            })).filter(x => x.category || x.items.length)
+          : [];
 
-      // Essay/question prompt
-      const promptPs = promptDiv?.querySelectorAll(':scope > p, :scope > div > p') || [];
-      const essayPrompt = Array.from(promptPs)
-        .map(p => p.textContent.trim())
-        .join(' ')
-        .substring(0, 500);
+        // Part 2: rubric targets + model response
+        const part2Div = region.children[3];
+        const rubDiv = part2Div?.querySelector('details')?.querySelector('div');
+        rubricItems = rubDiv
+          ? Array.from(rubDiv.querySelectorAll('tr')).map(tr => ({
+              category: tr.querySelector('b')?.textContent.trim() || '',
+              items: Array.from(tr.querySelectorAll('li')).map(l => l.textContent.trim()),
+            })).filter(x => x.category || x.items.length)
+          : [];
+        modelText = rubDiv?.querySelector('div')?.textContent.trim() || null;
+
+        // Essay/question prompt
+        const promptPs = promptDiv?.querySelectorAll(':scope > p, :scope > div > p') || [];
+        essayPrompt = Array.from(promptPs)
+          .map(p => p.textContent.trim())
+          .join(' ')
+          .substring(0, 500);
+      }
 
       // Max score from score input parent text (e.g., "/10")
       const scoreInput = first.querySelector(sel.scoreInput);
@@ -117,7 +118,7 @@ async function extractRubric(tabId) {
 
       return { essayPrompt, checklistItems, rubricItems, modelText, maxScore };
     },
-    args: [SELECTORS],
+    args: [selectors],
   });
 
   if (!results || !results[0] || results[0].result === null) {
@@ -189,21 +190,31 @@ async function gradeStudent(provider, model, rubric, studentName, response, cust
 }
 
 // ---------------------------------------------------------------------------
-// fillGrade(tabId, studentIndex, score, feedback)
+// fillGrade(tabId, studentIndex, score, feedback, selectors, feedbackConfig)
 // ---------------------------------------------------------------------------
 /**
  * Fill a score and feedback for a specific student on the page.
- * Scrolls to the student, sets score input, and sets both TinyMCE
- * contenteditable div and hidden form input.
+ * Scrolls to the student, sets score input, and fills feedback using
+ * the strategy appropriate for the site profile (TinyMCE, textarea, etc.).
+ *
+ * Note: feedbackText is generated by the grading AI and is trusted content.
+ * TinyMCE inline editors require setting innerHTML to render formatted feedback.
+ * The hidden input sync is required because TinyMCE doesn't auto-sync on
+ * programmatic innerHTML changes.
+ *
  * @param {number} tabId - Chrome tab ID
  * @param {number} studentIndex - Zero-based index of the student
  * @param {number|string} score - Score to set
- * @param {string} feedback - Feedback text (plain text, will be wrapped in <p>)
+ * @param {string} feedback - Feedback text (plain text, may be wrapped in HTML)
+ * @param {object} selectors - CSS selectors from the active site profile
+ * @param {object} [feedbackConfig] - Feedback type config from profile
  */
-async function fillGrade(tabId, studentIndex, score, feedback) {
+async function fillGrade(tabId, studentIndex, score, feedback, selectors, feedbackConfig = null) {
+  const fbConfig = feedbackConfig || { type: 'tinymce-inline', requiresHiddenSync: true, htmlWrap: true };
+
   const results = await chrome.scripting.executeScript({
     target: { tabId },
-    func: (sel, idx, scoreVal, feedbackText) => {
+    func: (sel, idx, scoreVal, feedbackText, fbCfg) => {
       const students = document.querySelectorAll(sel.studentSection);
       const student = students[idx];
       if (!student) return { success: false, error: `Student at index ${idx} not found` };
@@ -219,22 +230,38 @@ async function fillGrade(tabId, studentIndex, score, feedback) {
         scoreInput.dispatchEvent(new Event('change', { bubbles: true }));
       }
 
-      // Set feedback — TinyMCE pattern: set BOTH contenteditable div AND hidden input
-      const fbBox = student.querySelector(sel.feedbackBox);
-      const hidden = student.querySelector(sel.feedbackHidden);
-      const html = '<p>' + feedbackText.replace(/\n/g, '</p><p>') + '</p>';
+      // Set feedback — strategy depends on the site profile's feedback type
+      // feedbackText is AI-generated trusted content (not user/external input)
+      const fbBox = sel.feedbackBox ? student.querySelector(sel.feedbackBox) : null;
 
-      if (fbBox) {
-        fbBox.innerHTML = html;
-        fbBox.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-      if (hidden) {
-        hidden.value = html;
+      if (fbCfg.type === 'tinymce-inline' || fbCfg.type === 'contenteditable') {
+        // Rich text editor: set innerHTML (required for TinyMCE contenteditable)
+        const html = fbCfg.htmlWrap
+          ? '<p>' + feedbackText.replace(/\n/g, '</p><p>') + '</p>'
+          : feedbackText;
+        if (fbBox) {
+          fbBox.innerHTML = html; // eslint-disable-line -- trusted AI-generated content
+          fbBox.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        // TinyMCE requires syncing the hidden form input too
+        if (fbCfg.requiresHiddenSync && sel.feedbackHidden) {
+          const hidden = student.querySelector(sel.feedbackHidden);
+          if (hidden) {
+            hidden.value = html;
+          }
+        }
+      } else {
+        // textarea or plain input: set .value
+        if (fbBox) {
+          fbBox.value = feedbackText;
+          fbBox.dispatchEvent(new Event('input', { bubbles: true }));
+          fbBox.dispatchEvent(new Event('change', { bubbles: true }));
+        }
       }
 
       return { success: true };
     },
-    args: [SELECTORS, studentIndex, score, feedback],
+    args: [selectors, studentIndex, score, feedback, fbConfig],
   });
 
   if (!results || !results[0] || !results[0].result?.success) {
@@ -244,40 +271,716 @@ async function fillGrade(tabId, studentIndex, score, feedback) {
 }
 
 // ---------------------------------------------------------------------------
-// clickQuickSave(tabId) — click the Quick Save button
+// clickQuickSave(tabId, saveConfig) — click the save button
 // ---------------------------------------------------------------------------
 /**
- * Click the Quick Save button on the grading page.
+ * Click the save button on the grading page.
  * @param {number} tabId - Chrome tab ID
+ * @param {object} [saveConfig] - Save button config from profile
+ * @param {string} [saveConfig.buttonText] - Primary button text to search for
+ * @param {string} [saveConfig.fallbackText] - Fallback button text
  * @returns {Promise<void>}
  */
-async function clickQuickSave(tabId) {
+async function clickQuickSave(tabId, saveConfig = null) {
+  const cfg = saveConfig || { buttonText: 'Quick Save', fallbackText: 'Save Changes' };
+
   const results = await chrome.scripting.executeScript({
     target: { tabId },
-    func: () => {
-      // Find button containing "Quick Save" text
+    func: (saveCfg) => {
       const buttons = document.querySelectorAll('button');
+      // Try primary button text
       for (const btn of buttons) {
-        if (btn.textContent.includes('Quick Save')) {
+        if (btn.textContent.includes(saveCfg.buttonText)) {
           btn.click();
           return { success: true };
         }
       }
-      // Fallback: try submit button with "Save Changes"
-      for (const btn of buttons) {
-        if (btn.textContent.includes('Save Changes')) {
-          btn.click();
-          return { success: true, fallback: true };
+      // Fallback button text
+      if (saveCfg.fallbackText) {
+        for (const btn of buttons) {
+          if (btn.textContent.includes(saveCfg.fallbackText)) {
+            btn.click();
+            return { success: true, fallback: true };
+          }
         }
       }
-      return { success: false, error: 'Quick Save button not found' };
+      // Last resort: any submit button
+      const submitBtn = document.querySelector('button[type="submit"], input[type="submit"]');
+      if (submitBtn) {
+        submitBtn.click();
+        return { success: true, fallback: true };
+      }
+      return { success: false, error: `Save button not found (looked for "${saveCfg.buttonText}")` };
     },
+    args: [cfg],
   });
 
   if (!results || !results[0] || !results[0].result?.success) {
-    const error = results?.[0]?.result?.error || 'Failed to click Quick Save';
+    const error = results?.[0]?.result?.error || 'Failed to click save button';
     throw new Error(error);
   }
+}
+
+// ===========================================================================
+// Sequential Navigation Helpers
+// ===========================================================================
+
+/**
+ * Wait for a CSS selector to appear on the page (polling).
+ * @param {number} tabId - Chrome tab ID
+ * @param {string} selector - CSS selector to wait for
+ * @param {number} [timeoutMs=10000] - Max time to wait
+ * @returns {Promise<boolean>}
+ */
+async function waitForSelectorOnPage(tabId, selector, timeoutMs = 10000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (sel) => !!document.querySelector(sel),
+      args: [selector],
+    });
+    if (results?.[0]?.result) return true;
+    await delay(300);
+  }
+  throw new Error(`Timed out waiting for selector: ${selector}`);
+}
+
+/**
+ * Click the "next student" button and wait for page to settle.
+ * @param {number} tabId - Chrome tab ID
+ * @param {Object} navigation - Navigation config from profile
+ * @returns {Promise<void>}
+ */
+async function navigateToNextStudent(tabId, navigation) {
+  // Capture current student name before navigating
+  const beforeResults = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel) => document.querySelector(sel)?.textContent?.trim() || '',
+    args: [navigation.studentIndicator],
+  });
+  const beforeName = beforeResults?.[0]?.result || '';
+
+  // Click next button
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel) => {
+      const btn = document.querySelector(sel);
+      if (!btn) throw new Error('Next student button not found');
+      btn.click();
+    },
+    args: [navigation.nextButton],
+  });
+
+  // Wait for the page to load — check that the student name changes
+  await delay(navigation.waitAfterNavMs || 2000);
+
+  if (navigation.waitForSelector) {
+    await waitForSelectorOnPage(tabId, navigation.waitForSelector);
+  }
+
+  // Verify navigation happened (student name should have changed)
+  const afterResults = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel) => document.querySelector(sel)?.textContent?.trim() || '',
+    args: [navigation.studentIndicator],
+  });
+  const afterName = afterResults?.[0]?.result || '';
+
+  if (beforeName && afterName && beforeName === afterName) {
+    // May be at the last student — not necessarily an error
+    console.warn('[BatchGrader] Student name did not change after navigation');
+  }
+}
+
+/**
+ * Navigate to the first student in the list.
+ * Uses the student dropdown to select the first item.
+ * @param {number} tabId - Chrome tab ID
+ * @param {Object} navigation - Navigation config from profile
+ * @returns {Promise<void>}
+ */
+async function navigateToFirstStudent(tabId, navigation) {
+  // Try clicking the first student option in the dropdown
+  const result = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (navConfig) => {
+      // Open the student dropdown
+      const trigger = document.querySelector(navConfig.studentIndicator);
+      if (trigger) trigger.click();
+      return true;
+    },
+    args: [navigation],
+  });
+
+  await delay(500); // Wait for dropdown to open
+
+  // Click the first student option
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      // Canvas SpeedGrader uses data-testid="student-option-0" for the first student
+      const firstOption = document.querySelector('[data-testid="student-option-0"]');
+      if (firstOption) {
+        firstOption.click();
+        return true;
+      }
+      // Fallback: try the first menuitem in a group named "Students"
+      const firstItem = document.querySelector('[role="menuitem"]');
+      if (firstItem) {
+        firstItem.click();
+        return true;
+      }
+      return false;
+    },
+  });
+
+  await delay(navigation.waitAfterNavMs || 2000);
+
+  if (navigation.waitForSelector) {
+    await waitForSelectorOnPage(tabId, navigation.waitForSelector);
+  }
+}
+
+/**
+ * Get current student info from a sequential page (page-level selectors).
+ * @param {number} tabId - Chrome tab ID
+ * @param {Object} selectors - Profile selectors
+ * @returns {Promise<{name: string, currentScore: string, hasFeedback: boolean}>}
+ */
+async function getCurrentStudentInfo(tabId, selectors) {
+  const results = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel) => {
+      const name = document.querySelector(sel.studentName)?.textContent?.trim() || '';
+      const score = document.querySelector(sel.scoreInput)?.value || '';
+      // Check for existing comments/feedback — look for comment text in the comments area
+      const commentSection = document.querySelector('[data-testid="comment-library-button"]');
+      const existingComments = commentSection?.closest('section')?.querySelectorAll('[class*="comment"]');
+      const hasFeedback = (existingComments?.length || 0) > 0;
+      return { name, currentScore: score, hasFeedback };
+    },
+    args: [selectors],
+  });
+  return results?.[0]?.result || { name: '', currentScore: '', hasFeedback: false };
+}
+
+/**
+ * Get the total number of students from the student dropdown.
+ * @param {number} tabId - Chrome tab ID
+ * @param {Object} navigation - Navigation config from profile
+ * @returns {Promise<number>}
+ */
+async function getStudentCount(tabId, navigation) {
+  // Open the dropdown, count items, close it
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel) => {
+      const trigger = document.querySelector(sel);
+      if (trigger) trigger.click();
+    },
+    args: [navigation.studentIndicator],
+  });
+
+  await delay(500);
+
+  const results = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      // Count student options (Canvas uses data-testid="student-option-N")
+      const options = document.querySelectorAll('[data-testid^="student-option-"]');
+      return options.length;
+    },
+  });
+
+  // Close dropdown by pressing Escape
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })),
+  });
+
+  await delay(300);
+
+  return results?.[0]?.result || 0;
+}
+
+// ===========================================================================
+// Sequential Extraction
+// ===========================================================================
+
+/**
+ * Extract student data by navigating through each student sequentially.
+ * Produces the same Array shape as extractStudents() for compatibility.
+ *
+ * @param {number} tabId - Chrome tab ID
+ * @param {Object} selectors - Profile selectors
+ * @param {Object} navigation - Navigation config from profile
+ * @param {function} [onProgress] - Callback: (current, total) => void
+ * @returns {Promise<Array<{index, name, currentScore, hasFeedback, response}>>}
+ */
+async function extractStudentsSequential(tabId, selectors, navigation, onProgress = null) {
+  const totalStudents = await getStudentCount(tabId, navigation);
+  if (totalStudents === 0) {
+    throw new Error('Could not determine student count. Is the student dropdown accessible?');
+  }
+
+  await navigateToFirstStudent(tabId, navigation);
+
+  const students = [];
+  for (let i = 0; i < totalStudents; i++) {
+    // Read current student data
+    const info = await getCurrentStudentInfo(tabId, selectors);
+
+    // Try to extract response from the submission preview iframe
+    let response = '';
+    try {
+      response = await extractIframeContent(tabId, selectors.questionRegion);
+    } catch {
+      // Iframe may not be accessible (cross-origin, no preview, etc.)
+    }
+
+    students.push({
+      index: i,
+      name: info.name,
+      currentScore: info.currentScore,
+      hasFeedback: info.hasFeedback,
+      response,
+    });
+
+    if (onProgress) onProgress(i + 1, totalStudents);
+
+    // Navigate to next student (unless last)
+    if (i < totalStudents - 1) {
+      await navigateToNextStudent(tabId, navigation);
+    }
+  }
+
+  return students;
+}
+
+/**
+ * Extract text content from an iframe on the page.
+ * Uses chrome.webNavigation.getAllFrames to find the frame, then
+ * chrome.scripting.executeScript with frameIds to read its content.
+ *
+ * @param {number} tabId - Chrome tab ID
+ * @param {string} iframeSelector - CSS selector for the iframe element
+ * @returns {Promise<string>} Text content from the iframe (max 2000 chars)
+ */
+async function extractIframeContent(tabId, iframeSelector) {
+  if (!iframeSelector) return '';
+
+  // Get all frames in the tab
+  const frames = await chrome.webNavigation.getAllFrames({ tabId });
+  if (!frames || frames.length <= 1) return '';
+
+  // Find candidate frames (skip the main frame at index 0)
+  // Look for frames whose URL suggests submission content
+  const candidateFrames = frames.filter(f =>
+    f.frameId > 0 && (
+      f.url.includes('submission') ||
+      f.url.includes('preview') ||
+      f.url.includes('assignment')
+    )
+  );
+
+  if (candidateFrames.length === 0) {
+    // Fallback: try any non-main frame
+    const nonMain = frames.filter(f => f.frameId > 0 && f.url && !f.url.startsWith('about:'));
+    if (nonMain.length === 0) return '';
+    candidateFrames.push(nonMain[0]);
+  }
+
+  // Try to read content from the first matching frame
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId, frameIds: [candidateFrames[0].frameId] },
+      func: () => {
+        const body = document.body;
+        if (!body) return '';
+        const text = body.innerText?.trim() || '';
+        // Skip if it's just a "No Preview" message or minimal content
+        if (text.length < 20 || text.includes('No Preview Available')) return '';
+        return text.substring(0, 2000);
+      },
+    });
+    return results?.[0]?.result || '';
+  } catch {
+    return ''; // Frame may be cross-origin
+  }
+}
+
+/**
+ * Extract rubric info from a sequential grading page (first student view).
+ * For most sequential interfaces, the rubric isn't embedded on the page —
+ * the user provides it manually via the UI. This function extracts what it can
+ * (primarily max score from the grade input label).
+ *
+ * @param {number} tabId - Chrome tab ID
+ * @param {Object} selectors - Profile selectors
+ * @param {Object} navigation - Navigation config
+ * @returns {Promise<Object>} Same shape as extractRubric()
+ */
+async function extractRubricSequential(tabId, selectors, navigation) {
+  const results = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel) => {
+      // Extract max score from score input label (e.g., "Grade out of 100")
+      const scoreInput = document.querySelector(sel.scoreInput);
+      let maxScore = '10';
+
+      if (scoreInput) {
+        // Try label text
+        const label = scoreInput.closest('label') || document.querySelector(`label[for="${scoreInput.id}"]`);
+        const labelText = label?.textContent || scoreInput.parentElement?.textContent || '';
+        const match = labelText.match(/(?:out of|\/)\s*(\d+\.?\d*)/i);
+        if (match) maxScore = match[1];
+      }
+
+      // Try to get assignment title from the page
+      const titleEl = document.querySelector('[data-testid="assignment-link"]') ||
+                       document.querySelector('h1, h2, .assignment-title');
+      const title = titleEl?.textContent?.trim() || '';
+
+      return {
+        essayPrompt: title,
+        checklistItems: [],
+        rubricItems: [],
+        modelText: null,
+        maxScore,
+      };
+    },
+    args: [selectors],
+  });
+
+  return results?.[0]?.result || {
+    essayPrompt: '',
+    checklistItems: [],
+    rubricItems: [],
+    modelText: null,
+    maxScore: '100',
+  };
+}
+
+// ===========================================================================
+// Sequential Fill
+// ===========================================================================
+
+/**
+ * Fill score and feedback on the currently-displayed student (sequential mode).
+ * No studentIndex param — fills whichever student is visible on the page.
+ *
+ * @param {number} tabId - Chrome tab ID
+ * @param {number|string} score - Score to set
+ * @param {string} feedback - Feedback text
+ * @param {Object} selectors - Profile selectors
+ * @param {Object} feedbackConfig - Feedback type config
+ * @param {Object} navigation - Navigation config
+ * @returns {Promise<void>}
+ */
+async function fillGradeSequential(tabId, score, feedback, selectors, feedbackConfig, navigation) {
+  const fbConfig = feedbackConfig || { type: 'textarea', requiresHiddenSync: false, htmlWrap: false };
+
+  // Step 1: Fill the score input (page-level selector)
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel, scoreVal) => {
+      const scoreInput = document.querySelector(sel.scoreInput);
+      if (!scoreInput) return;
+      scoreInput.focus();
+      scoreInput.value = String(scoreVal);
+      scoreInput.dispatchEvent(new Event('input', { bubbles: true }));
+      scoreInput.dispatchEvent(new Event('change', { bubbles: true }));
+      scoreInput.blur(); // Triggers auto-save on some platforms (Canvas)
+    },
+    args: [selectors, score],
+  });
+
+  // Step 2: Fill feedback — branch on type
+  if (fbConfig.type === 'tinymce-iframe') {
+    // Canvas SpeedGrader: TinyMCE Rich Content Editor inside an iframe
+    await fillIframeFeedback(tabId, feedback, fbConfig);
+  } else if (fbConfig.type === 'tinymce-inline' || fbConfig.type === 'contenteditable') {
+    // Inline contenteditable (like MyOpenMath, but page-level)
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (sel, feedbackText, cfg) => {
+        const fbBox = document.querySelector(sel.feedbackBox);
+        if (!fbBox) return;
+        const html = cfg.htmlWrap
+          ? '<p>' + feedbackText.replace(/\n/g, '</p><p>') + '</p>'
+          : feedbackText;
+        fbBox.innerHTML = html; // eslint-disable-line -- trusted AI-generated content
+        fbBox.dispatchEvent(new Event('input', { bubbles: true }));
+        if (cfg.requiresHiddenSync && sel.feedbackHidden) {
+          const hidden = document.querySelector(sel.feedbackHidden);
+          if (hidden) hidden.value = html;
+        }
+      },
+      args: [selectors, feedback, fbConfig],
+    });
+  } else {
+    // Plain textarea
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (sel, feedbackText) => {
+        const fbBox = document.querySelector(sel.feedbackBox);
+        if (!fbBox) return;
+        fbBox.value = feedbackText;
+        fbBox.dispatchEvent(new Event('input', { bubbles: true }));
+        fbBox.dispatchEvent(new Event('change', { bubbles: true }));
+      },
+      args: [selectors, feedback],
+    });
+  }
+
+  // Step 3: Submit per student if configured
+  if (navigation?.submitPerStudent && navigation.submitButton) {
+    await delay(500); // Brief pause before clicking submit
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (sel) => {
+        const btn = document.querySelector(sel);
+        if (btn) btn.click();
+      },
+      args: [navigation.submitButton],
+    });
+    await delay(1000); // Wait for submission to process
+  }
+}
+
+/**
+ * Fill feedback into a TinyMCE editor that lives inside an iframe.
+ * Used by Canvas SpeedGrader's Rich Content Editor.
+ *
+ * @param {number} tabId - Chrome tab ID
+ * @param {string} feedbackText - Feedback text to set
+ * @param {Object} fbConfig - Feedback config
+ * @returns {Promise<void>}
+ */
+async function fillIframeFeedback(tabId, feedbackText, fbConfig) {
+  const html = fbConfig.htmlWrap
+    ? '<p>' + feedbackText.replace(/\n/g, '</p><p>') + '</p>'
+    : feedbackText;
+
+  // Find the TinyMCE editor iframe
+  const frames = await chrome.webNavigation.getAllFrames({ tabId });
+  const editorFrame = frames.find(f =>
+    f.url.includes('tinymce') ||
+    f.url.includes('editor') ||
+    f.url === 'about:blank' // TinyMCE often uses about:blank iframes
+  );
+
+  if (!editorFrame) {
+    // Fallback: try to find an iframe with title containing "Rich Text"
+    const result = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        const iframes = document.querySelectorAll('iframe');
+        for (const iframe of iframes) {
+          if (iframe.title?.includes('Rich Text') || iframe.id?.includes('rce')) {
+            return iframe.id;
+          }
+        }
+        return null;
+      },
+    });
+
+    const iframeId = result?.[0]?.result;
+    if (iframeId) {
+      // Find the matching frame by iframe ID
+      const matchingFrame = frames.find(f => {
+        // Heuristic: non-main frame that isn't the submission preview
+        return f.frameId > 0 && !f.url.includes('submission') && !f.url.includes('preview');
+      });
+      if (matchingFrame) {
+        await chrome.scripting.executeScript({
+          target: { tabId, frameIds: [matchingFrame.frameId] },
+          func: (content) => { document.body.innerHTML = content; }, // eslint-disable-line -- trusted AI content
+          args: [html],
+        });
+        return;
+      }
+    }
+
+    console.warn('[BatchGrader] Could not find TinyMCE editor iframe for feedback');
+    return;
+  }
+
+  // Set content in the editor iframe
+  await chrome.scripting.executeScript({
+    target: { tabId, frameIds: [editorFrame.frameId] },
+    func: (content) => { document.body.innerHTML = content; }, // eslint-disable-line -- trusted AI content
+    args: [html],
+  });
+}
+
+// ===========================================================================
+// Sequential Batch Grading Orchestration
+// ===========================================================================
+
+/**
+ * Orchestrate batch grading for sequential navigation pages.
+ * Three-phase approach:
+ *   Phase 1: Navigate through all students, extract data into array
+ *   Phase 2: Grade all students via AI (same as batch — just iterates array)
+ *   Phase 3: Navigate back through students, fill scores + feedback
+ *
+ * @param {number} tabId - Chrome tab ID
+ * @param {object} provider - Provider object
+ * @param {string} model - Model ID
+ * @param {object} opts - Options including selectors, feedbackConfig, navigation, etc.
+ * @returns {Promise<{graded, skipped, errors}>}
+ */
+async function batchGradeSequential(tabId, provider, model, opts = {}) {
+  const {
+    selectors: sel,
+    feedbackConfig: fbConfig,
+    saveConfig,
+    navigation: nav,
+    pageUrl = null,
+    customInstructions = '',
+    resumeAfter = null,
+    delayMs = 1000,
+    onProgress = null,
+    onError = null,
+    onSave = null,
+    onComplete = null,
+    manualRubric = null,
+  } = opts;
+
+  // ---- Phase 1: Extract rubric + all students ----
+  const rubric = manualRubric || await extractRubricSequential(tabId, sel, nav);
+
+  if (onProgress) onProgress(0, 1, 'Navigating to first student...', null, null);
+  await navigateToFirstStudent(tabId, nav);
+
+  const allStudents = await extractStudentsSequential(tabId, sel, nav, (current, total) => {
+    if (onProgress) onProgress(current, total * 2, `Extracting ${current}/${total}...`, null, null);
+  });
+
+  // ---- Filter to ungraded ----
+  let startIndex = 0;
+  const skipped = [];
+
+  if (resumeAfter) {
+    const resumeLower = resumeAfter.toLowerCase();
+    for (let i = 0; i < allStudents.length; i++) {
+      if (allStudents[i].name.toLowerCase().includes(resumeLower)) {
+        startIndex = i + 1;
+        break;
+      }
+    }
+    for (let i = 0; i < startIndex; i++) {
+      skipped.push(allStudents[i].name);
+    }
+  }
+
+  const toGrade = [];
+  for (let i = startIndex; i < allStudents.length; i++) {
+    const student = allStudents[i];
+    if (student.hasFeedback) {
+      skipped.push(student.name);
+    } else {
+      // Also skip students with existing non-zero scores (don't replace grades)
+      const existingScore = parseFloat(student.currentScore);
+      if (!isNaN(existingScore) && existingScore > 0) {
+        skipped.push(student.name);
+      } else {
+        toGrade.push(student);
+      }
+    }
+  }
+
+  if (toGrade.length === 0) {
+    const summary = { graded: [], skipped, errors: [] };
+    if (onComplete) onComplete(summary);
+    return summary;
+  }
+
+  // ---- Phase 2: Grade all students via AI ----
+  const total = toGrade.length;
+  const gradedResults = [];
+  const errors = [];
+
+  // Detect "non-zero feedback only" instruction for programmatic enforcement
+  const nonZeroFeedbackOnly = customInstructions && /non.?zero/i.test(customInstructions) && /feedback/i.test(customInstructions);
+
+  for (let i = 0; i < total; i++) {
+    const student = toGrade[i];
+    try {
+      const result = await gradeStudent(provider, model, rubric, student.name, student.response, customInstructions);
+      // Enforce non-zero feedback rule: strip feedback from 0-score students
+      const feedback = (nonZeroFeedbackOnly && result.score === 0) ? '' : result.feedback;
+      gradedResults.push({
+        index: student.index,
+        name: student.name,
+        score: result.score,
+        feedback,
+      });
+
+      if (onProgress) {
+        const phaseOffset = allStudents.length; // Phase 1 count
+        onProgress(phaseOffset + i + 1, allStudents.length + total * 2, student.name, result.score, result.feedback);
+      }
+
+      if (i < total - 1) await delay(delayMs);
+    } catch (err) {
+      errors.push({ name: student.name, error: err.message });
+      if (onError) onError(student.name, err);
+    }
+  }
+
+  // ---- Phase 3: Navigate back and fill grades ----
+  if (gradedResults.length > 0) {
+    await navigateToFirstStudent(tabId, nav);
+    let currentPos = 0;
+
+    for (let i = 0; i < gradedResults.length; i++) {
+      const result = gradedResults[i];
+
+      // Navigate to the correct student position
+      while (currentPos < result.index) {
+        await navigateToNextStudent(tabId, nav);
+        currentPos++;
+      }
+
+      // Fill this student's grade
+      try {
+        await fillGradeSequential(tabId, result.score, result.feedback, sel, fbConfig, nav);
+
+        if (onProgress) {
+          const phaseOffset = allStudents.length + total;
+          onProgress(phaseOffset + i + 1, allStudents.length + total * 2, `Filled ${result.name}`, result.score, result.feedback);
+        }
+
+        // Save state periodically
+        if (pageUrl && (i + 1) % 5 === 0) {
+          await saveBatchGradeState(pageUrl, result.name, gradedResults.length);
+          if (onSave) onSave(i + 1);
+        }
+      } catch (err) {
+        errors.push({ name: result.name, error: `Fill failed: ${err.message}` });
+        if (onError) onError(result.name, err);
+      }
+
+      // Navigate to next student for the next fill (unless this is the last)
+      if (i < gradedResults.length - 1) {
+        await navigateToNextStudent(tabId, nav);
+        currentPos++;
+      }
+    }
+  }
+
+  // Clear state on completion
+  if (pageUrl && gradedResults.length > 0 && errors.length === 0) {
+    await clearBatchGradeState(pageUrl);
+  }
+
+  const graded = gradedResults.map(r => ({ name: r.name, index: r.index, score: r.score, feedback: r.feedback }));
+  const summary = { graded, skipped, errors };
+  if (onComplete) onComplete(summary);
+  return summary;
 }
 
 // ---------------------------------------------------------------------------
@@ -318,13 +1021,40 @@ async function batchGrade(tabId, provider, model, options = {}) {
     onError = null,
     onSave = null,
     onComplete = null,
+    profile = null,
   } = options;
 
-  // Step 1: Extract rubric
-  const rubric = await extractRubric(tabId);
+  // Resolve site profile — selectors + feedback config + save config
+  const activeProfile = profile || (pageUrl ? await getActiveProfile(pageUrl) : null) || DEFAULT_MYOPENMATH_PROFILE;
+  const sel = activeProfile.selectors;
+  const fbConfig = activeProfile.feedback || { type: 'tinymce-inline', requiresHiddenSync: true, htmlWrap: true };
+  const saveConfig = activeProfile.save || { buttonText: 'Quick Save', fallbackText: 'Save Changes' };
+  const nav = activeProfile.navigation || { mode: 'batch' };
+
+  // Branch: sequential navigation mode uses a separate three-phase flow
+  if (nav.mode === 'sequential') {
+    return await batchGradeSequential(tabId, provider, model, {
+      selectors: sel,
+      feedbackConfig: fbConfig,
+      saveConfig,
+      navigation: nav,
+      pageUrl,
+      customInstructions,
+      resumeAfter,
+      delayMs,
+      onProgress,
+      onError,
+      onSave,
+      onComplete,
+      manualRubric: options.manualRubric || null,
+    });
+  }
+
+  // Step 1: Extract rubric (batch mode)
+  const rubric = await extractRubric(tabId, sel);
 
   // Step 2: Extract all students
-  const allStudents = await extractStudents(tabId);
+  const allStudents = await extractStudents(tabId, sel);
 
   // Step 3: Determine which students to grade
   let startIndex = 0;
@@ -352,14 +1082,20 @@ async function batchGrade(tabId, provider, model, options = {}) {
     }
   }
 
-  // Filter: skip already-graded students (those with existing feedback)
+  // Filter: skip already-graded students (those with existing feedback or non-zero scores)
   const toGrade = [];
   for (let i = startIndex; i < allStudents.length; i++) {
     const student = allStudents[i];
     if (student.hasFeedback) {
       skipped.push(student.name);
     } else {
-      toGrade.push(student);
+      // Also skip students with existing non-zero scores (don't replace grades)
+      const existingScore = parseFloat(student.currentScore);
+      if (!isNaN(existingScore) && existingScore > 0) {
+        skipped.push(student.name);
+      } else {
+        toGrade.push(student);
+      }
     }
   }
 
@@ -367,6 +1103,9 @@ async function batchGrade(tabId, provider, model, options = {}) {
   const graded = [];
   const errors = [];
   let sinceLastSave = 0;
+
+  // Detect "non-zero feedback only" instruction for programmatic enforcement
+  const nonZeroFeedbackOnly = customInstructions && /non.?zero/i.test(customInstructions) && /feedback/i.test(customInstructions);
 
   // Step 4: Grade each student sequentially
   for (let i = 0; i < total; i++) {
@@ -383,8 +1122,13 @@ async function batchGrade(tabId, provider, model, options = {}) {
         customInstructions
       );
 
+      // Enforce non-zero feedback rule: strip feedback from 0-score students
+      if (nonZeroFeedbackOnly && result.score === 0) {
+        result.feedback = '';
+      }
+
       // Step 5: Fill grade on page
-      await fillGrade(tabId, student.index, result.score, result.feedback);
+      await fillGrade(tabId, student.index, result.score, result.feedback, sel, fbConfig);
 
       graded.push({ name: student.name, index: student.index, score: result.score, feedback: result.feedback });
       sinceLastSave++;
@@ -396,7 +1140,7 @@ async function batchGrade(tabId, provider, model, options = {}) {
 
       // Step 6: Quick Save every N students
       if (sinceLastSave >= saveEvery) {
-        await clickQuickSave(tabId);
+        await clickQuickSave(tabId, saveConfig);
         sinceLastSave = 0;
         
         // Save state after Quick Save
@@ -791,6 +1535,15 @@ const BatchGrader = {
   fillGrade,
   clickQuickSave,
   batchGrade,
+  // Sequential navigation
+  extractStudentsSequential,
+  extractRubricSequential,
+  fillGradeSequential,
+  batchGradeSequential,
+  navigateToFirstStudent,
+  navigateToNextStudent,
+  getCurrentStudentInfo,
+  getStudentCount,
   // State management
   loadBatchGradeState,
   saveBatchGradeState,
@@ -800,7 +1553,8 @@ const BatchGrader = {
   _parseGradingResponse: parseGradingResponse,
   _buildGradingSystemPrompt: buildGradingSystemPrompt,
   _buildGradingUserPrompt: buildGradingUserPrompt,
-  _SELECTORS: SELECTORS,
+  // Backward compat: default MyOpenMath selectors
+  _SELECTORS: DEFAULT_MYOPENMATH_PROFILE.selectors,
 };
 
 // Attach to window (for regular <script> inclusion)
@@ -816,6 +1570,16 @@ export {
   fillGrade,
   clickQuickSave,
   batchGrade,
+  // Sequential navigation
+  extractStudentsSequential,
+  extractRubricSequential,
+  fillGradeSequential,
+  batchGradeSequential,
+  navigateToFirstStudent,
+  navigateToNextStudent,
+  getCurrentStudentInfo,
+  getStudentCount,
+  // State management
   loadBatchGradeState,
   saveBatchGradeState,
   clearBatchGradeState,

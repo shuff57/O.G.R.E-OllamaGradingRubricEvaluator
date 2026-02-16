@@ -1,5 +1,7 @@
 import { PROVIDERS, getActiveProvider, setActiveProvider, proxyFetch, callProviderAI } from './providers.js';
 import BatchGrader from './batch-grader.js';
+import SiteProfiles from './site-profiles.js';
+import Discover from './discover.js';
 import {
   startGitHubDeviceFlow,
   startChatGPTDeviceFlow,
@@ -105,7 +107,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 const presets = {
-  nonZero: "Only provide feedback for students with non-zero scores. If the score is 0, leave the feedback blank.",
+  nonZero: "IMPORTANT: Only provide feedback for students who earn a non-zero score. If a student's score is 0, set feedback to an empty string \"\". Do NOT write feedback for zero-score students.",
   lenient: "Grade very leniently. Give partial credit for any attempt that is vaguely correct.",
   strict: "Grade strictly according to the rubric. Deduct points for minor errors."
 };
@@ -1023,10 +1025,17 @@ async function startAreaSelection(target) {
   });
 }
 
-// Listen for area selection from content script
+// Listen for area selection and element picks from content scripts
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "areaSelected" && currentCaptureTarget) {
     processAreaCapture(request.area);
+  }
+  // Element picker response (from element-picker.js)
+  if (request.action === "elementPicked" && _discoveryPickerTarget) {
+    handleElementPicked(request);
+  }
+  if (request.action === "elementPickCancelled") {
+    _discoveryPickerTarget = null;
   }
 });
 
@@ -1164,15 +1173,17 @@ async function switchMode(mode) {
   saveState();
 }
 
-// Check if current page is supported for batch grading
+// Check if current page is supported for batch grading (uses site profiles)
 async function checkBatchPageStatus() {
   const statusEl = document.getElementById('batchPageStatus');
   const statusText = document.getElementById('batchPageStatusText');
   const btnStart = document.getElementById('btnStartBatch');
   const resumePrompt = document.getElementById('resumePrompt');
-  
+  const profileSelect = document.getElementById('profileSelect');
+
   console.log('[Batch] checkBatchPageStatus called');
   statusText.innerText = "Checking page compatibility...";
+  statusEl.style.display = '';
   statusEl.classList.add('status-info');
   statusEl.classList.remove('status-success', 'status-error');
   statusEl.style.background = '';
@@ -1180,36 +1191,106 @@ async function checkBatchPageStatus() {
   btnStart.disabled = true;
   resumePrompt.style.display = 'none';
 
+  // Populate profile dropdown
+  await populateProfileDropdown();
+
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab || !tab.url) return;
 
-    // Simple URL check — MyOpenMath grading pages or demo test pages
     console.log('[Batch] Tab URL:', tab.url);
-    const isGradingPage = tab.url.includes('gradeallq2.php') ||
-                         tab.url.includes('demo-grading-page.html') ||
-                         tab.url.includes('mock-myopenmath');
-    if (isGradingPage) {
-       statusText.innerText = "Supported grading page detected!";
+
+    // Check for manual profile override from dropdown
+    const selectedProfileId = profileSelect?.value;
+    let profile = null;
+
+    if (selectedProfileId && selectedProfileId !== 'auto') {
+      profile = await SiteProfiles.getProfile(selectedProfileId);
+    } else {
+      // Auto-detect: match URL against all profiles
+      profile = await SiteProfiles.matchProfile(tab.url);
+    }
+
+    if (profile) {
+       // Store active profile for use in startBatchGrading
+       window._activeBatchProfile = profile;
+       const navMode = profile.navigation?.mode || 'batch';
+       const modeLabel = navMode === 'sequential' ? ' (Sequential)' : '';
+       statusText.innerText = `Profile: ${profile.name}${modeLabel}`;
        statusEl.classList.add('status-success');
        statusEl.classList.remove('status-info', 'status-error');
        statusEl.style.background = '';
        statusEl.style.color = '';
        btnStart.disabled = false;
-       console.log('[Batch] ✅ Button enabled - grading page detected');
-       
+       console.log(`[Batch] Profile matched: ${profile.name} (${profile.id}), mode: ${navMode}`);
+
+       // Show/hide manual rubric section for sequential profiles
+       const manualRubricEl = document.getElementById('manualRubricContainer');
+       if (manualRubricEl) {
+         manualRubricEl.style.display = navMode === 'sequential' ? '' : 'none';
+       }
+
+       // Select the matched profile in dropdown
+       if (profileSelect) {
+         profileSelect.value = profile.id;
+         // Add option if not in dropdown yet
+         if (!profileSelect.querySelector(`option[value="${profile.id}"]`)) {
+           const opt = document.createElement('option');
+           opt.value = profile.id;
+           opt.textContent = profile.name;
+           profileSelect.appendChild(opt);
+           profileSelect.value = profile.id;
+         }
+       }
+
        // Check for saved state
        await checkResumeState(tab.url);
     } else {
-       console.log('[Batch] ❌ Not a grading page - button disabled. URL:', tab.url);
-       statusText.innerText = "";
-       statusEl.style.display = 'none';
-       statusEl.classList.remove('status-error', 'status-info', 'status-success');
+       window._activeBatchProfile = null;
+       console.log('[Batch] No profile matched. Showing discover option.');
+       statusText.innerText = "Unknown page — use Discover to analyze";
+       statusEl.classList.remove('status-success', 'status-info');
+       statusEl.classList.add('status-error');
        statusEl.style.background = '';
        statusEl.style.color = '';
+       // Hide manual rubric when no profile
+       const manualRubricEl = document.getElementById('manualRubricContainer');
+       if (manualRubricEl) manualRubricEl.style.display = 'none';
     }
   } catch (e) {
+    console.error('[Batch] checkBatchPageStatus error:', e);
     statusText.innerText = "Error checking page.";
+  }
+}
+
+/**
+ * Populate the profile dropdown with all available profiles.
+ */
+async function populateProfileDropdown() {
+  const profileSelect = document.getElementById('profileSelect');
+  if (!profileSelect) return;
+
+  const profiles = await SiteProfiles.listProfiles();
+
+  // Preserve current selection
+  const currentVal = profileSelect.value;
+
+  // Clear all except auto-detect
+  while (profileSelect.options.length > 1) {
+    profileSelect.remove(1);
+  }
+
+  // Add each profile
+  for (const p of profiles) {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.name + (p.isBuiltIn ? ' (built-in)' : '');
+    profileSelect.appendChild(opt);
+  }
+
+  // Restore selection
+  if (currentVal && profileSelect.querySelector(`option[value="${currentVal}"]`)) {
+    profileSelect.value = currentVal;
   }
 }
 
@@ -3549,6 +3630,9 @@ async function startBatchGrading() {
   const customInstructions = document.getElementById('customInstructions').value;
   const resumeAfter = document.getElementById('resumeStudent').value;
 
+  // Detect "non-zero feedback only" instruction for programmatic enforcement
+  const nonZeroFeedbackOnly = /non.?zero/i.test(customInstructions) && /feedback/i.test(customInstructions);
+
   // Extension-based grading — BatchGrader handles extraction, grading, and filling
 
   // UI State
@@ -3572,14 +3656,54 @@ async function startBatchGrading() {
       console.log('[Batch] Active tab:', tab.id, 'URL:', pageUrl);
       logBatch(`📄 Page: ${pageUrl}`);
 
-      // 1. Extract Rubric
-      logBatch("Extracting rubric...");
-      const rubric = await BatchGrader.extractRubric(tab.id);
-      logBatch("Rubric extracted.");
+      // Resolve site profile for selectors
+      const activeProfile = window._activeBatchProfile || await SiteProfiles.getActiveProfile(pageUrl) || SiteProfiles.DEFAULT_MYOPENMATH_PROFILE;
+      const sel = activeProfile.selectors;
+      const fbConfig = activeProfile.feedback || { type: 'tinymce-inline', requiresHiddenSync: true, htmlWrap: true };
+      const saveConfig = activeProfile.save || { buttonText: 'Quick Save', fallbackText: 'Save Changes' };
+      const navMode = activeProfile.navigation?.mode || 'batch';
+      const navConfig = activeProfile.navigation || { mode: 'batch' };
 
-      // 2. Extract Students
-      logBatch("Extracting students...");
-      const allStudents = await BatchGrader.extractStudents(tab.id);
+      let rubric, allStudents;
+
+      if (navMode === 'sequential') {
+        // Sequential mode: extract by navigating through students one by one
+        logBatch("Sequential mode — extracting rubric...");
+
+        // Use manual rubric from UI if provided, otherwise auto-extract
+        const manualRubricText = document.getElementById('manualRubric')?.value?.trim();
+        const manualMaxScore = document.getElementById('manualMaxScore')?.value;
+
+        if (manualRubricText) {
+          rubric = {
+            maxScore: manualMaxScore || '100',
+            essayPrompt: manualRubricText,
+            checklistItems: [],
+            rubricItems: [],
+          };
+          logBatch("Using manual rubric from UI.");
+        } else {
+          rubric = await BatchGrader.extractRubricSequential(tab.id, sel, navConfig);
+          logBatch("Rubric extracted (sequential).");
+        }
+
+        logBatch("Extracting students (navigating through pages)...");
+        allStudents = await BatchGrader.extractStudentsSequential(tab.id, sel, navConfig, (current, total) => {
+          progressText.innerText = `Extracting ${current}/${total}`;
+          const pct = Math.round((current / total) * 50); // 0-50% for extraction
+          progressBar.style.width = `${pct}%`;
+          progressPercent.innerText = `${pct}%`;
+        });
+        logBatch(`Extracted ${allStudents.length} students.`);
+      } else {
+        // Batch mode: all students on one page
+        logBatch("Extracting rubric...");
+        rubric = await BatchGrader.extractRubric(tab.id, sel);
+        logBatch("Rubric extracted.");
+
+        logBatch("Extracting students...");
+        allStudents = await BatchGrader.extractStudents(tab.id, sel);
+      }
 
       // 3. Filter & Resume Logic
       let startIndex = 0;
@@ -3598,7 +3722,14 @@ async function startBatchGrading() {
           }
       }
 
-      const toGrade = allStudents.slice(startIndex).filter(s => !s.hasFeedback);
+      const toGrade = allStudents.slice(startIndex).filter(s => {
+        // Skip students who already have feedback
+        if (s.hasFeedback) return false;
+        // Skip students who already have a non-zero score (don't replace existing grades)
+        const score = parseFloat(s.currentScore);
+        if (!isNaN(score) && score > 0) return false;
+        return true;
+      });
       const total = toGrade.length;
 
       if (total === 0) {
@@ -3695,86 +3826,130 @@ async function startBatchGrading() {
                       const chunkResults = parsed.results || [];
                       logBatch(`Chunk ${parsed.chunkIndex + 1} complete — ${chunkResults.length} results`);
 
-                      const reviewOn = document.getElementById('fillReview')?.checked;
-                      let chunkFilled = 0;
-
-                      for (const result of chunkResults) {
-                          if (!isBatchRunning) break;
-
-                          const student = toGrade.find(s => s.index === result.studentIndex);
-                          if (!student) {
-                              logBatch(`Warning: no student found for index ${result.studentIndex}`, "orange");
-                              continue;
-                          }
-
-                          // Per-student review: show score & feedback, wait for approve/skip
-                          if (reviewOn) {
-                              const reviewData = { ...result, name: student.name, maxScore: rubric.maxScore };
-                              const decision = await requestStudentReview(reviewData, chunkResults.indexOf(result), chunkResults.length);
-                              if (decision.action === 'skip') {
-                                  logBatch(`⏭️ Skipped ${student.name}`, "orange");
+                      if (navMode === 'sequential') {
+                          // Sequential: collect results, fill later in navigation pass
+                          for (const result of chunkResults) {
+                              const student = toGrade.find(s => s.index === result.studentIndex);
+                              if (!student) {
+                                  logBatch(`Warning: no student found for index ${result.studentIndex}`, "orange");
                                   continue;
+                              }
+                              // Enforce non-zero feedback rule: strip feedback from 0-score students
+                              const feedback = (nonZeroFeedbackOnly && result.score === 0) ? '' : result.feedback;
+                              gradedStudents.push({
+                                  index: student.index,
+                                  name: student.name,
+                                  score: result.score,
+                                  feedback,
+                              });
+                              logBatch(`Graded: ${student.name}: ${result.score}/${rubric.maxScore}`);
+                          }
+                          filledCount += chunkResults.length;
+                          progressText.innerText = `Graded ${filledCount}/${total}`;
+                          const pct = Math.round((filledCount / total) * 50) + 50; // 50-100% for grading
+                          progressBar.style.width = `${pct}%`;
+                          progressPercent.innerText = `${pct}%`;
+                      } else {
+                          // Batch: fill immediately as results arrive
+                          const reviewOn = document.getElementById('fillReview')?.checked;
+                          let chunkFilled = 0;
+
+                          for (const result of chunkResults) {
+                              if (!isBatchRunning) break;
+
+                              const student = toGrade.find(s => s.index === result.studentIndex);
+                              if (!student) {
+                                  logBatch(`Warning: no student found for index ${result.studentIndex}`, "orange");
+                                  continue;
+                              }
+
+                              // Per-student review: show score & feedback, wait for approve/skip
+                              if (reviewOn) {
+                                  const reviewData = { ...result, name: student.name, maxScore: rubric.maxScore };
+                                  const decision = await requestStudentReview(reviewData, chunkResults.indexOf(result), chunkResults.length);
+                                  if (decision.action === 'skip') {
+                                      logBatch(`Skipped ${student.name}`, "orange");
+                                      continue;
+                                  }
+                              }
+
+                              filledCount++;
+                              chunkFilled++;
+                              progressText.innerText = `Filling ${filledCount}/${total}`;
+                              const pct = Math.round((filledCount / total) * 100);
+                              progressBar.style.width = `${pct}%`;
+                              progressPercent.innerText = `${pct}%`;
+
+                              try {
+                                  // Enforce non-zero feedback rule: strip feedback from 0-score students
+                                  const feedback = (nonZeroFeedbackOnly && result.score === 0) ? '' : result.feedback;
+                                  await BatchGrader.fillGrade(tab.id, student.index, result.score, feedback, sel, fbConfig);
+                                  logBatch(`\u2713 ${student.name}: ${result.score}/${rubric.maxScore}`, "green");
+                                  gradedStudents.push({ index: student.index, name: student.name, score: result.score, feedback });
+                              } catch (err) {
+                                  console.error(err);
+                                  logBatch(`Error filling ${student.name}: ${err.message}`, "red");
                               }
                           }
 
-                          filledCount++;
-                          chunkFilled++;
-                          progressText.innerText = `Filling ${filledCount}/${total}`;
-                          const pct = Math.round((filledCount / total) * 100);
-                          progressBar.style.width = `${pct}%`;
-                          progressPercent.innerText = `${pct}%`;
-
-                          try {
-                              await BatchGrader.fillGrade(tab.id, student.index, result.score, result.feedback);
-                              logBatch(`✓ ${student.name}: ${result.score}/${rubric.maxScore}`, "green");
-                              gradedStudents.push({ name: student.name, score: result.score });
-                          } catch (err) {
-                              console.error(err);
-                              logBatch(`Error filling ${student.name}: ${err.message}`, "red");
+                          // Quick Save after filling this chunk
+                          if (chunkFilled > 0 && gradedStudents.length > 0) {
+                              logBatch("Saving...");
+                              await BatchGrader.clickQuickSave(tab.id, saveConfig);
+                              const lastGraded = gradedStudents[gradedStudents.length - 1];
+                              await BatchGrader.saveBatchGradeState(pageUrl, lastGraded.name, gradedStudents.length);
+                              await new Promise(r => setTimeout(r, 1500));
                           }
-                      }
-
-                      // Quick Save after filling this chunk
-                      if (chunkFilled > 0 && gradedStudents.length > 0) {
-                          logBatch("Saving...");
-                          await BatchGrader.clickQuickSave(tab.id);
-                          const lastGraded = gradedStudents[gradedStudents.length - 1];
-                          await BatchGrader.saveBatchGradeState(pageUrl, lastGraded.name, gradedStudents.length);
-                          await new Promise(r => setTimeout(r, 1500));
                       }
                   } else if (currentEvent === 'outlier') {
                       // Re-fill adjusted outlier scores
                       const adjustedResults = parsed.adjustedResults || [];
                       if (adjustedResults.length > 0) {
-                          logBatch(`Re-filling ${adjustedResults.length} adjusted outlier score(s)...`);
+                          logBatch(`Adjusting ${adjustedResults.length} outlier score(s)...`);
 
-                          const reviewOutliers = document.getElementById('fillReview')?.checked;
-                          let outliersFilled = 0;
-
-                          for (const result of adjustedResults) {
-                              const student = toGrade.find(s => s.index === result.studentIndex);
-                              if (!student) continue;
-
-                              if (reviewOutliers) {
-                                  const reviewData = { ...result, name: student.name, maxScore: rubric.maxScore };
-                                  const decision = await requestStudentReview(reviewData, adjustedResults.indexOf(result), adjustedResults.length);
-                                  if (decision.action === 'skip') {
-                                      logBatch(`⏭️ Skipped outlier ${student.name}`, "orange");
-                                      continue;
+                          if (navMode === 'sequential') {
+                              // Sequential: update collected results with adjusted scores
+                              for (const result of adjustedResults) {
+                                  const student = toGrade.find(s => s.index === result.studentIndex);
+                                  if (!student) continue;
+                                  // Find and update in gradedStudents
+                                  const existing = gradedStudents.find(g => g.index === result.studentIndex);
+                                  if (existing) {
+                                      existing.score = result.score;
+                                      existing.feedback = result.feedback;
+                                      logBatch(`Adjusted: ${student.name}: ${result.score}/${rubric.maxScore}`);
                                   }
                               }
+                          } else {
+                              // Batch: re-fill adjusted scores immediately
+                              const reviewOutliers = document.getElementById('fillReview')?.checked;
+                              let outliersFilled = 0;
 
-                              try {
-                                  await BatchGrader.fillGrade(tab.id, student.index, result.score, result.feedback);
-                                  logBatch(`✓ ${student.name}: adjusted to ${result.score}/${rubric.maxScore}`, "green");
-                                  outliersFilled++;
-                              } catch (err) {
-                                  logBatch(`Error filling ${student.name}: ${err.message}`, "red");
+                              for (const result of adjustedResults) {
+                                  const student = toGrade.find(s => s.index === result.studentIndex);
+                                  if (!student) continue;
+
+                                  if (reviewOutliers) {
+                                      const reviewData = { ...result, name: student.name, maxScore: rubric.maxScore };
+                                      const decision = await requestStudentReview(reviewData, adjustedResults.indexOf(result), adjustedResults.length);
+                                      if (decision.action === 'skip') {
+                                          logBatch(`Skipped outlier ${student.name}`, "orange");
+                                          continue;
+                                      }
+                                  }
+
+                                  try {
+                                      await BatchGrader.fillGrade(tab.id, student.index, result.score, result.feedback, sel, fbConfig);
+                                      logBatch(`\u2713 ${student.name}: adjusted to ${result.score}/${rubric.maxScore}`, "green");
+                                      outliersFilled++;
+                                  } catch (err) {
+                                      logBatch(`Error filling ${student.name}: ${err.message}`, "red");
+                                  }
                               }
-                          }
-                          if (outliersFilled > 0) {
-                              await BatchGrader.clickQuickSave(tab.id);
-                              await new Promise(r => setTimeout(r, 1500));
+                              if (outliersFilled > 0) {
+                                  await BatchGrader.clickQuickSave(tab.id, saveConfig);
+                                  await new Promise(r => setTimeout(r, 1500));
+                              }
                           }
                       }
                   } else if (currentEvent === 'done') {
@@ -3802,6 +3977,65 @@ async function startBatchGrading() {
           if (doneData.metadata) {
               logBatch(`Graded in ${doneData.metadata.elapsedSeconds}s (${doneData.metadata.chunks} chunk(s))`);
           }
+      }
+
+      // Sequential fill pass: navigate back through students and fill scores
+      if (navMode === 'sequential' && gradedStudents.length > 0 && isBatchRunning) {
+          logBatch(`Filling ${gradedStudents.length} students sequentially...`);
+          const reviewOn = document.getElementById('fillReview')?.checked;
+
+          // Navigate to first student
+          await BatchGrader.navigateToFirstStudent(tab.id, navConfig);
+          let currentPos = 0;
+          let sequentialFilled = 0;
+
+          for (const result of gradedStudents) {
+              if (!isBatchRunning) break;
+
+              // Navigate to the correct student position
+              while (currentPos < result.index) {
+                  await BatchGrader.navigateToNextStudent(tab.id, navConfig);
+                  currentPos++;
+              }
+
+              // Per-student review
+              if (reviewOn) {
+                  const reviewData = { ...result, maxScore: rubric.maxScore };
+                  const decision = await requestStudentReview(reviewData, sequentialFilled, gradedStudents.length);
+                  if (decision.action === 'skip') {
+                      logBatch(`Skipped ${result.name}`, "orange");
+                      // Still advance to next student
+                      if (currentPos < allStudents.length - 1) {
+                          await BatchGrader.navigateToNextStudent(tab.id, navConfig);
+                          currentPos++;
+                      }
+                      continue;
+                  }
+              }
+
+              // Fill this student's grade
+              try {
+                  await BatchGrader.fillGradeSequential(tab.id, result.score, result.feedback, sel, fbConfig, navConfig);
+                  sequentialFilled++;
+                  logBatch(`\u2713 ${result.name}: ${result.score}/${rubric.maxScore}`, "green");
+
+                  progressText.innerText = `Filled ${sequentialFilled}/${gradedStudents.length}`;
+                  const pct = Math.round((sequentialFilled / gradedStudents.length) * 100);
+                  progressBar.style.width = `${pct}%`;
+                  progressPercent.innerText = `${pct}%`;
+              } catch (err) {
+                  console.error(err);
+                  logBatch(`Error filling ${result.name}: ${err.message}`, "red");
+              }
+
+              // Navigate to next if not last
+              if (currentPos < allStudents.length - 1) {
+                  await BatchGrader.navigateToNextStudent(tab.id, navConfig);
+                  currentPos++;
+              }
+          }
+
+          logBatch(`Sequential fill complete: ${sequentialFilled}/${gradedStudents.length} students filled.`, "green");
       }
 
       // Final state
@@ -3867,12 +4101,24 @@ async function fallbackDirectGrading() {
 
       logBatch(`Fallback mode: grading 1:1 with ${getProviderDisplayName(currentProviderId)} / ${model}...`);
 
+      // Build manual rubric if provided (for sequential profiles)
+      const manualRubricText = document.getElementById('manualRubric')?.value?.trim();
+      const manualMaxScore = document.getElementById('manualMaxScore')?.value;
+      const manualRubric = manualRubricText ? {
+          maxScore: manualMaxScore || '100',
+          essayPrompt: manualRubricText,
+          checklistItems: [],
+          rubricItems: [],
+      } : null;
+
       // BatchGrader.batchGrade handles extraction, grading, filling, and saving
       // onProgress signature: (completedCount, totalCount, studentName, score, feedback)
       await BatchGrader.batchGrade(tab.id, currentProviderId, model, {
           pageUrl,
           customInstructions,
           resumeAfter: resumeAfter || null,
+          profile: window._activeBatchProfile || null,
+          manualRubric,
           onProgress: (completed, total, name, score) => {
               const pct = Math.round((completed / total) * 100);
               progressBar.style.width = `${pct}%`;
@@ -3983,5 +4229,360 @@ function showBatchActivity(studentName) {
     };
 }
 
+// ===========================================================================
+// Page Discovery Flow
+// ===========================================================================
 
+// State for the discovery wizard
+let _discoveryDraft = null;      // Draft profile from AI
+let _discoveryPickerTarget = null; // Which selector field is being picked
+let _discoveryOriginalScore = '';  // Original score before test fill
+
+// Labels for selector fields (displayed to user)
+const SELECTOR_LABELS = {
+  studentSection: 'Students',
+  studentName: 'Name',
+  scoreInput: 'Score',
+  feedbackBox: 'Feedback',
+  feedbackHidden: 'Hidden Input',
+  questionRegion: 'Question',
+  fullCreditLink: 'Full Credit',
+};
+
+// Required selectors (discovery fails without these)
+const REQUIRED_SELECTORS = ['studentSection', 'studentName', 'scoreInput', 'feedbackBox'];
+
+/**
+ * Start the page discovery flow.
+ * Captures screenshot + DOM snapshot, sends to AI, displays results.
+ */
+async function startDiscovery() {
+  const wizard = document.getElementById('discoveryWizard');
+  const statusEl = document.getElementById('discoveryStatus');
+  const selectorsDiv = document.getElementById('discoveredSelectors');
+  const testSection = document.getElementById('testFillSection');
+  const saveSection = document.getElementById('saveProfileSection');
+
+  // Show wizard, hide test/save sections
+  wizard.style.display = '';
+  selectorsDiv.style.display = 'none';
+  testSection.style.display = 'none';
+  saveSection.style.display = 'none';
+  statusEl.textContent = 'Capturing page screenshot and DOM structure...';
+
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab || !tab.url) {
+      statusEl.textContent = 'No active tab found.';
+      return;
+    }
+
+    statusEl.textContent = 'Sending page to AI for analysis...';
+
+    // AI call function — uses the currently selected provider
+    const aiCallFn = async (systemPrompt, userPrompt, screenshotDataUrl) => {
+      const providerId = getActiveProvider();
+      const provider = PROVIDERS[providerId];
+      if (!provider) throw new Error('No AI provider selected. Configure one in Settings.');
+
+      const config = await getProviderConfigFromStorage(providerId);
+      const model = document.getElementById('modelName')?.value;
+      if (!model) throw new Error('No model selected. Choose a model in Settings.');
+      config.model = model;
+
+      // Build messages with vision support
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt, images: [screenshotDataUrl] },
+      ];
+
+      const request = provider.buildChatRequest(config, messages, { stream: false });
+
+      const response = await proxyFetch(request.url, {
+        method: 'POST',
+        headers: request.headers,
+        body: JSON.stringify(request.body),
+      });
+
+      if (!response.ok) {
+        throw new Error(`AI API error: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      // Parse response (handle Ollama + OpenAI formats)
+      if (data.message?.content) return data.message.content;
+      if (data.choices?.[0]?.message?.content) return data.choices[0].message.content;
+      throw new Error('Unexpected AI response format');
+    };
+
+    // Run discovery
+    const { draft, validation } = await Discover.discoverSelectors(tab.id, tab.url, aiCallFn);
+    _discoveryDraft = draft;
+
+    statusEl.textContent = draft.confidence === 'high'
+      ? 'Analysis complete — high confidence'
+      : draft.confidence === 'medium'
+        ? 'Analysis complete — review selectors below'
+        : 'Analysis complete — low confidence, manual correction likely needed';
+
+    if (draft.notes) {
+      statusEl.textContent += '. ' + draft.notes;
+    }
+
+    // Render selector rows
+    renderDiscoveredSelectors(draft.selectors, validation);
+    selectorsDiv.style.display = '';
+
+    // Show test fill + save sections if required selectors are valid
+    const allRequired = REQUIRED_SELECTORS.every(k =>
+      validation[k] && validation[k].valid
+    );
+    if (allRequired) {
+      testSection.style.display = '';
+      saveSection.style.display = '';
+      // Pre-fill profile name from hostname
+      const hostname = new URL(tab.url).hostname.replace('www.', '');
+      document.getElementById('profileName').value = hostname;
+    } else {
+      testSection.style.display = 'none';
+      saveSection.style.display = 'none';
+    }
+
+  } catch (err) {
+    console.error('[Discovery] Error:', err);
+    statusEl.textContent = 'Discovery failed: ' + err.message;
+  }
+}
+
+/**
+ * Render the discovered selectors as rows in the wizard.
+ */
+function renderDiscoveredSelectors(selectors, validation) {
+  const container = document.getElementById('discoveredSelectors');
+  container.textContent = ''; // clear safely
+
+  for (const [key, label] of Object.entries(SELECTOR_LABELS)) {
+    const cssSelector = selectors[key];
+    const v = validation[key] || {};
+    const isRequired = REQUIRED_SELECTORS.includes(key);
+
+    const row = document.createElement('div');
+    row.className = 'selector-row';
+    row.dataset.selectorKey = key;
+
+    // Label
+    const labelEl = document.createElement('span');
+    labelEl.className = 'selector-label';
+    labelEl.textContent = label + (isRequired ? '*' : '');
+    row.appendChild(labelEl);
+
+    // Selector value
+    const valueEl = document.createElement('span');
+    valueEl.className = 'selector-value';
+    valueEl.textContent = cssSelector || '(not found)';
+    valueEl.title = cssSelector || '';
+    row.appendChild(valueEl);
+
+    // Status (match count)
+    const statusEl = document.createElement('span');
+    statusEl.className = 'selector-status';
+    if (!cssSelector || v.skipped) {
+      statusEl.textContent = '—';
+    } else if (v.valid) {
+      statusEl.className += ' ok';
+      statusEl.textContent = v.matchCount + (v.matchCount === 1 ? ' hit' : ' hits');
+    } else {
+      statusEl.className += ' fail';
+      statusEl.textContent = v.error ? 'err' : '0 hits';
+    }
+    row.appendChild(statusEl);
+
+    // Change button
+    const changeBtn = document.createElement('button');
+    changeBtn.className = 'btn-change';
+    changeBtn.textContent = 'Pick';
+    changeBtn.title = 'Click an element on the page to use its selector';
+    changeBtn.addEventListener('click', () => startElementPicker(key));
+    row.appendChild(changeBtn);
+
+    container.appendChild(row);
+  }
+}
+
+/**
+ * Start element picker mode for a specific selector field.
+ * Injects element-picker.js into the page.
+ */
+async function startElementPicker(targetField) {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab) return;
+
+    _discoveryPickerTarget = targetField;
+
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ['element-picker.js'],
+    });
+
+    // Update the status to let user know they should click on the page
+    const statusEl = document.getElementById('discoveryStatus');
+    statusEl.textContent = `Click the ${SELECTOR_LABELS[targetField] || targetField} element on the page...`;
+  } catch (err) {
+    console.error('[ElementPicker] Error injecting:', err);
+    _discoveryPickerTarget = null;
+  }
+}
+
+/**
+ * Handle the element picked from the page.
+ * Updates the draft profile and re-validates.
+ */
+async function handleElementPicked(request) {
+  const targetField = _discoveryPickerTarget;
+  _discoveryPickerTarget = null;
+
+  if (!targetField || !_discoveryDraft) return;
+
+  // Update the draft selectors
+  _discoveryDraft.selectors[targetField] = request.selector;
+
+  // Re-validate all selectors
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab) return;
+
+    const validation = await Discover.validateSelectors(tab.id, _discoveryDraft.selectors);
+    renderDiscoveredSelectors(_discoveryDraft.selectors, validation);
+
+    // Update status
+    const statusEl = document.getElementById('discoveryStatus');
+    statusEl.textContent = `Updated ${SELECTOR_LABELS[targetField]}: "${request.selector}" (${request.matchCount} matches)`;
+
+    // Show test/save if required selectors are now valid
+    const allRequired = REQUIRED_SELECTORS.every(k =>
+      validation[k] && validation[k].valid
+    );
+    document.getElementById('testFillSection').style.display = allRequired ? '' : 'none';
+    document.getElementById('saveProfileSection').style.display = allRequired ? '' : 'none';
+  } catch (err) {
+    console.error('[ElementPicker] Validation error:', err);
+  }
+}
+
+/**
+ * Test fill one student with the draft profile to verify selectors work.
+ */
+async function testFillStudent() {
+  if (!_discoveryDraft) return;
+
+  const resultEl = document.getElementById('testFillResult');
+  resultEl.style.display = '';
+  resultEl.textContent = 'Testing...';
+  resultEl.className = 'mt-small';
+
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab) return;
+
+    const fbConfig = _discoveryDraft.feedback || { type: 'textarea', requiresHiddenSync: false, htmlWrap: false };
+    const result = await Discover.testFill(tab.id, _discoveryDraft.selectors, fbConfig);
+
+    if (result.success) {
+      resultEl.textContent = `Test fill successful on ${result.studentName}. Check the page — score should be "7" with test feedback.`;
+      resultEl.classList.add('text-success');
+    } else {
+      resultEl.textContent = `Test fill failed: ${result.error}`;
+      resultEl.classList.add('text-error');
+    }
+  } catch (err) {
+    resultEl.textContent = `Error: ${err.message}`;
+    resultEl.classList.add('text-error');
+  }
+}
+
+/**
+ * Save the discovered profile.
+ */
+async function saveDiscoveredProfile() {
+  if (!_discoveryDraft) return;
+
+  const nameInput = document.getElementById('profileName');
+  const name = nameInput?.value.trim();
+  if (!name) {
+    nameInput?.focus();
+    return;
+  }
+
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const pageUrl = tab?.url || '';
+
+    const profile = SiteProfiles.createProfile(
+      name,
+      pageUrl,
+      _discoveryDraft.selectors,
+      _discoveryDraft.feedback,
+      _discoveryDraft.save
+    );
+
+    await SiteProfiles.saveProfile(profile);
+
+    // Clear discovery state
+    _discoveryDraft = null;
+    document.getElementById('discoveryWizard').style.display = 'none';
+
+    // Refresh page status (should now detect the new profile)
+    await checkBatchPageStatus();
+
+    console.log(`[Discovery] Profile saved: ${name}`);
+  } catch (err) {
+    console.error('[Discovery] Save error:', err);
+    const statusEl = document.getElementById('discoveryStatus');
+    statusEl.textContent = 'Failed to save profile: ' + err.message;
+  }
+}
+
+/**
+ * Cancel discovery and hide the wizard.
+ */
+function cancelDiscovery() {
+  _discoveryDraft = null;
+  _discoveryPickerTarget = null;
+  document.getElementById('discoveryWizard').style.display = 'none';
+}
+
+/**
+ * Get provider config from chrome.storage.local for a given provider ID.
+ */
+async function getProviderConfigFromStorage(providerId) {
+  const provider = PROVIDERS[providerId];
+  if (!provider) return {};
+
+  const providerMeta = provider.getConfig();
+  const keys = providerMeta.fields.map(f => f.key);
+  const defaults = {};
+  for (const f of providerMeta.fields) {
+    if (f.default) defaults[f.key] = f.default;
+  }
+
+  try {
+    const stored = await chrome.storage.local.get(keys);
+    return { ...defaults, ...stored };
+  } catch {
+    return defaults;
+  }
+}
+
+// --- Wire up discovery buttons ---
+document.getElementById('btnDiscoverPage')?.addEventListener('click', startDiscovery);
+document.getElementById('btnTestFill')?.addEventListener('click', testFillStudent);
+document.getElementById('btnSaveProfile')?.addEventListener('click', saveDiscoveredProfile);
+document.getElementById('btnCancelDiscovery')?.addEventListener('click', cancelDiscovery);
+
+// Profile dropdown change → re-check page status
+document.getElementById('profileSelect')?.addEventListener('change', () => {
+  checkBatchPageStatus();
+});
 
