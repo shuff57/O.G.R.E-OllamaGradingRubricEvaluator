@@ -5,6 +5,7 @@
   import Logs from './pages/Logs.svelte';
   import Settings from './pages/Settings.svelte';
   import Rubrics from './pages/Rubrics.svelte';
+  import Browser from './pages/Browser.svelte';
   import SetupWizard from './pages/SetupWizard.svelte';
   import UpdateModal from './components/UpdateModal.svelte';
   import { getSetting, insertGradingSession } from './lib/db';
@@ -118,6 +119,7 @@
         <button class:active={currentPage === 'history'} on:click={() => navigate('history')}>History</button>
         <button class:active={currentPage === 'logs'} on:click={() => navigate('logs')}>Logs</button>
         <button class:active={currentPage === 'rubrics'} on:click={() => navigate('rubrics')}>Rubrics</button>
+        <button class:active={currentPage === 'browser'} on:click={() => navigate('browser')}>Browser</button>
         <button class:active={currentPage === 'settings'} on:click={() => navigate('settings')}>Settings</button>
       </nav>
     </aside>
@@ -131,6 +133,8 @@
         <Logs />
       {:else if currentPage === 'rubrics'}
         <Rubrics />
+      {:else if currentPage === 'browser'}
+        <Browser />
       {:else if currentPage === 'settings'}
         <Settings />
       {/if}
