@@ -13,7 +13,15 @@
   import type { SessionCompletePayload } from './lib/server';
   import { updateActiveProvider } from './lib/db';
   import { checkForUpdates, type UpdateCheckResult } from './lib/updater';
+  import { hideWebview, showWebview, setWebviewBounds } from './lib/browser';
   import type { Update } from '@tauri-apps/plugin-updater';
+
+  // Webview layout constants (must match CSS variables in app.css)
+  const SIDEBAR_EXPANDED_WIDTH = 250;
+  const SIDEBAR_COLLAPSED_WIDTH = 60;
+  const URL_BAR_HEIGHT = 50;
+  const SIDEBAR_TRANSITION_MS = 300;
+  const RESIZE_DEBOUNCE_MS = 100;
 
   let currentPage = 'dashboard';
   let sidebarCollapsed = false;
@@ -31,6 +39,39 @@
   let sessionVersion = 0;
   let unlistenSession: (() => void) | undefined;
   let unlistenProviderChange: (() => void) | undefined;
+  let resizeTimeout: ReturnType<typeof setTimeout>;
+
+  // Recalculate embedded webview bounds based on sidebar state and window size.
+  // The native webview is an OS-level overlay positioned in logical pixels
+  // relative to the window origin, NOT relative to the DOM.
+  function recalculateWebviewBounds() {
+    if (currentPage !== 'browser') return;
+    const sidebarWidth = sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_EXPANDED_WIDTH;
+    const x = sidebarWidth;
+    const y = URL_BAR_HEIGHT;
+    const width = window.innerWidth - sidebarWidth;
+    const height = window.innerHeight - URL_BAR_HEIGHT;
+    if (width > 0 && height > 0) {
+      setWebviewBounds(x, y, width, height).catch(() => {
+        // Webview may not exist yet — silently ignore
+      });
+    }
+  }
+
+  // Debounced window resize handler for webview bounds
+  function handleWindowResize() {
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(recalculateWebviewBounds, RESIZE_DEBOUNCE_MS);
+  }
+
+  // Modal z-ordering: native webview renders ON TOP of all DOM elements,
+  // so it must be hidden when modals appear to avoid covering them.
+  $: if (showUpdateModal) {
+    hideWebview().catch(() => {});
+  } else if (currentPage === 'browser') {
+    showWebview().catch(() => {});
+    recalculateWebviewBounds();
+  }
 
   onMount(async () => {
     try {
@@ -78,6 +119,9 @@
       }
     });
 
+    // Listen for window resize to recalculate webview bounds
+    window.addEventListener('resize', handleWindowResize);
+
     // Check for updates after app loads (non-blocking)
     checkForUpdates().then((result: UpdateCheckResult) => {
       if (result.available && result.update) {
@@ -92,19 +136,30 @@
   onDestroy(() => {
     if (unlistenSession) unlistenSession();
     if (unlistenProviderChange) unlistenProviderChange();
+    window.removeEventListener('resize', handleWindowResize);
+    clearTimeout(resizeTimeout);
   });
 
   function navigate(page: string) {
     currentPage = page;
     if (page === 'browser') {
       sidebarCollapsed = true;
+      // Show webview and recalculate bounds after sidebar transition completes
+      setTimeout(() => {
+        showWebview().catch(() => {});
+        recalculateWebviewBounds();
+      }, SIDEBAR_TRANSITION_MS);
     } else {
       sidebarCollapsed = false;
+      // Hide webview immediately when leaving browser page (preserves session)
+      hideWebview().catch(() => {});
     }
   }
 
   function toggleSidebar() {
     sidebarCollapsed = !sidebarCollapsed;
+    // Recalculate webview bounds after sidebar transition completes
+    setTimeout(recalculateWebviewBounds, SIDEBAR_TRANSITION_MS);
   }
 
 
