@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wave 0.2 Spike - Eval Test Page</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h1 {
+      color: #333;
+      border-bottom: 3px solid #4CAF50;
+      padding-bottom: 10px;
+    }
+    .section {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 20px 0;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    h2 {
+      color: #4CAF50;
+      margin-top: 0;
+    }
+    .student-row {
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 12px;
+      margin: 10px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #fafafa;
+    }
+    .student-info {
+      flex: 1;
+    }
+    .name {
+      font-weight: bold;
+      color: #333;
+      font-size: 16px;
+    }
+    .email {
+      color: #666;
+      font-size: 14px;
+      margin-top: 4px;
+    }
+    input.score {
+      width: 80px;
+      padding: 6px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      text-align: center;
+      font-size: 16px;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
+      margin-top: 15px;
+    }
+    .stat-card {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 15px;
+      border-radius: 8px;
+      text-align: center;
+    }
+    .stat-value {
+      font-size: 32px;
+      font-weight: bold;
+      margin: 5px 0;
+    }
+    .stat-label {
+      font-size: 14px;
+      opacity: 0.9;
+    }
+    .test-form {
+      margin-top: 15px;
+    }
+    .form-row {
+      margin: 10px 0;
+    }
+    label {
+      display: inline-block;
+      width: 150px;
+      font-weight: 500;
+    }
+    input[type="text"],
+    input[type="number"] {
+      padding: 6px 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      width: 250px;
+    }
+    button {
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      font-size: 14px;
+      cursor: pointer;
+      margin-right: 10px;
+    }
+    button:hover {
+      background: #45a049;
+    }
+    .info-box {
+      background: #e3f2fd;
+      border-left: 4px solid #2196F3;
+      padding: 15px;
+      margin: 15px 0;
+      border-radius: 4px;
+    }
+    .info-box h3 {
+      margin-top: 0;
+      color: #1976D2;
+    }
+    .info-box p {
+      margin: 5px 0;
+      color: #424242;
+    }
+    .info-box code {
+      background: rgba(0,0,0,0.05);
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-family: 'Courier New', monospace;
+    }
+  </style>
+</head>
+<body>
+  <h1>🧪 Wave 0.2 Spike - Eval Test Page</h1>
+
+  <div class="info-box">
+    <h3>Test Instructions</h3>
+    <p>This page provides sample DOM elements for testing the <code>eval_webview_script</code> command.</p>
+    <p>Open the browser console in the OGRE desktop app and run the integration tests:</p>
+    <p><code>npm run test:integration</code></p>
+  </div>
+
+  <div class="section">
+    <h2>📊 Page Statistics</h2>
+    <div class="stats">
+      <div class="stat-card">
+        <div class="stat-label">Total Students</div>
+        <div class="stat-value">5</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Average Score</div>
+        <div class="stat-value" id="avg-score">88.2</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Elements on Page</div>
+        <div class="stat-value" id="element-count">-</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>👥 Student Data Table</h2>
+    <p>Extract student information using <code>evalScriptJSON()</code>:</p>
+    
+    <div class="student-row" data-student-id="1">
+      <div class="student-info">
+        <div class="name">Alice Johnson</div>
+        <div class="email">alice.johnson@example.com</div>
+      </div>
+      <input class="score" type="number" value="95" min="0" max="100">
+    </div>
+
+    <div class="student-row" data-student-id="2">
+      <div class="student-info">
+        <div class="name">Bob Smith</div>
+        <div class="email">bob.smith@example.com</div>
+      </div>
+      <input class="score" type="number" value="87" min="0" max="100">
+    </div>
+
+    <div class="student-row" data-student-id="3">
+      <div class="student-info">
+        <div class="name">Carol Williams</div>
+        <div class="email">carol.williams@example.com</div>
+      </div>
+      <input class="score" type="number" value="92" min="0" max="100">
+    </div>
+
+    <div class="student-row" data-student-id="4">
+      <div class="student-info">
+        <div class="name">David Brown</div>
+        <div class="email">david.brown@example.com</div>
+      </div>
+      <input class="score" type="number" value="78" min="0" max="100">
+    </div>
+
+    <div class="student-row" data-student-id="5">
+      <div class="student-info">
+        <div class="name">Emma Davis</div>
+        <div class="email">emma.davis@example.com</div>
+      </div>
+      <input class="score" type="number" value="89" min="0" max="100">
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>📝 Test Form</h2>
+    <p>Test form manipulation with <code>evalScript()</code>:</p>
+    <div class="test-form">
+      <div class="form-row">
+        <label for="test-input">Text Input:</label>
+        <input type="text" id="test-input" value="Test Value">
+      </div>
+      <div class="form-row">
+        <label for="test-number">Number Input:</label>
+        <input type="number" id="test-number" value="42">
+      </div>
+      <div class="form-row">
+        <label for="test-hidden">Hidden Field:</label>
+        <input type="hidden" id="test-hidden" value="secret-data">
+      </div>
+      <div class="form-row">
+        <button id="test-button">Test Button</button>
+        <button id="reset-button" onclick="resetForm()">Reset Form</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>🧪 Sample Test Cases</h2>
+    <div class="info-box">
+      <h3>Test 1: Extract page title</h3>
+      <code>await evalScript(`document.title`)</code>
+      <p>Expected: <strong>"Wave 0.2 Spike - Eval Test Page"</strong></p>
+    </div>
+
+    <div class="info-box">
+      <h3>Test 2: Count elements</h3>
+      <code>await evalScriptJSON(`({ divs: document.querySelectorAll('div').length, inputs: document.querySelectorAll('input').length })`)</code>
+      <p>Expected: Object with <strong>divs</strong> and <strong>inputs</strong> counts</p>
+    </div>
+
+    <div class="info-box">
+      <h3>Test 3: Extract all students</h3>
+      <code>await evalScriptJSON(`[...document.querySelectorAll('.student-row')].map(row => ({ id: row.dataset.studentId, name: row.querySelector('.name')?.textContent, score: row.querySelector('.score')?.value }))`)</code>
+      <p>Expected: Array of 5 student objects with <strong>id</strong>, <strong>name</strong>, and <strong>score</strong></p>
+    </div>
+
+    <div class="info-box">
+      <h3>Test 4: Calculate average score</h3>
+      <code>await evalScriptJSON(`{ average: [...document.querySelectorAll('.score')].reduce((sum, el) => sum + parseFloat(el.value), 0) / document.querySelectorAll('.score').length }`)</code>
+      <p>Expected: Object with <strong>average</strong> property (should be ~88.2)</p>
+    </div>
+
+    <div class="info-box">
+      <h3>Test 5: Fill form field</h3>
+      <code>await evalScript(`document.getElementById('test-input').value = 'New Value'; document.getElementById('test-input').value`)</code>
+      <p>Expected: <strong>"New Value"</strong></p>
+    </div>
+
+    <div class="info-box">
+      <h3>Test 6: Error handling</h3>
+      <code>await evalScript(`throw new Error("Test error")`)</code>
+      <p>Expected: Promise rejection with error message</p>
+    </div>
+
+    <div class="info-box">
+      <h3>Test 7: Async operation</h3>
+      <code>await evalScriptJSON(`(async () => { await new Promise(r => setTimeout(r, 100)); return { delayed: 'success' }; })()`)</code>
+      <p>Expected: <strong>{ delayed: 'success' }</strong> after 100ms</p>
+    </div>
+  </div>
+
+  <script>
+    // Update element count
+    function updateElementCount() {
+      const count = document.querySelectorAll('*').length;
+      document.getElementById('element-count').textContent = count;
+    }
+
+    function updateAverageScore() {
+      const scores = [...document.querySelectorAll('.score')].map(el => parseFloat(el.value));
+      const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+      document.getElementById('avg-score').textContent = avg.toFixed(1);
+    }
+
+    function resetForm() {
+      document.getElementById('test-input').value = 'Test Value';
+      document.getElementById('test-number').value = '42';
+    }
+
+    // Update stats on load
+    updateElementCount();
+    updateAverageScore();
+
+    // Update average when scores change
+    document.querySelectorAll('.score').forEach(input => {
+      input.addEventListener('input', updateAverageScore);
+    });
+
+    console.log('✅ Test page loaded successfully');
+    console.log('📊 Page statistics:', {
+      students: document.querySelectorAll('.student-row').length,
+      totalElements: document.querySelectorAll('*').length,
+      inputs: document.querySelectorAll('input').length,
+      buttons: document.querySelectorAll('button').length
+    });
+  </script>
+</body>
+</html>

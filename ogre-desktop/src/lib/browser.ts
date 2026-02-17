@@ -109,6 +109,65 @@ export async function injectAutofill(username: string, password: string): Promis
   await invoke('inject_autofill', { script });
 }
 
+// --- Webview Script Evaluation (Wave 0.2 Spike) ---
+
+/**
+ * Execute JavaScript in the embedded browser webview and return the result.
+ * 
+ * Uses message passing under the hood. The script is wrapped and executed,
+ * then the result is serialized and returned via IPC callback.
+ * 
+ * @param script - JavaScript expression to evaluate (must return a value)
+ * @returns Promise resolving to the JSON-serialized result
+ * 
+ * @example
+ * // Extract page title
+ * const title = await evalScript(`document.title`);
+ * 
+ * @example
+ * // Extract student name
+ * const name = await evalScript(`
+ *   document.querySelector('.student-name')?.textContent || 'Unknown'
+ * `);
+ * 
+ * @example
+ * // Extract all answers
+ * const answers = await evalScript(`
+ *   [...document.querySelectorAll('.answer')].map(el => el.value)
+ * `);
+ */
+export async function evalScript(script: string): Promise<string> {
+  return await invoke<string>('eval_webview_script', { script });
+}
+
+/**
+ * Execute JavaScript and automatically parse JSON result.
+ * Convenience wrapper around evalScript() that handles JSON parsing.
+ * 
+ * @param script - JavaScript expression to evaluate
+ * @returns Promise resolving to the parsed JavaScript value
+ * 
+ * @example
+ * // Extract student data as typed object
+ * interface Student {
+ *   id: string;
+ *   name: string;
+ *   score?: number;
+ * }
+ * 
+ * const students = await evalScriptJSON<Student[]>(`
+ *   [...document.querySelectorAll('.student-row')].map(row => ({
+ *     id: row.dataset.studentId,
+ *     name: row.querySelector('.name')?.textContent,
+ *     score: parseFloat(row.querySelector('.score')?.value || '0')
+ *   }))
+ * `);
+ */
+export async function evalScriptJSON<T = any>(script: string): Promise<T> {
+  const result = await evalScript(script);
+  return JSON.parse(result);
+}
+
 /** Common grading site presets */
 export const GRADING_SITE_PRESETS = [
   { name: 'MyOpenMath', url: 'https://www.myopenmath.com/' },

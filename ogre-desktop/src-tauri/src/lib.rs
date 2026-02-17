@@ -1,4 +1,5 @@
 use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
 use tauri::{Emitter, Manager};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, MenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton};
@@ -7,6 +8,7 @@ use tauri::WebviewUrl;
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::CommandEvent;
 use tauri_plugin_sql::{Migration, MigrationKind};
+use tokio::sync::oneshot;
 
 /// Holds the sidecar child process handle so we can kill it on exit.
 struct SidecarState {
@@ -18,6 +20,10 @@ struct SidecarState {
 struct WebviewState {
     label: Option<String>,
 }
+
+/// Registry for pending webview eval callbacks.
+/// Maps eval_id -> oneshot sender for returning results.
+type EvalRegistry = Arc<Mutex<HashMap<String, oneshot::Sender<String>>>>;
 
 /// Maximum number of automatic restart attempts after a crash.
 const MAX_RESTART_ATTEMPTS: u32 = 3;
@@ -346,6 +352,104 @@ async fn inject_autofill(app: tauri::AppHandle, script: String) -> Result<(), St
     Ok(())
 }
 
+/// Execute JavaScript in the embedded browser and return the result.
+/// 
+/// Uses message passing: injects wrapper script that executes code and calls back with result.
+/// Timeout: 10 seconds. Returns JSON-serialized result.
+#[tauri::command]
+async fn eval_webview_script(
+    app: tauri::AppHandle,
+    script: String,
+) -> Result<String, String> {
+    let eval_id = uuid::Uuid::new_v4().to_string();
+    let wv = app.get_webview("embedded-browser")
+        .ok_or("Embedded browser not open")?;
+    
+    // Create channel for result
+    let (tx, rx) = oneshot::channel::<String>();
+    
+    // Store callback in registry
+    let registry = app.state::<EvalRegistry>();
+    {
+        let mut guard = registry.lock().unwrap();
+        guard.insert(eval_id.clone(), tx);
+    }
+    
+    // Inject wrapper script that executes code and calls back with result
+    // Escapes the script content to prevent injection issues
+    let escaped_script = script.replace('\\', "\\\\").replace('`', "\\`").replace("${", "\\${");
+    let wrapper = format!(r#"
+        (async () => {{
+            try {{
+                const __result = await (async () => {{ return ({}) }})();
+                await window.__TAURI_INTERNALS__.invoke('_eval_callback', {{
+                    id: '{}',
+                    success: true,
+                    result: JSON.stringify(__result)
+                }});
+            }} catch (__error) {{
+                await window.__TAURI_INTERNALS__.invoke('_eval_callback', {{
+                    id: '{}',
+                    success: false,
+                    error: String(__error)
+                }});
+            }}
+        }})();
+    "#, escaped_script, eval_id, eval_id);
+    
+    wv.eval(&wrapper)
+        .map_err(|e| format!("Failed to inject eval script: {}", e))?;
+    
+    // Wait for callback with 10s timeout
+    match tokio::time::timeout(
+        tokio::time::Duration::from_secs(10),
+        rx
+    ).await {
+        Ok(Ok(result)) => Ok(result),
+        Ok(Err(_)) => {
+            // Cleanup orphaned entry
+            let mut guard = registry.lock().unwrap();
+            guard.remove(&eval_id);
+            Err("Callback channel closed unexpectedly".to_string())
+        },
+        Err(_) => {
+            // Cleanup on timeout
+            let mut guard = registry.lock().unwrap();
+            guard.remove(&eval_id);
+            Err("Timeout waiting for eval result (10s)".to_string())
+        },
+    }
+}
+
+/// Internal callback handler for eval results.
+/// Called by injected JavaScript wrapper via invoke().
+#[tauri::command]
+async fn _eval_callback(
+    app: tauri::AppHandle,
+    id: String,
+    success: bool,
+    result: Option<String>,
+    error: Option<String>,
+) -> Result<(), String> {
+    let registry = app.state::<EvalRegistry>();
+    let tx = {
+        let mut guard = registry.lock().unwrap();
+        guard.remove(&id)
+    };
+    
+    if let Some(tx) = tx {
+        let response = if success {
+            result.unwrap_or_else(|| "null".to_string())
+        } else {
+            // Return error as JSON object for consistent parsing
+            format!(r#"{{"__error": "{}"}}"#, error.unwrap_or_else(|| "Unknown error".to_string()))
+        };
+        let _ = tx.send(response);
+    }
+    
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let migrations = vec![
@@ -444,6 +548,8 @@ INSERT OR IGNORE INTO app_settings (key, value) VALUES ('history_visible_columns
             get_embedded_url,
             destroy_webview,
             inject_autofill,
+            eval_webview_script,
+            _eval_callback,
         ])
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_http::init())
@@ -464,6 +570,7 @@ INSERT OR IGNORE INTO app_settings (key, value) VALUES ('history_visible_columns
         }))
         .manage(Mutex::new(SidecarState { child: None, status_item: None }))
         .manage(Mutex::new(WebviewState { label: None }))
+        .manage(EvalRegistry::new(Mutex::new(HashMap::new())))
         .setup(|app| {
             let handle = app.handle().clone();
 
