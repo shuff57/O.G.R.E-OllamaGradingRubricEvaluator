@@ -2001,6 +2001,16 @@
             Continue Grading
           </button>
         </div>
+        <div id="rubricReviewSaveDialog" style="display: none;" class="mt-small">
+          <div style="background: var(--color-bg-alt, #1a1a2e); padding: 8px; border-radius: 6px; border: 1px solid var(--border-color, #333);">
+            <input type="text" id="rubricReviewSaveName" placeholder="Rubric name (e.g., Math Quiz Ch5)" class="mb-5" style="width: 100%; font-size: 0.85em; padding: 4px 6px; box-sizing: border-box;">
+            <input type="text" id="rubricReviewSaveTags" placeholder="Tags (comma-separated, optional)" class="mb-5" style="width: 100%; font-size: 0.85em; padding: 4px 6px; box-sizing: border-box;">
+            <div class="flex-gap-small">
+              <button id="btnConfirmSaveRubricReview" class="primary btn-sm flex-1">Save</button>
+              <button id="btnCancelSaveRubricReview" class="secondary btn-sm flex-1">Cancel</button>
+            </div>
+          </div>
+        </div>
       </div>
     </details>
 

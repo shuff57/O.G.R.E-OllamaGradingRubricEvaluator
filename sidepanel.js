@@ -157,24 +157,30 @@ function setupListeners() {
   const rubricCollapseIcon = document.getElementById('rubricCollapseIcon');
   
   if (rubricHeader && rubricContent && rubricCollapseIcon) {
-    rubricContent.style.maxHeight = rubricContent.scrollHeight + 'px';
-    
+    rubricContent.style.maxHeight = 'none';
+
     rubricHeader.addEventListener('click', () => {
       const isCollapsed = rubricContent.classList.contains('collapsed');
-      
+
       if (isCollapsed) {
         rubricContent.classList.remove('collapsed');
         rubricCollapseIcon.classList.remove('collapsed');
+        // Animate open then switch to none so dynamic content isn't clipped
         rubricContent.style.maxHeight = rubricContent.scrollHeight + 'px';
+        setTimeout(() => { rubricContent.style.maxHeight = 'none'; }, 300);
       } else {
+        // Set a fixed height first so the transition can animate to 0
+        rubricContent.style.maxHeight = rubricContent.scrollHeight + 'px';
+        // Force reflow, then collapse
+        rubricContent.offsetHeight;
         rubricContent.classList.add('collapsed');
         rubricCollapseIcon.classList.add('collapsed');
         rubricContent.style.maxHeight = '0';
       }
-      
+
       chrome.storage.local.set({ rubricCollapsed: !isCollapsed });
     });
-    
+
     chrome.storage.local.get('rubricCollapsed').then(result => {
       if (result.rubricCollapsed) {
         rubricContent.classList.add('collapsed');
@@ -5650,8 +5656,23 @@ document.getElementById('btnCancelSaveRubric')?.addEventListener('click', () => 
 
 // "Save to Desktop" button in batch rubric review section
 document.getElementById('btnSaveRubricReview')?.addEventListener('click', () => {
-  document.getElementById('rubricSaveDialog').style.display = '';
-  // Scroll the save dialog into view
-  document.getElementById('rubricSaveDialog')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  document.getElementById('rubricReviewSaveDialog').style.display = '';
+  document.getElementById('rubricReviewSaveDialog')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+});
+document.getElementById('btnConfirmSaveRubricReview')?.addEventListener('click', () => {
+  const name = document.getElementById('rubricReviewSaveName')?.value?.trim();
+  const tags = document.getElementById('rubricReviewSaveTags')?.value || '';
+  const nameInput = document.getElementById('rubricSaveName');
+  const tagsInput = document.getElementById('rubricSaveTags');
+  if (nameInput) nameInput.value = name || '';
+  if (tagsInput) tagsInput.value = tags;
+  saveCurrentRubricToLibrary().then(() => {
+    document.getElementById('rubricReviewSaveDialog').style.display = 'none';
+    document.getElementById('rubricReviewSaveName').value = '';
+    document.getElementById('rubricReviewSaveTags').value = '';
+  });
+});
+document.getElementById('btnCancelSaveRubricReview')?.addEventListener('click', () => {
+  document.getElementById('rubricReviewSaveDialog').style.display = 'none';
 });
 
