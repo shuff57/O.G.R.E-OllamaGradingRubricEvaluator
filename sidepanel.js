@@ -3589,6 +3589,48 @@ async function autoExtractRubric(tabId, profile) {
 }
 
 // ---------------------------------------------------------------------------
+// Standalone Generate Rubric button — works outside batch grading flow
+// ---------------------------------------------------------------------------
+document.getElementById('generateRubricBtn')?.addEventListener('click', async () => {
+  const textarea = document.getElementById('rubricReviewText');
+  const maxScoreInput = document.getElementById('rubricMaxScore');
+  const statusEl = document.getElementById('rubricReviewStatus');
+  const generateBtn = document.getElementById('generateRubricBtn');
+  if (!textarea || !generateBtn) return;
+
+  generateBtn.disabled = true;
+  const origText = generateBtn.textContent;
+  generateBtn.textContent = 'Generating...';
+
+  try {
+    // Use existing textarea text or scrape the page
+    let contentSource = textarea.value.trim();
+    if (contentSource.length < 10) {
+      const tab = (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
+      const profile = window._activeBatchProfile;
+      const sel = profile?.selectors || {};
+      const nav = profile?.navigation || { mode: 'batch' };
+      const pageContent = await BatchGrader.extractPageContent(tab.id, sel, nav);
+      contentSource = pageContent.content;
+    }
+
+    if (contentSource.length < 10) {
+      statusEl.textContent = 'Not enough content to generate a rubric. Please enter text first.';
+      return;
+    }
+
+    const generated = await generateRubricFromContent(contentSource, maxScoreInput?.value || '10');
+    textarea.value = generated;
+    statusEl.textContent = 'AI-generated rubric ready. Review and edit if needed.';
+  } catch (err) {
+    statusEl.textContent = 'Failed to generate rubric: ' + err.message;
+  } finally {
+    generateBtn.disabled = false;
+    generateBtn.textContent = origText;
+  }
+});
+
+// ---------------------------------------------------------------------------
 // generateRubricFromContent(content, maxScore) — AI rubric generation
 // ---------------------------------------------------------------------------
 /**
@@ -3599,26 +3641,93 @@ async function autoExtractRubric(tabId, profile) {
  * @returns {Promise<string>} AI-generated rubric text
  */
 async function generateRubricFromContent(content, maxScore) {
-  const prompt = `You are a teacher creating a grading rubric for high school seniors. Given the following assignment question/prompt, create clear grading criteria.
-
-Assignment (max ${maxScore} points):
-${content}
-
-Respond with ONLY the rubric in this format:
-- List each grading criterion on its own line
-- Include point values for each criterion (must total ${maxScore})
-- Be specific about what earns full/partial/no credit for each criterion`;
+  const prompt = Prompts.getRubricGenerationPrompt(content, maxScore);
 
   try {
     const config = getProviderConfigFromUI(currentProviderId);
+    config.model = document.getElementById('modelName').value;
     const result = await callProviderAI(currentProviderId, config, [
       { role: 'user', content: prompt }
     ]);
-    return result || content;
+
+    // Parse structured JSON response (same format as extraction prompt)
+    let jsonString = (result || '').trim();
+    if (jsonString.startsWith('```json')) {
+      jsonString = jsonString.replace(/^```json\n?/, '').replace(/\n?```$/, '');
+    } else if (jsonString.startsWith('```')) {
+      jsonString = jsonString.replace(/^```\n?/, '').replace(/\n?```$/, '');
+    }
+
+    const parsed = JSON.parse(jsonString);
+    if (!parsed?.rubric?.length) throw new Error('No rubric criteria returned');
+
+    // Store the structured rubric for per-question filtering during grading
+    window._generatedRubric = parsed.rubric;
+
+    // Populate the rubric TABLE (same pattern as btnImportRubric)
+    const tbody = document.querySelector('#rubricTable tbody');
+    if (tbody) {
+      tbody.innerHTML = '';
+      parsed.rubric.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="rubric-td"><input type="text" class="r-criteria input-reset" value="${(item.criteria || '').replace(/"/g, '&quot;')}"></td>
+          <td class="rubric-td"><input type="text" class="r-desc input-reset" value="${(item.description || '').replace(/"/g, '&quot;')}"></td>
+          <td class="rubric-td"><input type="text" class="r-pts input-reset" value="${item.points || 0}"></td>
+          <td class="rubric-td" style="text-align:center;"><button class="btn-del btn-icon-danger"><i class="bi bi-trash"></i></button></td>
+        `;
+        tr.querySelector('.btn-del').addEventListener('click', () => tr.remove());
+        tbody.appendChild(tr);
+      });
+    }
+
+    // Check if multi-question — group by question number for display
+    const hasMultipleQuestions = new Set(parsed.rubric.map(r => r.question)).size > 1;
+
+    // Format as readable rubric for the review textarea
+    if (hasMultipleQuestions) {
+      const grouped = {};
+      parsed.rubric.forEach(item => {
+        const q = item.question || 1;
+        if (!grouped[q]) grouped[q] = [];
+        grouped[q].push(item);
+      });
+      return Object.entries(grouped).map(([qNum, items]) => {
+        const qPts = items.reduce((sum, i) => sum + (Number(i.points) || 0), 0);
+        const lines = items.map(item => {
+          const desc = (item.description || '').replace(/\s*\|\s*/g, '\n    ');
+          return `  [${item.points} pts] ${item.criteria}\n    ${desc}`;
+        }).join('\n');
+        return `Q${qNum} (${qPts} pts)\n${lines}`;
+      }).join('\n\n');
+    }
+
+    return parsed.rubric.map(item => {
+      const desc = (item.description || '').replace(/\s*\|\s*/g, '\n  ');
+      return `[${item.points} pts] ${item.criteria}\n  ${desc}`;
+    }).join('\n\n');
   } catch (err) {
     console.warn('[Rubric] AI generation failed:', err.message);
     return content; // Fallback to raw content
   }
+}
+
+/**
+ * Get rubric criteria for a specific question number from the generated rubric.
+ * @param {number} questionNum - The question number to filter for (1-based)
+ * @returns {string} Formatted rubric text for that question, or full rubric if no question tags
+ */
+function getRubricForQuestion(questionNum) {
+  const rubric = window._generatedRubric;
+  if (!rubric?.length) return '';
+
+  const filtered = rubric.filter(item => item.question === questionNum);
+  const items = filtered.length > 0 ? filtered : rubric;
+
+  return items.map(item => {
+    const desc = (item.description || '').replace(/\s*\|\s*/g, '\n  ');
+    return `[${item.points} pts] ${item.criteria}\n  ${desc}`;
+  }).join('\n\n');
 }
 
 // ---------------------------------------------------------------------------
@@ -4527,8 +4636,12 @@ async function startMultiQuestionGrading(tab, allStudents, rubric, params) {
     const qLabel = `Q${qi + 1}`;
     logBatch(`--- ${qLabel}: ${question.questionText.substring(0, 60)}... (${question.maxPts} pts) ---`);
 
-    // Build rubric for this question
+    // Build rubric for this question, injecting per-question criteria if available
     const questionRubric = BatchGrader.buildQuestionRubricForServer(question, customInstructions);
+    const qRubricCriteria = getRubricForQuestion(qi + 1);
+    if (qRubricCriteria) {
+      questionRubric.essayPrompt += '\n\nGRADING RUBRIC:\n' + qRubricCriteria;
+    }
 
     // Map students to grading server format (only ungraded)
     const serverStudents = toGrade.map(s => {

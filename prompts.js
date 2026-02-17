@@ -80,6 +80,38 @@ const Prompts = {
    },
 
    /**
+    * Generates the prompt for creating a rubric from assignment content (question text, descriptions).
+    * Unlike getRubricExtractionPrompt which parses existing rubric text, this CREATES criteria
+    * from raw assignment content. Returns the same JSON structure for consistency.
+    * @param {string} content - The assignment question/prompt/description text.
+    * @param {string|number} maxScore - The maximum score for this assignment.
+    * @returns {string} The formatted prompt for the LLM.
+    */
+   getRubricGenerationPrompt: (content, maxScore) => {
+     return `You are an experienced teacher creating a grading rubric for high school seniors.
+Given the following assignment content, create clear grading criteria for FREE RESPONSE / ESSAY questions ONLY.
+Ignore multiple choice, true/false, matching, fill-in-the-blank, and other auto-graded question types.
+The criteria point values must total ${maxScore}.
+
+If there are multiple questions, tag each criterion with its question number.
+For single-question assignments, use "question": 1 for all criteria.
+
+Keep descriptions concise (1 sentence each). Use this format for each description:
+"Full: [what earns full credit] | Partial: [what earns partial] | None: [what earns zero]"
+
+Return ONLY a valid JSON object with this structure:
+{
+  "rubric": [
+    { "criteria": "Short Criteria Name", "description": "Full: ... | Partial: ... | None: ...", "points": 5, "question": 1 }
+  ]
+}
+Do not include markdown formatting or explanations.
+
+Assignment (max ${maxScore} points):
+${content}`;
+   },
+
+   /**
     * Generates the system instruction for batch grading with custom instructions support.
     * @param {string} rubric - The grading rubric/criteria.
     * @param {number} maxScore - The maximum score for this assignment.

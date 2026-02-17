@@ -998,10 +998,18 @@ async function extractRubricSequential(tabId, selectors, navigation) {
       let maxScore = '10';
 
       if (scoreInput) {
+        // Try <label> element, aria-label attribute, parent text, or nearby siblings
         const label = scoreInput.closest('label') || document.querySelector(`label[for="${scoreInput.id}"]`);
-        const labelText = label?.textContent || scoreInput.parentElement?.textContent || '';
-        const match = labelText.match(/(?:out of|\/)\s*(\d+\.?\d*)/i);
-        if (match) maxScore = match[1];
+        const candidates = [
+          label?.textContent,
+          scoreInput.getAttribute('aria-label'),
+          scoreInput.parentElement?.textContent,
+          scoreInput.parentElement?.parentElement?.textContent,
+        ].filter(Boolean);
+        for (const text of candidates) {
+          const match = text.match(/(?:out of|\/)\s*(\d+\.?\d*)/i);
+          if (match) { maxScore = match[1]; break; }
+        }
       }
 
       // Try to get assignment title from the page
