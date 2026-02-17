@@ -1,22 +1,29 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import { 
     createEmbeddedBrowser, 
     navigateEmbedded, 
     goBack, 
     goForward, 
-    reloadBrowser, 
+    reloadBrowser,
+    setWebviewBounds,
+    getEmbeddedUrl,
     listenBrowserUrlChanged, 
     listenBrowserPageLoaded,
+    injectAutofill,
     GRADING_SITE_PRESETS 
   } from '../lib/browser';
-  import { getSetting, setSetting } from '../lib/db';
+  import { getSetting, setSetting, getSiteCredentials } from '../lib/db';
+  import { matchCredentialsToUrl } from '../lib/autofill';
 
   // State
   let urlInput = '';
   let isLoading = false;
   let showPresets = true;
   let webviewArea: HTMLDivElement;
+  let browserCreated = false;
+  let toastMessage = '';
+  let toastTimer: ReturnType<typeof setTimeout> | undefined;
   
   // Saved URLs
   let savedUrls: { name: string; url: string }[] = [];
@@ -27,6 +34,46 @@
   let unlistenUrl: (() => void) | undefined;
   let unlistenLoaded: (() => void) | undefined;
 
+  /** Show a transient toast notification */
+  function showToast(message: string, durationMs = 3000) {
+    if (toastTimer) clearTimeout(toastTimer);
+    toastMessage = message;
+    toastTimer = setTimeout(() => { toastMessage = ''; }, durationMs);
+  }
+
+  /** Check credentials and inject auto-fill for the loaded URL */
+  async function tryAutofill(url: string) {
+    try {
+      const credentials = await getSiteCredentials();
+      const match = matchCredentialsToUrl(url, credentials);
+      if (match) {
+        await injectAutofill(match.username, match.password);
+        showToast(`Auto-filled credentials for ${match.site_name}`);
+      }
+    } catch (e) {
+      console.error('[Autofill] Failed:', e);
+    }
+  }
+
+  /** Calculate and apply webview bounds from the .webview-area div */
+  function updateWebviewBounds() {
+    if (!browserCreated || !webviewArea) return;
+    const rect = webviewArea.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      setWebviewBounds(rect.x, rect.y, rect.width, rect.height).catch((e) => {
+        console.error('Failed to set webview bounds:', e);
+      });
+    }
+  }
+
+  // Recalculate webview bounds when presets panel visibility changes
+  $: {
+    showPresets;
+    if (browserCreated) {
+      tick().then(() => updateWebviewBounds());
+    }
+  }
+
   onMount(async () => {
     // Load saved URLs
     const saved = await getSetting('browser_saved_urls');
@@ -34,14 +81,29 @@
       try { savedUrls = JSON.parse(saved); } catch { savedUrls = []; }
     }
 
-    // Set up listeners (Task 5: connect UI to backend events)
+    // Set up listeners
     unlistenUrl = await listenBrowserUrlChanged((url) => {
       urlInput = url;
     });
 
-    unlistenLoaded = await listenBrowserPageLoaded(() => {
+    unlistenLoaded = await listenBrowserPageLoaded(async (url: string) => {
       isLoading = false;
+      await tryAutofill(url);
     });
+
+    // Check if webview already exists (persists across page switches)
+    try {
+      const currentUrl = await getEmbeddedUrl();
+      if (currentUrl) {
+        browserCreated = true;
+        urlInput = currentUrl;
+        showPresets = false;
+        await tick();
+        updateWebviewBounds();
+      }
+    } catch {
+      // Webview doesn't exist yet — that's fine
+    }
   });
 
   onDestroy(() => {
@@ -54,9 +116,17 @@
     if (!urlInput.trim()) return;
     isLoading = true;
     try {
-      // Logic for Task 9: This will eventually check if browser exists
-      // For now we just call the navigate wrapper
-      await navigateEmbedded(urlInput);
+      if (!browserCreated) {
+        // First navigation: create the embedded webview
+        await createEmbeddedBrowser(urlInput);
+        browserCreated = true;
+        showPresets = false;
+        // Wait for DOM to update, then set accurate bounds
+        await tick();
+        updateWebviewBounds();
+      } else {
+        await navigateEmbedded(urlInput);
+      }
     } catch (e) {
       console.error('Navigation failed:', e);
       isLoading = false;
@@ -172,13 +242,15 @@
     </div>
   {/if}
 
-  <!-- Webview Placeholder -->
+  <!-- Webview Area (native webview overlays this div) -->
   <div class="webview-area" bind:this={webviewArea}>
+    {#if !browserCreated}
     <div class="placeholder-text">
       <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="4.93" y1="4.93" x2="9.17" y2="9.17"/><line x1="14.83" y1="14.83" x2="19.07" y2="19.07"/><line x1="14.83" y1="9.17" x2="19.07" y2="4.93"/><line x1="14.83" y1="9.17" x2="18.36" y2="5.64"/><line x1="4.93" y1="19.07" x2="9.17" y2="14.83"/></svg>
       <p>Embedded Browser Area</p>
-      <p class="sub">Content will appear here</p>
+      <p class="sub">Enter a URL above to get started</p>
     </div>
+    {/if}
   </div>
 </div>
 

@@ -1,7 +1,18 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getProviderConfigs, saveProviderConfig, deleteProviderConfig, getSetting, setSetting, getOAuthToken } from '../lib/db';
-  import type { ProviderConfig } from '../lib/db';
+  import { 
+    getProviderConfigs, 
+    saveProviderConfig, 
+    deleteProviderConfig, 
+    getSetting, 
+    setSetting, 
+    getOAuthToken,
+    getSiteCredentials,
+    saveSiteCredential,
+    deleteSiteCredential
+  } from '../lib/db';
+  import type { ProviderConfig, SiteCredential } from '../lib/db';
+  import { GRADING_SITE_PRESETS } from '../lib/browser';
   import { 
     startGitHubDeviceFlow, 
     startChatGPTDeviceFlow, 
@@ -17,6 +28,19 @@
   let editingProvider: string | null = null;
   let showAddForm = false;
   let visibleColumns: string[] = [];
+
+  // Site Credentials State
+  let credentials: SiteCredential[] = [];
+  let editingCredentialId: number | null = null;
+  let showAddCredentialForm = false;
+  let showPassword = false;
+  let credentialForm = {
+    site_name: '',
+    url_pattern: '',
+    username: '',
+    password: '',
+    notes: ''
+  };
 
   // New Provider State
   let newProviderId = '';
@@ -72,7 +96,72 @@
     await loadTheme();
     
     await checkOAuthStatus();
+    await loadCredentials();
   });
+
+  async function loadCredentials() {
+    credentials = await getSiteCredentials();
+  }
+
+  async function saveCredential() {
+    if (!credentialForm.site_name || !credentialForm.url_pattern || !credentialForm.username || !credentialForm.password) {
+      alert('Please fill in all required fields (Site Name, URL Pattern, Username, Password)');
+      return;
+    }
+
+    try {
+      await saveSiteCredential({
+        id: editingCredentialId || undefined,
+        site_name: credentialForm.site_name,
+        url_pattern: credentialForm.url_pattern,
+        username: credentialForm.username,
+        password: credentialForm.password,
+        notes: credentialForm.notes
+      });
+      
+      await loadCredentials();
+      resetCredentialForm();
+    } catch (error) {
+      console.error('Failed to save credential:', error);
+      alert('Failed to save credential: ' + error);
+    }
+  }
+
+  async function deleteCredential(id: number, name: string) {
+    if (!confirm(`Delete credentials for "${name}"? This cannot be undone.`)) return;
+    try {
+      await deleteSiteCredential(id);
+      await loadCredentials();
+    } catch (error) {
+      console.error('Failed to delete credential:', error);
+      alert('Failed to delete credential: ' + error);
+    }
+  }
+
+  function editCredential(cred: SiteCredential) {
+    editingCredentialId = cred.id;
+    credentialForm = {
+      site_name: cred.site_name,
+      url_pattern: cred.url_pattern,
+      username: cred.username,
+      password: cred.password,
+      notes: cred.notes || ''
+    };
+    showAddCredentialForm = true;
+  }
+
+  function resetCredentialForm() {
+    editingCredentialId = null;
+    credentialForm = {
+      site_name: '',
+      url_pattern: '',
+      username: '',
+      password: '',
+      notes: ''
+    };
+    showAddCredentialForm = false;
+    showPassword = false;
+  }
 
   async function loadTheme() {
     const theme = await getSetting('theme');
@@ -709,6 +798,120 @@
     {/if}
   </section>
 
+  <!-- Site Credentials Section -->
+  <section class="card mb-6">
+    <div class="header-with-action">
+      <h3>Site Credentials</h3>
+      {#if !showAddCredentialForm}
+        <button class="primary small" on:click={() => { resetCredentialForm(); showAddCredentialForm = true; }}>
+          + Add Credential
+        </button>
+      {/if}
+    </div>
+    <p class="mb-6">Manage login credentials for grading sites. Credentials are stored locally and sent only to the matching site.</p>
+    
+    {#if showAddCredentialForm}
+      <div class="add-form provider-item editing mb-4">
+        <h4>{editingCredentialId ? 'Edit Credential' : 'Add New Credential'}</h4>
+        
+        <div class="edit-form">
+          <label>
+            Site Name
+            <input type="text" bind:value={credentialForm.site_name} placeholder="e.g. MyOpenMath" />
+          </label>
+
+          <label>
+            URL Pattern
+            <input type="text" bind:value={credentialForm.url_pattern} placeholder="e.g. https://www.myopenmath.com/%" />
+            <p class="hint">Use % as a wildcard. Example: https://canvas.instructure.com/% matches any Canvas page.</p>
+            
+            <div class="url-presets">
+              <span class="preset-label">Presets:</span>
+              {#each GRADING_SITE_PRESETS as preset}
+                <button type="button" class="preset-btn" on:click={() => {
+                  credentialForm.site_name = preset.name;
+                  credentialForm.url_pattern = preset.url + '%';
+                }}>
+                  {preset.name}
+                </button>
+              {/each}
+            </div>
+          </label>
+
+          <label>
+            Username
+            <input type="text" bind:value={credentialForm.username} placeholder="Username or Email" />
+          </label>
+
+          <label>
+            Password
+            <div class="password-input-wrapper">
+              <input 
+                type={showPassword ? "text" : "password"} 
+                bind:value={credentialForm.password} 
+                placeholder="Password" 
+              />
+              <button class="toggle-password" type="button" on:click={() => showPassword = !showPassword}>
+                {showPassword ? '🙈' : '👁️'}
+              </button>
+            </div>
+          </label>
+
+          <label>
+            Notes (Optional)
+            <textarea bind:value={credentialForm.notes} rows="2" placeholder="Additional notes..."></textarea>
+          </label>
+
+          <div class="form-actions">
+            <button class="primary" on:click={saveCredential}>Save Credential</button>
+            <button class="ghost" on:click={resetCredentialForm}>Cancel</button>
+          </div>
+        </div>
+      </div>
+    {/if}
+
+    {#if credentials.length === 0 && !showAddCredentialForm}
+      <div class="empty-state">
+        <p>No credentials saved yet.</p>
+      </div>
+    {:else if credentials.length > 0 && !showAddCredentialForm}
+      <div class="providers-list">
+        {#each credentials as cred}
+          <div class="provider-item">
+            <div class="provider-header">
+              <h4>{cred.site_name}</h4>
+              <div class="actions">
+                <button class="secondary small" on:click={() => editCredential(cred)}>Edit</button>
+                <button class="danger small" on:click={() => deleteCredential(cred.id, cred.site_name)}>Delete</button>
+              </div>
+            </div>
+            
+            <div class="provider-info">
+              <div class="info-row">
+                <span class="label">URL Pattern:</span>
+                <span class="value">{cred.url_pattern}</span>
+              </div>
+              <div class="info-row">
+                <span class="label">Username:</span>
+                <span class="value">{cred.username}</span>
+              </div>
+              <div class="info-row">
+                <span class="label">Password:</span>
+                <span class="value">********</span>
+              </div>
+              {#if cred.notes}
+                <div class="info-row">
+                  <span class="label">Notes:</span>
+                  <span class="value text-muted">{cred.notes}</span>
+                </div>
+              {/if}
+            </div>
+          </div>
+        {/each}
+      </div>
+    {/if}
+  </section>
+
   <!-- Column Visibility Section -->
   <section class="card">
     <h3>History Table Columns</h3>
@@ -1108,5 +1311,67 @@
   .input-row {
     display: flex;
     gap: var(--spacing-2);
+  }
+
+  /* Site Credentials */
+  .header-with-action {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-4);
+  }
+
+  .url-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-2);
+    margin-top: var(--spacing-2);
+    margin-bottom: var(--spacing-4);
+    align-items: center;
+  }
+
+  .preset-label {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
+  }
+
+  .preset-btn {
+    font-size: var(--font-size-xs);
+    padding: 0.125rem 0.5rem;
+    background: var(--color-bg-card-hover);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-full);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+  }
+
+  .preset-btn:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+  }
+
+  .password-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+  
+  .password-input-wrapper input {
+    padding-right: 40px;
+  }
+
+  .toggle-password {
+    position: absolute;
+    right: 8px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    font-size: 1.2rem;
+    opacity: 0.7;
+  }
+
+  .toggle-password:hover {
+    opacity: 1;
   }
 </style>
