@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "O.G.R.E - Grading Server Manager",
-        "width": 900,
-        "height": 650
+        "width": 1280,
+        "height": 900
       }
     ],
     "security": {
