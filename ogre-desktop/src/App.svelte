@@ -16,6 +16,7 @@
   import type { Update } from '@tauri-apps/plugin-updater';
 
   let currentPage = 'dashboard';
+  let sidebarCollapsed = false;
   let setupComplete = false;
   let loading = true;
 
@@ -95,7 +96,17 @@
 
   function navigate(page: string) {
     currentPage = page;
+    if (page === 'browser') {
+      sidebarCollapsed = true;
+    } else {
+      sidebarCollapsed = false;
+    }
   }
+
+  function toggleSidebar() {
+    sidebarCollapsed = !sidebarCollapsed;
+  }
+
 
   function handleSetupComplete() {
     setupComplete = true;
@@ -112,15 +123,54 @@
   <SetupWizard on:complete={handleSetupComplete} />
 {:else}
   <div class="app-container">
-    <aside class="sidebar">
-      <div class="brand">O.G.R.E</div>
+    <aside class="sidebar" class:collapsed={sidebarCollapsed}>
+      <div class="sidebar-header">
+        <div class="brand" class:hidden={sidebarCollapsed}>O.G.R.E</div>
+        <button class="toggle-btn" on:click={toggleSidebar} aria-label="Toggle Sidebar">
+          {#if sidebarCollapsed}
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 17 18 12 13 7"></polyline><polyline points="6 17 11 12 6 7"></polyline></svg>
+          {:else}
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="11 17 6 12 11 7"></polyline><polyline points="18 17 13 12 18 7"></polyline></svg>
+          {/if}
+        </button>
+      </div>
       <nav>
-        <button class:active={currentPage === 'dashboard'} on:click={() => navigate('dashboard')}>Dashboard</button>
-        <button class:active={currentPage === 'history'} on:click={() => navigate('history')}>History</button>
-        <button class:active={currentPage === 'logs'} on:click={() => navigate('logs')}>Logs</button>
-        <button class:active={currentPage === 'rubrics'} on:click={() => navigate('rubrics')}>Rubrics</button>
-        <button class:active={currentPage === 'browser'} on:click={() => navigate('browser')}>Browser</button>
-        <button class:active={currentPage === 'settings'} on:click={() => navigate('settings')}>Settings</button>
+        <button class:active={currentPage === 'dashboard'} on:click={() => navigate('dashboard')} title="Dashboard">
+          <span class="icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+          </span>
+          <span class="label">Dashboard</span>
+        </button>
+        <button class:active={currentPage === 'history'} on:click={() => navigate('history')} title="History">
+          <span class="icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+          </span>
+          <span class="label">History</span>
+        </button>
+        <button class:active={currentPage === 'logs'} on:click={() => navigate('logs')} title="Logs">
+          <span class="icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+          </span>
+          <span class="label">Logs</span>
+        </button>
+        <button class:active={currentPage === 'rubrics'} on:click={() => navigate('rubrics')} title="Rubrics">
+          <span class="icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><path d="M9 15l2 2 4-4"></path></svg>
+          </span>
+          <span class="label">Rubrics</span>
+        </button>
+        <button class:active={currentPage === 'browser'} on:click={() => navigate('browser')} title="Browser">
+          <span class="icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+          </span>
+          <span class="label">Browser</span>
+        </button>
+        <button class:active={currentPage === 'settings'} on:click={() => navigate('settings')} title="Settings">
+          <span class="icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          </span>
+          <span class="label">Settings</span>
+        </button>
       </nav>
     </aside>
 
@@ -192,21 +242,67 @@
   }
 
   .sidebar {
-    width: 250px;
+    width: var(--sidebar-width-expanded);
     background-color: var(--color-bg-sidebar);
     color: var(--color-text-primary);
     display: flex;
     flex-direction: column;
     padding: 1rem;
     box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+    transition: width var(--sidebar-transition);
+  }
+
+  .sidebar.collapsed {
+    width: var(--sidebar-width-collapsed);
+    padding: 1rem 0.5rem;
+  }
+
+  .sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 2rem;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+    height: 40px;
   }
 
   .brand {
     font-size: 1.5rem;
     font-weight: bold;
-    margin-bottom: 2rem;
-    padding-left: 1rem;
     color: var(--color-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    transition: opacity 0.2s, width 0.2s;
+  }
+
+  .brand.hidden {
+    opacity: 0;
+    width: 0;
+    display: none;
+  }
+  
+  .toggle-btn {
+    background: none;
+    border: none;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s;
+    margin-left: auto;
+  }
+
+  .toggle-btn:hover {
+    background-color: var(--color-bg-card-hover);
+    color: var(--color-text-primary);
+  }
+  
+  .sidebar.collapsed .toggle-btn {
+    margin: 0 auto;
   }
 
   nav {
@@ -225,6 +321,33 @@
     font-size: 1rem;
     border-radius: 4px;
     transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  
+  .sidebar.collapsed nav button {
+    padding: 0.75rem;
+    justify-content: center;
+  }
+
+  .icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  
+  .label {
+    transition: opacity 0.2s;
+  }
+  
+  .sidebar.collapsed .label {
+    opacity: 0;
+    width: 0;
+    display: none;
   }
 
   nav button:hover {
@@ -237,6 +360,7 @@
     color: var(--color-primary-text);
     font-weight: 500;
   }
+
 
   .content {
     flex: 1;

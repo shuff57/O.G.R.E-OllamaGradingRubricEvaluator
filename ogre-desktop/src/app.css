@@ -55,7 +55,11 @@
   --spacing-8: 2rem;
   --spacing-12: 3rem;
 
-  --sidebar-width: 280px;
+  --sidebar-width-expanded: 250px;
+  --sidebar-width-collapsed: 60px;
+  --sidebar-transition: 0.3s ease;
+  
+  --sidebar-width: var(--sidebar-width-expanded); /* Default for now */
   --header-height: 64px;
   
   /* Visual Details */
