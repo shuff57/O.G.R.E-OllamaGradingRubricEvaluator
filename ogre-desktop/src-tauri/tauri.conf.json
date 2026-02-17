@@ -37,7 +37,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERCMjAwREY1NjFBN0I4NzYKUldSMnVLZGg5UTBnMjc5S0tJaytrSnFBb3M0cjlUeFV2R3BGL3duN3VsL0srWTc1WXVKZi9Db1oK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQzMDg4NjMxMEQ5OUI5NzQKUldSMHVaa05NWVlJMHhjcUV3ZmlIMFdYNDFDR0UwdU9xWDh6SCt3cHFkdUU0S2lJSmQxRGVZdCsK",
       "endpoints": [
         "https://github.com/shuff57/O.G.R.E-OllamaGradingReviewEvaluator/releases/latest/download/latest.json"
       ]

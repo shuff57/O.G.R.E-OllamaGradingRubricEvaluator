@@ -128,6 +128,187 @@ async function extractRubric(tabId, selectors) {
 }
 
 // ---------------------------------------------------------------------------
+// isRubricSufficient(rubric) — check if extracted rubric has enough content
+// ---------------------------------------------------------------------------
+/**
+ * Check whether the extracted rubric has enough content for meaningful grading.
+ * Used by ALL modes (batch + sequential) to determine if Tier 2/3 fallback is needed.
+ * @param {object} rubric - Rubric data from extractRubric() or extractRubricSequential()
+ * @returns {boolean}
+ */
+function isRubricSufficient(rubric) {
+  if (!rubric) return false;
+  if (rubric.checklistItems?.length > 0) return true;
+  if (rubric.rubricItems?.length > 0) return true;
+  if (rubric.essayPrompt && rubric.essayPrompt.length > 50) return true;
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// extractPageContent(tabId, selectors, navigation) — Tier 2 content scraper
+// ---------------------------------------------------------------------------
+/**
+ * Scan the page for assignment-related text when formal rubric extraction fails.
+ * Platform-agnostic — tries multiple selector strategies in priority order.
+ * @param {number} tabId - Chrome tab ID
+ * @param {object} selectors - CSS selectors from the active site profile
+ * @param {object} navigation - Navigation config (optional)
+ * @returns {Promise<{content: string, source: string}>}
+ */
+async function extractPageContent(tabId, selectors, navigation) {
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        // Helper: collapse whitespace and blank lines in raw textContent
+        function cleanText(raw) {
+          return raw
+            .split('\n')
+            .map(l => l.replace(/\s+/g, ' ').trim())
+            .filter((l, i, arr) => !(l === '' && (i === 0 || arr[i - 1] === '')))
+            .join('\n')
+            .trim();
+        }
+
+        // Priority 1: Canvas rubric criteria table
+        const rubricCriteria = document.querySelectorAll(
+          '#rubric_summary_container .criterion .description, ' +
+          '.rubric_table .criterion_description, ' +
+          '.rubric_criterion .description'
+        );
+        if (rubricCriteria.length > 0) {
+          const text = Array.from(rubricCriteria)
+            .map(el => el.textContent.trim())
+            .filter(t => t.length > 0)
+            .join('\n');
+          if (text.length > 30) return { content: cleanText(text).substring(0, 2000), source: 'rubric_table' };
+        }
+
+        // Priority 2: Canvas/LMS assignment description
+        const descSelectors = [
+          '.description .user_content',
+          '#assignment_description',
+          '.assignment-description',
+          '.assignment_description',
+          '.description-text',
+        ];
+        for (const sel of descSelectors) {
+          const el = document.querySelector(sel);
+          if (el) {
+            const text = el.textContent.trim();
+            if (text.length > 30) return { content: cleanText(text).substring(0, 2000), source: 'assignment_description' };
+          }
+        }
+
+        // Priority 3: MyOpenMath question region
+        const qRegion = document.querySelector('.question-region, div[data-qn]');
+        if (qRegion) {
+          const text = qRegion.textContent.trim();
+          if (text.length > 30) return { content: cleanText(text).substring(0, 2000), source: 'question_region' };
+        }
+
+        // Priority 4: Submission preview iframe content
+        const iframeSelectors = [
+          '#submission-preview-iframe',
+          'iframe[id*="preview"]',
+          'iframe[src*="submission"]',
+        ];
+        for (const sel of iframeSelectors) {
+          const iframe = document.querySelector(sel);
+          if (iframe) {
+            try {
+              const doc = iframe.contentDocument || iframe.contentWindow?.document;
+              if (doc?.body) {
+                const text = doc.body.textContent.trim();
+                if (text.length > 30 && !text.includes('No Preview Available')) {
+                  return { content: cleanText(text).substring(0, 2000), source: 'submission_iframe' };
+                }
+              }
+            } catch { /* cross-origin */ }
+          }
+        }
+
+        // Priority 5: Generic headings + nearby content
+        const headings = document.querySelectorAll('h1, h2, h3');
+        if (headings.length > 0) {
+          const parts = [];
+          for (const h of headings) {
+            parts.push(h.textContent.trim());
+            let sibling = h.nextElementSibling;
+            while (sibling && !['H1','H2','H3'].includes(sibling.tagName)) {
+              if (sibling.textContent.trim().length > 10) {
+                parts.push(sibling.textContent.trim());
+              }
+              sibling = sibling.nextElementSibling;
+              if (parts.join('\n').length > 1500) break;
+            }
+          }
+          const text = parts.join('\n');
+          if (text.length > 50) return { content: cleanText(text).substring(0, 2000), source: 'page_headings' };
+        }
+
+        // Priority 6: Fallback — page body text
+        const body = document.body?.textContent?.trim() || '';
+        if (body.length > 100) {
+          return { content: cleanText(body).substring(0, 2000), source: 'page_content' };
+        }
+
+        return { content: '', source: '' };
+      },
+    });
+    return results?.[0]?.result || { content: '', source: '' };
+  } catch {
+    return { content: '', source: '' };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// formatRubricForReview(rubric) — convert rubric object to readable text
+// ---------------------------------------------------------------------------
+/**
+ * Convert the rubric object into human-readable text for the review textarea.
+ * @param {object} rubric - Rubric data from extractRubric() or extractRubricSequential()
+ * @returns {string}
+ */
+function formatRubricForReview(rubric) {
+  if (!rubric) return '';
+  const lines = [];
+
+  if (rubric.essayPrompt) {
+    lines.push('--- Question/Prompt ---');
+    // Clean up raw text: collapse excessive whitespace, trim lines
+    const cleaned = rubric.essayPrompt
+      .split('\n')
+      .map(l => l.trim())
+      .filter((l, i, arr) => !(l === '' && arr[i - 1] === ''))  // collapse blank lines
+      .join('\n')
+      .trim();
+    lines.push(cleaned);
+    lines.push('');
+  }
+
+  if (rubric.rubricItems?.length) {
+    lines.push('--- Rubric Targets ---');
+    rubric.rubricItems.forEach(cat => {
+      if (cat.category) lines.push(cat.category + ':');
+      if (cat.items?.length) {
+        cat.items.forEach(item => lines.push('  - ' + item));
+      }
+    });
+    lines.push('');
+  }
+
+  if (rubric.modelText) {
+    lines.push('--- Model Response ---');
+    lines.push(rubric.modelText.trim());
+    lines.push('');
+  }
+
+  lines.push('Max Score: ' + (rubric.maxScore || '10'));
+  return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
 // gradeStudent(provider, model, rubric, response, customInstructions)
 // ---------------------------------------------------------------------------
 /**
@@ -527,16 +708,35 @@ async function extractStudentsSequential(tabId, selectors, navigation, onProgres
   await navigateToFirstStudent(tabId, navigation);
 
   const students = [];
+  let multiQuestionMode = false;
+
   for (let i = 0; i < totalStudents; i++) {
     // Read current student data
     const info = await getCurrentStudentInfo(tabId, selectors);
 
-    // Try to extract response from the submission preview iframe
     let response = '';
-    try {
-      response = await extractIframeContent(tabId, selectors.questionRegion);
-    } catch {
-      // Iframe may not be accessible (cross-origin, no preview, etc.)
+    let questions = null;
+
+    // On first student, probe for structured multi-question content in the iframe
+    if (i === 0) {
+      const mqData = await extractMultiQuestionFromIframe(tabId);
+      if (mqData.isMultiQuestion && mqData.questions.length > 0) {
+        multiQuestionMode = true;
+        questions = mqData.questions;
+      }
+    } else if (multiQuestionMode) {
+      // Subsequent students in multi-question mode: extract per-question data
+      const mqData = await extractMultiQuestionFromIframe(tabId);
+      questions = mqData.questions;
+    }
+
+    // Single-response mode: extract plain text response from iframe
+    if (!multiQuestionMode) {
+      try {
+        response = await extractIframeContent(tabId, selectors.questionRegion);
+      } catch {
+        // Iframe may not be accessible (cross-origin, no preview, etc.)
+      }
     }
 
     students.push({
@@ -545,6 +745,8 @@ async function extractStudentsSequential(tabId, selectors, navigation, onProgres
       currentScore: info.currentScore,
       hasFeedback: info.hasFeedback,
       response,
+      questions,
+      isMultiQuestion: multiQuestionMode,
     });
 
     if (onProgress) onProgress(i + 1, totalStudents);
@@ -570,44 +772,210 @@ async function extractStudentsSequential(tabId, selectors, navigation, onProgres
 async function extractIframeContent(tabId, iframeSelector) {
   if (!iframeSelector) return '';
 
-  // Get all frames in the tab
-  const frames = await chrome.webNavigation.getAllFrames({ tabId });
-  if (!frames || frames.length <= 1) return '';
-
-  // Find candidate frames (skip the main frame at index 0)
-  // Look for frames whose URL suggests submission content
-  const candidateFrames = frames.filter(f =>
-    f.frameId > 0 && (
-      f.url.includes('submission') ||
-      f.url.includes('preview') ||
-      f.url.includes('assignment')
-    )
-  );
-
-  if (candidateFrames.length === 0) {
-    // Fallback: try any non-main frame
-    const nonMain = frames.filter(f => f.frameId > 0 && f.url && !f.url.startsWith('about:'));
-    if (nonMain.length === 0) return '';
-    candidateFrames.push(nonMain[0]);
-  }
-
-  // Try to read content from the first matching frame
+  // Access iframe content directly via same-origin contentDocument
   try {
     const results = await chrome.scripting.executeScript({
-      target: { tabId, frameIds: [candidateFrames[0].frameId] },
-      func: () => {
-        const body = document.body;
-        if (!body) return '';
-        const text = body.innerText?.trim() || '';
-        // Skip if it's just a "No Preview" message or minimal content
-        if (text.length < 20 || text.includes('No Preview Available')) return '';
-        return text.substring(0, 2000);
+      target: { tabId },
+      func: (selector) => {
+        const iframe = document.querySelector(selector);
+        if (!iframe) return '';
+        try {
+          const doc = iframe.contentDocument || iframe.contentWindow?.document;
+          if (!doc || !doc.body) return '';
+          const text = doc.body.innerText?.trim() || '';
+          if (text.length < 20 || text.includes('No Preview Available')) return '';
+          return text.substring(0, 2000);
+        } catch {
+          return ''; // Cross-origin iframe
+        }
       },
+      args: [iframeSelector],
     });
     return results?.[0]?.result || '';
   } catch {
-    return ''; // Frame may be cross-origin
+    return '';
   }
+}
+
+/**
+ * Extract structured multi-question data from the submission preview iframe.
+ * Detects submissions with multiple gradable questions (quizzes, multi-part assignments)
+ * via .display_question elements inside #submission-preview-iframe.
+ *
+ * @param {number} tabId - Chrome tab ID
+ * @returns {Promise<{isMultiQuestion: boolean, questions: Array, totalMax: string}>}
+ */
+async function extractMultiQuestionFromIframe(tabId) {
+  const results = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      const iframe = document.querySelector('#submission-preview-iframe');
+      if (!iframe) return { isMultiQuestion: false, questions: [], totalMax: '0' };
+
+      let doc;
+      try {
+        doc = iframe.contentDocument || iframe.contentWindow?.document;
+      } catch { return { isMultiQuestion: false, questions: [], totalMax: '0' }; }
+      if (!doc?.body) return { isMultiQuestion: false, questions: [], totalMax: '0' };
+
+      // Detect multi-question structure: .display_question elements
+      const questionEls = doc.querySelectorAll('.display_question');
+      if (questionEls.length === 0) return { isMultiQuestion: false, questions: [], totalMax: '0' };
+
+      const questions = [];
+      questionEls.forEach(q => {
+        const qId = q.id || '';
+        const qType = q.querySelector('.question_type')?.textContent?.trim() || 'unknown';
+        const questionText = q.querySelector('.question_text')?.textContent?.trim() || '';
+        const answer = q.querySelector('.quiz_response_text')?.textContent?.trim() || '';
+        const ptsText = q.querySelector('.question_points')?.textContent?.trim() || '';
+        const ptsMatch = ptsText.match(/(\d+\.?\d*)/);
+        const maxPts = ptsMatch ? parseFloat(ptsMatch[1]) : 1;
+        const scoreInput = q.querySelector('.question_input');
+        const currentScore = scoreInput ? scoreInput.value : '';
+
+        questions.push({ qId, qType, questionText, answer, maxPts, currentScore });
+      });
+
+      // Total max from quiz score area
+      const totalMaxMatch = doc.querySelector('.quiz_score')?.textContent?.match(/out of (\d+\.?\d*)/);
+      const totalMax = totalMaxMatch ? totalMaxMatch[1] : String(questions.reduce((s, q) => s + q.maxPts, 0));
+
+      return { isMultiQuestion: true, questions, totalMax };
+    },
+  });
+
+  return results?.[0]?.result || { isMultiQuestion: false, questions: [], totalMax: '0' };
+}
+
+/**
+ * Fill per-question scores and comments inside the quiz iframe,
+ * then click "Update Scores" to save.
+ *
+ * @param {number} tabId - Chrome tab ID
+ * @param {Array<{qId: string, score: number, comment: string}>} questionGrades
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+async function fillMultiQuestionInIframe(tabId, questionGrades) {
+  const results = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (grades) => {
+      const iframe = document.querySelector('#submission-preview-iframe');
+      if (!iframe) return { success: false, error: 'No submission iframe found' };
+
+      let doc;
+      try {
+        doc = iframe.contentDocument || iframe.contentWindow?.document;
+      } catch { return { success: false, error: 'Cross-origin iframe' }; }
+      if (!doc) return { success: false, error: 'Cannot access iframe document' };
+
+      let filled = 0;
+      for (const g of grades) {
+        const qEl = doc.querySelector('#' + g.qId);
+        if (!qEl) continue;
+
+        // Fill per-question score
+        const scoreInput = qEl.querySelector('.question_input');
+        if (scoreInput) {
+          scoreInput.focus();
+          scoreInput.value = String(g.score);
+          scoreInput.dispatchEvent(new Event('input', { bubbles: true }));
+          scoreInput.dispatchEvent(new Event('change', { bubbles: true }));
+          scoreInput.blur();
+        }
+
+        // Fill per-question comment
+        const commentId = g.qId.replace('question_', 'question_comment_');
+        const commentEl = doc.querySelector('#' + commentId) ||
+                          doc.querySelector('textarea[name="' + commentId + '"]');
+        if (commentEl && g.comment) {
+          commentEl.value = g.comment;
+          commentEl.dispatchEvent(new Event('input', { bubbles: true }));
+          commentEl.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        filled++;
+      }
+
+      // Click "Update Scores" button
+      const updateBtn = doc.querySelector('button.update-scores, input[value="Update Scores"]');
+      if (updateBtn) {
+        updateBtn.click();
+      }
+
+      return { success: true, filled };
+    },
+    args: [questionGrades],
+  });
+
+  return results?.[0]?.result || { success: false, error: 'executeScript failed' };
+}
+
+/**
+ * Pivot student-grouped data to question-grouped data for per-question batch grading.
+ *
+ * @param {Array} students - From extractStudentsSequential(), each with .questions array
+ * @returns {Array<{qId: string, questionText: string, maxPts: number, students: Array<{index: number, name: string, answer: string}>}>}
+ */
+function restructureByQuestion(students) {
+  const multiQStudents = students.filter(s => s.isMultiQuestion && s.questions);
+  if (multiQStudents.length === 0) return [];
+
+  // Use first student's questions as the template (same questions for all students)
+  const template = multiQStudents[0].questions;
+
+  return template.map(q => ({
+    qId: q.qId,
+    qType: q.qType,
+    questionText: q.questionText,
+    maxPts: q.maxPts,
+    students: multiQStudents.map(s => {
+      const studentQ = s.questions?.find(sq => sq.qId === q.qId);
+      return {
+        index: s.index,
+        name: s.name,
+        answer: studentQ?.answer || '',
+      };
+    }),
+  }));
+}
+
+/**
+ * Build a rubric object for the grading server from a single question's data.
+ * Maps the question text to essayPrompt and maxPts to maxScore so the grading
+ * server's existing infrastructure (anchors, bridges, sweeps) works unchanged.
+ *
+ * @param {Object} questionData - Single question from restructureByQuestion()
+ * @param {string} customInstructions - User custom instructions
+ * @returns {Object} Rubric compatible with grading server /api/grade endpoint
+ */
+function buildQuestionRubricForServer(questionData, customInstructions = '') {
+  let essayPrompt = questionData.questionText || '(No question text)';
+  if (customInstructions) {
+    essayPrompt += '\n\nADDITIONAL GRADING INSTRUCTIONS:\n' + customInstructions;
+  }
+
+  return {
+    essayPrompt,
+    maxScore: String(questionData.maxPts),
+    checklistItems: [],
+    rubricItems: [],
+    modelText: '',
+  };
+}
+
+/**
+ * Fill a single question's score and comment in the iframe, then click Update Scores.
+ * Thin wrapper around fillMultiQuestionInIframe with a single-item array.
+ *
+ * @param {number} tabId - Chrome tab ID
+ * @param {string} qId - Question element ID (e.g., "question_6147900")
+ * @param {number} score - Score for this question
+ * @param {string} comment - Comment for this question
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+async function fillSingleQuestion(tabId, qId, score, comment) {
+  return fillMultiQuestionInIframe(tabId, [{ qId, score, comment }]);
 }
 
 /**
@@ -630,7 +998,6 @@ async function extractRubricSequential(tabId, selectors, navigation) {
       let maxScore = '10';
 
       if (scoreInput) {
-        // Try label text
         const label = scoreInput.closest('label') || document.querySelector(`label[for="${scoreInput.id}"]`);
         const labelText = label?.textContent || scoreInput.parentElement?.textContent || '';
         const match = labelText.match(/(?:out of|\/)\s*(\d+\.?\d*)/i);
@@ -642,9 +1009,65 @@ async function extractRubricSequential(tabId, selectors, navigation) {
                        document.querySelector('h1, h2, .assignment-title');
       const title = titleEl?.textContent?.trim() || '';
 
+      // Try Canvas rubric criteria table
+      const checklistItems = [];
+      const rubricCriteria = document.querySelectorAll(
+        '#rubric_summary_container .criterion, ' +
+        '.rubric_table .criterion, ' +
+        '.rubric_criterion'
+      );
+      if (rubricCriteria.length > 0) {
+        rubricCriteria.forEach(criterion => {
+          const desc = criterion.querySelector('.description, .criterion_description, td.criterion_description');
+          const points = criterion.querySelector('.points, .criterion_points');
+          if (desc) {
+            checklistItems.push({
+              category: points ? points.textContent.trim() + ' pts' : '',
+              items: [desc.textContent.trim()],
+            });
+          }
+        });
+      }
+
+      // Try assignment description
+      let essayPrompt = title;
+      const descSelectors = [
+        '.description .user_content',
+        '#assignment_description',
+        '.assignment-description',
+        '.assignment_description',
+      ];
+      for (const dSel of descSelectors) {
+        const el = document.querySelector(dSel);
+        if (el) {
+          const text = el.textContent.trim();
+          if (text.length > 30) {
+            essayPrompt = text.substring(0, 500);
+            break;
+          }
+        }
+      }
+
+      // Fallback for New Quizzes: extract quiz questions from submission iframe
+      // (New Quizzes has no rubric or description on the main page — content is in the iframe)
+      if (checklistItems.length === 0 && essayPrompt === title) {
+        try {
+          const iframe = document.querySelector('#submission-preview-iframe');
+          if (iframe) {
+            const doc = iframe.contentDocument || iframe.contentWindow?.document;
+            if (doc?.body) {
+              const text = doc.body.innerText?.trim() || '';
+              if (text.length > 50) {
+                essayPrompt = text.substring(0, 1500);
+              }
+            }
+          }
+        } catch { /* cross-origin iframe — skip */ }
+      }
+
       return {
-        essayPrompt: title,
-        checklistItems: [],
+        essayPrompt,
+        checklistItems,
         rubricItems: [],
         modelText: null,
         maxScore,
@@ -763,56 +1186,55 @@ async function fillIframeFeedback(tabId, feedbackText, fbConfig) {
     ? '<p>' + feedbackText.replace(/\n/g, '</p><p>') + '</p>'
     : feedbackText;
 
-  // Find the TinyMCE editor iframe
-  const frames = await chrome.webNavigation.getAllFrames({ tabId });
-  const editorFrame = frames.find(f =>
-    f.url.includes('tinymce') ||
-    f.url.includes('editor') ||
-    f.url === 'about:blank' // TinyMCE often uses about:blank iframes
-  );
+  // Find TinyMCE editor iframe and set content via same-origin contentDocument
+  const result = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (content) => {
+      // Look for TinyMCE editor iframe by common selectors
+      const candidates = [
+        ...document.querySelectorAll('iframe[id*="rce"]'),
+        ...document.querySelectorAll('iframe[id*="_ifr"]'),
+        ...document.querySelectorAll('iframe[title*="Rich Text"]'),
+        ...document.querySelectorAll('iframe[title*="rich text"]'),
+      ];
 
-  if (!editorFrame) {
-    // Fallback: try to find an iframe with title containing "Rich Text"
-    const result = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: () => {
-        const iframes = document.querySelectorAll('iframe');
-        for (const iframe of iframes) {
-          if (iframe.title?.includes('Rich Text') || iframe.id?.includes('rce')) {
-            return iframe.id;
-          }
+      // Deduplicate
+      const seen = new Set();
+      const iframes = [];
+      for (const iframe of candidates) {
+        if (!seen.has(iframe)) {
+          seen.add(iframe);
+          iframes.push(iframe);
         }
-        return null;
-      },
-    });
-
-    const iframeId = result?.[0]?.result;
-    if (iframeId) {
-      // Find the matching frame by iframe ID
-      const matchingFrame = frames.find(f => {
-        // Heuristic: non-main frame that isn't the submission preview
-        return f.frameId > 0 && !f.url.includes('submission') && !f.url.includes('preview');
-      });
-      if (matchingFrame) {
-        await chrome.scripting.executeScript({
-          target: { tabId, frameIds: [matchingFrame.frameId] },
-          func: (content) => { document.body.innerHTML = content; }, // eslint-disable-line -- trusted AI content
-          args: [html],
-        });
-        return;
       }
-    }
 
-    console.warn('[BatchGrader] Could not find TinyMCE editor iframe for feedback');
-    return;
-  }
+      if (iframes.length === 0) {
+        return { success: false, error: 'No TinyMCE editor iframe found' };
+      }
 
-  // Set content in the editor iframe
-  await chrome.scripting.executeScript({
-    target: { tabId, frameIds: [editorFrame.frameId] },
-    func: (content) => { document.body.innerHTML = content; }, // eslint-disable-line -- trusted AI content
+      for (const iframe of iframes) {
+        try {
+          const doc = iframe.contentDocument || iframe.contentWindow?.document;
+          if (doc && doc.body) {
+            doc.body.innerHTML = content;
+            // Dispatch input event on the iframe's body to notify TinyMCE
+            doc.body.dispatchEvent(new Event('input', { bubbles: true }));
+            return { success: true, iframeId: iframe.id };
+          }
+        } catch {
+          // Cross-origin — skip this iframe
+        }
+      }
+
+      return { success: false, error: 'Could not access any TinyMCE iframe contentDocument' };
+    },
     args: [html],
   });
+
+  const fillResult = result?.[0]?.result;
+  if (!fillResult?.success) {
+    console.warn('[BatchGrader] fillIframeFeedback:', fillResult?.error || 'unknown error');
+  }
 }
 
 // ===========================================================================
@@ -1544,11 +1966,21 @@ const BatchGrader = {
   navigateToNextStudent,
   getCurrentStudentInfo,
   getStudentCount,
+  // Rubric helpers
+  isRubricSufficient,
+  extractPageContent,
+  formatRubricForReview,
   // State management
   loadBatchGradeState,
   saveBatchGradeState,
   clearBatchGradeState,
   getBatchGradeState,
+  // Multi-question mode (Canvas per-question grading)
+  extractMultiQuestionFromIframe,
+  fillMultiQuestionInIframe,
+  fillSingleQuestion,
+  restructureByQuestion,
+  buildQuestionRubricForServer,
   // Expose internals for testing
   _parseGradingResponse: parseGradingResponse,
   _buildGradingSystemPrompt: buildGradingSystemPrompt,
@@ -1579,6 +2011,16 @@ export {
   navigateToNextStudent,
   getCurrentStudentInfo,
   getStudentCount,
+  // Rubric helpers
+  isRubricSufficient,
+  extractPageContent,
+  formatRubricForReview,
+  // Multi-question mode (Canvas per-question grading)
+  extractMultiQuestionFromIframe,
+  fillMultiQuestionInIframe,
+  fillSingleQuestion,
+  restructureByQuestion,
+  buildQuestionRubricForServer,
   // State management
   loadBatchGradeState,
   saveBatchGradeState,

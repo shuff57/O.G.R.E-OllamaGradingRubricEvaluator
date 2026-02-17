@@ -87,6 +87,28 @@ Store all data locally. Report:
 
 **CRITICAL: After extraction, make ZERO additional Playwriter calls until Step 4.** All rubric data, student names, scores, feedback status, and full responses are in context. Grade entirely from what you have.
 
+### Step 2b: Rubric Review (Three-Tier Check)
+
+After extraction, check if the rubric has meaningful content. Apply this universally — not just for specific platforms:
+
+1. **Tier 1 — Rubric found:** If you extracted checklist items, rubric targets, or a substantial question prompt (>50 characters), show the user a summary:
+   > "Here's the rubric I extracted:
+   > - [checklist items]
+   > - [rubric targets]
+   > - Max score: N
+   > Does this look correct? Any adjustments?"
+
+2. **Tier 2 — No rubric but content visible:** If rubric extraction returned minimal data (just title + max score) but you can see assignment questions, descriptions, or prompt text on the page, use that visible content to create grading criteria:
+   > "I couldn't find a formal rubric, but I see the assignment question. Here's a rubric I created from it:
+   > - [generated criteria with point breakdowns]
+   > Does this look right?"
+
+3. **Tier 3 — Nothing found:** If neither rubric nor meaningful content is available:
+   > "I couldn't find a rubric or assignment questions on this page. Please provide the rubric or grading instructions so I can evaluate student work."
+   > Wait for user response before proceeding.
+
+**Always wait for user confirmation before proceeding to Step 3.** The user should approve or adjust the rubric.
+
 ### Step 3: Grade Each Student (Agent evaluates directly)
 
 **The agent IS the grader.** No external API calls. No LLM calls. Evaluate each ungraded student's response against the extracted rubric.
@@ -168,6 +190,7 @@ Grading consumes context window proportional to student count. To prevent contex
 | Playwriter not available | Ask user to enable Playwriter extension on the grading tab and ensure Chrome is running |
 | User hasn't provided URL | Ask "What is the grading page URL?" before proceeding |
 | Unsupported platform | Inform user; currently only MyOpenMath is supported |
+| No rubric found | Scan page for assignment content; if still empty, ask user to provide rubric text |
 | Cannot evaluate a response | Skip student, continue with next |
 | Empty response | Score 0, feedback "No response submitted." |
 | Connection stale | Reset: `playwriter_reset()` |

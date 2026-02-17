@@ -1081,7 +1081,37 @@
       background: var(--color-bg-card-hover);
       color: var(--color-text-primary);
     }
-    
+
+    /* Discovery Wizard — selector rows */
+    .selector-row {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 0; border-bottom: 1px solid var(--color-border);
+    }
+    .selector-row:last-child { border-bottom: none; }
+    .selector-label {
+      width: 90px; color: var(--color-text-secondary);
+      font-size: 0.8em; flex-shrink: 0;
+    }
+    .selector-value {
+      flex: 1; font-family: var(--font-mono); font-size: 0.75em;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      color: var(--color-text-primary);
+    }
+    .selector-status {
+      width: 50px; text-align: right; font-size: 0.75em; flex-shrink: 0;
+    }
+    .selector-status.ok { color: var(--color-success); }
+    .selector-status.fail { color: var(--color-error); }
+    .selector-row .btn-change {
+      font-size: 0.7em; padding: 2px 6px; flex-shrink: 0;
+      cursor: pointer; border: 1px solid var(--color-border);
+      background: var(--color-bg-secondary); color: var(--color-text-secondary);
+      border-radius: var(--radius-sm);
+    }
+    .selector-row .btn-change:hover {
+      border-color: var(--color-primary); color: var(--color-primary);
+    }
+
     .details-container {
       margin-bottom: 15px; 
       border: 1px solid var(--color-border); 
@@ -1858,7 +1888,53 @@
     </h3>
     
     <div class="collapsible-content" id="batchContent">
-    
+
+    <!-- Site Profile Bar -->
+    <div id="profileBar" class="flex-gap-small items-center mb-10">
+      <select id="profileSelect" class="flex-1" style="font-size: 0.85em; padding: 4px 6px;">
+        <option value="auto">Auto-detect profile</option>
+      </select>
+      <button id="btnDiscoverPage" class="secondary btn-tool-auto" title="Discover page structure with AI">
+        <i class="bi bi-search-heart"></i> Discover
+      </button>
+    </div>
+
+    <!-- Discovery Wizard (shown during AI page analysis) -->
+    <div id="discoveryWizard" style="display: none;">
+      <div class="batch-status-box status-info mb-10">
+        <i class="bi bi-robot"></i> <span id="discoveryStatus">Analyzing page structure...</span>
+      </div>
+
+      <!-- Discovered selectors list -->
+      <div id="discoveredSelectors" class="mb-10" style="display: none; font-size: 0.85em;">
+        <!-- Dynamically populated: each row has label, selector value, match count, Change btn -->
+      </div>
+
+      <!-- Test fill controls -->
+      <div id="testFillSection" style="display: none;" class="mb-10">
+        <button id="btnTestFill" class="secondary flex-1" style="width: 100%;">
+          <i class="bi bi-pencil-square"></i> Test Fill First Student
+        </button>
+        <div id="testFillResult" class="mt-small" style="display: none; font-size: 0.85em;"></div>
+      </div>
+
+      <!-- Save profile controls -->
+      <div id="saveProfileSection" style="display: none;" class="mb-10">
+        <div class="flex-gap-small items-center mb-10">
+          <label class="w-auto mb-0" style="font-size: 0.85em;">Profile Name:</label>
+          <input type="text" id="profileName" class="flex-1 mb-0" placeholder="e.g., Canvas, Blackboard" style="font-size: 0.85em;">
+        </div>
+        <div class="flex-gap-small">
+          <button id="btnSaveProfile" class="btn-primary flex-1">
+            <i class="bi bi-save"></i> Save Profile
+          </button>
+          <button id="btnCancelDiscovery" class="secondary flex-1">
+            <i class="bi bi-x-lg"></i> Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div id="batchPageStatus" class="batch-status-box">
       <i class="bi bi-search"></i> <span id="batchPageStatusText">Checking page...</span>
     </div>
@@ -1876,6 +1952,32 @@
           <button id="btnPresetStrict" class="secondary btn-tool-auto">Strict</button>
         </div>
         <textarea id="customInstructions" rows="4" placeholder="Enter specific instructions for the AI grader here..." class="custom-instructions-area"></textarea>
+      </div>
+    </details>
+
+    <!-- Rubric Review (shown after extraction, before grading begins) -->
+    <details id="rubricReviewContainer" class="details-container" style="display: none;" open>
+      <summary class="summary-header">
+        <span class="inline-flex-center"><i class="bi bi-file-earmark-text mr-small"></i> Rubric Review</span>
+        <i class="bi bi-chevron-down text-xs-extra"></i>
+      </summary>
+      <div class="details-content">
+        <p id="rubricReviewStatus" class="text-sm text-muted mb-10">
+          Review the extracted rubric below. Edit if needed, then click Continue.
+        </p>
+        <textarea id="rubricReviewText" rows="8" placeholder="Rubric / grading criteria will appear here..." class="custom-instructions-area"></textarea>
+        <div class="flex-gap-small mt-small items-center">
+          <label class="w-auto mb-0 text-sm">Max Score:</label>
+          <input type="number" id="rubricMaxScore" value="10" min="0" style="width: 80px; font-size: 0.85em;" class="mb-0">
+        </div>
+        <div class="flex-gap-small mt-small">
+          <button id="generateRubricBtn" class="secondary btn-sm" style="flex: 1;">
+            <i class="bi bi-magic"></i> Generate Rubric
+          </button>
+          <button id="continueGradingBtn" class="btn-primary btn-sm" style="flex: 1;">
+            Continue Grading
+          </button>
+        </div>
       </div>
     </details>
 
@@ -1964,6 +2066,30 @@
   <!-- <div class="card"> ... </div> -->
 
   <!-- Model Info Modal -->
+  <!-- Question Picker Modal (multi-question grading) -->
+  <div id="questionPickerModal" class="modal">
+    <div class="modal-content modal-content-sm">
+      <div class="modal-header">
+        <h3 class="m-0">Select Questions to Grade</h3>
+        <span id="questionPickerClose" class="close-btn">&times;</span>
+      </div>
+      <p class="text-sm text-muted mb-10">Multiple questions detected. Select which to grade:</p>
+      <div id="questionPickerList" style="max-height: 300px; overflow-y: auto; margin-bottom: 10px;">
+        <!-- Populated dynamically with checkboxes -->
+      </div>
+      <div class="flex-gap-small items-center mb-10">
+        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+          <input type="checkbox" id="gradeAllQuestions">
+          <strong>Grade All Questions</strong>
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button id="questionPickerCancel" class="secondary">Cancel</button>
+        <button id="questionPickerStart" class="btn-primary">Start Grading</button>
+      </div>
+    </div>
+  </div>
+
   <div id="modelInfoModal" class="modal">
     <div class="modal-content modal-content-sm">
       <div class="modal-header">

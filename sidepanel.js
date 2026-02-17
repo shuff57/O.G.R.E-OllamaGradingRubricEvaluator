@@ -1224,11 +1224,17 @@ async function checkBatchPageStatus() {
        btnStart.disabled = false;
        console.log(`[Batch] Profile matched: ${profile.name} (${profile.id}), mode: ${navMode}`);
 
-       // Show/hide manual rubric section for sequential profiles
-       const manualRubricEl = document.getElementById('manualRubricContainer');
-       if (manualRubricEl) {
-         manualRubricEl.style.display = navMode === 'sequential' ? '' : 'none';
+       // Show the rubric review section and auto-extract rubric
+       const rubricReviewEl = document.getElementById('rubricReviewContainer');
+       if (rubricReviewEl) {
+         rubricReviewEl.style.display = '';
+         // Hide Continue button until grading starts — only Generate Rubric is available standalone
+         const continueBtn = document.getElementById('continueGradingBtn');
+         if (continueBtn) continueBtn.style.display = 'none';
        }
+
+       // Auto-extract rubric from page and populate the review section
+       autoExtractRubric(tab.id, profile);
 
        // Select the matched profile in dropdown
        if (profileSelect) {
@@ -1249,13 +1255,13 @@ async function checkBatchPageStatus() {
        window._activeBatchProfile = null;
        console.log('[Batch] No profile matched. Showing discover option.');
        statusText.innerText = "Unknown page — use Discover to analyze";
+       // Hide rubric review when no profile
+       const rubricReviewEl = document.getElementById('rubricReviewContainer');
+       if (rubricReviewEl) rubricReviewEl.style.display = 'none';
        statusEl.classList.remove('status-success', 'status-info');
        statusEl.classList.add('status-error');
        statusEl.style.background = '';
        statusEl.style.color = '';
-       // Hide manual rubric when no profile
-       const manualRubricEl = document.getElementById('manualRubricContainer');
-       if (manualRubricEl) manualRubricEl.style.display = 'none';
     }
   } catch (e) {
     console.error('[Batch] checkBatchPageStatus error:', e);
@@ -3394,6 +3400,7 @@ function setupDeviceFlowListeners() {
 }
 
 let isBatchRunning = false;
+let _batchActivityHandle = null;
 
 document.getElementById('btnStartBatch').addEventListener('click', () => {
   console.log('🔵 [DEBUG] Start Batch button clicked!');
@@ -3515,9 +3522,207 @@ async function requestStudentReview(result, index, total) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// autoExtractRubric(tabId, profile) — auto-populate rubric review on profile detection
+// ---------------------------------------------------------------------------
+/**
+ * Extracts rubric from the current page and populates the rubric review section.
+ * Called fire-and-forget from checkBatchPageStatus when a profile is detected.
+ * Does NOT block the UI — silently populates if successful.
+ */
+async function autoExtractRubric(tabId, profile) {
+  const textarea = document.getElementById('rubricReviewText');
+  const maxScoreInput = document.getElementById('rubricMaxScore');
+  const statusEl = document.getElementById('rubricReviewStatus');
+  if (!textarea || !maxScoreInput || !statusEl) return;
+
+  // Don't overwrite if user already typed something
+  if (textarea.value.trim().length > 20) return;
+
+  const sel = profile?.selectors || {};
+  const navMode = profile?.navigation?.mode || 'batch';
+  const navConfig = profile?.navigation || { mode: 'batch' };
+
+  try {
+    statusEl.textContent = 'Extracting rubric from page...';
+
+    // Phase 1: Extract rubric using appropriate method
+    let rubric;
+    if (navMode === 'sequential') {
+      rubric = await BatchGrader.extractRubricSequential(tabId, sel, navConfig);
+    } else {
+      rubric = await BatchGrader.extractRubric(tabId, sel);
+    }
+
+    // Phase 2: Check quality — if insufficient, try page content
+    let source = 'extracted';
+    if (!BatchGrader.isRubricSufficient(rubric)) {
+      const pageContent = await BatchGrader.extractPageContent(tabId, sel, navConfig);
+      if (pageContent.content.length > 50) {
+        rubric.essayPrompt = pageContent.content;
+        source = 'page-content';
+      } else {
+        source = 'manual';
+      }
+    }
+
+    // Populate the review section
+    const formatted = BatchGrader.formatRubricForReview(rubric);
+    if (formatted.trim().length > 0) {
+      textarea.value = formatted;
+    }
+    if (rubric.maxScore) {
+      maxScoreInput.value = rubric.maxScore;
+    }
+
+    // Update status based on what we found
+    const messages = {
+      'extracted': 'Rubric extracted from page. Review and edit if needed.',
+      'page-content': 'Assignment content found (no formal rubric). Click Generate Rubric for AI criteria.',
+      'manual': 'No rubric or content found. Enter criteria or click Generate Rubric.',
+    };
+    statusEl.textContent = messages[source] || messages.extracted;
+  } catch (err) {
+    console.warn('[Rubric] Auto-extract failed:', err.message);
+    statusEl.textContent = 'Enter grading criteria or click Generate Rubric.';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// generateRubricFromContent(content, maxScore) — AI rubric generation
+// ---------------------------------------------------------------------------
+/**
+ * Send assignment content to the AI to generate proper grading criteria.
+ * Uses the currently connected provider/model.
+ * @param {string} content - Assignment text (question, description, etc.)
+ * @param {string} maxScore - Maximum score for the assignment
+ * @returns {Promise<string>} AI-generated rubric text
+ */
+async function generateRubricFromContent(content, maxScore) {
+  const prompt = `You are a teacher creating a grading rubric for high school seniors. Given the following assignment question/prompt, create clear grading criteria.
+
+Assignment (max ${maxScore} points):
+${content}
+
+Respond with ONLY the rubric in this format:
+- List each grading criterion on its own line
+- Include point values for each criterion (must total ${maxScore})
+- Be specific about what earns full/partial/no credit for each criterion`;
+
+  try {
+    const config = getProviderConfigFromUI(currentProviderId);
+    const result = await callProviderAI(currentProviderId, config, [
+      { role: 'user', content: prompt }
+    ]);
+    return result || content;
+  } catch (err) {
+    console.warn('[Rubric] AI generation failed:', err.message);
+    return content; // Fallback to raw content
+  }
+}
+
+// ---------------------------------------------------------------------------
+// showRubricReview(rubric, source) — pause for user review
+// ---------------------------------------------------------------------------
+/**
+ * Show the rubric review section and wait for user to click Continue.
+ * @param {object} rubric - Rubric data
+ * @param {string} source - Where the rubric came from ('extracted', 'generated', 'manual')
+ * @returns {Promise<{text: string, maxScore: string}|null>} User's reviewed rubric, or null if cancelled
+ */
+function showRubricReview(rubric, source) {
+  return new Promise((resolve) => {
+    const container = document.getElementById('rubricReviewContainer');
+    const textarea = document.getElementById('rubricReviewText');
+    const maxScoreInput = document.getElementById('rubricMaxScore');
+    const statusEl = document.getElementById('rubricReviewStatus');
+    const continueBtn = document.getElementById('continueGradingBtn');
+    const generateBtn = document.getElementById('generateRubricBtn');
+
+    // Status messages by tier
+    const messages = {
+      extracted: 'Rubric extracted from page. Review and edit if needed.',
+      generated: 'AI-generated rubric from assignment content. Review and edit if needed.',
+      manual: 'No rubric found. Please enter grading criteria or click Generate Rubric.',
+    };
+    statusEl.textContent = messages[source] || messages.extracted;
+
+    // Pre-fill with formatted rubric
+    textarea.value = BatchGrader.formatRubricForReview(rubric);
+    maxScoreInput.value = rubric.maxScore || '10';
+
+    // Show and expand (Continue button may have been hidden for standalone mode)
+    container.style.display = '';
+    container.open = true;
+    continueBtn.style.display = '';
+    if (source === 'manual') textarea.focus();
+
+    const cleanup = () => {
+      continueBtn.removeEventListener('click', onContinue);
+      generateBtn.removeEventListener('click', onGenerate);
+      window.removeEventListener('rubricReviewCancel', onCancel);
+    };
+
+    const onContinue = () => {
+      const text = textarea.value.trim();
+      if (!text) {
+        textarea.style.border = '2px solid #e74c3c';
+        setTimeout(() => { textarea.style.border = ''; }, 1500);
+        return;
+      }
+      cleanup();
+      container.style.display = 'none';
+      resolve({ text, maxScore: maxScoreInput.value || '10' });
+    };
+
+    const onCancel = () => {
+      cleanup();
+      container.style.display = 'none';
+      resolve(null);
+    };
+
+    const onGenerate = async () => {
+      generateBtn.disabled = true;
+      const origLabel = generateBtn.textContent;
+      generateBtn.textContent = 'Generating...';
+      try {
+        const tab = (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
+        const profile = window._activeBatchProfile;
+        const sel = profile?.selectors || {};
+        const nav = profile?.navigation || { mode: 'batch' };
+
+        // Get content: use existing textarea text or scrape page
+        let contentSource = textarea.value.trim();
+        if (contentSource.length < 10) {
+          const pageContent = await BatchGrader.extractPageContent(tab.id, sel, nav);
+          contentSource = pageContent.content;
+        }
+
+        if (contentSource.length < 10) {
+          statusEl.textContent = 'Not enough content to generate a rubric. Please enter text first.';
+          return;
+        }
+
+        const generated = await generateRubricFromContent(contentSource, maxScoreInput.value || '10');
+        textarea.value = generated;
+        statusEl.textContent = 'AI-generated rubric ready. Review and edit if needed.';
+      } catch (err) {
+        statusEl.textContent = 'Failed to generate rubric: ' + err.message;
+      } finally {
+        generateBtn.disabled = false;
+        generateBtn.textContent = origLabel;
+      }
+    };
+
+    continueBtn.addEventListener('click', onContinue);
+    generateBtn.addEventListener('click', onGenerate);
+    window.addEventListener('rubricReviewCancel', onCancel);
+  });
+}
+
 async function startBatchGrading() {
   console.log('[Batch] startBatchGrading called, isBatchRunning:', isBatchRunning);
-  logBatch("🚀 Starting batch grading...", "blue");
+  logBatch("Starting batch grading...", "blue");
 
   if (isBatchRunning) {
     logBatch("⚠️ Batch grading already in progress", "orange");
@@ -3666,41 +3871,104 @@ async function startBatchGrading() {
 
       let rubric, allStudents;
 
-      if (navMode === 'sequential') {
-        // Sequential mode: extract by navigating through students one by one
-        logBatch("Sequential mode — extracting rubric...");
+      // Check if user already filled in rubric text (from standalone Generate Rubric)
+      const existingRubricText = document.getElementById('rubricReviewText')?.value?.trim();
+      const existingMaxScore = document.getElementById('rubricMaxScore')?.value;
 
-        // Use manual rubric from UI if provided, otherwise auto-extract
-        const manualRubricText = document.getElementById('manualRubric')?.value?.trim();
-        const manualMaxScore = document.getElementById('manualMaxScore')?.value;
-
-        if (manualRubricText) {
-          rubric = {
-            maxScore: manualMaxScore || '100',
-            essayPrompt: manualRubricText,
-            checklistItems: [],
-            rubricItems: [],
-          };
-          logBatch("Using manual rubric from UI.");
-        } else {
+      if (existingRubricText && existingRubricText.length > 20) {
+        // User already reviewed/generated rubric — use it directly, no pause
+        rubric = {
+          essayPrompt: existingRubricText,
+          checklistItems: [],
+          rubricItems: [],
+          modelText: null,
+          maxScore: existingMaxScore || '10',
+        };
+        logBatch("Using rubric from review panel.");
+      } else {
+        // --- Phase 1: Extract rubric (both modes) ---
+        logBatch("Extracting rubric...");
+        if (navMode === 'sequential') {
           rubric = await BatchGrader.extractRubricSequential(tab.id, sel, navConfig);
-          logBatch("Rubric extracted (sequential).");
+        } else {
+          rubric = await BatchGrader.extractRubric(tab.id, sel);
+        }
+        logBatch("Rubric extracted.");
+
+        // --- Phase 2: Three-tier rubric quality check (universal) ---
+        let rubricSource = 'extracted';
+        if (!BatchGrader.isRubricSufficient(rubric)) {
+          logBatch("Rubric insufficient. Scanning page for content...");
+          const pageContent = await BatchGrader.extractPageContent(tab.id, sel, navConfig);
+          if (pageContent.content.length > 50) {
+            logBatch(`Found ${pageContent.source}. Generating rubric...`);
+            try {
+              const generatedRubric = await generateRubricFromContent(pageContent.content, rubric.maxScore || '10');
+              rubric.essayPrompt = generatedRubric;
+              rubricSource = 'generated';
+              logBatch("AI-generated rubric ready for review.");
+            } catch {
+              rubric.essayPrompt = pageContent.content;
+              rubricSource = 'generated';
+              logBatch("Using page content as rubric (AI generation failed).");
+            }
+          } else {
+            rubricSource = 'manual';
+            logBatch("No rubric or content found. Please provide grading instructions.");
+          }
         }
 
+        // Check if extraction/generation produced content
+        const rubricText = BatchGrader.formatRubricForReview(rubric).trim();
+        if (rubricText.length > 20) {
+          // Got content — populate review section but don't pause
+          const textarea = document.getElementById('rubricReviewText');
+          const maxScoreInput = document.getElementById('rubricMaxScore');
+          if (textarea) textarea.value = rubricText;
+          if (maxScoreInput) maxScoreInput.value = rubric.maxScore || '10';
+          logBatch("Rubric ready.");
+        } else {
+          // Empty — pause and wait for user to provide rubric
+          logBatch("No rubric found. Waiting for input...");
+          const reviewResult = await showRubricReview(rubric, rubricSource);
+          if (!reviewResult) {
+            logBatch("Grading cancelled.");
+            isBatchRunning = false;
+            return;
+          }
+          rubric.essayPrompt = reviewResult.text;
+          rubric.maxScore = reviewResult.maxScore;
+        }
+      }
+
+      // --- Phase 4: Extract students ---
+      if (navMode === 'sequential') {
         logBatch("Extracting students (navigating through pages)...");
         allStudents = await BatchGrader.extractStudentsSequential(tab.id, sel, navConfig, (current, total) => {
           progressText.innerText = `Extracting ${current}/${total}`;
-          const pct = Math.round((current / total) * 50); // 0-50% for extraction
+          const pct = Math.round((current / total) * 50);
           progressBar.style.width = `${pct}%`;
           progressPercent.innerText = `${pct}%`;
         });
         logBatch(`Extracted ${allStudents.length} students.`);
-      } else {
-        // Batch mode: all students on one page
-        logBatch("Extracting rubric...");
-        rubric = await BatchGrader.extractRubric(tab.id, sel);
-        logBatch("Rubric extracted.");
 
+        // Detect multi-question mode and branch to per-question grading
+        const isMultiQuestion = allStudents[0]?.isMultiQuestion || false;
+        if (isMultiQuestion && handshakeToken) {
+          logBatch('Multi-question submission detected. Switching to per-question grading...');
+          const customInstructions = document.getElementById('customInstructions')?.value?.trim() || '';
+          const nonZeroFeedbackOnly = customInstructions && /non.?zero/i.test(customInstructions) && /feedback/i.test(customInstructions);
+          return await startMultiQuestionGrading(tab, allStudents, rubric, {
+            sel,
+            fbConfig,
+            navConfig,
+            pageUrl,
+            customInstructions,
+            model,
+            nonZeroFeedbackOnly,
+          });
+        }
+      } else {
         logBatch("Extracting students...");
         allStudents = await BatchGrader.extractStudents(tab.id, sel);
       }
@@ -3745,6 +4013,7 @@ async function startBatchGrading() {
 
       // Show activity indicator while server processes
       const activity = showBatchActivity('batch');
+      _batchActivityHandle = activity;
       progressText.innerText = `0/${total}`;
 
       // Build rubric with custom instructions
@@ -3965,6 +4234,7 @@ async function startBatchGrading() {
       }
 
       activity.stop();
+      _batchActivityHandle = null;
 
       // Show final stats
       if (doneData) {
@@ -4054,6 +4324,440 @@ async function startBatchGrading() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Multi-Question Grading — question-by-question batch grading for Canvas
+// ---------------------------------------------------------------------------
+
+/**
+ * Show the question picker modal and wait for user selection.
+ * @param {Array} questions - Array of {qId, qType, questionText, maxPts}
+ * @returns {Promise<Array|null>} Selected questions array, or null if cancelled
+ */
+function showQuestionPicker(questions) {
+  return new Promise(resolve => {
+    const modal = document.getElementById('questionPickerModal');
+    const list = document.getElementById('questionPickerList');
+    const gradeAllCheckbox = document.getElementById('gradeAllQuestions');
+    const startBtn = document.getElementById('questionPickerStart');
+    const cancelBtn = document.getElementById('questionPickerCancel');
+    const closeBtn = document.getElementById('questionPickerClose');
+
+    // Populate question list with checkboxes using safe DOM methods
+    list.textContent = '';
+    questions.forEach((q, i) => {
+      const truncatedText = q.questionText.length > 80
+        ? q.questionText.substring(0, 80) + '...'
+        : q.questionText;
+
+      const div = document.createElement('div');
+      div.style.cssText = 'padding: 6px 0; border-bottom: 1px solid var(--color-border);';
+
+      const label = document.createElement('label');
+      label.style.cssText = 'display: flex; align-items: flex-start; gap: 8px; cursor: pointer;';
+
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.className = 'question-checkbox';
+      checkbox.dataset.index = String(i);
+      checkbox.style.marginTop = '3px';
+
+      const span = document.createElement('span');
+      const strong = document.createElement('strong');
+      strong.textContent = `Q${i + 1}`;
+      const ptsText = document.createTextNode(` (${q.maxPts} pts): ${truncatedText} `);
+      const typeSpan = document.createElement('span');
+      typeSpan.style.cssText = 'color: var(--color-text-muted); font-size: 11px;';
+      typeSpan.textContent = `[${q.qType}]`;
+
+      span.appendChild(strong);
+      span.appendChild(ptsText);
+      span.appendChild(typeSpan);
+      label.appendChild(checkbox);
+      label.appendChild(span);
+      div.appendChild(label);
+      list.appendChild(div);
+    });
+
+    // Grade All toggles all checkboxes
+    gradeAllCheckbox.checked = false;
+    gradeAllCheckbox.onchange = () => {
+      list.querySelectorAll('.question-checkbox').forEach(cb => {
+        cb.checked = gradeAllCheckbox.checked;
+      });
+    };
+
+    function cleanup() {
+      modal.style.display = 'none';
+      startBtn.onclick = null;
+      cancelBtn.onclick = null;
+      closeBtn.onclick = null;
+    }
+
+    startBtn.onclick = () => {
+      const selected = [];
+      list.querySelectorAll('.question-checkbox:checked').forEach(cb => {
+        const idx = parseInt(cb.dataset.index);
+        selected.push(questions[idx]);
+      });
+      cleanup();
+      resolve(selected.length > 0 ? selected : null);
+    };
+
+    cancelBtn.onclick = () => { cleanup(); resolve(null); };
+    closeBtn.onclick = () => { cleanup(); resolve(null); };
+
+    modal.style.display = 'block';
+  });
+}
+
+/**
+ * Generate a summary comment for a student based on per-question grading results.
+ * Uses AI to synthesize all per-question comments into a concise overall assessment.
+ *
+ * @param {string} studentName
+ * @param {Array} questionResults - [{qId, questionText, maxPts, score, comment}]
+ * @param {number} totalScore
+ * @param {number} totalMax
+ * @returns {Promise<string>} Summary comment text
+ */
+async function generateStudentSummary(studentName, questionResults, totalScore, totalMax) {
+  if (!currentProviderId) return formatFallbackSummary(questionResults, totalScore, totalMax);
+
+  let prompt = `Summarize this student's performance across all questions in 2-3 sentences. Be encouraging but honest.\n\n`;
+  prompt += `Student: ${studentName}\nTotal: ${totalScore}/${totalMax}\n\n`;
+  for (const qr of questionResults) {
+    prompt += `Q: ${qr.questionText.substring(0, 100)}\nScore: ${qr.score}/${qr.maxPts}\nFeedback: ${qr.comment}\n\n`;
+  }
+
+  try {
+    const config = getProviderConfigFromUI(currentProviderId);
+    const result = await callProviderAI(currentProviderId, config, [
+      { role: 'system', content: 'You are a grading assistant. Write a brief, constructive overall comment for this student.' },
+      { role: 'user', content: prompt },
+    ]);
+    return result || formatFallbackSummary(questionResults, totalScore, totalMax);
+  } catch {
+    return formatFallbackSummary(questionResults, totalScore, totalMax);
+  }
+}
+
+/**
+ * Fallback summary when AI is unavailable — simple template.
+ */
+function formatFallbackSummary(questionResults, totalScore, totalMax) {
+  const pct = Math.round((totalScore / totalMax) * 100);
+  let summary = `Overall Score: ${totalScore}/${totalMax} (${pct}%)\n\n`;
+  for (const qr of questionResults) {
+    const label = qr.questionText.substring(0, 60);
+    summary += `${qr.score}/${qr.maxPts} — ${label}${qr.comment ? ': ' + qr.comment : ''}\n`;
+  }
+  return summary;
+}
+
+/**
+ * Multi-question grading orchestrator.
+ * Grades one question at a time across all students using the grading server,
+ * then fills per-question scores, then does a final summary pass.
+ *
+ * @param {Object} tab - Chrome tab
+ * @param {Array} allStudents - Students from extractStudentsSequential (with .questions)
+ * @param {Object} rubric - Extracted rubric
+ * @param {Object} params - {sel, fbConfig, saveConfig, navConfig, navMode, pageUrl, customInstructions, model, nonZeroFeedbackOnly}
+ */
+async function startMultiQuestionGrading(tab, allStudents, rubric, params) {
+  const {
+    sel, fbConfig, navConfig, pageUrl,
+    customInstructions, model, nonZeroFeedbackOnly,
+  } = params;
+
+  // Restructure data: student-grouped → question-grouped
+  const questionData = BatchGrader.restructureByQuestion(allStudents);
+  if (questionData.length === 0) {
+    logBatch('No gradable questions found in submissions.', 'red');
+    return;
+  }
+
+  // Filter to free-response questions (skip auto-graded types)
+  const autoGradedTypes = ['multiple_choice_question', 'true_false_question', 'matching_question',
+    'fill_in_multiple_blanks_question', 'multiple_answers_question', 'multiple_dropdowns_question'];
+  const freeResponseQuestions = questionData.filter(q => !autoGradedTypes.includes(q.qType));
+
+  if (freeResponseQuestions.length === 0) {
+    logBatch('No free-response questions found to grade.', 'orange');
+    return;
+  }
+
+  logBatch(`Found ${freeResponseQuestions.length} free-response question(s).`);
+
+  // Show question picker
+  const selectedQuestions = await showQuestionPicker(freeResponseQuestions);
+  if (!selectedQuestions || !isBatchRunning) {
+    logBatch('Question selection cancelled.', 'orange');
+    return;
+  }
+
+  logBatch(`Grading ${selectedQuestions.length} question(s) across ${allStudents.length} students...`);
+
+  // Filter to ungraded students
+  const toGrade = allStudents.filter(s => {
+    if (s.hasFeedback) return false;
+    const score = parseFloat(s.currentScore);
+    if (!isNaN(score) && score > 0) return false;
+    return true;
+  });
+
+  if (toGrade.length === 0) {
+    logBatch('No ungraded students found.', 'green');
+    return;
+  }
+
+  const progressBar = document.getElementById('batchProgressBar');
+  const progressText = document.getElementById('batchProgressText');
+  const progressPercent = document.getElementById('batchProgressPercent');
+
+  // Store all per-question results for the final summary pass
+  // allQuestionResults[qId] = [{ studentIndex, name, score, feedback }]
+  const allQuestionResults = {};
+
+  // ---- Per-question grading + fill loop ----
+  for (let qi = 0; qi < selectedQuestions.length; qi++) {
+    if (!isBatchRunning) break;
+
+    const question = selectedQuestions[qi];
+    const qLabel = `Q${qi + 1}`;
+    logBatch(`--- ${qLabel}: ${question.questionText.substring(0, 60)}... (${question.maxPts} pts) ---`);
+
+    // Build rubric for this question
+    const questionRubric = BatchGrader.buildQuestionRubricForServer(question, customInstructions);
+
+    // Map students to grading server format (only ungraded)
+    const serverStudents = toGrade.map(s => {
+      const studentQ = s.questions?.find(sq => sq.qId === question.qId);
+      return {
+        index: s.index,
+        name: s.name,
+        response: studentQ?.answer || '',
+      };
+    });
+
+    // Send to grading server
+    logBatch(`Sending ${serverStudents.length} students to grading server for ${qLabel}...`);
+    const activity = showBatchActivity('batch');
+
+    try {
+      const response = await fetch('http://localhost:3456/api/grade', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${handshakeToken}`,
+        },
+        body: JSON.stringify({
+          provider: currentProviderId,
+          model: model,
+          rubric: questionRubric,
+          students: serverStudents,
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || `Server error: ${response.status}`);
+      }
+
+      // Process SSE stream for this question
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      const questionGradedStudents = [];
+
+      while (true) {
+        if (!isBatchRunning) { reader.cancel(); break; }
+
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        let currentEvent = '';
+        let currentData = '';
+
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            currentEvent = line.slice(7).trim();
+          } else if (line.startsWith('data: ')) {
+            currentData = line.slice(6);
+          } else if (line === '' && currentEvent && currentData) {
+            const parsed = JSON.parse(currentData);
+
+            if (currentEvent === 'progress') {
+              activity.updateText(`${qLabel}: Grading chunk ${parsed.chunkIndex + 1}/${parsed.totalChunks}...`);
+            } else if (currentEvent === 'chunk') {
+              const chunkResults = parsed.results || [];
+              for (const result of chunkResults) {
+                const student = toGrade.find(s => s.index === result.studentIndex);
+                if (!student) continue;
+                const feedback = (nonZeroFeedbackOnly && result.score === 0) ? '' : result.feedback;
+                questionGradedStudents.push({
+                  studentIndex: student.index,
+                  name: student.name,
+                  score: result.score,
+                  feedback,
+                });
+                logBatch(`${qLabel} ${student.name}: ${result.score}/${question.maxPts}`);
+              }
+            } else if (currentEvent === 'outlier') {
+              const adjusted = parsed.adjustedResults || [];
+              for (const result of adjusted) {
+                const existing = questionGradedStudents.find(g => g.studentIndex === result.studentIndex);
+                if (existing) {
+                  existing.score = result.score;
+                  existing.feedback = result.feedback;
+                  logBatch(`${qLabel} Adjusted: ${existing.name}: ${result.score}/${question.maxPts}`);
+                }
+              }
+            } else if (currentEvent === 'done') {
+              if (parsed.stats) {
+                logBatch(`${qLabel} Stats: mean=${parsed.stats.mean}, stdDev=${parsed.stats.stdDev}`);
+              }
+            } else if (currentEvent === 'error') {
+              throw new Error(parsed.message || `Server error grading ${qLabel}`);
+            }
+
+            currentEvent = '';
+            currentData = '';
+          }
+        }
+      }
+
+      activity.stop();
+
+      // Store results for final summary
+      allQuestionResults[question.qId] = questionGradedStudents.map(g => ({
+        ...g,
+        qId: question.qId,
+        questionText: question.questionText,
+        maxPts: question.maxPts,
+      }));
+
+      // ---- Fill pass for this question ----
+      if (questionGradedStudents.length > 0 && isBatchRunning) {
+        logBatch(`Filling ${qLabel} scores for ${questionGradedStudents.length} students...`);
+        await BatchGrader.navigateToFirstStudent(tab.id, navConfig);
+        let currentPos = 0;
+
+        for (let si = 0; si < questionGradedStudents.length; si++) {
+          if (!isBatchRunning) break;
+
+          const result = questionGradedStudents[si];
+
+          // Navigate to correct student position
+          while (currentPos < result.studentIndex) {
+            await BatchGrader.navigateToNextStudent(tab.id, navConfig);
+            currentPos++;
+          }
+
+          try {
+            await BatchGrader.fillSingleQuestion(tab.id, question.qId, result.score, result.feedback);
+            logBatch(`Filled ${qLabel} ${result.name}: ${result.score}/${question.maxPts}`, 'green');
+          } catch (err) {
+            logBatch(`Error filling ${qLabel} ${result.name}: ${err.message}`, 'red');
+          }
+
+          // Navigate to next student (unless last)
+          if (si < questionGradedStudents.length - 1) {
+            await BatchGrader.navigateToNextStudent(tab.id, navConfig);
+            currentPos++;
+          }
+        }
+
+        logBatch(`${qLabel} fill complete.`, 'green');
+      }
+
+    } catch (err) {
+      activity.stop();
+      logBatch(`Error grading ${qLabel}: ${err.message}`, 'red');
+    }
+
+    // Update overall progress
+    const overallPct = Math.round(((qi + 1) / selectedQuestions.length) * 80);
+    progressBar.style.width = `${overallPct}%`;
+    progressPercent.innerText = `${overallPct}%`;
+    progressText.innerText = `${qi + 1}/${selectedQuestions.length} questions`;
+  }
+
+  // ---- Final summary pass ----
+  if (isBatchRunning && Object.keys(allQuestionResults).length > 0) {
+    logBatch('--- Final summary pass ---');
+    await BatchGrader.navigateToFirstStudent(tab.id, navConfig);
+    let currentPos = 0;
+    let summaryCount = 0;
+
+    for (const student of toGrade) {
+      if (!isBatchRunning) break;
+
+      // Navigate to correct position
+      while (currentPos < student.index) {
+        await BatchGrader.navigateToNextStudent(tab.id, navConfig);
+        currentPos++;
+      }
+
+      // Collect per-question results for this student
+      const studentQResults = [];
+      let totalScore = 0;
+      let totalMax = 0;
+      for (const question of selectedQuestions) {
+        const qResults = allQuestionResults[question.qId] || [];
+        const result = qResults.find(r => r.studentIndex === student.index);
+        if (result) {
+          studentQResults.push({
+            qId: question.qId,
+            questionText: question.questionText,
+            maxPts: question.maxPts,
+            score: result.score,
+            comment: result.feedback,
+          });
+          totalScore += result.score;
+          totalMax += question.maxPts;
+        }
+      }
+
+      if (studentQResults.length === 0) {
+        if (currentPos < allStudents.length - 1) {
+          await BatchGrader.navigateToNextStudent(tab.id, navConfig);
+          currentPos++;
+        }
+        continue;
+      }
+
+      // Generate summary
+      try {
+        const summary = await generateStudentSummary(student.name, studentQResults, totalScore, totalMax);
+
+        // Fill TinyMCE comment and submit
+        await BatchGrader.fillGradeSequential(tab.id, totalScore, summary, sel, fbConfig, navConfig);
+        summaryCount++;
+        logBatch(`Summary: ${student.name} (${totalScore}/${totalMax})`, 'green');
+      } catch (err) {
+        logBatch(`Summary error for ${student.name}: ${err.message}`, 'red');
+      }
+
+      // Navigate to next (unless last)
+      if (currentPos < allStudents.length - 1) {
+        await BatchGrader.navigateToNextStudent(tab.id, navConfig);
+        currentPos++;
+      }
+    }
+
+    logBatch(`Summary pass complete: ${summaryCount} students.`, 'green');
+    progressBar.style.width = '100%';
+    progressPercent.innerText = '100%';
+  }
+
+  logBatch('Multi-question grading complete!', 'green');
+}
+
 /**
  * Fallback: grade students 1:1 via BatchGrader when the server is not available.
  * Uses the original fast loop through proxyFetch (background.js CORS proxy).
@@ -4101,16 +4805,6 @@ async function fallbackDirectGrading() {
 
       logBatch(`Fallback mode: grading 1:1 with ${getProviderDisplayName(currentProviderId)} / ${model}...`);
 
-      // Build manual rubric if provided (for sequential profiles)
-      const manualRubricText = document.getElementById('manualRubric')?.value?.trim();
-      const manualMaxScore = document.getElementById('manualMaxScore')?.value;
-      const manualRubric = manualRubricText ? {
-          maxScore: manualMaxScore || '100',
-          essayPrompt: manualRubricText,
-          checklistItems: [],
-          rubricItems: [],
-      } : null;
-
       // BatchGrader.batchGrade handles extraction, grading, filling, and saving
       // onProgress signature: (completedCount, totalCount, studentName, score, feedback)
       await BatchGrader.batchGrade(tab.id, currentProviderId, model, {
@@ -4118,7 +4812,6 @@ async function fallbackDirectGrading() {
           customInstructions,
           resumeAfter: resumeAfter || null,
           profile: window._activeBatchProfile || null,
-          manualRubric,
           onProgress: (completed, total, name, score) => {
               const pct = Math.round((completed / total) * 100);
               progressBar.style.width = `${pct}%`;
@@ -4145,6 +4838,15 @@ async function fallbackDirectGrading() {
 
 function stopBatchGrading() {
   isBatchRunning = false;
+
+  // Stop the activity timer if running
+  if (_batchActivityHandle) {
+    _batchActivityHandle.stop();
+    _batchActivityHandle = null;
+  }
+
+  // Cancel rubric review if it's waiting for user input
+  window.dispatchEvent(new Event('rubricReviewCancel'));
 
   document.getElementById('btnStartBatch').style.display = 'block';
   document.getElementById('btnStopBatch').style.display = 'none';
