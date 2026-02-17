@@ -291,13 +291,13 @@ async fn reload_browser(app: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 async fn set_webview_bounds(
     app: tauri::AppHandle,
-    x: f64, y: f64, w: f64, h: f64,
+    x: f64, y: f64, width: f64, height: f64,
 ) -> Result<(), String> {
     let wv = app.get_webview("embedded-browser")
         .ok_or("Embedded browser not open")?;
     wv.set_position(tauri::LogicalPosition::new(x, y))
         .map_err(|e| format!("Failed to set position: {}", e))?;
-    wv.set_size(tauri::LogicalSize::new(w, h))
+    wv.set_size(tauri::LogicalSize::new(width, height))
         .map_err(|e| format!("Failed to set size: {}", e))?;
     Ok(())
 }

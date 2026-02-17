@@ -20,7 +20,6 @@
   let urlInput = '';
   let isLoading = false;
   let showPresets = true;
-  let webviewArea: HTMLDivElement;
   let browserCreated = false;
   let toastMessage = '';
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
@@ -55,12 +54,29 @@
     }
   }
 
-  /** Calculate and apply webview bounds from the .webview-area div */
+  /** Calculate and apply webview bounds accounting for sidebar state */
   function updateWebviewBounds() {
-    if (!browserCreated || !webviewArea) return;
-    const rect = webviewArea.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) {
-      setWebviewBounds(rect.x, rect.y, rect.width, rect.height).catch((e) => {
+    if (!browserCreated) return;
+    
+    // Get actual sidebar width from DOM (handles both collapsed and expanded states)
+    const sidebar = document.querySelector('.sidebar');
+    const sidebarWidth = sidebar ? sidebar.getBoundingClientRect().width : 60;
+    
+    // Get the nav-bar height from the DOM element
+    const navBar = document.querySelector('.nav-bar');
+    const navBarHeight = navBar ? navBar.getBoundingClientRect().height : 50;
+    
+    // Calculate presets panel height if visible
+    const presetsPanel = showPresets ? document.querySelector('.presets-panel') : null;
+    const presetsPanelHeight = presetsPanel ? presetsPanel.getBoundingClientRect().height : 0;
+    
+    const x = sidebarWidth;
+    const y = navBarHeight + presetsPanelHeight;
+    const width = window.innerWidth - sidebarWidth;
+    const height = window.innerHeight - y;
+    
+    if (width > 0 && height > 0) {
+      setWebviewBounds(x, y, width, height).catch((e) => {
         console.error('Failed to set webview bounds:', e);
       });
     }
@@ -243,7 +259,7 @@
   {/if}
 
   <!-- Webview Area (native webview overlays this div) -->
-  <div class="webview-area" bind:this={webviewArea}>
+  <div class="webview-area">
     {#if !browserCreated}
     <div class="placeholder-text">
       <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="4.93" y1="4.93" x2="9.17" y2="9.17"/><line x1="14.83" y1="14.83" x2="19.07" y2="19.07"/><line x1="14.83" y1="9.17" x2="19.07" y2="4.93"/><line x1="14.83" y1="9.17" x2="18.36" y2="5.64"/><line x1="4.93" y1="19.07" x2="9.17" y2="14.83"/></svg>
