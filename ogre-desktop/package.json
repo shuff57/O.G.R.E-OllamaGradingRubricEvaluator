@@ -10,13 +10,17 @@
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "test:e2e": "bash tests/e2e/run-all.sh"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^6.2.1",
     "@tauri-apps/cli": "^2.10.0",
+    "@vitest/ui": "^4.0.18",
     "svelte": "^5.45.2",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "vitest": "^4.0.18"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.10.1",
