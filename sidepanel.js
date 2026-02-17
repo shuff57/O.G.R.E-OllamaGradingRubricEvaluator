@@ -5648,3 +5648,10 @@ document.getElementById('btnCancelSaveRubric')?.addEventListener('click', () => 
   document.getElementById('rubricSaveDialog').style.display = 'none';
 });
 
+// "Save to Desktop" button in batch rubric review section
+document.getElementById('btnSaveRubricReview')?.addEventListener('click', () => {
+  document.getElementById('rubricSaveDialog').style.display = '';
+  // Scroll the save dialog into view
+  document.getElementById('rubricSaveDialog')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+});
+
