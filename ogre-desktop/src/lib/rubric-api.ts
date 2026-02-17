@@ -1,0 +1,80 @@
+/**
+ * Rubric Library API client.
+ * Calls the grading server's /api/rubrics endpoints using tauriFetch.
+ */
+
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+import { getHandshakeToken } from "./provider-sync";
+
+const SERVER_BASE = "http://localhost:3456";
+
+export interface RubricCriterion {
+  criteria: string;
+  description: string;
+  points: number;
+  question?: number;
+}
+
+export interface SavedRubric {
+  id: string;
+  name: string;
+  description: string;
+  criteria: RubricCriterion[];
+  maxScore: number;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+function authHeaders(): Record<string, string> {
+  const token = getHandshakeToken();
+  return {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
+export async function listRubrics(): Promise<SavedRubric[]> {
+  const res = await tauriFetch(`${SERVER_BASE}/api/rubrics`, {
+    method: "GET",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(`Failed to list rubrics: ${res.status}`);
+  const data = await res.json();
+  return data.rubrics ?? [];
+}
+
+export async function createRubric(
+  rubric: Omit<SavedRubric, "id" | "createdAt" | "updatedAt">
+): Promise<SavedRubric> {
+  const res = await tauriFetch(`${SERVER_BASE}/api/rubrics`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(rubric),
+  });
+  if (!res.ok) throw new Error(`Failed to create rubric: ${res.status}`);
+  const data = await res.json();
+  return data.rubric;
+}
+
+export async function updateRubric(
+  id: string,
+  updates: Partial<SavedRubric>
+): Promise<SavedRubric> {
+  const res = await tauriFetch(`${SERVER_BASE}/api/rubrics/${id}`, {
+    method: "PUT",
+    headers: authHeaders(),
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) throw new Error(`Failed to update rubric: ${res.status}`);
+  const data = await res.json();
+  return data.rubric;
+}
+
+export async function deleteRubric(id: string): Promise<void> {
+  const res = await tauriFetch(`${SERVER_BASE}/api/rubrics/${id}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(`Failed to delete rubric: ${res.status}`);
+}

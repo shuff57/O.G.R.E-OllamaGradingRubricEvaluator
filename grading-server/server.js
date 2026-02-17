@@ -37,6 +37,7 @@ import {
   revokeSession,
 } from './automation.js';
 import { loadConfig, saveConfig, watchConfig } from './config.js';
+import { loadRubrics, createRubric, updateRubric, deleteRubric } from './rubric-store.js';
 
 const app = new Hono();
 const PORT = 3456;
@@ -159,7 +160,7 @@ function buildBridgeResponses(chunkResults, chunkStudents, anchors, maxScore) {
 // CORS middleware for Chrome extension
 app.use('/*', cors({
   origin: '*', // Allow all origins (extension-friendly)
-  allowMethods: ['GET', 'POST', 'OPTIONS'],
+  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],
 }));
 
@@ -295,6 +296,44 @@ app.post('/api/providers/active', async (c) => {
   } catch (error) {
     return c.json({ error: 'Invalid JSON body' }, 400);
   }
+});
+
+// ── Rubric Library CRUD ──────────────────────────────────────────────────
+
+app.get('/api/rubrics', (c) => {
+  return c.json({ rubrics: loadRubrics() });
+});
+
+app.post('/api/rubrics', async (c) => {
+  try {
+    const body = await c.req.json();
+    if (!body.name || !Array.isArray(body.criteria)) {
+      return c.json({ error: 'name (string) and criteria (array) are required' }, 400);
+    }
+    const rubric = createRubric(body);
+    return c.json({ rubric }, 201);
+  } catch (error) {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+});
+
+app.put('/api/rubrics/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json();
+    const updated = updateRubric(id, body);
+    if (!updated) return c.json({ error: 'Rubric not found' }, 404);
+    return c.json({ rubric: updated });
+  } catch (error) {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+});
+
+app.delete('/api/rubrics/:id', (c) => {
+  const id = c.req.param('id');
+  const deleted = deleteRubric(id);
+  if (!deleted) return c.json({ error: 'Rubric not found' }, 404);
+  return c.json({ success: true });
 });
 
 /**

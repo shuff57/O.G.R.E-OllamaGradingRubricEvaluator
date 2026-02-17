@@ -1300,6 +1300,189 @@ async function populateProfileDropdown() {
   }
 }
 
+// ── Rubric Library (saved rubrics from grading server) ──────────────
+
+async function populateRubricLibraryDropdown() {
+  const select = document.getElementById('rubricLibrarySelect');
+  const bar = document.getElementById('rubricLibraryBar');
+  if (!select || !bar) return;
+
+  if (!serverConnected || !handshakeToken) {
+    bar.style.display = 'none';
+    return;
+  }
+  bar.style.display = '';
+
+  try {
+    const res = await fetch('http://localhost:3456/api/rubrics', {
+      headers: { 'Authorization': `Bearer ${handshakeToken}` },
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+
+    const currentVal = select.value;
+    while (select.options.length > 1) {
+      select.remove(1);
+    }
+
+    for (const rubric of (data.rubrics || [])) {
+      const opt = document.createElement('option');
+      opt.value = rubric.id;
+      opt.textContent = `${rubric.name} (${rubric.maxScore} pts)`;
+      select.appendChild(opt);
+    }
+
+    if (currentVal && select.querySelector(`option[value="${currentVal}"]`)) {
+      select.value = currentVal;
+    }
+  } catch (err) {
+    console.warn('[RubricLib] Failed to load rubrics:', err);
+  }
+}
+
+async function loadRubricFromLibrary(id) {
+  if (!id || !handshakeToken) return;
+
+  try {
+    const res = await fetch('http://localhost:3456/api/rubrics', {
+      headers: { 'Authorization': `Bearer ${handshakeToken}` },
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    const rubric = (data.rubrics || []).find(r => r.id === id);
+    if (!rubric) return;
+
+    // Populate the rubric table using safe DOM methods (matching generateRubricFromContent pattern)
+    const tbody = document.querySelector('#rubricTable tbody');
+    if (tbody) {
+      tbody.textContent = '';
+      rubric.criteria.forEach(item => {
+        const tr = document.createElement('tr');
+
+        const tdCriteria = document.createElement('td');
+        tdCriteria.className = 'rubric-td';
+        const inputCriteria = document.createElement('input');
+        inputCriteria.type = 'text';
+        inputCriteria.className = 'r-criteria input-reset';
+        inputCriteria.value = item.criteria || '';
+        tdCriteria.appendChild(inputCriteria);
+        tr.appendChild(tdCriteria);
+
+        const tdDesc = document.createElement('td');
+        tdDesc.className = 'rubric-td';
+        const inputDesc = document.createElement('input');
+        inputDesc.type = 'text';
+        inputDesc.className = 'r-desc input-reset';
+        inputDesc.value = item.description || '';
+        tdDesc.appendChild(inputDesc);
+        tr.appendChild(tdDesc);
+
+        const tdPts = document.createElement('td');
+        tdPts.className = 'rubric-td';
+        const inputPts = document.createElement('input');
+        inputPts.type = 'text';
+        inputPts.className = 'r-pts input-reset';
+        inputPts.value = String(item.points || 0);
+        tdPts.appendChild(inputPts);
+        tr.appendChild(tdPts);
+
+        const tdDel = document.createElement('td');
+        tdDel.className = 'rubric-td';
+        tdDel.style.textAlign = 'center';
+        const btnDel = document.createElement('button');
+        btnDel.className = 'btn-del btn-icon-danger';
+        const icon = document.createElement('i');
+        icon.className = 'bi bi-trash';
+        btnDel.appendChild(icon);
+        btnDel.addEventListener('click', () => tr.remove());
+        tdDel.appendChild(btnDel);
+        tr.appendChild(tdDel);
+
+        tbody.appendChild(tr);
+      });
+    }
+
+    // Store structured rubric for per-question filtering
+    window._generatedRubric = rubric.criteria;
+
+    // Populate the review textarea
+    const reviewText = document.getElementById('rubricReviewText');
+    const maxScoreInput = document.getElementById('rubricMaxScore');
+    if (reviewText) {
+      reviewText.value = rubric.criteria.map(item => {
+        const desc = (item.description || '').replace(/\s*\|\s*/g, '\n  ');
+        return `[${item.points} pts] ${item.criteria}\n  ${desc}`;
+      }).join('\n\n');
+    }
+    if (maxScoreInput) maxScoreInput.value = rubric.maxScore || 10;
+
+    // Switch to table mode
+    const tableRadio = document.querySelector('input[name="rubricMode"][value="table"]');
+    if (tableRadio) tableRadio.checked = true;
+    const textContainer = document.getElementById('rubricTextContainer');
+    const tableContainer = document.getElementById('rubricTableContainer');
+    if (textContainer) textContainer.style.display = 'none';
+    if (tableContainer) tableContainer.style.display = '';
+
+    console.log(`[RubricLib] Loaded rubric: ${rubric.name}`);
+    saveState();
+  } catch (err) {
+    console.warn('[RubricLib] Failed to load rubric:', err);
+  }
+}
+
+async function saveCurrentRubricToLibrary() {
+  const nameInput = document.getElementById('rubricSaveName');
+  const tagsInput = document.getElementById('rubricSaveTags');
+  const name = nameInput?.value?.trim();
+  if (!name) { alert('Please enter a name for the rubric.'); return; }
+
+  // Extract criteria from the table
+  const rows = document.querySelectorAll('#rubricTable tbody tr');
+  const criteria = [];
+  rows.forEach(row => {
+    const c = row.querySelector('.r-criteria')?.value?.trim();
+    const d = row.querySelector('.r-desc')?.value?.trim();
+    const p = parseFloat(row.querySelector('.r-pts')?.value) || 0;
+    if (c) criteria.push({ criteria: c, description: d || '', points: p });
+  });
+
+  // Fallback: if table empty, use review textarea
+  if (criteria.length === 0) {
+    const reviewText = document.getElementById('rubricReviewText')?.value?.trim();
+    if (reviewText) {
+      criteria.push({ criteria: 'Full Rubric', description: reviewText, points: 0 });
+    }
+  }
+
+  if (criteria.length === 0) { alert('No rubric criteria to save.'); return; }
+
+  const maxScore = parseFloat(document.getElementById('rubricMaxScore')?.value) || 10;
+  const tags = (tagsInput?.value || '').split(',').map(t => t.trim()).filter(Boolean);
+
+  try {
+    const res = await fetch('http://localhost:3456/api/rubrics', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${handshakeToken}`,
+      },
+      body: JSON.stringify({ name, description: '', criteria, maxScore, tags }),
+    });
+
+    if (!res.ok) throw new Error(`Save failed: ${res.status}`);
+
+    await populateRubricLibraryDropdown();
+    document.getElementById('rubricSaveDialog').style.display = 'none';
+    if (nameInput) nameInput.value = '';
+    if (tagsInput) tagsInput.value = '';
+    console.log(`[RubricLib] Saved rubric: ${name}`);
+  } catch (err) {
+    console.warn('[RubricLib] Failed to save rubric:', err);
+    alert('Failed to save rubric. Is the grading server running?');
+  }
+}
+
 async function checkResumeState(pageUrl) {
   const resumePrompt = document.getElementById('resumePrompt');
   const resumePromptText = document.getElementById('resumePromptText');
@@ -2547,6 +2730,9 @@ async function loadProviderConfig() {
   // Refresh model list for active provider after a brief delay
   // (background.js service worker may not be ready immediately during init)
   setTimeout(() => refreshModels(), 500);
+
+  // Populate rubric library dropdown now that we have a token
+  populateRubricLibraryDropdown();
 }
 
 /**
@@ -5445,5 +5631,20 @@ document.getElementById('btnCancelDiscovery')?.addEventListener('click', cancelD
 // Profile dropdown change → re-check page status
 document.getElementById('profileSelect')?.addEventListener('change', () => {
   checkBatchPageStatus();
+});
+
+// Rubric library: load saved rubric from dropdown
+document.getElementById('rubricLibrarySelect')?.addEventListener('change', (e) => {
+  const id = e.target.value;
+  if (id) loadRubricFromLibrary(id);
+});
+
+// Rubric library: save current rubric
+document.getElementById('btnSaveRubricToLibrary')?.addEventListener('click', () => {
+  document.getElementById('rubricSaveDialog').style.display = '';
+});
+document.getElementById('btnConfirmSaveRubric')?.addEventListener('click', saveCurrentRubricToLibrary);
+document.getElementById('btnCancelSaveRubric')?.addEventListener('click', () => {
+  document.getElementById('rubricSaveDialog').style.display = 'none';
 });
 

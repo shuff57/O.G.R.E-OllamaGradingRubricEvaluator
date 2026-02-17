@@ -1795,6 +1795,26 @@
       </label>
     </div>
 
+    <!-- Rubric Library: load saved / save current -->
+    <div id="rubricLibraryBar" class="flex-gap-small items-center mb-10" style="display: none;">
+      <select id="rubricLibrarySelect" class="flex-1" style="font-size: 0.85em; padding: 4px 6px;">
+        <option value="">-- Load from library --</option>
+      </select>
+      <button id="btnSaveRubricToLibrary" class="secondary btn-tool-auto" title="Save current rubric to library">
+        <i class="bi bi-bookmark-plus"></i> Save
+      </button>
+    </div>
+    <div id="rubricSaveDialog" style="display: none;" class="mb-10">
+      <div style="background: var(--color-bg-alt, #1a1a2e); padding: 8px; border-radius: 6px; border: 1px solid var(--border-color, #333);">
+        <input type="text" id="rubricSaveName" placeholder="Rubric name (e.g., Math Quiz Ch5)" class="mb-5" style="width: 100%; font-size: 0.85em; padding: 4px 6px; box-sizing: border-box;">
+        <input type="text" id="rubricSaveTags" placeholder="Tags (comma-separated, optional)" class="mb-5" style="width: 100%; font-size: 0.85em; padding: 4px 6px; box-sizing: border-box;">
+        <div class="flex-gap-small">
+          <button id="btnConfirmSaveRubric" class="primary btn-sm flex-1">Save</button>
+          <button id="btnCancelSaveRubric" class="secondary btn-sm flex-1">Cancel</button>
+        </div>
+      </div>
+    </div>
+
     <div class="btn-row">
       <button id="btnGetRubricText" class="secondary btn-tool"><i class="bi bi-text-paragraph"></i> Get Highlighted Text</button>
       <button id="btnImportRubric" class="secondary btn-tool"><i class="bi bi-stars"></i> Import Rubric from Highlighted Text (AI)</button>
