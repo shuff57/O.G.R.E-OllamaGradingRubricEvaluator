@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, MenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton};
-use tauri::webview::{WebviewBuilder, WebviewWindowBuilder};
+use tauri::webview::WebviewBuilder;
 use tauri::WebviewUrl;
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::CommandEvent;
@@ -178,71 +178,6 @@ fn spawn_sidecar(app_handle: &tauri::AppHandle, restart_count: Arc<Mutex<u32>>) 
     });
 }
 
-// ── Browser Window Commands ──────────────────────────────────────────────
-
-#[tauri::command]
-async fn open_browser_window(app: tauri::AppHandle, url: String) -> Result<(), String> {
-    let parsed: url::Url = url.parse().map_err(|e| format!("Invalid URL: {}", e))?;
-
-    // If browser window already exists, navigate + focus it
-    if let Some(existing) = app.get_webview_window("browser") {
-        existing.navigate(parsed).map_err(|e| format!("Navigation failed: {}", e))?;
-        let _ = existing.set_focus();
-        return Ok(());
-    }
-
-    // Create new browser window in a spawned task to avoid Windows deadlock
-    let app_clone = app.clone();
-    tauri::async_runtime::spawn(async move {
-        let result = WebviewWindowBuilder::new(
-            &app_clone,
-            "browser",
-            WebviewUrl::External(parsed),
-        )
-        .title("O.G.R.E Browser")
-        .inner_size(1280.0, 900.0)
-        .center()
-        .build();
-
-        match result {
-            Ok(_) => {
-                let _ = app_clone.emit("browser-status", "open");
-            }
-            Err(e) => {
-                eprintln!("Failed to create browser window: {}", e);
-                let _ = app_clone.emit("browser-status", "error");
-            }
-        }
-    });
-
-    Ok(())
-}
-
-#[tauri::command]
-async fn navigate_browser(app: tauri::AppHandle, url: String) -> Result<(), String> {
-    let window = app.get_webview_window("browser")
-        .ok_or("Browser window not open")?;
-    let parsed: url::Url = url.parse().map_err(|e| format!("Invalid URL: {}", e))?;
-    window.navigate(parsed).map_err(|e| format!("Navigation failed: {}", e))?;
-    Ok(())
-}
-
-#[tauri::command]
-async fn get_browser_url(app: tauri::AppHandle) -> Result<String, String> {
-    let window = app.get_webview_window("browser")
-        .ok_or("Browser window not open")?;
-    let url = window.url().map_err(|e| format!("Failed to get URL: {}", e))?;
-    Ok(url.to_string())
-}
-
-#[tauri::command]
-async fn close_browser(app: tauri::AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("browser") {
-        window.close().map_err(|e| format!("Failed to close: {}", e))?;
-    }
-    Ok(())
-}
-
 // ── Embedded Browser Commands ────────────────────────────────────────────
 
 #[tauri::command]
@@ -402,6 +337,15 @@ async fn destroy_webview(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+async fn inject_autofill(app: tauri::AppHandle, script: String) -> Result<(), String> {
+    let wv = app.get_webview("embedded-browser")
+        .ok_or("Embedded browser not open")?;
+    wv.eval(&script)
+        .map_err(|e| format!("Failed to inject autofill script: {}", e))?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let migrations = vec![
@@ -489,10 +433,6 @@ INSERT OR IGNORE INTO app_settings (key, value) VALUES ('history_visible_columns
 
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
-            open_browser_window,
-            navigate_browser,
-            get_browser_url,
-            close_browser,
             create_embedded_browser,
             navigate_embedded,
             go_back,
@@ -503,6 +443,7 @@ INSERT OR IGNORE INTO app_settings (key, value) VALUES ('history_visible_columns
             show_webview,
             get_embedded_url,
             destroy_webview,
+            inject_autofill,
         ])
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_http::init())
