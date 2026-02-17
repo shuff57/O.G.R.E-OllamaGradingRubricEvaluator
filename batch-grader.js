@@ -537,7 +537,13 @@ async function navigateToNextStudent(tabId, navigation) {
   // Capture current student name before navigating
   const beforeResults = await chrome.scripting.executeScript({
     target: { tabId },
-    func: (sel) => document.querySelector(sel)?.textContent?.trim() || '',
+    func: (sel) => {
+      const el = document.querySelector(sel);
+      if (!el) return '';
+      // Native <select>: use selected option text
+      if (el.tagName === 'SELECT') return el.selectedOptions?.[0]?.textContent?.trim() || '';
+      return el.textContent?.trim() || '';
+    },
     args: [navigation.studentIndicator],
   });
   const beforeName = beforeResults?.[0]?.result || '';
@@ -563,7 +569,12 @@ async function navigateToNextStudent(tabId, navigation) {
   // Verify navigation happened (student name should have changed)
   const afterResults = await chrome.scripting.executeScript({
     target: { tabId },
-    func: (sel) => document.querySelector(sel)?.textContent?.trim() || '',
+    func: (sel) => {
+      const el = document.querySelector(sel);
+      if (!el) return '';
+      if (el.tagName === 'SELECT') return el.selectedOptions?.[0]?.textContent?.trim() || '';
+      return el.textContent?.trim() || '';
+    },
     args: [navigation.studentIndicator],
   });
   const afterName = afterResults?.[0]?.result || '';
@@ -582,31 +593,38 @@ async function navigateToNextStudent(tabId, navigation) {
  * @returns {Promise<void>}
  */
 async function navigateToFirstStudent(tabId, navigation) {
-  // Try clicking the first student option in the dropdown
-  const result = await chrome.scripting.executeScript({
+  // Navigate to the first student via dropdown
+  await chrome.scripting.executeScript({
     target: { tabId },
     func: (navConfig) => {
-      // Open the student dropdown
       const trigger = document.querySelector(navConfig.studentIndicator);
-      if (trigger) trigger.click();
+      if (!trigger) return false;
+
+      // Native <select>: set selectedIndex and dispatch change event
+      if (trigger.tagName === 'SELECT') {
+        trigger.selectedIndex = 0;
+        trigger.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      }
+
+      // Canvas custom dropdown: open it, then click first option
+      trigger.click();
       return true;
     },
     args: [navigation],
   });
 
-  await delay(500); // Wait for dropdown to open
+  await delay(500);
 
-  // Click the first student option
+  // For non-<select> dropdowns (Canvas custom UI), click the first option
   await chrome.scripting.executeScript({
     target: { tabId },
     func: () => {
-      // Canvas SpeedGrader uses data-testid="student-option-0" for the first student
       const firstOption = document.querySelector('[data-testid="student-option-0"]');
-      if (firstOption) {
+      if (firstOption && firstOption.tagName !== 'OPTION') {
         firstOption.click();
         return true;
       }
-      // Fallback: try the first menuitem in a group named "Students"
       const firstItem = document.querySelector('[role="menuitem"]');
       if (firstItem) {
         firstItem.click();
@@ -633,7 +651,11 @@ async function getCurrentStudentInfo(tabId, selectors) {
   const results = await chrome.scripting.executeScript({
     target: { tabId },
     func: (sel) => {
-      const name = document.querySelector(sel.studentName)?.textContent?.trim() || '';
+      const nameEl = document.querySelector(sel.studentName);
+      // If it's a <select>, use the selected option text; otherwise use textContent
+      const name = nameEl?.tagName === 'SELECT'
+        ? (nameEl.selectedOptions?.[0]?.textContent?.trim() || '')
+        : (nameEl?.textContent?.trim() || '');
       const score = document.querySelector(sel.scoreInput)?.value || '';
       // Check for existing comments/feedback — look for comment text in the comments area
       const commentSection = document.querySelector('[data-testid="comment-library-button"]');

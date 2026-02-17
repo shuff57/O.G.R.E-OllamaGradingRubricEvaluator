@@ -4050,16 +4050,24 @@ async function startBatchGrading() {
         }
       }
 
-      // --- Phase 4: Extract students ---
+      // --- Phase 4: Extract students (use cache if available) ---
       if (navMode === 'sequential') {
-        logBatch("Extracting students (navigating through pages)...");
-        allStudents = await BatchGrader.extractStudentsSequential(tab.id, sel, navConfig, (current, total) => {
-          progressText.innerText = `Extracting ${current}/${total}`;
-          const pct = Math.round((current / total) * 50);
-          progressBar.style.width = `${pct}%`;
-          progressPercent.innerText = `${pct}%`;
-        });
-        logBatch(`Extracted ${allStudents.length} students.`);
+        if (window._cachedStudents && window._cachedStudentsUrl === pageUrl) {
+          allStudents = window._cachedStudents;
+          logBatch(`Using cached data for ${allStudents.length} students (already extracted).`);
+        } else {
+          logBatch("Extracting students (navigating through pages)...");
+          allStudents = await BatchGrader.extractStudentsSequential(tab.id, sel, navConfig, (current, total) => {
+            progressText.innerText = `Extracting ${current}/${total}`;
+            const pct = Math.round((current / total) * 50);
+            progressBar.style.width = `${pct}%`;
+            progressPercent.innerText = `${pct}%`;
+          });
+          // Cache for subsequent question grading runs on the same page
+          window._cachedStudents = allStudents;
+          window._cachedStudentsUrl = pageUrl;
+          logBatch(`Extracted ${allStudents.length} students.`);
+        }
 
         // Detect multi-question mode and branch to per-question grading
         const isMultiQuestion = allStudents[0]?.isMultiQuestion || false;
@@ -4624,8 +4632,13 @@ async function startMultiQuestionGrading(tab, allStudents, rubric, params) {
   const progressText = document.getElementById('batchProgressText');
   const progressPercent = document.getElementById('batchProgressPercent');
 
-  // Store all per-question results for the final summary pass
-  // allQuestionResults[qId] = [{ studentIndex, name, score, feedback }]
+  // Initialize cross-run graded questions cache for this page
+  if (!window._gradedQuestionResults || window._gradedQuestionsUrl !== pageUrl) {
+    window._gradedQuestionResults = {}; // qId → [{ studentIndex, name, score, feedback, ... }]
+    window._gradedQuestionsUrl = pageUrl;
+  }
+
+  // Store per-question results for this run (also merged into cache)
   const allQuestionResults = {};
 
   // ---- Per-question grading + fill loop ----
@@ -4755,10 +4768,12 @@ async function startMultiQuestionGrading(tab, allStudents, rubric, params) {
       }));
 
       // ---- Fill pass for this question ----
+      const reviewOn = document.getElementById('fillReview')?.checked;
       if (questionGradedStudents.length > 0 && isBatchRunning) {
         logBatch(`Filling ${qLabel} scores for ${questionGradedStudents.length} students...`);
         await BatchGrader.navigateToFirstStudent(tab.id, navConfig);
         let currentPos = 0;
+        let filled = 0;
 
         for (let si = 0; si < questionGradedStudents.length; si++) {
           if (!isBatchRunning) break;
@@ -4771,8 +4786,23 @@ async function startMultiQuestionGrading(tab, allStudents, rubric, params) {
             currentPos++;
           }
 
+          // Per-student review if review mode is on
+          if (reviewOn) {
+            const reviewData = { ...result, maxScore: question.maxPts };
+            const decision = await requestStudentReview(reviewData, si, questionGradedStudents.length);
+            if (decision.action === 'skip') {
+              logBatch(`Skipped ${qLabel} ${result.name}`, 'orange');
+              if (si < questionGradedStudents.length - 1) {
+                await BatchGrader.navigateToNextStudent(tab.id, navConfig);
+                currentPos++;
+              }
+              continue;
+            }
+          }
+
           try {
             await BatchGrader.fillSingleQuestion(tab.id, question.qId, result.score, result.feedback);
+            filled++;
             logBatch(`Filled ${qLabel} ${result.name}: ${result.score}/${question.maxPts}`, 'green');
           } catch (err) {
             logBatch(`Error filling ${qLabel} ${result.name}: ${err.message}`, 'red');
@@ -4785,7 +4815,7 @@ async function startMultiQuestionGrading(tab, allStudents, rubric, params) {
           }
         }
 
-        logBatch(`${qLabel} fill complete.`, 'green');
+        logBatch(`${qLabel} fill complete (${filled}/${questionGradedStudents.length}).`, 'green');
       }
 
     } catch (err) {
@@ -4800,9 +4830,19 @@ async function startMultiQuestionGrading(tab, allStudents, rubric, params) {
     progressText.innerText = `${qi + 1}/${selectedQuestions.length} questions`;
   }
 
+  // ---- Merge this run's results into cross-run cache ----
+  for (const [qId, results] of Object.entries(allQuestionResults)) {
+    window._gradedQuestionResults[qId] = results;
+  }
+
+  // Check if ALL free-response questions have been graded (across all runs)
+  const gradedQIds = new Set(Object.keys(window._gradedQuestionResults));
+  const allQuestionsGraded = freeResponseQuestions.every(q => gradedQIds.has(q.qId));
+  const gradedCount = freeResponseQuestions.filter(q => gradedQIds.has(q.qId)).length;
+
   // ---- Final summary pass ----
-  if (isBatchRunning && Object.keys(allQuestionResults).length > 0) {
-    logBatch('--- Final summary pass ---');
+  if (isBatchRunning && allQuestionsGraded) {
+    logBatch(`--- Final summary pass (all ${freeResponseQuestions.length} questions graded) ---`);
     await BatchGrader.navigateToFirstStudent(tab.id, navConfig);
     let currentPos = 0;
     let summaryCount = 0;
@@ -4816,12 +4856,12 @@ async function startMultiQuestionGrading(tab, allStudents, rubric, params) {
         currentPos++;
       }
 
-      // Collect per-question results for this student
+      // Collect ALL per-question results for this student (from all runs)
       const studentQResults = [];
       let totalScore = 0;
       let totalMax = 0;
-      for (const question of selectedQuestions) {
-        const qResults = allQuestionResults[question.qId] || [];
+      for (const question of freeResponseQuestions) {
+        const qResults = window._gradedQuestionResults[question.qId] || [];
         const result = qResults.find(r => r.studentIndex === student.index);
         if (result) {
           studentQResults.push({
@@ -4844,7 +4884,7 @@ async function startMultiQuestionGrading(tab, allStudents, rubric, params) {
         continue;
       }
 
-      // Generate summary
+      // Generate summary from per-question comments
       try {
         const summary = await generateStudentSummary(student.name, studentQResults, totalScore, totalMax);
 
@@ -4863,7 +4903,13 @@ async function startMultiQuestionGrading(tab, allStudents, rubric, params) {
       }
     }
 
+    // Clear the cache after summary pass completes
+    window._gradedQuestionResults = {};
     logBatch(`Summary pass complete: ${summaryCount} students.`, 'green');
+    progressBar.style.width = '100%';
+    progressPercent.innerText = '100%';
+  } else if (isBatchRunning) {
+    logBatch(`Graded ${gradedCount}/${freeResponseQuestions.length} questions so far. Assignment comments will be added when all questions are graded.`, 'orange');
     progressBar.style.width = '100%';
     progressPercent.innerText = '100%';
   }
