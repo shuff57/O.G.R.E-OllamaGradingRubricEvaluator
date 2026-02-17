@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, MenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton};
-use tauri::webview::WebviewWindowBuilder;
+use tauri::webview::{WebviewBuilder, WebviewWindowBuilder};
 use tauri::WebviewUrl;
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::CommandEvent;
@@ -12,6 +12,11 @@ use tauri_plugin_sql::{Migration, MigrationKind};
 struct SidecarState {
     child: Option<tauri_plugin_shell::process::CommandChild>,
     status_item: Option<MenuItem<tauri::Wry>>,
+}
+
+/// Holds the embedded browser webview state so we can manage it.
+struct WebviewState {
+    label: Option<String>,
 }
 
 /// Maximum number of automatic restart attempts after a crash.
@@ -238,6 +243,165 @@ async fn close_browser(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+// ── Embedded Browser Commands ────────────────────────────────────────────
+
+#[tauri::command]
+async fn create_embedded_browser(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    let parsed: url::Url = url.parse().map_err(|e| format!("Invalid URL: {}", e))?;
+
+    // If embedded browser already exists, just navigate it
+    if let Some(wv) = app.get_webview("embedded-browser") {
+        wv.navigate(parsed).map_err(|e| format!("Navigate failed: {}", e))?;
+        return Ok(());
+    }
+
+    // Create in spawned task to avoid Windows deadlock
+    let app_clone = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let emit_nav = app_clone.clone();
+        let emit_load = app_clone.clone();
+        let emit_newwin = app_clone.clone();
+
+        let builder = WebviewBuilder::new(
+            "embedded-browser",
+            WebviewUrl::External(parsed),
+        )
+        // Note: don't call auto_resize() — we want manual bounds management
+        .on_navigation(move |url| {
+            let _ = emit_nav.emit("browser-url-changed", url.as_str());
+            true
+        })
+        .on_page_load(move |wv, _payload| {
+            if let Ok(url) = wv.url() {
+                let _ = emit_load.emit("browser-page-loaded", url.to_string());
+            }
+        })
+        .on_new_window(move |url, _features| {
+            let h = emit_newwin.clone();
+            let u = url.to_string();
+            tauri::async_runtime::spawn(async move {
+                if let Some(wv) = h.get_webview("embedded-browser") {
+                    if let Ok(parsed) = u.parse::<url::Url>() {
+                        let _ = wv.navigate(parsed);
+                    }
+                }
+            });
+            tauri::webview::NewWindowResponse::Deny
+        });
+
+        if let Some(window) = app_clone.get_window("main") {
+            match window.add_child(
+                builder,
+                tauri::LogicalPosition::new(0.0, 60.0),
+                tauri::LogicalSize::new(800.0, 600.0),
+            ) {
+                Ok(_) => {
+                    {
+                        let state = app_clone.state::<Mutex<WebviewState>>();
+                        let mut guard = state.lock().unwrap();
+                        guard.label = Some("embedded-browser".to_string());
+                    }
+                    let _ = app_clone.emit("browser-status", "embedded-open");
+                }
+                Err(e) => {
+                    eprintln!("Failed to create embedded browser: {}", e);
+                    let _ = app_clone.emit("browser-status", "error");
+                }
+            }
+        } else {
+            eprintln!("Main window not found for embedded browser");
+            let _ = app_clone.emit("browser-status", "error");
+        }
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn navigate_embedded(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    let wv = app.get_webview("embedded-browser")
+        .ok_or("Embedded browser not open")?;
+    let parsed: url::Url = url.parse().map_err(|e| format!("Invalid URL: {}", e))?;
+    wv.navigate(parsed).map_err(|e| format!("Navigation failed: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn go_back(app: tauri::AppHandle) -> Result<(), String> {
+    let wv = app.get_webview("embedded-browser")
+        .ok_or("Embedded browser not open")?;
+    wv.eval("history.back()")
+        .map_err(|e| format!("Failed to go back: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn go_forward(app: tauri::AppHandle) -> Result<(), String> {
+    let wv = app.get_webview("embedded-browser")
+        .ok_or("Embedded browser not open")?;
+    wv.eval("history.forward()")
+        .map_err(|e| format!("Failed to go forward: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn reload_browser(app: tauri::AppHandle) -> Result<(), String> {
+    let wv = app.get_webview("embedded-browser")
+        .ok_or("Embedded browser not open")?;
+    wv.eval("location.reload()")
+        .map_err(|e| format!("Failed to reload: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn set_webview_bounds(
+    app: tauri::AppHandle,
+    x: f64, y: f64, w: f64, h: f64,
+) -> Result<(), String> {
+    let wv = app.get_webview("embedded-browser")
+        .ok_or("Embedded browser not open")?;
+    wv.set_position(tauri::LogicalPosition::new(x, y))
+        .map_err(|e| format!("Failed to set position: {}", e))?;
+    wv.set_size(tauri::LogicalSize::new(w, h))
+        .map_err(|e| format!("Failed to set size: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn hide_webview(app: tauri::AppHandle) -> Result<(), String> {
+    let wv = app.get_webview("embedded-browser")
+        .ok_or("Embedded browser not open")?;
+    wv.hide().map_err(|e| format!("Failed to hide: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn show_webview(app: tauri::AppHandle) -> Result<(), String> {
+    let wv = app.get_webview("embedded-browser")
+        .ok_or("Embedded browser not open")?;
+    wv.show().map_err(|e| format!("Failed to show: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_embedded_url(app: tauri::AppHandle) -> Result<String, String> {
+    let wv = app.get_webview("embedded-browser")
+        .ok_or("Embedded browser not open")?;
+    let url = wv.url().map_err(|e| format!("Failed to get URL: {}", e))?;
+    Ok(url.to_string())
+}
+
+#[tauri::command]
+async fn destroy_webview(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(wv) = app.get_webview("embedded-browser") {
+        wv.close().map_err(|e| format!("Failed to close: {}", e))?;
+    }
+    let state = app.state::<Mutex<WebviewState>>();
+    let mut guard = state.lock().unwrap();
+    guard.label = None;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let migrations = vec![
@@ -329,6 +493,16 @@ INSERT OR IGNORE INTO app_settings (key, value) VALUES ('history_visible_columns
             navigate_browser,
             get_browser_url,
             close_browser,
+            create_embedded_browser,
+            navigate_embedded,
+            go_back,
+            go_forward,
+            reload_browser,
+            set_webview_bounds,
+            hide_webview,
+            show_webview,
+            get_embedded_url,
+            destroy_webview,
         ])
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_http::init())
@@ -348,6 +522,7 @@ INSERT OR IGNORE INTO app_settings (key, value) VALUES ('history_visible_columns
             }
         }))
         .manage(Mutex::new(SidecarState { child: None, status_item: None }))
+        .manage(Mutex::new(WebviewState { label: None }))
         .setup(|app| {
             let handle = app.handle().clone();
 
