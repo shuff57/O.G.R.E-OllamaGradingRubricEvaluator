@@ -4,21 +4,23 @@
  */
 
 /**
- * Generate scoring anchors (Excellent, Adequate, Minimal) for calibration
+ * Generate scoring anchors (Excellent, Adequate, Below Average, Minimal) for calibration
  * @param {Object} rubric - Rubric with essayPrompt, checklistItems, rubricItems, maxScore
- * @returns {Object} - { excellent, adequate, minimal } with score and description
+ * @returns {Object} - { excellent, adequate, belowAverage, minimal } with score and description
  */
 export function generateScoringAnchors(rubric) {
   const maxScore = parseFloat(rubric.maxScore) || 10;
-  
+
   // Generate scores for each anchor level
   const excellentScore = Math.round(maxScore * 0.9); // 90% - near perfect
   const adequateScore = Math.round(maxScore * 0.65); // 65% - solid understanding
+  const belowAverageScore = Math.round(maxScore * 0.5); // 50% - partial understanding
   const minimalScore = Math.round(maxScore * 0.3); // 30% - bare minimum
 
   // Build descriptions based on rubric criteria
   let excellentDesc = 'Demonstrates comprehensive understanding with all key concepts addressed clearly.';
   let adequateDesc = 'Shows solid grasp of main concepts with minor gaps or unclear explanations.';
+  let belowAverageDesc = 'Shows partial understanding but missing key concepts, formulas, or depth.';
   let minimalDesc = 'Addresses some basic concepts but lacks depth or contains significant errors.';
 
   // Enhance descriptions with rubric-specific criteria if available
@@ -27,6 +29,7 @@ export function generateScoringAnchors(rubric) {
     if (categories.length > 0) {
       excellentDesc += ` Covers: ${categories.join(', ')}.`;
       adequateDesc += ` Partially covers: ${categories.slice(0, 2).join(', ')}.`;
+      belowAverageDesc += ` Weak coverage of: ${categories.slice(0, 1).join(', ')}.`;
       minimalDesc += ` Minimal coverage of: ${categories[0] || 'key concepts'}.`;
     }
   }
@@ -39,6 +42,10 @@ export function generateScoringAnchors(rubric) {
     adequate: {
       score: adequateScore,
       description: adequateDesc,
+    },
+    belowAverage: {
+      score: belowAverageScore,
+      description: belowAverageDesc,
     },
     minimal: {
       score: minimalScore,
@@ -58,6 +65,17 @@ export function generateScoringAnchors(rubric) {
 export function buildBatchPrompt(rubric, students, anchors, bridgeResponses = null) {
   const maxScore = rubric.maxScore || '10';
 
+  // Separate custom instructions from essayPrompt if they were appended
+  let essayPrompt = rubric.essayPrompt || '(No prompt provided)';
+  let customInstructions = rubric.customInstructions || '';
+
+  // Extract ADDITIONAL GRADING INSTRUCTIONS if embedded in essayPrompt
+  const instrMatch = essayPrompt.match(/\n\nADDITIONAL GRADING INSTRUCTIONS:\n([\s\S]+)$/);
+  if (instrMatch) {
+    customInstructions = instrMatch[1].trim();
+    essayPrompt = essayPrompt.replace(/\n\nADDITIONAL GRADING INSTRUCTIONS:\n[\s\S]+$/, '').trim();
+  }
+
   let prompt = `You are an expert grading assistant. Grade ALL students in this batch against the provided rubric.
 
 GRADING PHILOSOPHY:
@@ -73,7 +91,7 @@ These are high school seniors, not college students or experts. Grade generously
 MAX SCORE: ${maxScore}
 
 QUESTION/PROMPT:
-${rubric.essayPrompt || '(No prompt provided)'}
+${essayPrompt}
 `;
 
   // Add checklist items if present
@@ -112,6 +130,7 @@ ${rubric.essayPrompt || '(No prompt provided)'}
 SCORING ANCHORS (use these as calibration references):
 - Excellent (${anchors.excellent.score}/${maxScore}): ${anchors.excellent.description}
 - Adequate (${anchors.adequate.score}/${maxScore}): ${anchors.adequate.description}
+- Below Average (${anchors.belowAverage.score}/${maxScore}): ${anchors.belowAverage.description}
 - Minimal (${anchors.minimal.score}/${maxScore}): ${anchors.minimal.description}
 
 Compare each student response to these anchors to ensure consistency.
@@ -130,7 +149,7 @@ CALIBRATION EXAMPLES (from previously graded batch — you MUST match this scori
       tiers[tier].push(br);
     }
 
-    const tierLabels = { excellent: 'HIGH QUALITY', adequate: 'AVERAGE QUALITY', minimal: 'LOW QUALITY', spread: 'REFERENCE' };
+    const tierLabels = { excellent: 'HIGH QUALITY', adequate: 'AVERAGE QUALITY', belowAverage: 'BELOW AVERAGE', minimal: 'LOW QUALITY', spread: 'REFERENCE' };
     for (const [tier, examples] of Object.entries(tiers)) {
       prompt += `\n${tierLabels[tier] || tier.toUpperCase()}:\n`;
       for (const br of examples) {
@@ -165,18 +184,26 @@ Return one object per student using the EXACT studentIndex shown above each resp
 [
   {
     "studentIndex": ${firstIdx},
-    "score": <integer 0 to ${maxScore}>,
+    "score": <number 0 to ${maxScore}, half-points allowed e.g. 7.5>,
     "feedback": "<constructive feedback string, use \\\\( ... \\\\) for LaTeX math>"
   },
   {
     "studentIndex": ${secondIdx},
-    "score": <integer>,
+    "score": <number, half-points allowed>,
     "feedback": "<feedback>"
   }
   // ... continue for all ${students.length} students
 ]
 
 CRITICAL: Return results for ALL ${students.length} students. Use the studentIndex from each "--- Student N:" header.`;
+
+  // Add custom instructions as a prominent override section at the end
+  if (customInstructions) {
+    prompt += `
+
+IMPORTANT — INSTRUCTOR OVERRIDE INSTRUCTIONS (you MUST follow these):
+${customInstructions}`;
+  }
 
   return prompt;
 }
@@ -245,13 +272,13 @@ export function parseBatchResponse(aiText, students, maxScore) {
   }
 
   // Attempt 3: Regex extraction of individual student objects
-  const objPattern = /\{\s*"studentIndex"\s*:\s*(\d+)\s*,\s*"score"\s*:\s*(\d+)\s*,\s*"feedback"\s*:\s*"([^"]*)"/g;
+  const objPattern = /\{\s*"studentIndex"\s*:\s*(\d+)\s*,\s*"score"\s*:\s*(\d+\.?\d*)\s*,\s*"feedback"\s*:\s*"([^"]*)"/g;
   const regexResults = [];
   let m;
   while ((m = objPattern.exec(text)) !== null) {
     regexResults.push({
       studentIndex: parseInt(m[1], 10),
-      score: parseInt(m[2], 10),
+      score: parseFloat(m[2]),
       feedback: m[3],
     });
   }
@@ -261,12 +288,12 @@ export function parseBatchResponse(aiText, students, maxScore) {
   }
 
   // Attempt 4: Score-line patterns like "Student 5: 8/10"
-  const linePattern = /student\s*(\d+)[^:]*:\s*(\d+)\s*\/\s*\d+/gi;
+  const linePattern = /student\s*(\d+)[^:]*:\s*(\d+\.?\d*)\s*\/\s*\d+/gi;
   const lineResults = [];
   while ((m = linePattern.exec(text)) !== null) {
     lineResults.push({
       studentIndex: parseInt(m[1], 10),
-      score: parseInt(m[2], 10),
+      score: parseFloat(m[2]),
       feedback: 'Score extracted from non-JSON response.',
     });
   }
@@ -293,9 +320,11 @@ function validateBatchResults(parsed, students, maxScore) {
   // AI often ignores studentIndex instructions (returns 0-based for every chunk).
   // Positional mapping is reliable because the prompt says "EXACT order they appear above."
   const results = parsed.map((item, idx) => {
-    let score = parseInt(item.score, 10);
+    let score = parseFloat(item.score);
     if (isNaN(score) || score < 0) score = 0;
-    if (score > maxScore) score = Math.round(maxScore);
+    if (score > maxScore) score = maxScore;
+    // Snap to nearest 0.5
+    score = Math.round(score * 2) / 2;
     const feedback = (item.feedback || '').trim() || 'Graded by AI.';
 
     // Use the actual student index from the chunk, not the AI's studentIndex
@@ -377,6 +406,13 @@ export function detectOutliers(results) {
  * @returns {String} - Complete prompt for outlier re-grading
  */
 export function buildOutlierReviewPrompt(rubric, outlierStudents, anchors, stats, maxScore) {
+  // Separate custom instructions from essayPrompt if they were appended
+  let essayPrompt = rubric.essayPrompt || '(No prompt provided)';
+  const instrMatch = essayPrompt.match(/\n\nADDITIONAL GRADING INSTRUCTIONS:\n([\s\S]+)$/);
+  if (instrMatch) {
+    essayPrompt = essayPrompt.replace(/\n\nADDITIONAL GRADING INSTRUCTIONS:\n[\s\S]+$/, '').trim();
+  }
+
   let prompt = `You are an expert grading assistant performing a SECOND-PASS REVIEW of flagged student responses.
 
 These students received scores that were statistical outliers (more than 2 standard deviations from the batch mean). Your job is to re-evaluate each one carefully and determine if the original score was correct or should be adjusted.
@@ -399,7 +435,7 @@ These are high school seniors, not college students or experts. Grade generously
 MAX SCORE: ${maxScore}
 
 QUESTION/PROMPT:
-${rubric.essayPrompt || '(No prompt provided)'}
+${essayPrompt}
 `;
 
   // Add checklist items if present
@@ -438,6 +474,7 @@ ${rubric.essayPrompt || '(No prompt provided)'}
 SCORING ANCHORS:
 - Excellent (${anchors.excellent.score}/${maxScore}): ${anchors.excellent.description}
 - Adequate (${anchors.adequate.score}/${maxScore}): ${anchors.adequate.description}
+- Below Average (${anchors.belowAverage.score}/${maxScore}): ${anchors.belowAverage.description}
 - Minimal (${anchors.minimal.score}/${maxScore}): ${anchors.minimal.description}
 `;
 
@@ -464,7 +501,7 @@ You MUST respond with a valid JSON array ONLY. No markdown, no code fences, no e
 [
   {
     "studentIndex": <original student index>,
-    "score": <integer 0 to ${maxScore}>,
+    "score": <number 0 to ${maxScore}, half-points allowed e.g. 7.5>,
     "feedback": "<updated feedback, use \\\\( ... \\\\) for LaTeX math>",
     "adjusted": <true if score changed, false if kept same>
   }
@@ -539,4 +576,136 @@ export function mergeResults(chunkResults) {
   allResults.sort((a, b) => a.studentIndex - b.studentIndex);
 
   return allResults;
+}
+
+/**
+ * Build a compact consistency sweep prompt (single API call).
+ * Shows all students in a table with scores + excerpts, asks AI to flag misaligned scores.
+ * @param {Array} results - Merged grading results (studentIndex, score, feedback)
+ * @param {Array} students - Original student array (index, name, response)
+ * @param {Object} anchors - Scoring anchors
+ * @param {Object} chunkMap - Map of studentIndex → chunkIndex for cross-chunk identification
+ * @param {number} maxScore - Maximum possible score
+ * @returns {string} - Prompt for the AI
+ */
+export function buildCompactSweepPrompt(results, students, anchors, chunkMap, maxScore) {
+  let prompt = `CROSS-CHUNK CONSISTENCY REVIEW
+
+You previously graded these students across ${new Set(Object.values(chunkMap)).size} separate batches. Different batches may have drifted in scoring standards. Review ALL scores for cross-batch consistency.
+
+SCORING ANCHORS:
+- Excellent (${anchors.excellent.score}/${maxScore}): ${anchors.excellent.description}
+- Adequate (${anchors.adequate.score}/${maxScore}): ${anchors.adequate.description}
+- Below Average (${anchors.belowAverage.score}/${maxScore}): ${anchors.belowAverage.description}
+- Minimal (${anchors.minimal.score}/${maxScore}): ${anchors.minimal.description}
+
+STUDENT SCORES:
+`;
+
+  // Build compact table
+  for (const r of results) {
+    const student = students.find(s => s.index === r.studentIndex);
+    const name = student?.name || `Student ${r.studentIndex}`;
+    const chunk = chunkMap[r.studentIndex] ?? '?';
+    const excerpt = (student?.response || '(No response)').substring(0, 150).replace(/\n/g, ' ');
+    prompt += `[#${r.studentIndex}] ${name} | Score: ${r.score}/${maxScore} | Chunk: ${chunk + 1} | "${excerpt}..."\n`;
+  }
+
+  prompt += `
+TASK: Identify any students whose score seems inconsistent relative to peers with similar response quality. Focus especially on students near chunk boundaries or where similar-quality responses received different scores in different chunks.
+
+RESPONSE FORMAT:
+Return a JSON array of adjustments. Only include students that need a score change. Return [] if all scores look consistent.
+
+[
+  {
+    "studentIndex": <number>,
+    "currentScore": <number>,
+    "suggestedScore": <number, half-points allowed e.g. 7.5>,
+    "reason": "<brief explanation of why this score should change>"
+  }
+]
+
+CRITICAL: Only flag genuine inconsistencies. Do NOT adjust scores just to create a smoother distribution. Be conservative — only change scores where a student's response quality clearly doesn't match their score relative to peers.`;
+
+  return prompt;
+}
+
+/**
+ * Build pairwise band comparison prompts (multiple API calls).
+ * Groups students by score band, sends full responses for each cross-chunk band.
+ * @param {Array} results - Merged grading results
+ * @param {Array} students - Original student array
+ * @param {Object} anchors - Scoring anchors
+ * @param {Object} chunkMap - Map of studentIndex → chunkIndex
+ * @param {number} maxScore - Maximum possible score
+ * @returns {Array} - Array of { band, prompt, studentIndices } objects (only bands with cross-chunk students)
+ */
+export function buildPairwiseSweepPrompts(results, students, anchors, chunkMap, maxScore) {
+  // Define score bands based on anchors
+  const bands = [
+    { label: 'High', min: anchors.excellent.score - 1, max: maxScore, key: 'high' },
+    { label: 'Upper-Mid', min: anchors.adequate.score, max: anchors.excellent.score - 1.5, key: 'upper-mid' },
+    { label: 'Lower-Mid', min: anchors.belowAverage.score, max: anchors.adequate.score - 0.5, key: 'lower-mid' },
+    { label: 'Low', min: 0, max: anchors.belowAverage.score - 0.5, key: 'low' },
+  ];
+
+  const prompts = [];
+
+  for (const band of bands) {
+    // Find students in this band
+    const bandResults = results.filter(r => r.score >= band.min && r.score <= band.max);
+    if (bandResults.length < 2) continue;
+
+    // Check if this band has students from multiple chunks
+    const chunkIds = new Set(bandResults.map(r => chunkMap[r.studentIndex]));
+    if (chunkIds.size < 2) continue; // All from same chunk — no cross-chunk comparison needed
+
+    let prompt = `PAIRWISE CONSISTENCY CHECK — ${band.label} Score Band (${band.min}–${band.max}/${maxScore})
+
+These students all scored in the ${band.label.toLowerCase()} range but were graded in DIFFERENT batches. Review their full responses and determine if the scores are internally consistent.
+
+SCORING ANCHORS:
+- Excellent (${anchors.excellent.score}/${maxScore}): ${anchors.excellent.description}
+- Adequate (${anchors.adequate.score}/${maxScore}): ${anchors.adequate.description}
+- Below Average (${anchors.belowAverage.score}/${maxScore}): ${anchors.belowAverage.description}
+- Minimal (${anchors.minimal.score}/${maxScore}): ${anchors.minimal.description}
+
+STUDENTS IN THIS BAND:
+`;
+
+    for (const r of bandResults) {
+      const student = students.find(s => s.index === r.studentIndex);
+      const name = student?.name || `Student ${r.studentIndex}`;
+      const chunk = chunkMap[r.studentIndex] ?? '?';
+      prompt += `\n--- [#${r.studentIndex}] ${name} | Score: ${r.score}/${maxScore} | Chunk: ${chunk + 1} ---\n`;
+      prompt += `${student?.response || '(No response submitted)'}\n`;
+    }
+
+    prompt += `
+TASK: Are these scores consistent with each other? If two students gave responses of similar quality but got different scores (because they were in different batches), flag them for adjustment.
+
+RESPONSE FORMAT:
+Return a JSON array of adjustments. Only include students that need a score change. Return [] if all scores look consistent within this band.
+
+[
+  {
+    "studentIndex": <number>,
+    "currentScore": <number>,
+    "suggestedScore": <number, half-points allowed e.g. 7.5>,
+    "reason": "<brief explanation>"
+  }
+]
+
+Be conservative — only adjust genuine cross-chunk inconsistencies.`;
+
+    prompts.push({
+      band: band.key,
+      label: band.label,
+      prompt,
+      studentIndices: bandResults.map(r => r.studentIndex),
+    });
+  }
+
+  return prompts;
 }

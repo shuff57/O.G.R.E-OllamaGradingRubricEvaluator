@@ -11,6 +11,8 @@ import {
   generateScoringAnchors,
   buildBatchPrompt,
   buildOutlierReviewPrompt,
+  buildCompactSweepPrompt,
+  buildPairwiseSweepPrompts,
   parseBatchResponse,
   detectOutliers,
   chunkStudents,
@@ -22,6 +24,7 @@ import {
   buildAnthropicRequest,
   buildGoogleGeminiRequest,
   buildGitHubModelsRequest,
+  getCopilotSessionToken,
   parseOllamaResponse,
   parseOpenAIResponse,
   parseAnthropicResponse,
@@ -29,16 +32,12 @@ import {
   parseGitHubModelsResponse,
 } from './providers.js';
 import {
-  initMCPServer,
-  isMCPServerRunning,
-  stopMCPServer,
   grantSession,
   validateSession,
   revokeSession,
-  extractGradingData,
-  fillGrades,
 } from './automation.js';
 import { loadConfig, saveConfig, watchConfig } from './config.js';
+import { loadRubrics, createRubric, updateRubric, deleteRubric } from './rubric-store.js';
 
 const app = new Hono();
 const PORT = 3456;
@@ -55,6 +54,11 @@ console.log(`[config] Loaded ${providerConfigs.length} provider(s), token=${hand
  * Used for providers that don't require browser auth context (Ollama, OpenAI, etc.)
  */
 async function callProviderDirect(provider, config, messages, timestamp) {
+  // Exchange GitHub OAuth token for Copilot session token
+  if (provider.toLowerCase() === 'github-models') {
+    config = { ...config, apiKey: await getCopilotSessionToken(config.apiKey) };
+  }
+
   let requestObj;
   switch (provider.toLowerCase()) {
     case 'ollama': requestObj = buildOllamaRequest(config, messages); break;
@@ -101,14 +105,16 @@ async function callProviderDirect(provider, config, messages, timestamp) {
 function buildBridgeResponses(chunkResults, chunkStudents, anchors, maxScore) {
   const getName = (r) => chunkStudents.find(s => s.index === r.studentIndex)?.name || `Student ${r.studentIndex}`;
 
-  // Define anchor score ranges
+  // Define anchor score ranges (4 tiers)
   const excellentThreshold = anchors.excellent.score - 1;  // e.g., 8+ for 9/10 anchor
-  const adequateRange = [anchors.minimal.score + 1, anchors.excellent.score - 1]; // middle band
+  const adequateRange = [anchors.belowAverage.score + 1, anchors.excellent.score - 1]; // upper-middle band
+  const belowAvgRange = [anchors.minimal.score + 1, anchors.belowAverage.score]; // lower-middle band
   const minimalThreshold = anchors.minimal.score + 1; // e.g., 4 or below for 3/10 anchor
 
   // Bucket results by tier
   const excellent = chunkResults.filter(r => r.score >= excellentThreshold);
   const adequate = chunkResults.filter(r => r.score >= adequateRange[0] && r.score <= adequateRange[1]);
+  const belowAverage = chunkResults.filter(r => r.score >= belowAvgRange[0] && r.score <= belowAvgRange[1]);
   const minimal = chunkResults.filter(r => r.score < minimalThreshold);
 
   // Pick up to 2 from each tier, preferring variety in scores
@@ -132,6 +138,7 @@ function buildBridgeResponses(chunkResults, chunkStudents, anchors, maxScore) {
   const bridges = [
     ...pickFromTier(excellent, 'excellent', 2),
     ...pickFromTier(adequate, 'adequate', 2),
+    ...pickFromTier(belowAverage, 'belowAverage', 2),
     ...pickFromTier(minimal, 'minimal', 2),
   ];
 
@@ -153,7 +160,7 @@ function buildBridgeResponses(chunkResults, chunkStudents, anchors, maxScore) {
 // CORS middleware for Chrome extension
 app.use('/*', cors({
   origin: '*', // Allow all origins (extension-friendly)
-  allowMethods: ['GET', 'POST', 'OPTIONS'],
+  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],
 }));
 
@@ -291,6 +298,44 @@ app.post('/api/providers/active', async (c) => {
   }
 });
 
+// ── Rubric Library CRUD ──────────────────────────────────────────────────
+
+app.get('/api/rubrics', (c) => {
+  return c.json({ rubrics: loadRubrics() });
+});
+
+app.post('/api/rubrics', async (c) => {
+  try {
+    const body = await c.req.json();
+    if (!body.name || !Array.isArray(body.criteria)) {
+      return c.json({ error: 'name (string) and criteria (array) are required' }, 400);
+    }
+    const rubric = createRubric(body);
+    return c.json({ rubric }, 201);
+  } catch (error) {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+});
+
+app.put('/api/rubrics/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json();
+    const updated = updateRubric(id, body);
+    if (!updated) return c.json({ error: 'Rubric not found' }, 404);
+    return c.json({ rubric: updated });
+  } catch (error) {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+});
+
+app.delete('/api/rubrics/:id', (c) => {
+  const id = c.req.param('id');
+  const deleted = deleteRubric(id);
+  if (!deleted) return c.json({ error: 'Rubric not found' }, 404);
+  return c.json({ success: true });
+});
+
 /**
  * Diagnostic: test GitHub Copilot API token
  * GET /api/test-github
@@ -299,16 +344,21 @@ app.get('/api/test-github', async (c) => {
   const ghProvider = providerConfigs.find(p => p.id === 'github-models');
   if (!ghProvider) return c.json({ error: 'No github-models provider configured' }, 404);
 
-  const token = ghProvider.credentials?.api_key || ghProvider.credentials?.access_token || '';
-  const tokenPreview = token ? `${token.slice(0, 6)}...${token.slice(-4)}` : '(empty)';
-  console.log(`[test-github] Token preview: ${tokenPreview}`);
+  const oauthToken = ghProvider.credentials?.api_key || ghProvider.credentials?.access_token || '';
+  const tokenPreview = oauthToken ? `${oauthToken.slice(0, 6)}...${oauthToken.slice(-4)}` : '(empty)';
+  console.log(`[test-github] OAuth token preview: ${tokenPreview}`);
   console.log(`[test-github] Full provider config keys:`, Object.keys(ghProvider.credentials || {}));
 
   try {
+    // Step 1: Exchange OAuth token for Copilot session token
+    console.log(`[test-github] Exchanging OAuth token for Copilot session token...`);
+    const sessionToken = await getCopilotSessionToken(oauthToken);
+    console.log(`[test-github] Session token obtained (${sessionToken.slice(0, 10)}...)`);
+
     // Test 1: list models
     const modelsRes = await fetch('https://api.githubcopilot.com/models', {
       headers: {
-        'Authorization': `Bearer ${token}`,
+        'Authorization': `Bearer ${sessionToken}`,
         'Copilot-Integration-Id': 'vscode-chat',
       },
     });
@@ -321,7 +371,7 @@ app.get('/api/test-github', async (c) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+        'Authorization': `Bearer ${sessionToken}`,
         'Copilot-Integration-Id': 'vscode-chat',
       },
       body: JSON.stringify({
@@ -432,6 +482,18 @@ app.post('/api/automation/revoke-access', async (c) => {
  *   error     — { message }
  */
 app.post('/api/automation/grade', async (c) => {
+  // DEPRECATED: This endpoint used Playwriter for browser automation
+  // Use /api/grade instead with extension-based extraction and filling
+  return c.json({
+    error: 'Endpoint deprecated',
+    message: 'This automation endpoint has been removed. Use /api/grade instead.',
+    migration: {
+      new_endpoint: '/api/grade',
+      approach: 'Extension handles extraction and filling via chrome.scripting'
+    }
+  }, 410);
+
+  // Old implementation below (unreachable - kept for reference)
   const startTime = Date.now();
 
   // Parse body before entering SSE stream
@@ -644,6 +706,14 @@ app.post('/api/automation/grade', async (c) => {
  * Used for review mode - allows user to approve results before filling
  */
 app.post('/api/automation/grade-only', async (c) => {
+  // DEPRECATED: Use /api/grade with extension-based extraction
+  return c.json({
+    error: 'Endpoint deprecated',
+    message: 'Use /api/grade instead',
+    migration: { new_endpoint: '/api/grade' }
+  }, 410);
+
+  // Old implementation below (unreachable - kept for reference)
   const startTime = Date.now();
 
   let body;
@@ -771,6 +841,14 @@ app.post('/api/automation/grade-only', async (c) => {
  * Used after user approves results in review mode
  */
 app.post('/api/automation/fill', async (c) => {
+  // DEPRECATED: Extension now fills grades directly via chrome.scripting
+  return c.json({
+    error: 'Endpoint deprecated',
+    message: 'Extension handles filling directly - server no longer fills grades',
+    migration: { approach: 'Use BatchGrader.fillGrade() in extension' }
+  }, 410);
+
+  // Old implementation below (unreachable - kept for reference)
   let body;
   try {
     body = await c.req.json();
@@ -825,6 +903,22 @@ app.post('/api/automation/fill', async (c) => {
 // ═══════════════════════════════════════════════════════════════════════
 
 /**
+ * Pick calibration students evenly spread across the list.
+ * Returns { calibration, remaining } arrays.
+ */
+function pickCalibrationStudents(students, count = 5) {
+  if (students.length <= count) return { calibration: students, remaining: [] };
+  const step = Math.floor(students.length / count);
+  const calibration = [];
+  for (let i = 0; i < count; i++) {
+    calibration.push(students[i * step]);
+  }
+  const calibrationIndices = new Set(calibration.map(s => s.index));
+  const remaining = students.filter(s => !calibrationIndices.has(s.index));
+  return { calibration, remaining };
+}
+
+/**
  * Resolve provider config from in-memory state for direct AI calls.
  * Returns { apiUrl, apiKey, model } or throws if provider not found.
  */
@@ -872,7 +966,11 @@ app.post('/api/grade', async (c) => {
     return c.json({ error: 'Invalid JSON body' }, 400);
   }
 
-  const { provider, model, rubric, students } = body;
+  const { provider, model, rubric, students, strategy, chunkSize: rawChunkSize, sweep } = body;
+  const useParallel = strategy === 'parallel'; // default: serial (more reliable)
+  const chunkSize = Math.max(5, Math.min(50, parseInt(rawChunkSize) || 30));
+  // sweep: 'none' (default for single chunk), 'compact', 'pairwise', 'auto' (compact if multi-chunk)
+  const sweepMode = sweep || 'auto';
 
   if (!provider) return c.json({ error: 'Missing required field: provider' }, 400);
   if (!model) return c.json({ error: 'Missing required field: model' }, 400);
@@ -895,68 +993,214 @@ app.post('/api/grade', async (c) => {
       const anchors = generateScoringAnchors(rubric);
       console.log(`[${timestamp()}] [sse] Anchors: Excellent (${anchors.excellent.score}), Adequate (${anchors.adequate.score}), Minimal (${anchors.minimal.score})`);
 
-      // Step 2: Chunk students
-      const chunks = chunkStudents(students, 20);
-      console.log(`[${timestamp()}] [sse] Split into ${chunks.length} chunk(s)`);
-
-      // Step 3: Grade each chunk, streaming results progressively
+      // Step 2: Grade students
       const allResults = [];
-      let bridgeResponses = null;
+      const chunkMap = {}; // studentIndex → chunkIndex
+      let totalChunksForClient;
 
-      for (let i = 0; i < chunks.length; i++) {
-        const chunk = chunks[i];
+      if (!useParallel || students.length <= chunkSize) {
+        // ── Serial strategy (or small batch) ──
+        const chunks = chunkStudents(students, chunkSize);
+        totalChunksForClient = chunks.length;
+        console.log(`[${timestamp()}] [sse] Strategy: serial | ${chunks.length} chunk(s)`);
+        let bridgeResponses = null;
 
-        // Send progress event
+        for (let i = 0; i < chunks.length; i++) {
+          const chunk = chunks[i];
+          await stream.writeSSE({
+            event: 'progress',
+            data: JSON.stringify({ phase: 'grading', chunkIndex: i, totalChunks: chunks.length, studentCount: chunk.students.length, totalStudents: students.length }),
+            id: String(sseId++),
+          });
+
+          console.log(`[${timestamp()}] [sse] Grading chunk ${i + 1}/${chunks.length} (${chunk.students.length} students)...`);
+          const prompt = buildBatchPrompt(rubric, chunk.students, anchors, bridgeResponses);
+          const aiText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: prompt }], timestamp());
+          const chunkResults = parseBatchResponse(aiText, chunk.students, maxScore);
+          allResults.push(chunkResults);
+
+          for (const r of chunkResults) {
+            chunkMap[r.studentIndex] = i;
+            const name = chunk.students.find(s => s.index === r.studentIndex)?.name || `Student ${r.studentIndex}`;
+            console.log(`[${timestamp()}] [sse] ✓ ${name}: ${r.score}/${maxScore}`);
+          }
+
+          if (i < chunks.length - 1) {
+            bridgeResponses = buildBridgeResponses(chunkResults, chunk.students, anchors, maxScore);
+            console.log(`[${timestamp()}] [sse] Bridge (${bridgeResponses.length}): ${bridgeResponses.map(b => `${b.name}=${b.score}[${b.tier}]`).join(', ')}`);
+          }
+
+          await stream.writeSSE({
+            event: 'chunk',
+            data: JSON.stringify({ chunkIndex: i, results: chunkResults }),
+            id: String(sseId++),
+          });
+        }
+      } else {
+        // ── Parallel strategy: calibration pre-pass then parallel chunks ──
+        const { calibration: calStudents, remaining } = pickCalibrationStudents(students, 5);
+        const remainingChunks = chunkStudents(remaining, chunkSize);
+        totalChunksForClient = 1 + remainingChunks.length;
+
+        console.log(`[${timestamp()}] [sse] Strategy: parallel | calibration=${calStudents.length}, then ${remainingChunks.length} chunk(s) (${remaining.length} students)`);
+
+        // Phase A: Calibration
         await stream.writeSSE({
           event: 'progress',
-          data: JSON.stringify({
-            phase: 'grading',
-            chunkIndex: i,
-            totalChunks: chunks.length,
-            studentCount: chunk.students.length,
-            totalStudents: students.length,
-          }),
+          data: JSON.stringify({ phase: 'calibration', chunkIndex: 0, totalChunks: totalChunksForClient, studentCount: calStudents.length, totalStudents: students.length }),
           id: String(sseId++),
         });
 
-        console.log(`[${timestamp()}] [sse] Grading chunk ${i + 1}/${chunks.length} (${chunk.students.length} students)...`);
+        console.log(`[${timestamp()}] [sse] Grading calibration batch (${calStudents.length} students)...`);
+        const calPrompt = buildBatchPrompt(rubric, calStudents, anchors, null);
+        const calText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: calPrompt }], timestamp());
+        const calResults = parseBatchResponse(calText, calStudents, maxScore);
+        allResults.push(calResults);
 
-        // Build prompt with anchors and bridge responses from prior chunk
-        const prompt = buildBatchPrompt(rubric, chunk.students, anchors, bridgeResponses);
-        const messages = [{ role: 'user', content: prompt }];
-
-        // Call AI provider directly
-        const aiText = await callProviderDirect(provider, providerConfig, messages, timestamp());
-
-        // Parse response
-        const chunkResults = parseBatchResponse(aiText, chunk.students, maxScore);
-        allResults.push(chunkResults);
-
-        // Log scores
-        for (const r of chunkResults) {
-          const name = chunk.students.find(s => s.index === r.studentIndex)?.name || `Student ${r.studentIndex}`;
+        for (const r of calResults) {
+          chunkMap[r.studentIndex] = 0; // calibration = chunk 0
+          const name = calStudents.find(s => s.index === r.studentIndex)?.name || `Student ${r.studentIndex}`;
           console.log(`[${timestamp()}] [sse] ✓ ${name}: ${r.score}/${maxScore}`);
         }
 
-        // Build bridge responses for next chunk
-        if (i < chunks.length - 1) {
-          bridgeResponses = buildBridgeResponses(chunkResults, chunk.students, anchors, maxScore);
-          console.log(`[${timestamp()}] [sse] Bridge (${bridgeResponses.length}): ${bridgeResponses.map(b => `${b.name}=${b.score}[${b.tier}]`).join(', ')}`);
-        }
-
-        // Stream chunk results to client
         await stream.writeSSE({
           event: 'chunk',
-          data: JSON.stringify({
-            chunkIndex: i,
-            results: chunkResults,
-          }),
+          data: JSON.stringify({ chunkIndex: 0, results: calResults }),
           id: String(sseId++),
         });
+
+        // Extract bridge responses from calibration
+        const bridgeResponses = buildBridgeResponses(calResults, calStudents, anchors, maxScore);
+        console.log(`[${timestamp()}] [sse] Bridge (${bridgeResponses.length}): ${bridgeResponses.map(b => `${b.name}=${b.score}[${b.tier}]`).join(', ')}`);
+
+        // Phase B: Parallel grading of remaining chunks
+        if (remainingChunks.length > 0) {
+          for (let i = 0; i < remainingChunks.length; i++) {
+            await stream.writeSSE({
+              event: 'progress',
+              data: JSON.stringify({ phase: 'grading-parallel', chunkIndex: i + 1, totalChunks: totalChunksForClient, studentCount: remainingChunks[i].students.length, totalStudents: students.length }),
+              id: String(sseId++),
+            });
+          }
+
+          console.log(`[${timestamp()}] [sse] Firing ${remainingChunks.length} chunk(s) in parallel...`);
+          const maxConcurrent = 3;
+          for (let waveStart = 0; waveStart < remainingChunks.length; waveStart += maxConcurrent) {
+            const wave = remainingChunks.slice(waveStart, waveStart + maxConcurrent);
+
+            const waveTexts = await Promise.all(
+              wave.map(chunk => {
+                const prompt = buildBatchPrompt(rubric, chunk.students, anchors, bridgeResponses);
+                return callProviderDirect(provider, providerConfig, [{ role: 'user', content: prompt }], timestamp());
+              })
+            );
+
+            for (let j = 0; j < wave.length; j++) {
+              const chunkIdx = waveStart + j;
+              const chunkResults = parseBatchResponse(waveTexts[j], wave[j].students, maxScore);
+              allResults.push(chunkResults);
+
+              for (const r of chunkResults) {
+                chunkMap[r.studentIndex] = chunkIdx + 1; // parallel chunks are 1-indexed
+                const name = wave[j].students.find(s => s.index === r.studentIndex)?.name || `Student ${r.studentIndex}`;
+                console.log(`[${timestamp()}] [sse] ✓ ${name}: ${r.score}/${maxScore}`);
+              }
+
+              await stream.writeSSE({
+                event: 'chunk',
+                data: JSON.stringify({ chunkIndex: chunkIdx + 1, results: chunkResults }),
+                id: String(sseId++),
+              });
+            }
+          }
+        }
       }
 
-      // Step 4: Merge and detect outliers
+      // Step 3.5: Consistency sweep (only for multi-chunk)
       const results = mergeResults(allResults);
+      const numChunks = new Set(Object.values(chunkMap)).size;
+      const shouldSweep = numChunks >= 2 && sweepMode !== 'none';
+      let sweepAdjustments = [];
+
+      if (shouldSweep) {
+        const effectiveSweep = sweepMode === 'auto' ? 'pairwise' : sweepMode;
+        console.log(`[${timestamp()}] [sse] Consistency sweep: mode=${effectiveSweep}, chunks=${numChunks}`);
+
+        await stream.writeSSE({
+          event: 'progress',
+          data: JSON.stringify({ phase: 'consistency-sweep', mode: effectiveSweep }),
+          id: String(sseId++),
+        });
+
+        try {
+          if (effectiveSweep === 'compact') {
+            // Single API call with compact table
+            const sweepPrompt = buildCompactSweepPrompt(results, students, anchors, chunkMap, maxScore);
+            const sweepText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: sweepPrompt }], timestamp());
+
+            // Parse the JSON array response
+            const jsonMatch = sweepText.match(/\[[\s\S]*\]/);
+            if (jsonMatch) {
+              const parsed = JSON.parse(jsonMatch[0]);
+              if (Array.isArray(parsed)) {
+                sweepAdjustments = parsed.filter(a => a.studentIndex !== undefined && a.suggestedScore !== undefined && a.suggestedScore !== a.currentScore);
+              }
+            }
+            console.log(`[${timestamp()}] [sse] Compact sweep: ${sweepAdjustments.length} adjustment(s) suggested`);
+
+          } else if (effectiveSweep === 'pairwise') {
+            // Multiple API calls, one per cross-chunk band
+            const bandPrompts = buildPairwiseSweepPrompts(results, students, anchors, chunkMap, maxScore);
+            console.log(`[${timestamp()}] [sse] Pairwise sweep: ${bandPrompts.length} band(s) to check`);
+
+            for (const bp of bandPrompts) {
+              console.log(`[${timestamp()}] [sse]   Checking ${bp.label} band (${bp.studentIndices.length} students)...`);
+              const bandText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: bp.prompt }], timestamp());
+
+              const jsonMatch = bandText.match(/\[[\s\S]*\]/);
+              if (jsonMatch) {
+                const parsed = JSON.parse(jsonMatch[0]);
+                if (Array.isArray(parsed)) {
+                  const bandAdj = parsed.filter(a => a.studentIndex !== undefined && a.suggestedScore !== undefined && a.suggestedScore !== a.currentScore);
+                  sweepAdjustments.push(...bandAdj);
+                }
+              }
+            }
+            console.log(`[${timestamp()}] [sse] Pairwise sweep: ${sweepAdjustments.length} total adjustment(s)`);
+          }
+
+          // Apply sweep adjustments
+          let sweepCount = 0;
+          for (const adj of sweepAdjustments) {
+            const r = results.find(r => r.studentIndex === adj.studentIndex);
+            if (r && adj.suggestedScore !== r.score) {
+              let newScore = parseFloat(adj.suggestedScore);
+              if (isNaN(newScore) || newScore < 0) continue;
+              if (newScore > maxScore) newScore = maxScore;
+              newScore = Math.round(newScore * 2) / 2; // snap to 0.5
+              const name = students.find(s => s.index === adj.studentIndex)?.name || `Student ${adj.studentIndex}`;
+              console.log(`[${timestamp()}] [sse]   ✎ sweep: ${name}: ${r.score} → ${newScore}/${maxScore} (${adj.reason || 'consistency'})`);
+              r.score = newScore;
+              r.sweepAdjusted = true;
+              sweepCount++;
+            }
+          }
+
+          if (sweepCount > 0) {
+            await stream.writeSSE({
+              event: 'sweep',
+              data: JSON.stringify({ adjustments: sweepAdjustments, count: sweepCount }),
+              id: String(sseId++),
+            });
+          }
+          console.log(`[${timestamp()}] [sse] Sweep complete: ${sweepCount} score(s) adjusted`);
+
+        } catch (sweepErr) {
+          console.warn(`[${timestamp()}] [sse] Consistency sweep failed: ${sweepErr.message}, continuing with original scores`);
+        }
+      }
+
+      // Step 4: Detect outliers (on sweep-adjusted results)
       const outlierAnalysis = detectOutliers(results);
 
       // Step 5: Outlier review (if any)
@@ -1044,11 +1288,14 @@ app.post('/api/grade', async (c) => {
           anchors: {
             excellent: anchors.excellent.score,
             adequate: anchors.adequate.score,
+            belowAverage: anchors.belowAverage.score,
             minimal: anchors.minimal.score,
           },
           metadata: {
             totalStudents: students.length,
-            chunks: chunks.length,
+            chunks: totalChunksForClient,
+            sweepMode: shouldSweep ? (sweepMode === 'auto' ? 'pairwise' : sweepMode) : 'none',
+            sweepAdjustments: sweepAdjustments.length,
             elapsedSeconds: parseFloat(elapsed),
           },
         }),
@@ -1187,17 +1434,6 @@ const server = serve({
 Waiting for grading requests...
 `);
 
-  // Initialize embedded Playwriter MCP server for browser automation
-  initMCPServer()
-    .then(() => {
-      console.log('[MCP] ✓ Embedded Playwriter server ready');
-      console.log('[MCP] ✓ O.G.R.E extension can connect to: ws://localhost:19988');
-    })
-    .catch((err) => {
-      console.error('[MCP] Failed to start Playwriter server:', err.message);
-      console.error('[MCP] Automation features will be unavailable');
-    });
-
   // Watch config file for external changes (e.g., desktop app saves settings)
   watchConfig((newConfig) => {
     const oldCount = providerConfigs.length;
@@ -1240,17 +1476,9 @@ server.on('error', (err) => {
   waitForKeypress();
 });
 
-// Graceful shutdown - stop MCP server
+// Graceful shutdown
 async function gracefulShutdown(signal) {
   console.log(`\n[Server] Received ${signal}, shutting down gracefully...`);
-
-  try {
-    await stopMCPServer();
-    console.log('[Server] MCP server stopped');
-  } catch (error) {
-    console.error('[Server] Error stopping MCP server:', error.message);
-  }
-
   process.exit(0);
 }
 

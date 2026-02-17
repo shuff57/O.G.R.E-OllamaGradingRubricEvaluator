@@ -218,10 +218,54 @@ export function parseGoogleGeminiResponse(data) {
   return data.candidates[0].content.parts[0].text;
 }
 
+// ── GitHub Copilot Session Token Exchange ───────────────────────────────
+
+/** @type {{ token: string, expiresAt: number } | null} */
+let copilotTokenCache = null;
+
+/**
+ * Exchange a GitHub OAuth token for a Copilot session token.
+ * Caches the session token and refreshes automatically when expired.
+ * @param {string} githubOAuthToken - GitHub OAuth access token
+ * @returns {Promise<string>} Copilot session token (Bearer-ready)
+ */
+export async function getCopilotSessionToken(githubOAuthToken) {
+  // Return cached token if still valid (with 60s safety buffer)
+  if (copilotTokenCache && Date.now() / 1000 < copilotTokenCache.expiresAt - 60) {
+    return copilotTokenCache.token;
+  }
+
+  const res = await fetch('https://api.github.com/copilot_internal/v2/token', {
+    headers: {
+      'Authorization': `token ${githubOAuthToken}`,
+      'User-Agent': 'GithubCopilot/1.155.0',
+      'Accept': 'application/json',
+      'Editor-Version': 'vscode/1.95.0',
+      'Editor-Plugin-Version': 'copilot-chat/0.22.0',
+    },
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    if (res.status === 401) {
+      throw new Error('GitHub token is invalid or expired. Re-authenticate in the extension.');
+    }
+    if (res.status === 403) {
+      throw new Error('No GitHub Copilot subscription found for this account.');
+    }
+    throw new Error(`Copilot token exchange failed (${res.status}): ${text}`);
+  }
+
+  const data = await res.json();
+  copilotTokenCache = { token: data.token, expiresAt: data.expires_at };
+  console.log(`[copilot] Session token obtained, expires at ${new Date(data.expires_at * 1000).toISOString()}`);
+  return data.token;
+}
+
 /**
  * Build GitHub Models (Copilot) API request
  * @param {Object} config - Provider configuration
- * @param {string} config.apiKey - GitHub token for authentication
+ * @param {string} config.apiKey - Copilot session token (already exchanged)
  * @param {string} config.model - Model name
  * @param {Array} messages - Array of message objects with role and content
  * @returns {Object} Request object with url, headers, and body
