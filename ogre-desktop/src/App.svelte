@@ -144,11 +144,14 @@
     currentPage = page;
     if (page === 'browser') {
       sidebarCollapsed = true;
-      // Show webview and recalculate bounds after sidebar transition completes
-      setTimeout(() => {
-        showWebview().catch(() => {});
-        recalculateWebviewBounds();
-      }, SIDEBAR_TRANSITION_MS);
+      // Show webview and animate bounds in sync with sidebar collapse
+      showWebview().catch(() => {});
+      
+      const frames = 8;
+      const interval = SIDEBAR_TRANSITION_MS / frames;
+      for (let i = 1; i <= frames; i++) {
+        setTimeout(recalculateWebviewBounds, interval * i);
+      }
     } else {
       sidebarCollapsed = false;
       // Hide webview immediately when leaving browser page (preserves session)
@@ -158,8 +161,17 @@
 
   function toggleSidebar() {
     sidebarCollapsed = !sidebarCollapsed;
-    // Recalculate webview bounds after sidebar transition completes
-    setTimeout(recalculateWebviewBounds, SIDEBAR_TRANSITION_MS);
+    
+    // Animate webview bounds in sync with sidebar transition
+    // Update bounds multiple times during the 300ms transition for smooth animation
+    if (currentPage === 'browser') {
+      const frames = 8; // Number of animation frames
+      const interval = SIDEBAR_TRANSITION_MS / frames;
+      
+      for (let i = 1; i <= frames; i++) {
+        setTimeout(recalculateWebviewBounds, interval * i);
+      }
+    }
   }
 
 
