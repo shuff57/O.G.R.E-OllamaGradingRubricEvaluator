@@ -143,15 +143,16 @@
   function navigate(page: string) {
     currentPage = page;
     if (page === 'browser') {
+      const wasCollapsed = sidebarCollapsed;
       sidebarCollapsed = true;
       // Show webview and animate bounds in sync with sidebar collapse
       showWebview().catch(() => {});
       
-      const frames = 8;
-      const interval = SIDEBAR_TRANSITION_MS / frames;
-      for (let i = 1; i <= frames; i++) {
-        setTimeout(recalculateWebviewBounds, interval * i);
-      }
+      // Animate from current width to collapsed width
+      animateWebviewBounds(
+        wasCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_EXPANDED_WIDTH,
+        SIDEBAR_COLLAPSED_WIDTH
+      );
     } else {
       sidebarCollapsed = false;
       // Hide webview immediately when leaving browser page (preserves session)
@@ -160,17 +161,37 @@
   }
 
   function toggleSidebar() {
+    const fromWidth = sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_EXPANDED_WIDTH;
+    const toWidth = sidebarCollapsed ? SIDEBAR_EXPANDED_WIDTH : SIDEBAR_COLLAPSED_WIDTH;
+    
     sidebarCollapsed = !sidebarCollapsed;
     
     // Animate webview bounds in sync with sidebar transition
-    // Update bounds multiple times during the 300ms transition for smooth animation
     if (currentPage === 'browser') {
-      const frames = 8; // Number of animation frames
-      const interval = SIDEBAR_TRANSITION_MS / frames;
-      
-      for (let i = 1; i <= frames; i++) {
-        setTimeout(recalculateWebviewBounds, interval * i);
-      }
+      animateWebviewBounds(fromWidth, toWidth);
+    }
+  }
+
+  // Smoothly animate webview bounds from one sidebar width to another
+  function animateWebviewBounds(fromWidth: number, toWidth: number) {
+    const frames = 8; // Number of animation frames
+    const interval = SIDEBAR_TRANSITION_MS / frames;
+    
+    for (let i = 1; i <= frames; i++) {
+      setTimeout(() => {
+        // Interpolate width
+        const progress = i / frames;
+        const currentWidth = fromWidth + (toWidth - fromWidth) * progress;
+        
+        const x = currentWidth;
+        const y = URL_BAR_HEIGHT;
+        const width = window.innerWidth - currentWidth;
+        const height = window.innerHeight - URL_BAR_HEIGHT;
+        
+        if (width > 0 && height > 0) {
+          setWebviewBounds(x, y, width, height).catch(() => {});
+        }
+      }, interval * i);
     }
   }
 
