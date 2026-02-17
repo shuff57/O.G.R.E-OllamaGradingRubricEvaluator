@@ -33,6 +33,17 @@ export interface AppSetting {
   value: string | null;
 }
 
+export interface SiteCredential {
+  id: number;
+  site_name: string;
+  url_pattern: string;
+  username: string;
+  password: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // ── Database Singleton ───────────────────────────────────────────────────
 
 let db: Database | null = null;
@@ -267,4 +278,84 @@ export async function saveOAuthToken(token: {
 export async function deleteOAuthToken(provider: string): Promise<void> {
   const database = await initDB();
   await database.execute("DELETE FROM oauth_tokens WHERE provider = $1", [provider]);
+}
+
+// ── Site Credentials ────────────────────────────────────────────────────
+
+/**
+ * Get all site credentials, ordered by site_name.
+ */
+export async function getSiteCredentials(): Promise<SiteCredential[]> {
+  const database = await initDB();
+  return await database.select<SiteCredential[]>(
+    "SELECT * FROM site_credentials ORDER BY site_name"
+  );
+}
+
+/**
+ * Get site credentials by URL pattern match.
+ * Returns all credentials where the given URL matches the url_pattern.
+ */
+export async function getSiteCredentialsByUrl(url: string): Promise<SiteCredential[]> {
+  const database = await initDB();
+  return await database.select<SiteCredential[]>(
+    "SELECT * FROM site_credentials WHERE $1 LIKE url_pattern ORDER BY site_name",
+    [url]
+  );
+}
+
+/**
+ * Save (upsert) a site credential.
+ * If id is provided and exists, updates the credential.
+ * Otherwise, inserts a new credential.
+ */
+export async function saveSiteCredential(credential: {
+  id?: number;
+  site_name: string;
+  url_pattern: string;
+  username: string;
+  password: string;
+  notes?: string | null;
+}): Promise<number> {
+  const database = await initDB();
+  
+  if (credential.id) {
+    // Update existing credential
+    await database.execute(
+      `UPDATE site_credentials
+       SET site_name = $1, url_pattern = $2, username = $3, password = $4, notes = $5, updated_at = datetime('now')
+       WHERE id = $6`,
+      [
+        credential.site_name,
+        credential.url_pattern,
+        credential.username,
+        credential.password,
+        credential.notes ?? null,
+        credential.id,
+      ]
+    );
+    return credential.id;
+  } else {
+    // Insert new credential
+    const result = await database.execute(
+      `INSERT INTO site_credentials (site_name, url_pattern, username, password, notes)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [
+        credential.site_name,
+        credential.url_pattern,
+        credential.username,
+        credential.password,
+        credential.notes ?? null,
+      ]
+    );
+    return result.lastInsertId;
+  }
+}
+
+/**
+ * Delete a site credential by id.
+ */
+export async function deleteSiteCredential(id: number): Promise<void> {
+  const database = await initDB();
+  await database.execute("DELETE FROM site_credentials WHERE id = $1", [id]);
 }

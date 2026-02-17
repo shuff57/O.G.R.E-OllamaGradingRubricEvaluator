@@ -305,6 +305,22 @@ INSERT OR IGNORE INTO app_settings (key, value) VALUES ('history_visible_columns
 );",
             kind: MigrationKind::Up,
         },
+        // Migration 5: site_credentials table
+        Migration {
+            version: 5,
+            description: "create_site_credentials",
+            sql: "CREATE TABLE IF NOT EXISTS site_credentials (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    site_name TEXT NOT NULL,
+    url_pattern TEXT NOT NULL,
+    username TEXT NOT NULL,
+    password TEXT NOT NULL,
+    notes TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
