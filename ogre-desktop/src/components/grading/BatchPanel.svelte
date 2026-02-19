@@ -574,8 +574,9 @@
           disabled={batchPhase === 'grading'}
         ></textarea>
         <div class="max-score-row">
-          <label class="max-score-label">Max Score:</label>
+          <label for="batch-max-score" class="max-score-label">Max Score:</label>
           <input
+            id="batch-max-score"
             type="number"
             class="max-score-input"
             bind:value={rubricMaxScore}
@@ -641,8 +642,9 @@
       </div>
     {:else}
       <div class="resume-row">
-        <label class="resume-label">Resume After:</label>
+        <label for="batch-resume-after" class="resume-label">Resume After:</label>
         <input
+          id="batch-resume-after"
           type="text"
           class="resume-input"
           placeholder="Student Name (optional)"

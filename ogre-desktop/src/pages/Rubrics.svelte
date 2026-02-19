@@ -200,7 +200,10 @@
       </div>
 
       <div class="form-group">
-        <label>Criteria <span class="text-muted">({totalPoints(formCriteria)} pts total)</span></label>
+        <div class="label-row">
+          <span class="form-label-text">Criteria</span>
+          <span class="text-muted">({totalPoints(formCriteria)} pts total)</span>
+        </div>
         <table class="criteria-table">
           <thead>
             <tr>
@@ -299,7 +302,7 @@
   <!-- Delete confirmation -->
   {#if confirmDeleteId}
     <div class="modal-backdrop" on:click={() => confirmDeleteId = null} on:keydown={(e) => e.key === 'Escape' && (confirmDeleteId = null)} role="button" tabindex="-1">
-      <div class="modal" on:click|stopPropagation role="dialog">
+      <div class="modal" on:click|stopPropagation on:keydown={(e) => e.key === 'Escape' && (confirmDeleteId = null)} role="dialog" tabindex="0">
         <h3>Delete Rubric?</h3>
         <p class="text-muted">This action cannot be undone.</p>
         <div class="form-actions">

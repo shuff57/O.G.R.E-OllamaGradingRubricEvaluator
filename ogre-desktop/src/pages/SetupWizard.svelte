@@ -430,20 +430,20 @@
                 <div class="card-body">
                   {#if provider.id === 'ollama'}
                     <div class="form-group">
-                      <label>API URL</label>
-                      <input type="text" bind:value={provider.apiUrl} placeholder={provider.placeholderUrl}>
+                      <label for="ollama-url">API URL</label>
+                      <input id="ollama-url" type="text" bind:value={provider.apiUrl} placeholder={provider.placeholderUrl}>
                     </div>
                     <div class="form-group">
-                      <label>API Key (Optional)</label>
-                      <input type="password" bind:value={provider.apiKey} placeholder={provider.placeholderKey}>
+                      <label for="ollama-key">API Key (Optional)</label>
+                      <input id="ollama-key" type="password" bind:value={provider.apiKey} placeholder={provider.placeholderKey}>
                       <span class="hint">Only needed for cloud Ollama instances</span>
                     </div>
                   {:else if provider.oauth}
                     <!-- OAuth Provider UI — Sign-in is primary, API key is secondary -->
                     {#if provider.useApiKey}
                        <div class="form-group">
-                        <label>API Key</label>
-                        <input type="password" bind:value={provider.apiKey} placeholder={provider.placeholderKey}>
+                        <label for="{provider.id}-key">API Key</label>
+                        <input id="{provider.id}-key" type="password" bind:value={provider.apiKey} placeholder={provider.placeholderKey}>
                         <div class="flex-row">
                              {#if provider.keyUrl}
                                <a href={provider.keyUrl} target="_blank" rel="noopener noreferrer" class="help-link">Get API Key</a>
@@ -501,8 +501,8 @@
                   {:else}
                     <!-- Standard API Key Provider (OpenAI) -->
                     <div class="form-group">
-                      <label>API Key</label>
-                      <input type="password" bind:value={provider.apiKey} placeholder={provider.placeholderKey}>
+                      <label for="{provider.id}-key-standard">API Key</label>
+                      <input id="{provider.id}-key-standard" type="password" bind:value={provider.apiKey} placeholder={provider.placeholderKey}>
                       {#if provider.keyUrl}
                         <a href={provider.keyUrl} target="_blank" rel="noopener noreferrer" class="help-link">Get API Key</a>
                       {/if}
@@ -536,14 +536,14 @@
             <div class="model-card">
               <h3>{provider.name}</h3>
               <div class="form-group">
-                <label>Model Name</label>
+                <label for="{provider.id}-model">Model Name</label>
                 
                 {#if (provider.oauth && !provider.useApiKey && oauthSignedIn[provider.id]) || provider.id === 'ollama'}
                     <!-- Dropdown for OAuth or Ollama providers -->
                     {#if fetchingModels[provider.id]}
                         <div class="loading-models">Fetching models...</div>
                     {:else if fetchedModels[provider.id]?.length > 0}
-                        <select bind:value={provider.model} class="model-select">
+                        <select id="{provider.id}-model" bind:value={provider.model} class="model-select">
                            <option value="" disabled>Select a model</option>
                            {#each fetchedModels[provider.id] as m}
                               <option value={m.id}>{m.name}</option>
@@ -560,12 +560,12 @@
                              <button class="btn-secondary small" on:click={() => fetchModels(provider.id)}>
                                {modelFetchErrors[provider.id] ? 'Retry' : 'Fetch Models'}
                              </button>
-                             <input type="text" bind:value={provider.model} placeholder="Or enter model name manually">
+                             <input id="{provider.id}-model-manual" type="text" bind:value={provider.model} placeholder="Or enter model name manually">
                          </div>
                     {/if}
                 {:else}
                    <!-- Text Input for other providers -->
-                   <input type="text" bind:value={provider.model} placeholder="e.g. gpt-4o, claude-3-sonnet">
+                   <input id="{provider.id}-model-text" type="text" bind:value={provider.model} placeholder="e.g. gpt-4o, claude-3-sonnet">
                    <span class="hint">Check your provider's documentation for exact model names.</span>
                 {/if}
               </div>

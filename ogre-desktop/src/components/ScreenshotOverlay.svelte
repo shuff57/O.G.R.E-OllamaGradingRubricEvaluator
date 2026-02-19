@@ -261,7 +261,7 @@
   .screenshot-overlay {
     position: fixed;
     inset: 0;
-    z-index: 9999;
+    z-index: 10000;
     background-color: #0a0a0f;
     cursor: crosshair;
     display: flex;
