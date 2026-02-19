@@ -1,0 +1,16 @@
+        // Migration 6: site_profiles table
+        Migration {
+            version: 6,
+            description: "create_site_profiles",
+            sql: "CREATE TABLE IF NOT EXISTS site_profiles (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    url_patterns TEXT NOT NULL,
+    selectors TEXT NOT NULL,
+    feedback TEXT NOT NULL,
+    save TEXT NOT NULL,
+    navigation TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);",
+            kind: MigrationKind::Up,

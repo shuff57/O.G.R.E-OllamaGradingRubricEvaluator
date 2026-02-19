@@ -1,0 +1,157 @@
+TASK 9: Wire Browser Page to Embedded Rust Webview — INTEGRATION AUDIT
+=======================================================================
+Date: 2026-02-17
+Status: ALL INTEGRATION POINTS VERIFIED — ALREADY WIRED
+
+FINDING: All 6 critical integration points were implemented as part of
+previous tasks (Tasks 2, 3, 5, 6). No additional code changes required.
+
+═══════════════════════════════════════════════════════════════════════
+INTEGRATION POINT 1: Browser.svelte → create/navigate webview commands
+═══════════════════════════════════════════════════════════════════════
+FILE: src/pages/Browser.svelte
+
+✅ handleNavigate() [line 131-150]
+   - First navigation: calls createEmbeddedBrowser(urlInput) [line 137]
+   - Subsequent: calls navigateEmbedded(urlInput) [line 144]
+   - Sets isLoading=true, browserCreated=true, showPresets=false
+   - Waits for DOM tick, then calls updateWebviewBounds()
+
+✅ handleLoadUrl(url) [line 170-173]
+   - Used by preset buttons and saved URL buttons
+   - Sets urlInput, then calls handleNavigate()
+
+✅ onMount check [line 110-122]
+   - Calls getEmbeddedUrl() to detect existing webview
+   - If exists: sets browserCreated=true, urlInput, hides presets
+   - Calls updateWebviewBounds() after tick()
+
+═══════════════════════════════════════════════════════════════════════
+INTEGRATION POINT 2: Browser.svelte → DOM measurement → setWebviewBounds
+═══════════════════════════════════════════════════════════════════════
+FILE: src/pages/Browser.svelte
+
+✅ updateWebviewBounds() [line 58-83]
+   - Guards: returns early if !browserCreated
+   - Gets .sidebar width via getBoundingClientRect() (handles both states)
+   - Gets .nav-bar height via getBoundingClientRect()
+   - Gets .presets-panel height if showPresets is true
+   - Calculates: x=sidebarWidth, y=navBarHeight+presetsHeight
+   - Calculates: width=window.innerWidth-sidebarWidth, height=window.innerHeight-y
+   - Guards width>0 && height>0 before calling setWebviewBounds()
+
+✅ Reactive bounds recalculation [line 86-91]
+   - $: block watches showPresets changes
+   - Calls tick().then(() => updateWebviewBounds()) when browserCreated
+
+═══════════════════════════════════════════════════════════════════════
+INTEGRATION POINT 3: Browser.svelte → event listeners for URL sync
+═══════════════════════════════════════════════════════════════════════
+FILE: src/pages/Browser.svelte
+
+✅ URL change listener [line 101-103]
+   - listenBrowserUrlChanged() → updates urlInput
+
+✅ Page loaded listener [line 105-108]
+   - listenBrowserPageLoaded() → sets isLoading=false, calls tryAutofill()
+
+✅ Listener cleanup [line 125-128]
+   - onDestroy: unlistenUrl(), unlistenLoaded()
+
+═══════════════════════════════════════════════════════════════════════
+INTEGRATION POINT 4: App.svelte → sidebar state → webview bounds recalc
+═══════════════════════════════════════════════════════════════════════
+FILE: src/App.svelte
+
+✅ toggleSidebar() [line 163-173]
+   - Computes fromWidth and toWidth based on collapsed state
+   - Flips sidebarCollapsed
+   - If currentPage==='browser': calls animateWebviewBounds(from, to)
+
+✅ animateWebviewBounds() [line 176-196]
+   - Interpolates sidebar width over 8 frames across SIDEBAR_TRANSITION_MS (300ms)
+   - Each frame calls setWebviewBounds(x, y, width, height)
+   - Smooth visual transition matching CSS sidebar animation
+
+✅ Layout constants [line 19-24]
+   - SIDEBAR_EXPANDED_WIDTH = 250
+   - SIDEBAR_COLLAPSED_WIDTH = 60
+   - URL_BAR_HEIGHT = 50
+   - SIDEBAR_TRANSITION_MS = 300
+   - RESIZE_DEBOUNCE_MS = 100
+
+═══════════════════════════════════════════════════════════════════════
+INTEGRATION POINT 5: App.svelte → window resize → debounced bounds update
+═══════════════════════════════════════════════════════════════════════
+FILE: src/App.svelte
+
+✅ recalculateWebviewBounds() [line 47-59]
+   - Guards: returns if currentPage !== 'browser'
+   - Uses sidebar constants to compute bounds
+   - Calls setWebviewBounds() with error suppression
+
+✅ handleWindowResize() [line 62-65]
+   - Debounces with clearTimeout/setTimeout(100ms)
+   - Calls recalculateWebviewBounds()
+
+✅ Event registration [line 123]
+   - window.addEventListener('resize', handleWindowResize) in onMount
+
+✅ Cleanup [line 139-140]
+   - window.removeEventListener('resize', handleWindowResize) in onDestroy
+   - clearTimeout(resizeTimeout)
+
+═══════════════════════════════════════════════════════════════════════
+INTEGRATION POINT 6: App.svelte → page switching → webview visibility
+═══════════════════════════════════════════════════════════════════════
+FILE: src/App.svelte
+
+✅ navigate() [line 143-161]
+   - page==='browser':
+     - Auto-collapses sidebar (sidebarCollapsed=true)
+     - Calls showWebview()
+     - Animates bounds from current to collapsed width
+   - page!=='browser':
+     - Expands sidebar (sidebarCollapsed=false)
+     - Calls hideWebview() — preserves webview session
+
+✅ Modal z-ordering [line 69-74]
+   - Reactive $: block watches showUpdateModal
+   - showUpdateModal=true → hideWebview()
+   - showUpdateModal=false && page==='browser' → showWebview() + recalcBounds
+
+═══════════════════════════════════════════════════════════════════════
+SUPPORTING MODULES VERIFIED
+═══════════════════════════════════════════════════════════════════════
+
+✅ src/lib/browser.ts [178 lines]
+   - All Rust command wrappers: createEmbeddedBrowser, navigateEmbedded,
+     goBack, goForward, reloadBrowser, setWebviewBounds, hideWebview,
+     showWebview, getEmbeddedUrl, destroyWebview
+   - Event listeners: listenBrowserUrlChanged, listenBrowserPageLoaded
+   - Script eval: evalScript, evalScriptJSON
+   - Autofill: injectAutofill
+   - Presets: GRADING_SITE_PRESETS
+
+✅ src/lib/autofill.ts — matchCredentialsToUrl, generateAutoFillScript
+✅ src/lib/db.ts — getSetting, setSetting, getSiteCredentials
+
+✅ src-tauri/src/lib.rs [685 lines]
+   - All commands registered in invoke_handler [line 539-553]
+   - WebviewState + EvalRegistry managed state [line 571-573]
+   - Event emission: browser-url-changed, browser-page-loaded, browser-status
+
+═══════════════════════════════════════════════════════════════════════
+BUILD VERIFICATION
+═══════════════════════════════════════════════════════════════════════
+
+✅ npm run build — SUCCESS
+   - 142 modules transformed
+   - Built in 1.39s
+   - No TypeScript errors
+   - Only warnings: a11y in Rubrics.svelte and SetupWizard.svelte (unrelated)
+
+Output:
+  dist/index.html          0.46 kB │ gzip:  0.29 kB
+  dist/assets/index.css   45.49 kB │ gzip:  8.21 kB
+  dist/assets/index.js   144.16 kB │ gzip: 46.17 kB

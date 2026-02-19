@@ -1,0 +1,22 @@
+TASK 9 BUILD EVIDENCE
+=====================
+Date: 2026-02-17
+Command: npm run build (in ogre-desktop/)
+
+> ogre-desktop@0.0.0 build
+> vite build
+
+vite v7.3.1 building client environment for production...
+transforming...
+✓ 142 modules transformed.
+
+dist/index.html          0.46 kB │ gzip:  0.29 kB
+dist/assets/index.css   45.49 kB │ gzip:  8.21 kB
+dist/assets/index.js   144.16 kB │ gzip: 46.17 kB
+✓ built in 1.39s
+
+RESULT: BUILD SUCCEEDS — NO ERRORS
+Only non-blocking warnings:
+- a11y_label_has_associated_control in Rubrics.svelte, SetupWizard.svelte (unrelated)
+- a11y_interactive_supports_focus in Rubrics.svelte (unrelated)
+- Dynamic import warning for db.ts (non-critical, mixed static/dynamic import)

@@ -1,0 +1,19 @@
+Task: Create ProfileManager.svelte component
+
+1. Created ogre-desktop/src/components/grading/ProfileManager.svelte
+   - Implemented ProfileStorageImpl integration
+   - Added list view with badges for built-in profiles
+   - Added edit/delete actions for user profiles
+   - Implemented form for creating/editing profiles
+   - Handles name, urlPatterns, selectors, and navigation.submitButton
+
+2. Verification
+   - Checked types against ogre-desktop/src/lib/batch-grader.ts
+   - Verified ProfileStorageImpl usage from ogre-desktop/src/lib/site-profiles.ts
+   - Fixed LSP errors regarding SiteSelectors and NavigationConfig types
+   - Used crypto.randomUUID() for new IDs
+
+3. Features
+   - Read-only mode for built-in profiles
+   - Form validation (name, urlPatterns)
+   - Proper state management (loading, error, editing)

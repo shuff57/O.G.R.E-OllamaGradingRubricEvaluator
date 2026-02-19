@@ -1,0 +1,178 @@
+TASK 4: Create discover.ts with types and prompt templates (TDD)
+================================================================
+
+COMPLETION SUMMARY
+==================
+✓ Created ogre-desktop/src/lib/discover.ts (450+ lines)
+✓ Created ogre-desktop/src/lib/discover.test.ts (400+ lines)
+✓ All 27 unit tests passing
+✓ 21 integration tests marked as .todo() (failing by design)
+✓ TypeScript compilation verified
+
+FILES CREATED
+=============
+1. ogre-desktop/src/lib/discover.ts
+   - 10 TypeScript interfaces for discovery workflow
+   - 2 prompt templates (DISCOVERY_SYSTEM_PROMPT, DISCOVERY_USER_PROMPT_TEMPLATE)
+   - 2 helper functions (parseDiscoveryResponse, isValidDiscoveryResult)
+   - Comprehensive JSDoc comments
+
+2. ogre-desktop/src/lib/discover.test.ts
+   - 27 passing unit tests
+   - 21 failing integration tests (marked with .todo())
+   - Tests for parsing, validation, and prompt content
+
+TYPES DEFINED
+=============
+- NavigationMode: "batch" | "sequential"
+- FeedbackType: "textarea" | "tinymce-inline" | "tinymce-iframe" | "contenteditable" | "unknown"
+- NavigationConfig: Navigation settings for sequential mode
+- SelectorMap: CSS selectors for page elements
+- FeedbackConfig: Feedback editor configuration
+- SaveConfig: Save button configuration
+- DiscoveryResult: Complete discovery result from AI
+- SelectorValidation: Validation result for a single selector
+- ValidationResults: Map of all selector validations
+- DiscoveryRequest: Request parameters for discovery
+- DiscoveryProgress: Progress event during discovery
+- DiscoveryWorkflow: Complete workflow result
+
+PROMPTS PORTED
+==============
+1. DISCOVERY_SYSTEM_PROMPT (1200+ chars)
+   - Instructs AI to analyze grading page structure
+   - Explains BATCH vs SEQUENTIAL modes
+   - Lists required and optional selectors
+   - Specifies CSS selector rules
+   - Defines feedback editor types
+   - Specifies JSON response format
+
+2. DISCOVERY_USER_PROMPT_TEMPLATE(pageUrl, domSnapshot)
+   - Provides page URL for context
+   - Includes simplified DOM tree snapshot
+   - Instructs AI to find CSS selectors
+   - Specifies goal: extract student data, fill scores, save
+
+HELPER FUNCTIONS
+================
+1. parseDiscoveryResponse(aiText: string): DiscoveryResult
+   - Handles JSON wrapped in markdown code fences
+   - Strips <think>...</think> blocks
+   - Extracts JSON from various formats
+   - Throws on unparseable input
+
+2. isValidDiscoveryResult(result: unknown): boolean
+   - Validates required fields
+   - Checks navigation mode
+   - Validates selector strings
+   - Validates feedback configuration
+   - Validates save button text
+
+TEST RESULTS
+============
+Test File: src/lib/discover.test.ts
+Total Tests: 48
+- Passing: 27
+- Failing (by design): 21 (.todo())
+
+Passing Test Categories:
+✓ parseDiscoveryResponse (4 tests)
+  - Valid JSON parsing
+  - Markdown code fence handling
+  - Thinking block stripping
+  - Error handling
+
+✓ isValidDiscoveryResult (12 tests)
+  - Batch mode validation
+  - Sequential mode validation
+  - Null/non-object rejection
+  - Missing field detection
+  - Invalid mode detection
+  - Invalid feedback type detection
+  - Non-boolean field detection
+  - Empty string detection
+
+✓ DISCOVERY_SYSTEM_PROMPT (6 tests)
+  - Substantive instructions
+  - Batch mode indicators
+  - Sequential mode indicators
+  - Selector rules
+  - Feedback type guidance
+  - JSON response format
+
+✓ DISCOVERY_USER_PROMPT_TEMPLATE (5 tests)
+  - Page URL inclusion
+  - DOM snapshot inclusion
+  - Analysis instructions
+  - Goal specification
+  - Large snapshot truncation
+
+Failing Tests (by design - .todo()):
+↓ Discovery Workflow Integration (10 tests)
+↓ Selector Validation Integration (6 tests)
+↓ Discovery Error Handling (5 tests)
+
+DESIGN DECISIONS
+================
+1. Separated types from implementation
+   - Types in discover.ts for reusability
+   - Tests in discover.test.ts for clarity
+
+2. Prompt templates as constants
+   - DISCOVERY_SYSTEM_PROMPT: Static string
+   - DISCOVERY_USER_PROMPT_TEMPLATE: Function for dynamic content
+
+3. Validation split
+   - parseDiscoveryResponse: Parses JSON only
+   - isValidDiscoveryResult: Validates structure
+
+4. TDD approach
+   - 27 passing unit tests for types and prompts
+   - 21 failing integration tests for future implementation
+
+PROMPT CONTENT VERIFICATION
+============================
+DISCOVERY_SYSTEM_PROMPT contains:
+✓ "web page structure analyzer"
+✓ "BATCH" and "SEQUENTIAL" mode explanation
+✓ Batch indicators (repeating rows, multiple inputs, page-wide save)
+✓ Sequential indicators (next/prev buttons, student dropdown, X of N)
+✓ Required selectors (studentSection, studentName, scoreInput, feedbackBox)
+✓ Optional selectors (feedbackHidden, questionRegion, fullCreditLink)
+✓ CSS selector rules (attribute selectors, data-testid, relative vs page-level)
+✓ Feedback types (textarea, tinymce-inline, tinymce-iframe, contenteditable)
+✓ JSON response format with all required fields
+✓ Confidence levels (high, medium, low)
+
+DISCOVERY_USER_PROMPT_TEMPLATE contains:
+✓ Page URL for context
+✓ DOM snapshot with node count
+✓ Instructions to analyze screenshot and DOM
+✓ Goal: extract student names, responses, fill scores, save
+✓ Truncation to 12000 chars for large snapshots
+
+NEXT STEPS
+==========
+1. Implement discoverSelectors() function
+   - Capture screenshot and DOM snapshot
+   - Call AI with prompts
+   - Parse and validate response
+
+2. Implement validateSelectors() function
+   - Test selectors on live page
+   - Count matches
+   - Extract sample text
+
+3. Implement discovery workflow orchestration
+   - Progress callbacks
+   - Error handling
+   - Retry logic
+
+4. Integration with grading-api.ts
+   - Use existing AI call infrastructure
+   - Reuse provider/model selection
+
+5. Browser integration
+   - Capture page snapshots
+   - Validate selectors on live page
+   - Handle batch vs sequential modes

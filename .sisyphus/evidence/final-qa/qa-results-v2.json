@@ -1,0 +1,35 @@
+{
+  "results": [
+    {
+      "scenario": "QA #1",
+      "status": "FAIL",
+      "detail": "Browser navigation button not found"
+    },
+    {
+      "scenario": "QA #2",
+      "status": "FAIL",
+      "detail": "Grader tab not found"
+    },
+    {
+      "scenario": "QA #3",
+      "status": "FAIL",
+      "detail": "Discover tab not found"
+    },
+    {
+      "scenario": "QA #4",
+      "status": "FAIL",
+      "detail": "Neither Rubrics page nor RubricCard found"
+    },
+    {
+      "scenario": "QA #5",
+      "status": "FAIL",
+      "detail": "Batch tab not found"
+    },
+    {
+      "scenario": "QA #6",
+      "status": "CODE_REVIEW",
+      "detail": "Batch panel loaded. Start: false, Pause/Resume: false. Pause/resume requires active grading session with live API. Code review: BatchPanel handles pause via isBatchRunning state toggle. Content: \"\""
+    }
+  ],
+  "consoleErrors": []
+}

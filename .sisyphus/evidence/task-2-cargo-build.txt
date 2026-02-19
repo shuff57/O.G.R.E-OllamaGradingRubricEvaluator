@@ -1,0 +1,24 @@
+Task 2: Rust Webview Management Commands - cargo build evidence
+================================================================
+Date: 2026-02-17
+Result: SUCCESS
+
+Build Output:
+   Compiling ogre-desktop v0.1.0
+   Finished `dev` profile [unoptimized + debuginfo] target(s) in 20.49s
+
+Commands implemented (10):
+1. create_embedded_browser - line 249
+2. navigate_embedded - line 321
+3. go_back - line 330
+4. go_forward - line 339
+5. reload_browser - line 348
+6. set_webview_bounds - line 357
+7. hide_webview - line 371
+8. show_webview - line 379
+9. get_embedded_url - line 387
+10. destroy_webview - line 395
+
+All 10 commands registered in generate_handler![] at lines 496-505.
+WebviewState struct added at line 17.
+.manage(Mutex::new(WebviewState { label: None })) added in builder chain.

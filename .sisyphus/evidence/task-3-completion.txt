@@ -1,0 +1,72 @@
+TASK 3: Element Picker Scaffold - COMPLETED
+
+FILES CREATED:
+✓ ogre-desktop/src/lib/element-picker.ts
+✓ ogre-desktop/src/lib/element-picker.test.ts
+
+IMPLEMENTATION DETAILS:
+
+1. ElementPickerResult Interface
+   - selector: string (CSS selector)
+   - tagName: string (HTML tag name)
+   - id?: string (optional element ID)
+   - classes?: string[] (optional CSS classes)
+   - rect: DOMRect (position and size)
+
+2. ELEMENT_PICKER_INJECT_JS Constant
+   - 4,697 characters of valid JavaScript
+   - IIFE wrapper for safe injection
+   - Double-injection guard (window._ogreElementPicker)
+   - Overlay with crosshair cursor
+   - Highlight box following hovered elements
+   - Tooltip showing CSS selector
+   - Instruction banner
+   - Click handler storing result in window._ogreElementPickerResult
+   - Escape key handler setting window._ogreElementPickerCancelled
+   - Placeholder generateSelector function
+
+3. Test Suite (21 tests)
+   ✓ ELEMENT_PICKER_INJECT_JS validation (11 tests)
+     - Valid JavaScript string
+     - IIFE wrapper present
+     - Double-injection guard
+     - Overlay, highlight, tooltip, banner elements
+     - Event handlers (mousemove, click, Escape)
+     - Result storage mechanism
+     - generateSelector function
+   
+   ✓ ElementPickerResult interface (3 tests)
+     - Required properties (selector, tagName, rect)
+     - Optional id property
+     - Optional classes property
+   
+   ✓ startElementPicker function (3 tests)
+     - Is a function
+     - Returns Promise
+     - Rejects with "Not implemented"
+   
+   ✓ parsePickerResult function (4 tests)
+     - Is a function
+     - Rejects with "Not implemented"
+     - Accepts valid structure
+     - Proper error handling
+
+VERIFICATION:
+✓ TypeScript compilation: No errors in element-picker.ts
+✓ Test execution: 21/21 tests passing
+✓ JavaScript syntax: Valid (validated with Node.js Function constructor)
+✓ Injection script structure: Complete with all required components
+
+PATTERNS OBSERVED:
+- evalScript/evalScriptJSON pattern from browser.ts used for reference
+- JS injection pattern from batch-grader.ts followed
+- IIFE wrapper prevents global namespace pollution
+- Double-injection guard prevents multiple overlays
+- Result stored in window object for retrieval via evalScript
+- Cancellation flag for Escape key handling
+
+NEXT STEPS:
+1. Implement startElementPicker() to inject script and wait for result
+2. Implement parsePickerResult() to validate and type-cast result
+3. Implement generateSelector() with full CSS selector generation
+4. Add integration tests with mock webview

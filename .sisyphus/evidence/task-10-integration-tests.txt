@@ -1,0 +1,83 @@
+Task 10: Discovery-Picker Integration Evidence
+================================================
+
+Test Run: 2026-02-18
+Test File: ogre-desktop/src/lib/discovery-picker-integration.test.ts
+Result: 44/44 tests passed
+
+Test Suites:
+- refineSelector (5 tests)
+  ✓ highlight matching elements then start picker
+  ✓ skip highlighting if baseSelector empty
+  ✓ clear highlights after successful selection
+  ✓ clear highlights on picker cancel
+  ✓ clear highlights on picker timeout
+
+- clearRefinementHighlights (1 test)
+  ✓ inject cleanup script
+
+- mergeSelectorSources (6 tests)
+  ✓ prefer picker ID selector over AI suggestion
+  ✓ use picker when AI empty
+  ✓ use picker when AI whitespace
+  ✓ prefer AI when picker gives tag-only fallback
+  ✓ use picker by default (user chose)
+  ✓ handle picker with ID but non-# selector
+
+- identifyAmbiguousSelectors (8 tests)
+  ✓ flag zero matches
+  ✓ flag exceeding threshold
+  ✓ flag invalid when low confidence
+  ✓ NOT flag invalid when high confidence
+  ✓ skip skipped selectors
+  ✓ empty for valid results
+  ✓ custom threshold
+  ✓ include validation data
+
+- refineDiscoverySelector (4 tests)
+  ✓ orchestrate flow and return result
+  ✓ invoke onPickerSelect callback
+  ✓ source "original" when merger keeps AI
+  ✓ propagate cancellation error
+
+- applyRefinement (4 tests)
+  ✓ return new discovery with updated selector
+  ✓ append refinement note
+  ✓ not mutate original
+  ✓ handle no initial notes
+
+- batchRefineSelectors (4 tests)
+  ✓ refine multiple in sequence
+  ✓ skip cancelled and continue
+  ✓ invoke callback for each success
+  ✓ empty when all cancelled
+
+- getSelectorValue (3 tests)
+  ✓ return value for valid key
+  ✓ return null for null selector
+  ✓ return undefined for missing
+
+- setSelectorValue (2 tests)
+  ✓ update existing
+  ✓ set previously null
+
+- RefinementRequest interface (3 tests)
+  ✓ required fields
+  ✓ all reason types
+  ✓ optional validation
+
+- RefinementResult interface (3 tests)
+  ✓ required fields
+  ✓ all source types
+  ✓ optional pickerResult
+
+- SelectorKey type (1 test)
+  ✓ cover all SelectorMap keys
+
+LSP Diagnostics:
+- discovery-picker-integration.ts: 0 errors
+- discovery-picker-integration.test.ts: 0 errors
+
+Existing Tests Still Pass:
+- element-picker.test.ts: 33/33 passed
+- discover.test.ts: 27/27 passed (21 todo skipped)

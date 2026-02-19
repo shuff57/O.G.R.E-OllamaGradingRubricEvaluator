@@ -1,0 +1,553 @@
+================================================================================
+SCOPE FIDELITY REPORT — embedded-browser-credentials Plan
+Task F4 — Deep Scope Analysis
+Date: 2026-02-17
+================================================================================
+
+################################################################################
+SECTION 1: USER INTENT ANALYSIS
+################################################################################
+
+ORIGINAL PROBLEM (from interview/draft):
+  1. Browser page opens in a SEPARATE window — user wants it INSIDE the desktop app
+  2. User must manually type LMS login credentials every session — wants save/load
+  3. (Phase 3 — NOT this plan) Eventually roll Chrome extension into desktop app
+
+INTENDED SOLUTION (from plan):
+  - Replace detached browser window with embedded Tauri webview inside main window
+  - Add collapsible sidebar for maximum browser screen real estate
+  - Implement SQLite-backed credential storage for 4 LMS sites
+  - Auto-detect login pages and auto-fill saved credentials (no auto-submit)
+  - Credential management UI in Settings page
+
+ACTUAL IMPLEMENTATION (from code review):
+  - lib.rs: 10 embedded webview commands (create, navigate, back, forward, reload,
+    set_bounds, hide, show, get_url, destroy) + inject_autofill command
+  - browser.ts: All 10 wrapper functions + injectAutofill + event listeners +
+    GRADING_SITE_PRESETS (4 sites)
+  - Browser.svelte: Full URL bar with back/forward/refresh, collapsible presets
+    panel, webview placeholder area, auto-fill on page load, saved URLs, toast
+    notifications for auto-fill
+  - App.svelte: Sidebar collapse (auto on browser, manual toggle), webview
+    visibility management (hide on page switch/modal, show on return), animated
+    webview bounds recalculation, window resize handling
+  - db.ts: SiteCredential interface + 4 CRUD functions (get, getByUrl, save, delete)
+  - lib.rs migration 5: site_credentials table
+  - autofill.ts: LMS_LOGIN_SELECTORS for 4 sites, generateAutoFillScript() with
+    retry logic & React/SPA compatibility, matchCredentialsToUrl()
+  - Settings.svelte: Full credential management section with add/edit/delete,
+    password masking with toggle, URL pattern presets, notes field
+  - app.css: Sidebar CSS variables (expanded/collapsed widths, transition)
+  - Cargo.toml: unstable feature flag enabled
+  - tauri.conf.json: Window size 1280x900
+  - capabilities/default.json: Multi-webview permissions added
+  - vitest.config.ts + 3 test files (autofill.test.ts, browser.test.ts, db.test.ts)
+
+INTENT MATCH: ✅ Aligned
+
+EXPLANATION:
+  The implementation directly solves both stated user pain points:
+  (1) The browser now renders inside the main app window via embedded Tauri webview
+      instead of opening a separate WebviewWindow. Sidebar auto-collapses to
+      maximize browser real estate.
+  (2) Credentials are stored in SQLite and auto-filled when navigating to matching
+      LMS login pages. The user can manage credentials in Settings.
+  Phase 3 (extension merge) is correctly excluded.
+
+################################################################################
+SECTION 2: SCOPE CREEP DETECTION
+################################################################################
+
+IMPLEMENTED FEATURE: Embedded webview (10 Rust commands)
+  Requested in plan: YES (Task 2)
+  Classification: ✅ In Scope
+
+IMPLEMENTED FEATURE: Collapsible sidebar with auto-collapse/toggle
+  Requested in plan: YES (Task 3)
+  Classification: ✅ In Scope
+
+IMPLEMENTED FEATURE: SQLite migration 5 (site_credentials table)
+  Requested in plan: YES (Task 4)
+  Classification: ✅ In Scope
+
+IMPLEMENTED FEATURE: Credential CRUD functions in db.ts
+  Requested in plan: YES (Task 4)
+  Classification: ✅ In Scope
+
+IMPLEMENTED FEATURE: Browser.svelte redesign with URL bar + nav controls
+  Requested in plan: YES (Task 5)
+  Classification: ✅ In Scope
+
+IMPLEMENTED FEATURE: Webview-sidebar coordination + modal z-ordering
+  Requested in plan: YES (Task 6)
+  Classification: ✅ In Scope
+
+IMPLEMENTED FEATURE: Credential management UI in Settings
+  Requested in plan: YES (Task 7)
+  Classification: ✅ In Scope
+
+IMPLEMENTED FEATURE: LMS login selectors + auto-fill script generator
+  Requested in plan: YES (Task 8)
+  Classification: ✅ In Scope
+
+IMPLEMENTED FEATURE: inject_autofill Rust command
+  Requested in plan: YES (Task 10)
+  Classification: ✅ In Scope
+
+IMPLEMENTED FEATURE: Auto-fill injection on page load
+  Requested in plan: YES (Task 10)
+  Classification: ✅ In Scope
+
+IMPLEMENTED FEATURE: Toast notification for auto-fill
+  Requested in plan: YES (Task 10 — "Show a small notification/toast")
+  Classification: ✅ In Scope
+
+IMPLEMENTED FEATURE: Window size increase to 1280x900
+  Requested in plan: YES (Task 1)
+  Classification: ✅ In Scope
+
+IMPLEMENTED FEATURE: unstable feature flag in Cargo.toml
+  Requested in plan: YES (Task 1)
+  Classification: ✅ In Scope
+
+IMPLEMENTED FEATURE: Multi-webview capabilities permissions
+  Requested in plan: YES (Task 1)
+  Classification: ✅ In Scope
+
+IMPLEMENTED FEATURE: Vitest setup + unit tests
+  Requested in plan: YES (Task 12)
+  Classification: ✅ In Scope
+
+IMPLEMENTED FEATURE: Animated webview bounds transition (animateWebviewBounds)
+  Requested in plan: NO — Plan specified setTimeout after transition, not animation frames
+  Justification: Quality improvement — smooth visual transition instead of jarring snap
+  Classification: ⚠️ Scope Expansion (Minor — improves UX, no added maintenance)
+  Evidence: App.svelte lines 176-196 — 8-frame interpolation of sidebar width
+
+IMPLEMENTED FEATURE: eval_webview_script + _eval_callback commands (JS eval with return)
+  Requested in plan: NO — Not in any task spec
+  Justification: Part of "Wave 0.2 Spike" (extension-migration plan, not this plan)
+  Classification: ⚠️ Scope Expansion (Medium — adds 60+ lines of Rust, new uuid dependency)
+  Evidence: lib.rs lines 355-451, browser.ts lines 112-169 (evalScript, evalScriptJSON)
+  Note: Also added uuid crate to Cargo.toml and EvalRegistry to managed state
+
+IMPLEMENTED FEATURE: browser-eval.integration.test.ts
+  Requested in plan: NO
+  Justification: Test file for eval_webview_script (which is itself out of scope)
+  Classification: ⚠️ Scope Expansion (Minor — test file only, but tests out-of-scope feature)
+  Evidence: ogre-desktop/src/lib/browser-eval.integration.test.ts (250+ lines)
+
+IMPLEMENTED FEATURE: Credential URL pattern uses SQL LIKE (with %) instead of substring
+  Requested in plan: Plan said "URL-pattern based matching" with substring
+  Justification: More powerful matching. Settings UI hints at using % wildcards.
+  Classification: ⚠️ Scope Expansion (Minor — different matching approach than plan specified)
+  Evidence: db.ts line 302 ("WHERE $1 LIKE url_pattern"), Settings.svelte line 826 hint text
+
+EXTRA CHECK: Features beyond 4 LMS sites?
+  Result: NO — Only MyOpenMath, Canvas (instructure.com), Blackboard, Moodle
+  Classification: ✅ Clean
+
+EXTRA CHECK: UI elements not described in plan?
+  Result: NO — All UI elements (URL bar, nav buttons, presets panel, credential
+  cards, toast) are either explicitly planned or reasonable implementations of
+  planned features.
+  Classification: ✅ Clean
+
+EXTRA CHECK: Extra auto-fill capabilities?
+  Result: NO — Auto-fill only, no auto-submit. Exactly as specified.
+  Classification: ✅ Clean
+
+EXTRA CHECK: Keyboard shortcuts not mentioned?
+  Result: NO keyboard shortcuts added. Only Enter-to-navigate on URL bar (standard).
+  Classification: ✅ Clean
+
+EXTRA CHECK: Settings/config beyond credential CRUD?
+  Result: NO — Settings page has credential CRUD only, no extra settings added.
+  Classification: ✅ Clean
+
+SCOPE CREEP SUMMARY:
+  ✅ In Scope: 15 features
+  ⚠️ Scope Expansion: 4 items (1 medium, 3 minor)
+  ❌ Scope Creep: 0 items
+
+  The eval_webview_script system is the only notable expansion. It appears to
+  have been added as part of a separate "Wave 0.2 Spike" (extension-migration
+  plan) that was implemented concurrently. While not in THIS plan's scope, it
+  was likely a deliberate cross-plan addition rather than accidental creep.
+
+################################################################################
+SECTION 3: SCOPE GAPS
+################################################################################
+
+PLANNED: Enable unstable feature flag (Task 1)
+  Status: ✅ Complete
+  Evidence: Cargo.toml line 21: features = ["tray-icon", "unstable"]
+
+PLANNED: Window size 1280x900 (Task 1)
+  Status: ✅ Complete
+  Evidence: tauri.conf.json lines 16-17: width 1280, height 900
+
+PLANNED: Multi-webview permissions (Task 1)
+  Status: ✅ Complete
+  Evidence: capabilities/default.json lines 10-13: all 4 webview permissions
+
+PLANNED: create_embedded_browser command (Task 2)
+  Status: ✅ Complete
+  Evidence: lib.rs line 190
+
+PLANNED: navigate_embedded command (Task 2)
+  Status: ✅ Complete
+  Evidence: lib.rs line 262
+
+PLANNED: go_back command (Task 2)
+  Status: ✅ Complete
+  Evidence: lib.rs line 271
+
+PLANNED: go_forward command (Task 2)
+  Status: ✅ Complete
+  Evidence: lib.rs line 280
+
+PLANNED: reload_browser command (Task 2)
+  Status: ✅ Complete
+  Evidence: lib.rs line 289
+
+PLANNED: set_webview_bounds command (Task 2)
+  Status: ✅ Complete
+  Evidence: lib.rs line 298
+
+PLANNED: hide_webview command (Task 2)
+  Status: ✅ Complete
+  Evidence: lib.rs line 312
+
+PLANNED: show_webview command (Task 2)
+  Status: ✅ Complete
+  Evidence: lib.rs line 320
+
+PLANNED: get_embedded_url command (Task 2)
+  Status: ✅ Complete
+  Evidence: lib.rs line 328
+
+PLANNED: destroy_webview command (Task 2)
+  Status: ✅ Complete
+  Evidence: lib.rs line 336
+
+PLANNED: on_navigation callback → browser-url-changed event (Task 2)
+  Status: ✅ Complete
+  Evidence: lib.rs line 212
+
+PLANNED: on_page_load callback → browser-page-loaded event (Task 2)
+  Status: ✅ Complete
+  Evidence: lib.rs line 216
+
+PLANNED: on_new_window_request → redirect to same webview (Task 2)
+  Status: ✅ Complete
+  Evidence: lib.rs line 220 (on_new_window handler)
+
+PLANNED: Collapsible sidebar with auto-collapse on Browser (Task 3)
+  Status: ✅ Complete
+  Evidence: App.svelte line 145 (auto-collapse), line 163 (toggle)
+
+PLANNED: Toggle button on all pages (Task 3)
+  Status: ✅ Complete
+  Evidence: App.svelte line 217 (toggle-btn in sidebar, outside page conditionals)
+
+PLANNED: Icons-only mode when collapsed (Task 3)
+  Status: ✅ Complete
+  Evidence: App.svelte CSS lines 435-439 (.sidebar.collapsed .label hidden)
+
+PLANNED: CSS transitions for sidebar (Task 3)
+  Status: ✅ Complete
+  Evidence: app.css lines 58-60 (sidebar CSS variables), App.svelte line 340
+
+PLANNED: site_credentials migration v5 (Task 4)
+  Status: ✅ Complete
+  Evidence: lib.rs lines 521-535
+
+PLANNED: SiteCredential TypeScript interface (Task 4)
+  Status: ✅ Complete
+  Evidence: db.ts lines 36-45
+
+PLANNED: getSiteCredentials() (Task 4)
+  Status: ✅ Complete
+  Evidence: db.ts line 288
+
+PLANNED: getSiteCredentialsByUrl() (Task 4)
+  Status: ✅ Complete
+  Evidence: db.ts line 299
+
+PLANNED: saveSiteCredential() (Task 4)
+  Status: ✅ Complete
+  Evidence: db.ts line 312
+
+PLANNED: deleteSiteCredential() (Task 4)
+  Status: ✅ Complete
+  Evidence: db.ts line 358
+
+PLANNED: Browser.svelte redesign with URL bar + nav controls (Task 5)
+  Status: ✅ Complete
+  Evidence: Browser.svelte lines 189-271
+
+PLANNED: .webview-area placeholder div (Task 5)
+  Status: ✅ Complete
+  Evidence: Browser.svelte line 262
+
+PLANNED: Quick Launch presets panel (Task 5)
+  Status: ✅ Complete
+  Evidence: Browser.svelte lines 222-258
+
+PLANNED: browser.ts new function exports (Task 5)
+  Status: ✅ Complete
+  Evidence: browser.ts — all 10 functions + 2 listeners + injectAutofill exported
+
+PLANNED: browser-url-changed event listener (Task 5)
+  Status: ✅ Complete
+  Evidence: Browser.svelte line 101
+
+PLANNED: browser-page-loaded event listener (Task 5)
+  Status: ✅ Complete
+  Evidence: Browser.svelte line 105
+
+PLANNED: Webview hide on page switch away from browser (Task 6)
+  Status: ✅ Complete
+  Evidence: App.svelte line 159
+
+PLANNED: Webview show on page switch to browser (Task 6)
+  Status: ✅ Complete
+  Evidence: App.svelte line 149
+
+PLANNED: Webview bounds recalculation on sidebar collapse/expand (Task 6)
+  Status: ✅ Complete
+  Evidence: App.svelte lines 170-172 (toggleSidebar → animateWebviewBounds)
+
+PLANNED: Modal z-ordering fix (hide webview when modal opens) (Task 6)
+  Status: ✅ Complete
+  Evidence: App.svelte lines 69-74
+
+PLANNED: Window resize handler with debounce (Task 6)
+  Status: ✅ Complete
+  Evidence: App.svelte lines 62-65, line 123
+
+PLANNED: Credential management UI in Settings (Task 7)
+  Status: ✅ Complete
+  Evidence: Settings.svelte lines 801-913
+
+PLANNED: Card-based credential list with edit/delete (Task 7)
+  Status: ✅ Complete
+  Evidence: Settings.svelte lines 878-911
+
+PLANNED: Add Credential form (Task 7)
+  Status: ✅ Complete
+  Evidence: Settings.svelte lines 813-870
+
+PLANNED: Password masking with show/hide toggle (Task 7)
+  Status: ✅ Complete
+  Evidence: Settings.svelte lines 848-857
+
+PLANNED: URL pattern presets from GRADING_SITE_PRESETS (Task 7)
+  Status: ✅ Complete
+  Evidence: Settings.svelte lines 828-838
+
+PLANNED: Delete confirmation dialog (Task 7)
+  Status: ✅ Complete
+  Evidence: Settings.svelte line 131
+
+PLANNED: LMS login form selectors for 4 sites (Task 8)
+  Status: ✅ Complete
+  Evidence: autofill.ts lines 23-48
+
+PLANNED: generateAutoFillScript() (Task 8)
+  Status: ✅ Complete
+  Evidence: autofill.ts line 67
+
+PLANNED: matchCredentialsToUrl() (Task 8)
+  Status: ✅ Complete
+  Evidence: autofill.ts line 187
+
+PLANNED: Retry mechanism (1s, 2s, 4s exponential backoff) (Task 8)
+  Status: ✅ Complete
+  Evidence: autofill.ts lines 81, 153-155
+
+PLANNED: dispatchEvent for React/SPA compatibility (Task 8)
+  Status: ✅ Complete
+  Evidence: autofill.ts lines 111-112
+
+PLANNED: No auto-submit (Task 8)
+  Status: ✅ Complete
+  Evidence: autofill.ts — no submit button interaction anywhere
+
+PLANNED: Integration wiring Browser ↔ Rust webview (Task 9)
+  Status: ✅ Complete
+  Evidence: Browser.svelte handleNavigate → createEmbeddedBrowser/navigateEmbedded
+
+PLANNED: inject_autofill Rust command (Task 10)
+  Status: ✅ Complete
+  Evidence: lib.rs line 347
+
+PLANNED: Auto-fill event chain (page loaded → lookup → inject) (Task 10)
+  Status: ✅ Complete
+  Evidence: Browser.svelte lines 44-55 (tryAutofill) + line 107
+
+PLANNED: Auto-fill toast notification (Task 10)
+  Status: ✅ Complete
+  Evidence: Browser.svelte line 50
+
+PLANNED: Remove old browser window code (Task 11)
+  Status: ✅ Complete
+  Evidence: No open_browser_window, navigate_browser, get_browser_url, close_browser
+  in lib.rs or browser.ts. Confirmed by learnings.md (Task 11 section).
+
+PLANNED: Vitest setup (Task 12)
+  Status: ✅ Complete
+  Evidence: ogre-desktop/vitest.config.ts exists
+
+PLANNED: Unit tests for credential CRUD, auto-fill, browser functions (Task 12)
+  Status: ✅ Complete
+  Evidence: autofill.test.ts, browser.test.ts, db.test.ts all present
+
+PLANNED: Credential UI in Settings (not Browser page)
+  Status: ✅ Complete
+  Note: Draft said "Browser page" but plan said "Settings page". Implementation
+  correctly follows the PLAN (Settings page), not the draft.
+  Evidence: Settings.svelte lines 801-913
+
+SCOPE GAPS SUMMARY:
+  ✅ Complete: ALL 53 planned features
+  ⚠️ Partial: 0
+  ❌ Missing: 0
+
+  Zero gaps detected. Every planned feature has a verified implementation.
+
+################################################################################
+SECTION 4: PHASE BOUNDARY ANALYSIS
+################################################################################
+
+CHECK: Grading panel (from extension)
+  Status: ✅ Not Present
+  Evidence: Grep for "grading.panel|gradingPanel" — 0 matches in ogre-desktop/src
+
+CHECK: Extension side panel integration
+  Status: ✅ Not Present
+  Evidence: Grep for "side.panel|sidePanel" — 0 matches in ogre-desktop/src
+
+CHECK: Rubric extraction from webview
+  Status: ✅ Not Present
+  Evidence: Grep for "rubric.extraction|extractRubric" — 0 matches in ogre-desktop/src
+
+CHECK: Student work capture from webview
+  Status: ✅ Not Present
+  Evidence: Grep for "student.work|studentWork" — 0 matches in ogre-desktop/src
+
+CHECK: AI grading triggered from browser
+  Status: ✅ Not Present
+  Evidence: Grep for "batch.grad|autoGrade" — 0 matches in ogre-desktop/src
+
+CHECK: Batch grading automation
+  Status: ✅ Not Present
+  Evidence: No batch grading patterns in any new code
+
+CHECK: Extension-specific UI elements
+  Status: ✅ Not Present
+  Evidence: No extension panels, grading forms, or rubric UI in Browser.svelte
+
+CHECK: Per-site custom JS injection (plan "Must NOT Have" guardrail)
+  Status: ✅ Not Present
+  Evidence: Only auto-fill script injection exists; no arbitrary per-site scripting
+
+CHECK: Tabbed browsing (plan "Must NOT Have" guardrail)
+  Status: ✅ Not Present
+  Evidence: Single webview only, no tab management
+
+CHECK: Browser history/bookmarks beyond saved URLs (plan "Must NOT Have" guardrail)
+  Status: ✅ Not Present
+  Evidence: Only saved URLs feature exists (pre-existing), no history tracking
+
+CHECK: Download manager (plan "Must NOT Have" guardrail)
+  Status: ✅ Not Present
+  Evidence: No download handling code
+
+CHECK: Password encryption or OS keychain (plan "Must NOT Have" guardrail)
+  Status: ✅ Not Present
+  Evidence: Plaintext SQLite storage only, no encryption crates or keychain plugins
+
+CHECK: Credential sharing with grading server (plan "Must NOT Have" guardrail)
+  Status: ✅ Not Present
+  Evidence: Credentials stay in SQLite, never sent to grading-server sidecar
+
+CHECK: Custom login detection AI (plan "Must NOT Have" guardrail)
+  Status: ✅ Not Present
+  Evidence: Hardcoded selectors for 4 LMS sites only
+
+CHECK: Svelte router library (plan "Must NOT Have" guardrail)
+  Status: ✅ Not Present
+  Evidence: Still using currentPage state pattern in App.svelte
+
+BORDERLINE: eval_webview_script / evalScript system
+  Status: ⚠️ ATTENTION — Not a Phase 3 violation per se, but crosses plan scope
+  Evidence: lib.rs lines 355-451, browser.ts lines 112-169
+  Severity: Low — It's a general-purpose eval mechanism, not a Phase 3 feature
+  Analysis: This enables executing arbitrary JS in the webview and returning
+  results. While useful for future Phase 3 features (DOM extraction, grading),
+  by itself it's a neutral infrastructure command with no grading/extension
+  integration. It was added as part of a concurrent "extension-migration" plan
+  spike, not this plan's scope. It does NOT constitute Phase 3 leakage because:
+  (a) No grading logic uses it
+  (b) No extension UI uses it
+  (c) It's a building block, not a Phase 3 feature
+
+PHASE BOUNDARY SUMMARY:
+  ✅ Not Present: 15/15 Phase 3 features checked
+  ⚠️ Borderline: 1 item (eval_webview_script — infrastructure, not Phase 3)
+  ❌ VIOLATION: 0
+
+  The Phase 3 boundary is CLEAN. No grading panel, no extension merge, no
+  rubric extraction, no student work capture, no batch grading.
+
+################################################################################
+SECTION 5: OVERALL FIDELITY ASSESSMENT
+################################################################################
+
+SCOPE ADHERENCE: Excellent
+  - 15/15 planned features are in scope
+  - 53/53 specific deliverables verified present
+  - 4 minor scope expansions (1 medium: eval_webview_script)
+  - 0 true scope creep items
+
+USER INTENT SATISFACTION: High
+  - Both stated user problems are solved
+  - Browser renders inside the app (not separate window) ✅
+  - Credentials save/load with auto-fill on LMS login pages ✅
+  - Phase 3 correctly deferred ✅
+
+MAJOR GAPS: None
+  - Every "Must Have" is implemented
+  - Every task has corresponding code changes verified
+
+MAJOR OVERAGES:
+  - eval_webview_script system (lib.rs + browser.ts) — ~120 lines of Rust +
+    ~50 lines of TypeScript + uuid dependency added to Cargo.toml
+  - browser-eval.integration.test.ts — ~250 lines of tests for the above
+  - These were likely from a concurrent plan (extension-migration Wave 0.2 spike)
+    and are not harmful, but were not specified in this plan
+
+PHASE 3 LEAKAGE: None
+  - All 15 Phase 3 boundary checks passed
+  - No grading, extension, rubric, or student work features present
+
+RECOMMENDATION: APPROVE
+
+  The implementation has excellent fidelity to the plan. Every planned feature
+  is present and verified. The Phase 3 boundary is clean. The only notable
+  overage (eval_webview_script) is a benign infrastructure addition from a
+  concurrent plan — it adds no user-facing scope creep and can be considered
+  forward-compatible plumbing.
+
+  No gaps require fixing. No overages require removal.
+
+VERDICT SUMMARY:
+  Tasks [12/12 compliant] | Must Have [10/10] | Must NOT Have [14/14 clean]
+  Scope Expansions [4 minor] | Contamination [1 cross-plan, benign]
+  Phase 3 Boundary [CLEAN] | Overall [APPROVE]
+
+================================================================================
+END OF REPORT
+================================================================================

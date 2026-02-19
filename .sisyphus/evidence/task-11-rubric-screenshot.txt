@@ -1,0 +1,61 @@
+Task 11: Rubric Screenshot Capture and AI Parsing
+==================================================
+
+## What was implemented
+
+### In `ogre-desktop/src/lib/discover.ts`:
+
+1. **RUBRIC_EXTRACTION_PROMPT** — System prompt for extracting rubric criteria from
+   screenshot images. Ported from `prompts.js::getRubricExtractionFromImagePrompt()` 
+   with enhancements: numeric points enforcement, question tagging, and suggested name.
+
+2. **RubricExtractionResult** interface — Return type compatible with SavedRubric format:
+   - criteria: RubricCriterion[] (from rubric-api.ts)
+   - maxScore: number (sum of criteria points)
+   - suggestedName: string
+
+3. **RubricScreenshotOptions** interface — provider/model overrides for the AI call.
+
+4. **parseRubricExtractionResponse(aiText)** — Parses raw AI text to structured rubric.
+   Handles: code fences, thinking blocks, string→number points, missing fields,
+   name fallback, question number coercion, NaN clamping.
+
+5. **isValidRubricExtractionResult(result)** — Type guard validator.
+
+6. **parseRubricFromScreenshot(imageDataUrl, options?)** — Main entry point.
+   Validates the image data URL, calls AI via existing callDiscoveryAI(),
+   parses response, and returns RubricExtractionResult.
+
+### In `ogre-desktop/src/lib/discover.test.ts`:
+
+Added 28 new unit tests + 5 integration todos:
+- parseRubricExtractionResponse: 15 tests covering valid JSON, code fences,
+  thinking blocks, string points, NaN handling, question numbers, empty names,
+  name fallback, missing suggestedName, invalid JSON, empty arrays, embedded JSON
+- isValidRubricExtractionResult: 9 tests covering valid/invalid shapes
+- RUBRIC_EXTRACTION_PROMPT: 3 tests for prompt content
+- parseRubricFromScreenshot integration: 5 todos
+
+## Test results
+
+All 324 tests pass (54 in discover.test.ts, 28 new + 26 existing):
+```
+Test Files  10 passed (10)
+Tests       324 passed | 26 todo (350)
+```
+
+## Design decisions
+
+1. Reuses `callDiscoveryAI()` (already in discover.ts) — same pattern as page
+   structure discovery, avoids duplicating auth/SSE/fetch logic.
+
+2. Returns data for UI confirmation — does NOT auto-save. Caller should
+   present criteria to user, then call `createRubric()` from rubric-api.ts.
+
+3. RubricCriterion type imported from rubric-api.ts (not redefined) to ensure
+   format compatibility with the rubric library.
+
+4. Points always coerced to numbers — AI sometimes returns string points.
+
+5. `name` field accepted as fallback for `criteria` — AI models vary in
+   field naming.

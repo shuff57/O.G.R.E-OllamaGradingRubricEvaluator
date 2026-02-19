@@ -1,0 +1,163 @@
+================================================================================
+TASK 12: VITEST UNIT TESTS FOR OGRE-DESKTOP
+================================================================================
+
+OBJECTIVE:
+Add vitest testing framework to ogre-desktop and write unit tests for:
+1. Credential CRUD functions in src/lib/db.ts
+2. Browser command wrappers in src/lib/browser.ts
+
+================================================================================
+COMPLETION STATUS: ✓ COMPLETE
+================================================================================
+
+TEST EXECUTION RESULTS:
+================================================================================
+
+> ogre-desktop@0.0.0 test
+> vitest run
+
+ ✓ src/lib/autofill.test.ts (23 tests) 5ms
+ ✓ src/lib/db.test.ts (10 tests) 6ms
+ ✓ src/lib/browser.test.ts (20 tests) 9ms
+
+ Test Files: 3 passed (3)
+      Tests: 53 passed (53)
+   Start at: 16:18:39
+   Duration: 271ms (transform 182ms, setup 0ms, import 345ms, tests 20ms, environment 0ms)
+
+================================================================================
+TEST FILES CREATED:
+================================================================================
+
+1. src/lib/db.test.ts (186 lines)
+   ✓ Tests for Credential CRUD functions:
+     - initDB: Returns a database instance
+     - getSiteCredentials: Returns array of credentials sorted by site_name
+     - saveSiteCredential: Inserts new credentials and updates existing ones
+     - getSiteCredentialsByUrl: Queries credentials by URL pattern
+     - deleteSiteCredential: Deletes credentials by id
+     - Multiple credentials for same domain support
+
+   Test Count: 10 tests
+   Status: ALL PASSING
+
+2. src/lib/browser.test.ts (212 lines)
+   ✓ Tests for Browser command wrappers:
+     - Function exports: All 13 functions exported correctly
+     - GRADING_SITE_PRESETS: Array with valid entries
+     - URL normalization: https:// prefix handling for createEmbeddedBrowser
+     - URL normalization: https:// prefix handling for navigateEmbedded
+     - Navigation commands: goBack, goForward, reloadBrowser
+     - Webview control: hideWebview, showWebview, destroyWebview
+     - Geometry: setWebviewBounds with x, y, width, height parameters
+     - URL retrieval: getEmbeddedUrl returns current URL
+     - Event listeners: listenBrowserUrlChanged, listenBrowserPageLoaded
+     - Autofill injection: injectAutofill with generated script
+
+   Test Count: 20 tests
+   Status: ALL PASSING
+
+3. src/lib/autofill.test.ts (existing, included in run)
+   Test Count: 23 tests
+   Status: ALL PASSING
+
+================================================================================
+CONFIGURATION:
+================================================================================
+
+vitest.config.ts:
+- Framework: vitest v4.0.18
+- Environment: node
+- Globals: enabled
+- Include pattern: src/**/*.test.ts
+- Exclude pattern: src/**/*.integration.test.ts (integration tests excluded)
+
+package.json scripts:
+- "test": "vitest run" — Run tests once
+- "test:watch": "vitest" — Run tests in watch mode
+
+================================================================================
+TESTING APPROACH:
+================================================================================
+
+Database Tests (db.test.ts):
+- Mocked @tauri-apps/plugin-sql using vi.mock()
+- In-memory credential store for testing CRUD operations
+- Tests verify SQL queries and parameter passing
+- No actual database required for unit tests
+
+Browser Tests (browser.test.ts):
+- Mocked @tauri-apps/api/core (invoke function)
+- Mocked @tauri-apps/api/event (listen function)
+- Mocked ./autofill module (generateAutoFillScript)
+- Tests verify Tauri command invocation with correct parameters
+- No actual Tauri runtime required for unit tests
+
+================================================================================
+FUNCTIONS TESTED:
+================================================================================
+
+Database CRUD (src/lib/db.ts):
+✓ saveSiteCredential(credential) — Insert or update credentials
+✓ getSiteCredentials() — Retrieve all credentials sorted by site_name
+✓ getSiteCredentialsByUrl(url) — Find credentials matching URL pattern
+✓ deleteSiteCredential(id) — Delete credential by id
+✓ initDB() — Initialize database connection
+
+Browser Commands (src/lib/browser.ts):
+✓ createEmbeddedBrowser(url) — Create embedded webview
+✓ navigateEmbedded(url) — Navigate to URL
+✓ goBack() — Browser back button
+✓ goForward() — Browser forward button
+✓ reloadBrowser() — Reload page
+✓ setWebviewBounds(x, y, width, height) — Set webview geometry
+✓ hideWebview() — Hide webview
+✓ showWebview() — Show webview
+✓ getEmbeddedUrl() — Get current URL
+✓ destroyWebview() — Destroy webview
+✓ listenBrowserUrlChanged(callback) — Listen for URL changes
+✓ listenBrowserPageLoaded(callback) — Listen for page load
+✓ injectAutofill(username, password) — Inject credentials
+
+================================================================================
+COVERAGE SUMMARY:
+================================================================================
+
+Total Test Files: 3
+Total Tests: 53
+Passing: 53 (100%)
+Failing: 0 (0%)
+
+Breakdown:
+- autofill.test.ts: 23 tests (existing)
+- db.test.ts: 10 tests (NEW - credential CRUD)
+- browser.test.ts: 20 tests (NEW - browser commands)
+
+Execution Time: 271ms
+Transform Time: 182ms
+Test Time: 20ms
+
+================================================================================
+VERIFICATION:
+================================================================================
+
+✓ vitest framework installed and configured
+✓ Test files created with comprehensive coverage
+✓ All tests passing (53/53)
+✓ Mocks properly configured for Tauri APIs
+✓ No external dependencies required for unit tests
+✓ Integration tests excluded from main test run
+✓ Evidence file generated
+
+================================================================================
+NEXT STEPS:
+================================================================================
+
+The test suite is ready for CI/CD integration:
+1. Run `npm test` to execute all unit tests
+2. Run `npm run test:watch` for development mode
+3. Tests can be integrated into GitHub Actions workflow
+4. Coverage reports can be added if needed
+
+================================================================================

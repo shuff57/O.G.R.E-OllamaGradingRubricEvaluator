@@ -1,0 +1,81 @@
+═══════════════════════════════════════════════════════════════════════════════
+TASK 1 COMPLETION SUMMARY: Site Profiles TypeScript Interfaces
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ STATUS: COMPLETE
+
+DELIVERABLES:
+─────────────
+
+1. ogre-desktop/src/lib/site-profiles.ts (206 lines)
+   ✅ Imports core interfaces from batch-grader.ts (no duplication)
+   ✅ Defines ExtractionConfig interface (3 response methods, 3 max score methods)
+   ✅ Defines SiteProfileWithExtraction interface
+   ✅ Defines ProfileStorage interface (7 CRUD methods)
+   ✅ Exports DEFAULT_MYOPENMATH_PROFILE with full extraction config
+   ✅ Exports DEFAULT_CANVAS_SPEEDGRADER_PROFILE with full extraction config
+   ✅ Exports BUILT_IN_PROFILES array
+
+2. ogre-desktop/src/lib/site-profiles.test.ts (284 lines)
+   ✅ 20 type validation tests (all passing)
+   ✅ Tests for SiteProfile, SiteSelectors, FeedbackConfig, SaveConfig, NavigationConfig
+   ✅ Tests for ExtractionConfig (response/max score methods)
+   ✅ Tests for built-in profiles (MyOpenMath, Canvas)
+   ✅ Tests for type compatibility and URL pattern matching
+   ✅ TDD placeholders for ProfileStorage implementation
+
+TEST RESULTS:
+─────────────
+✅ 20 pass
+❌ 0 fail
+   60 expect() calls
+   Ran 20 tests across 1 file. [98.00ms]
+
+INTERFACES PORTED:
+──────────────────
+✅ SiteProfile (from batch-grader.ts)
+✅ SiteSelectors (from batch-grader.ts)
+✅ FeedbackConfig (from batch-grader.ts)
+✅ SaveConfig (from batch-grader.ts)
+✅ NavigationConfig (from batch-grader.ts)
+✅ ExtractionConfig (new, from site-profiles.js)
+✅ SiteProfileWithExtraction (new, extends SiteProfile)
+✅ ProfileStorage (new, CRUD interface)
+
+BUILT-IN PROFILES:
+──────────────────
+✅ MyOpenMath
+   - Mode: batch
+   - Feedback: tinymce-inline
+   - Response: childIndex method
+   - Max Score: parentTextRegex method
+
+✅ Canvas SpeedGrader
+   - Mode: sequential
+   - Feedback: tinymce-iframe
+   - Response: iframe method
+   - Max Score: inputLabel method
+
+KEY DESIGN DECISIONS:
+─────────────────────
+1. Reused existing interfaces from batch-grader.ts to avoid duplication
+2. ExtractionConfig supports flexible extraction methods (childIndex, iframe, selector)
+3. ProfileStorage uses async/await for database-agnostic operations
+4. Built-in profiles include complete extraction configuration
+5. Tests use TDD approach with implementation placeholders
+6. No implementation logic yet (types and interfaces only)
+
+EVIDENCE FILES:
+───────────────
+✅ .sisyphus/evidence/task-1-site-profiles.txt
+✅ .sisyphus/evidence/task-1-summary.txt
+✅ .sisyphus/notepads/ext-desktop-feature-parity/learnings.md (appended)
+
+NEXT STEPS:
+───────────
+1. Implement ProfileStorage with SQLite backend
+2. Add profile discovery mechanism
+3. Add profile validation and error handling
+4. Implement URL pattern matching algorithm
+
+═══════════════════════════════════════════════════════════════════════════════

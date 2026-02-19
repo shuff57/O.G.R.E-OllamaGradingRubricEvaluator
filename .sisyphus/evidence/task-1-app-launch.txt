@@ -1,0 +1,39 @@
+
+> ogre-desktop@0.0.0 tauri:dev
+> tauri dev
+
+     Running BeforeDevCommand (`npm run dev`)
+
+> ogre-desktop@0.0.0 dev
+> vite
+
+        Warn Waiting for your frontend dev server to start on http://localhost:5173/...
+
+  [32m[1mVITE[22m v7.3.1[39m  [2mready in [0m[1m9468[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5173[22m/[39m
+[2m  [32m➜[39m  [1mNetwork[22m[2m: use [22m[1m--host[22m[2m to expose[22m
+     Running DevCommand (`cargo  run --no-default-features --color always --`)
+        Info Watching C:\Users\shuff\OneDrive\Documents\GitHub\O.G.R.E-OllamaGradingReviewEvaluator\ogre-desktop\src-tauri for changes...
+[1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`dev` profile [unoptimized + debuginfo]]8;;\ target(s) in 0.94s
+[1m[92m     Running[0m `target\debug\ogre-desktop.exe`
+10:33:50 AM [vite-plugin-svelte] src/pages/Rubrics.svelte:181:8 A form label must be associated with a control
+https://svelte.dev/e/a11y_label_has_associated_control
+10:33:50 AM [vite-plugin-svelte] src/pages/Rubrics.svelte:280:6 Elements with the 'dialog' interactive role must have a tabindex value
+https://svelte.dev/e/a11y_interactive_supports_focus
+10:33:50 AM [vite-plugin-svelte] src/pages/Rubrics.svelte:280:6 Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type="button">` or `<a>` might be more appropriate
+https://svelte.dev/e/a11y_click_events_have_key_events
+10:33:50 AM [vite-plugin-svelte] src/pages/SetupWizard.svelte:433:22 A form label must be associated with a control
+https://svelte.dev/e/a11y_label_has_associated_control
+10:33:50 AM [vite-plugin-svelte] src/pages/SetupWizard.svelte:437:22 A form label must be associated with a control
+https://svelte.dev/e/a11y_label_has_associated_control
+10:33:50 AM [vite-plugin-svelte] src/pages/SetupWizard.svelte:445:24 A form label must be associated with a control
+https://svelte.dev/e/a11y_label_has_associated_control
+10:33:50 AM [vite-plugin-svelte] src/pages/SetupWizard.svelte:504:22 A form label must be associated with a control
+https://svelte.dev/e/a11y_label_has_associated_control
+10:33:50 AM [vite-plugin-svelte] src/pages/SetupWizard.svelte:539:16 A form label must be associated with a control
+https://svelte.dev/e/a11y_label_has_associated_control
+grading-server terminated: code=Some(143) signal=None
+[0217/103423.207:ERROR:ui\gfx\win\window_impl.cc:124] Failed to unregister class Chrome_WidgetWin_0. Error = 1411
+[1m[91merror[0m: process didn't exit successfully: `target\debug\ogre-desktop.exe` (exit code: 143)
+       Error The "beforeDevCommand" terminated with a non-zero status code.

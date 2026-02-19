@@ -1,0 +1,80 @@
+
+> ogre-desktop@0.0.0 build
+> vite build
+
+[36mvite v7.3.1 [32mbuilding client environment for production...[36m[39m
+transforming...
+11:03:40 AM [vite-plugin-svelte] src/pages/SetupWizard.svelte:433:22 A form label must be associated with a control
+https://svelte.dev/e/a11y_label_has_associated_control
+431:                   {#if provider.id === 'ollama'}
+432:                     <div class="form-group">
+433:                       <label>API URL</label>
+                                                 ^
+434:                       <input type="text" bind:value={provider.apiUrl} placeholder={provider.placeholderUrl}>
+435:                     </div>
+11:03:40 AM [vite-plugin-svelte] src/pages/SetupWizard.svelte:437:22 A form label must be associated with a control
+https://svelte.dev/e/a11y_label_has_associated_control
+435:                     </div>
+436:                     <div class="form-group">
+437:                       <label>API Key (Optional)</label>
+                                                            ^
+438:                       <input type="password" bind:value={provider.apiKey} placeholder={provider.placeholderKey}>
+439:                       <span class="hint">Only needed for cloud Ollama instances</span>
+11:03:40 AM [vite-plugin-svelte] src/pages/SetupWizard.svelte:445:24 A form label must be associated with a control
+https://svelte.dev/e/a11y_label_has_associated_control
+443:                     {#if provider.useApiKey}
+444:                        <div class="form-group">
+445:                         <label>API Key</label>
+                                                   ^
+446:                         <input type="password" bind:value={provider.apiKey} placeholder={provider.placeholderKey}>
+447:                         <div class="flex-row">
+11:03:40 AM [vite-plugin-svelte] src/pages/SetupWizard.svelte:504:22 A form label must be associated with a control
+https://svelte.dev/e/a11y_label_has_associated_control
+502:                     <!-- Standard API Key Provider (OpenAI) -->
+503:                     <div class="form-group">
+504:                       <label>API Key</label>
+                                                 ^
+505:                       <input type="password" bind:value={provider.apiKey} placeholder={provider.placeholderKey}>
+506:                       {#if provider.keyUrl}
+11:03:40 AM [vite-plugin-svelte] src/pages/SetupWizard.svelte:539:16 A form label must be associated with a control
+https://svelte.dev/e/a11y_label_has_associated_control
+537:               <h3>{provider.name}</h3>
+538:               <div class="form-group">
+539:                 <label>Model Name</label>
+                                              ^
+540:                 
+541:                 {#if (provider.oauth && !provider.useApiKey && oauthSignedIn[provider.id]) || provider.id === 'ollama'}
+11:03:40 AM [vite-plugin-svelte] src/pages/Rubrics.svelte:181:8 A form label must be associated with a control
+https://svelte.dev/e/a11y_label_has_associated_control
+179: 
+180:       <div class="form-group">
+181:         <label>Criteria <span class="text-muted">({totalPoints(formCriteria)} pts total)</span></label>
+                                                                                                            ^
+182:         <table class="criteria-table">
+183:           <thead>
+11:03:40 AM [vite-plugin-svelte] src/pages/Rubrics.svelte:280:6 Elements with the 'dialog' interactive role must have a tabindex value
+https://svelte.dev/e/a11y_interactive_supports_focus
+278:   {#if confirmDeleteId}
+279:     <div class="modal-backdrop" on:click={() => confirmDeleteId = null} on:keydown={(e) => e.key === 'Escape' && (confirmDeleteId = null)} role="button" tabindex="-1">
+280:       <div class="modal" on:click|stopPropagation role="dialog">
+                 ^
+281:         <h3>Delete Rubric?</h3>
+282:         <p class="text-muted">This action cannot be undone.</p>
+11:03:40 AM [vite-plugin-svelte] src/pages/Rubrics.svelte:280:6 Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type="button">` or `<a>` might be more appropriate
+https://svelte.dev/e/a11y_click_events_have_key_events
+278:   {#if confirmDeleteId}
+279:     <div class="modal-backdrop" on:click={() => confirmDeleteId = null} on:keydown={(e) => e.key === 'Escape' && (confirmDeleteId = null)} role="button" tabindex="-1">
+280:       <div class="modal" on:click|stopPropagation role="dialog">
+                 ^
+281:         <h3>Delete Rubric?</h3>
+282:         <p class="text-muted">This action cannot be undone.</p>
+[32m✓[39m 142 modules transformed.
+[33m[plugin vite:reporter] 
+(!) C:/Users/shuff/OneDrive/Documents/GitHub/O.G.R.E-OllamaGradingReviewEvaluator/ogre-desktop/src/lib/db.ts is dynamically imported by C:/Users/shuff/OneDrive/Documents/GitHub/O.G.R.E-OllamaGradingReviewEvaluator/ogre-desktop/src/lib/oauth.ts, C:/Users/shuff/OneDrive/Documents/GitHub/O.G.R.E-OllamaGradingReviewEvaluator/ogre-desktop/src/lib/oauth.ts but also statically imported by C:/Users/shuff/OneDrive/Documents/GitHub/O.G.R.E-OllamaGradingReviewEvaluator/ogre-desktop/src/App.svelte, C:/Users/shuff/OneDrive/Documents/GitHub/O.G.R.E-OllamaGradingReviewEvaluator/ogre-desktop/src/lib/oauth.ts, C:/Users/shuff/OneDrive/Documents/GitHub/O.G.R.E-OllamaGradingReviewEvaluator/ogre-desktop/src/lib/provider-sync.ts, C:/Users/shuff/OneDrive/Documents/GitHub/O.G.R.E-OllamaGradingReviewEvaluator/ogre-desktop/src/pages/Browser.svelte, C:/Users/shuff/OneDrive/Documents/GitHub/O.G.R.E-OllamaGradingReviewEvaluator/ogre-desktop/src/pages/Dashboard.svelte, C:/Users/shuff/OneDrive/Documents/GitHub/O.G.R.E-OllamaGradingReviewEvaluator/ogre-desktop/src/pages/History.svelte, C:/Users/shuff/OneDrive/Documents/GitHub/O.G.R.E-OllamaGradingReviewEvaluator/ogre-desktop/src/pages/Settings.svelte, C:/Users/shuff/OneDrive/Documents/GitHub/O.G.R.E-OllamaGradingReviewEvaluator/ogre-desktop/src/pages/SetupWizard.svelte, dynamic import will not move module into another chunk.
+[39m
+rendering chunks...
+computing gzip size...
+[2mdist/[22m[32mindex.html                 [39m[1m[2m  0.46 kB[22m[1m[22m[2m │ gzip:  0.29 kB[22m
+[2mdist/[22m[35massets/index-Gpp6AoDF.css  [39m[1m[2m 45.49 kB[22m[1m[22m[2m │ gzip:  8.21 kB[22m
+[2mdist/[22m[36massets/index-BWxW3Vlk.js   [39m[1m[2m139.95 kB[22m[1m[22m[2m │ gzip: 44.65 kB[22m
+[32m✓ built in 3.67s[39m

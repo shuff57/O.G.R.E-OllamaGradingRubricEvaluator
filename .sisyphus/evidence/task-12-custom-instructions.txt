@@ -1,0 +1,55 @@
+TASK 12: Wire custom grading instructions to batch grading API
+================================================================
+
+OBJECTIVE:
+Wire custom grading instructions from BatchPanel to the batch grading API request.
+
+COMPLETION SUMMARY:
+✓ customInstructions already defined in BatchGradingRequest type (grading-api.ts:546)
+✓ customInstructions already wired in startBatchGrading() function (grading-api.ts:584-586)
+✓ BatchPanel already passes customInstructions to startBatchGrading() (BatchPanel.svelte:217)
+✓ Added comprehensive tests for customInstructions behavior
+
+CHANGES MADE:
+
+1. Added tests to grading-api.test.ts:
+   - Test: "includes customInstructions in body when provided"
+     Verifies that when customInstructions is provided, it's included in the request body
+   
+   - Test: "omits customInstructions from body when not provided"
+     Verifies that when customInstructions is undefined, it's not included in the request body
+
+TEST RESULTS:
+✓ All 53 tests in grading-api.test.ts PASS
+✓ Test execution time: 449ms
+✓ No failures or warnings
+
+IMPLEMENTATION DETAILS:
+
+File: ogre-desktop/src/lib/grading-api.ts
+- Line 546: customInstructions?: string; (in BatchGradingRequest interface)
+- Lines 584-586: Conditional wiring to request body
+  ```typescript
+  if (request.customInstructions) {
+    body.customInstructions = request.customInstructions;
+  }
+  ```
+
+File: ogre-desktop/src/components/grading/BatchPanel.svelte
+- Line 58: let customInstructions = $state('');
+- Line 217: customInstructions: customInstructions || undefined,
+  (passed to startBatchGrading)
+
+VERIFICATION:
+✓ Type definition includes customInstructions
+✓ API function wires customInstructions to request body
+✓ BatchPanel component passes customInstructions from textarea
+✓ Tests verify both presence and absence of customInstructions
+✓ All existing tests continue to pass
+
+NOTES:
+- The implementation uses preset buttons (Non-Zero Only, Lenient, Strict) that populate
+  the customInstructions textarea
+- The textarea value is passed directly to the API
+- The server already supports instructions parameter, so no server changes needed
+- Implementation follows the existing pattern for optional request parameters

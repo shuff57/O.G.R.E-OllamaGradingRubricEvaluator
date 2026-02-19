@@ -1,0 +1,77 @@
+# F1: Plan Compliance Audit — desktop-feature-parity
+Date: 2026-02-17
+Plan: .sisyphus/plans/desktop-feature-parity.md
+
+---
+
+## Must Have [9/9] — ALL PRESENT
+
+| # | Item | Evidence | Status |
+|---|------|----------|--------|
+| 1 | Real AI grading calls via grading server (not simulated) | `grading-server/server.js:357` — POST /api/chat endpoint; `ogre-desktop/src/lib/grading-api.ts:359` — gradeStudent/startBatchGrading functions | PASS |
+| 2 | Decomposed component architecture (not monolithic) | `ogre-desktop/src/components/grading/` — 5 components: ProviderSelector, RubricCard, StudentWorkCard, SolverChat, BatchPanel. GradingPanel.svelte imports all 5 (lines 4-8) | PASS |
+| 3 | Provider/model selector with server sync | `ProviderSelector.svelte:9-10` — fetchProviders/fetchModels from grading-api; `ProviderSelector.svelte:99,137` — server sync calls | PASS |
+| 4 | Rubric library integration | `RubricCard.svelte:28-31` — fetchRubrics from server; `server.js:305,309,322,334` — GET/POST/PUT/DELETE /api/rubrics CRUD | PASS |
+| 5 | Batch grading with SSE streaming and progress | `BatchPanel.svelte:11,116` — startBatchGrading with SSE; `sse-parser.ts` — full SSE stream parser; `BatchPanel.svelte:151-217` — 5 SSE event handlers | PASS |
+| 6 | Solver multi-turn chat | `SolverChat.svelte:5` — "Maintains conversation history client-side"; `SolverChat.svelte:22-33` — formatConversation builds context; `SolverChat.svelte:100` — Continue button | PASS |
+| 7 | Webview screenshot capture | `ScreenshotOverlay.svelte:3` — "Area selection for webview screenshot capture (V1)"; `browser.ts:295,353` — cropImageData function; full click-drag-crop flow implemented | PASS |
+| 8 | Error handling for server-down and unconfigured provider states | `ProviderSelector.svelte:45-46,111-120` — error state + try/catch + fallback; `RubricCard.svelte:72` — Retry button; `SolverChat.svelte:81` — error from provider; `grading-api.test.ts:212` — "No active provider configured" test | PASS |
+| 9 | Unit tests for service modules | `grading-api.test.ts` (51 tests), `sse-parser.test.ts` (22 tests), `browser.test.ts` (31 tests), `grading-server/test/chat.test.js` (51 tests) — 144 desktop + 123 server all passing | PASS |
+
+---
+
+## Must NOT Have [12/12] — ALL ABSENT
+
+| # | Guardrail | Search Pattern | Result |
+|---|-----------|----------------|--------|
+| 1 | No rich contenteditable editor | `contenteditable` in components/grading/ | 0 matches — CLEAN |
+| 2 | No discovery wizard | `discovery.*wizard\|site.*discovery\|discoverSite` in src/ | 0 matches — CLEAN |
+| 3 | No batch review mode (per-student approve/skip) | `approve.*skip\|review.*mode\|batch.*review\|per.student` in components/grading/ | 0 matches — CLEAN |
+| 4 | No native Rust screenshot capture | `native.*capture\|rust.*screenshot\|screen.*capture.*native` in src/ | 0 matches — CLEAN |
+| 5 | No rubric AI import | `import.*rubric.*AI\|importRubric.*screenshot` in components/grading/ | 0 matches — CLEAN |
+| 6 | No rubric table editor | `table.*editor\|rubric.*table.*edit\|editable.*table` in components/grading/ | 0 matches — CLEAN |
+| 7 | No image attachments in solver chat | `image.*attach\|attach.*image\|file.*upload.*chat` in SolverChat.svelte | 0 matches — CLEAN |
+| 8 | No OAuth flows in GradingPanel | `OAuth\|oauth\|signIn.*Google\|signIn.*GitHub` in components/grading/ | 0 matches — CLEAN |
+| 9 | No changes to existing /api/grade SSE contract | `server.js` symbols show `/api/grade` at line 1075 with full SSE pipeline (chunk/progress/outlier/done/error) — structure intact | CLEAN |
+| 10 | No duplication of callProviderDirect() | `callProviderDirect` in ogre-desktop/src/ | 0 matches — CLEAN |
+| 11 | No importing sidepanel.js patterns | `sidepanel.js\|getElementById.*grade\|document.getElementById` in components/grading/ | 0 matches — CLEAN |
+| 12 | No TypeScript strict mode or linting changes | `strict.*mode\|@ts-strict\|strictNullChecks` in components/grading/ | 0 matches — CLEAN |
+
+---
+
+## Tasks [9/9] — ALL IMPLEMENTED
+
+| Task | Description | Key File(s) | Status |
+|------|-------------|-------------|--------|
+| 1 | POST /api/chat endpoint | server.js:357, grading.js:645, test/chat.test.js | DONE |
+| 2 | Decompose GradingPanel | 5 components in components/grading/ + orchestrator GradingPanel.svelte | DONE |
+| 3 | ProviderSelector with server sync | ProviderSelector.svelte — fetchProviders/fetchModels | DONE |
+| 4 | Wire single grading (Grader mode) | grading-api.ts — gradeStudent(), StudentWorkCard.svelte | DONE |
+| 5 | Wire solver chat | SolverChat.svelte — multi-turn with formatConversation | DONE |
+| 6 | Wire batch grading SSE | BatchPanel.svelte + sse-parser.ts — full SSE pipeline | DONE |
+| 7 | RubricCard with library integration | RubricCard.svelte — fetchRubrics + server CRUD | DONE |
+| 8 | Webview screenshot capture V1 | ScreenshotOverlay.svelte + browser.ts cropImageData | DONE |
+| 9 | Unit tests | grading-api.test.ts (51), sse-parser.test.ts (22), chat.test.js (51) | DONE |
+
+---
+
+## Evidence & Tests
+
+- **Desktop tests**: 144/144 passing (5 test files)
+- **Server tests**: 123/123 passing (3 test files)
+- **Notepad files**: 8/9 tasks documented in `.sisyphus/notepads/desktop-feature-parity/` (task-8 missing notepad but implementation verified)
+- **Evidence directory**: `.sisyphus/evidence/` exists with 64 files (from previous plan — no plan-specific evidence files for desktop-feature-parity tasks)
+
+### Evidence Gap Note
+The `.sisyphus/evidence/` directory contains files from the prior `embedded-browser-credentials` plan, not this plan. Task implementations are verified present in code and tests pass, but per-task QA evidence files were not created for the desktop-feature-parity plan specifically. Notepad files serve as partial documentation.
+
+---
+
+## VERDICT
+
+```
+Must Have  [9/9]  | Must NOT Have [12/12] | Tasks [9/9] | Tests [267/267 pass]
+VERDICT: APPROVE
+```
+
+Minor note: No plan-specific evidence files in `.sisyphus/evidence/` — notepad files exist for 8/9 tasks. All implementations verified present via code search and test execution.

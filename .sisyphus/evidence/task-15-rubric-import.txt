@@ -1,0 +1,29 @@
+Task 15: Create RubricImport.svelte
+
+Status: Complete
+
+1. Created Component: `ogre-desktop/src/components/grading/RubricImport.svelte`
+   - Implements "Import from Screenshot" workflow
+   - Uses `captureWebviewScreenshot` from `browser.ts`
+   - Uses `ScreenshotOverlay` for area selection
+   - Uses `parseRubricFromScreenshot` from `discover.ts`
+   - Uses `createRubric` from `rubric-api.ts`
+
+2. Workflow:
+   - Click "Import" -> Captures Webview -> Shows Overlay
+   - Crop -> AI Parse -> Show Staging Form
+   - Edit Name/Criteria -> Save -> `createRubric()`
+
+3. Key Features:
+   - Loading states for Capture and Parsing
+   - Error handling display
+   - Editable rubric criteria before saving
+   - Max score auto-calculation
+
+4. Verification:
+   - Verified imports relative paths
+   - Verified prop types with sub-components
+   - Static analysis passed (no new LSP errors in file)
+
+5. Notepad:
+   - Updated `.sisyphus/notepads/ext-desktop-feature-parity/learnings.md`

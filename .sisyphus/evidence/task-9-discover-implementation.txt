@@ -1,0 +1,33 @@
+Task 9: Implement runDiscovery() workflow with AI integration
+================================================================
+
+## What was implemented
+
+### File: ogre-desktop/src/lib/discover.ts
+
+Added to existing file (which already had types, prompts, parseDiscoveryResponse, isValidDiscoveryResult):
+
+1. **Imports**: tauriFetch, evalScript, evalScriptJSON, captureWebviewScreenshot, getEmbeddedUrl, getHandshakeToken
+2. **DiscoveryOptions interface**: provider/model overrides + onProgress callback
+3. **DOM_SNAPSHOT_SCRIPT**: Inline JS executed via evalScript in webview (mirrors discover.js capturePageSnapshot)
+4. **captureDomSnapshot()**: Runs DOM_SNAPSHOT_SCRIPT via evalScript, parses JSON result
+5. **authHeaders()**: Reuses getHandshakeToken pattern from grading-api.ts
+6. **callDiscoveryAI()**: POST /api/chat with systemPrompt, userPrompt, images[] array; handles both SSE and JSON responses
+7. **extractContentFromSSE()**: Parses SSE text to extract accumulated message content
+8. **buildValidationScript()**: Generates inline JS to test selectors on live page (batch + sequential modes)
+9. **validateSelectors()**: Merges nav selectors for sequential mode, runs validation script via evalScript
+10. **runDiscovery()**: Main exported workflow — capture → AI → parse → validate → return
+
+### Workflow stages with progress callbacks:
+- capturing (10%) — DOM snapshot + screenshot + URL in parallel
+- analyzing (30%) — AI call with vision
+- analyzing (60%) — parse response
+- validating (80%) — test selectors on live page
+- complete (100%) — return DiscoveryWorkflow
+- error — on any failure
+
+## Verification
+
+- LSP diagnostics: 0 errors, 0 warnings on discover.ts
+- svelte-check: 1 pre-existing error in SetupWizard.svelte (SavedRubric type), 0 new errors
+- All existing types (DiscoveryResult, DiscoveryWorkflow, etc.) reused — no new types duplicated

@@ -1,0 +1,103 @@
+# Task 2 Completion Summary: ProfileStorage Interface & SQLite Schema
+
+## Task Requirements ✓
+
+### 1. Define ProfileStorage Interface ✓
+Location: ogre-desktop/src/lib/site-profiles.ts (lines 62-108)
+
+Interface methods:
+- listProfiles(): Promise<SiteProfile[]>
+- getProfile(id): Promise<SiteProfile | null>
+- saveProfile(profile): Promise<void>
+- deleteProfile(id): Promise<void>
+- findProfilesByUrl(url): Promise<SiteProfile[]>
+- getBuiltInProfiles(): Promise<SiteProfile[]>
+- getSavedProfiles(): Promise<SiteProfile[]>
+
+### 2. Add SQLite Schema ✓
+Location: ogre-desktop/src-tauri/src/lib.rs (Migration 6, lines 536-551)
+
+Table: site_profiles
+Columns:
+- id TEXT PRIMARY KEY NOT NULL
+- name TEXT NOT NULL
+- url_patterns TEXT NOT NULL
+- selectors TEXT NOT NULL
+- feedback TEXT NOT NULL
+- save TEXT NOT NULL
+- navigation TEXT NOT NULL
+- created_at TEXT NOT NULL DEFAULT (datetime('now'))
+- updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+
+### 3. Write Failing Tests ✓
+Location: ogre-desktop/src/lib/site-profiles.test.ts (lines 197-246)
+
+Test placeholders for:
+- listProfiles() - returns all profiles
+- getProfile(id) - returns profile by ID
+- saveProfile() - persists profile
+- deleteProfile() - removes profile
+- findProfilesByUrl() - matches URL patterns
+- getBuiltInProfiles() - returns only built-in
+- getSavedProfiles() - returns only saved
+
+## Implementation Details
+
+### Database Functions Added to db.ts
+1. getSiteProfiles() - SELECT * FROM site_profiles ORDER BY name
+2. getSiteProfile(id) - SELECT * FROM site_profiles WHERE id = $1
+3. saveSiteProfile(profile) - INSERT OR UPDATE with upsert pattern
+4. deleteSiteProfile(id) - DELETE FROM site_profiles WHERE id = $1
+5. findSiteProfilesByUrl(url) - SELECT * WHERE $1 LIKE url_patterns
+
+### SiteProfile Interface Added to db.ts
+Matches schema columns with TypeScript types:
+- id: string
+- name: string
+- url_patterns: string (JSON array stored as TEXT)
+- selectors: string (JSON object stored as TEXT)
+- feedback: string (JSON object stored as TEXT)
+- save: string (JSON object stored as TEXT)
+- navigation: string (JSON object stored as TEXT)
+- created_at: string
+- updated_at: string
+
+## Verification Results
+
+✓ TypeScript compilation: No errors
+✓ LSP diagnostics: No errors in db.ts or site-profiles.ts
+✓ Build process: npm run build completes successfully
+✓ Schema verification: Migration 6 properly formatted
+✓ Database functions: All 5 CRUD functions implemented
+✓ Interface exports: ProfileStorage exported from site-profiles.ts
+
+## Files Modified
+
+1. ogre-desktop/src-tauri/src/lib.rs
+   - Added Migration 6 for site_profiles table (16 lines)
+   - Maintains sequential migration numbering
+
+2. ogre-desktop/src/lib/db.ts
+   - Added SiteProfile interface (18 lines)
+   - Added 5 database functions (95 lines)
+   - Total additions: 113 lines
+
+3. ogre-desktop/src/lib/site-profiles.ts
+   - Already contained ProfileStorage interface
+   - No modifications needed
+
+## Test Status
+
+Tests are written in TDD style (failing tests first):
+- 7 placeholder tests in ProfileStorage Interface section
+- Tests define expected behavior before implementation
+- Ready for implementation in next task
+
+## Next Steps
+
+1. Implement ProfileStorage with SQLite backend
+2. Add profile validation
+3. Implement URL pattern matching algorithm
+4. Add profile discovery mechanism
+5. Write integration tests
+

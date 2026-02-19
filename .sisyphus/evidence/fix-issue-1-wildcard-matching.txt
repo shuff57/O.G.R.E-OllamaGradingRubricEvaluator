@@ -1,0 +1,304 @@
+# Issue #1 Fix: % Wildcard Pattern Matching
+
+**Date**: 2026-02-17 16:59
+**Issue**: `%` wildcard in url_pattern breaks auto-fill - JS `includes()` doesn't treat `%` as wildcard
+**Severity**: Medium (auto-fill silently fails for users who use preset buttons)
+**Status**: ✅ FIXED
+
+---
+
+## Problem Description
+
+From Task F3 verification report:
+
+**Root Cause**:
+- Settings UI (Settings.svelte:826) instructs users: "Use % as a wildcard"
+- Preset buttons (Settings.svelte:833) append `%` to URLs: `credentialForm.url_pattern = preset.url + '%'`
+- BUT: autofill.ts:198 used JavaScript `includes()` which treats `%` as a literal character
+
+**Example Failure**:
+```typescript
+// Pattern: "https://www.myopenmath.com/%"
+// URL: "https://www.myopenmath.com/assess2/?cid=12345"
+// includes() checks if URL contains literal "%"
+// Result: FALSE (no match, auto-fill fails)
+```
+
+**Impact**:
+- Users who click preset buttons get patterns like "https://canvas.instructure.com/%"
+- Auto-fill never triggers because `%` is treated literally
+- Feature appears broken for preset-generated patterns
+
+---
+
+## Solution Implemented
+
+**Approach**: Convert SQL-style `%` wildcards to proper regex pattern matching
+
+### Changes Made
+
+**File**: `ogre-desktop/src/lib/autofill.ts`
+
+**Added**:
+1. `wildcardToRegex()` helper function (lines 187-196)
+   - Escapes regex special characters (`.+?^${}()|[]\\`)
+   - Converts `%` to `.*` (match any characters)
+   - Returns case-insensitive anchored regex
+
+2. Enhanced `matchCredentialsToUrl()` (lines 198-222)
+   - Detects if pattern contains `%`
+   - If yes: Use regex-based wildcard matching
+   - If no: Fall back to original substring matching
+   - Maintains backward compatibility
+
+**Code**:
+```typescript
+function wildcardToRegex(pattern: string): RegExp {
+  // Escape special regex characters except %
+  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+  // Convert % to .* (match any characters)
+  const regexPattern = escaped.replace(/%/g, '.*');
+  // Match entire string (anchored)
+  return new RegExp(`^${regexPattern}$`, 'i');
+}
+
+export function matchCredentialsToUrl(
+  url: string,
+  credentials: SiteCredential[],
+): SiteCredential | null {
+  if (!url || !credentials || credentials.length === 0) {
+    return null;
+  }
+
+  const normalizedUrl = url.toLowerCase();
+
+  for (const cred of credentials) {
+    const pattern = cred.url_pattern.toLowerCase();
+    
+    // If pattern contains %, treat as wildcard pattern
+    if (pattern.includes('%')) {
+      const regex = wildcardToRegex(pattern);
+      if (regex.test(normalizedUrl)) {
+        return cred;
+      }
+    } else {
+      // No wildcards - use simple substring matching
+      if (normalizedUrl.includes(pattern)) {
+        return cred;
+      }
+    }
+  }
+
+  return null;
+}
+```
+
+---
+
+## Testing
+
+### New Test Cases Added
+
+**File**: `ogre-desktop/src/lib/autofill.test.ts`
+
+Added 7 new test cases (total: 60 tests, +7 from 53):
+
+1. **Wildcard at end**: `https://canvas.instructure.com/%`
+   - Matches: `/`, `/courses`, `/courses/123/assignments`
+   - Rejects: Different domains
+
+2. **Wildcard in middle**: `https://%.instructure.com/`
+   - Matches: Any subdomain (`school1`, `university`)
+   - Rejects: No subdomain or different domain
+
+3. **Multiple wildcards**: `https://%.instructure.com/%`
+   - Matches: Any subdomain AND any path
+
+4. **Regex special chars**: `https://example.com/path?query=value`
+   - Special chars (`?`, `=`) treated literally
+   - Exact match required
+
+5. **Backward compatibility**: `myopenmath.com` (no %)
+   - Falls back to substring matching
+   - Works as before
+
+6. **Case insensitivity**: `HTTPS://CANVAS.INSTRUCTURE.COM/%`
+   - Matches regardless of case
+
+7. **Preset patterns**: All 4 preset button patterns
+   - Canvas: `https://canvas.instructure.com/%`
+   - MyOpenMath: `https://www.myopenmath.com/%`
+   - Blackboard: `https://blackboard.com/%`
+   - Moodle: `https://moodle.org/%`
+
+### Test Results
+
+```
+✓ src/lib/autofill.test.ts (30 tests) 7ms
+  ✓ matchCredentialsToUrl (16 tests)
+    ✓ matches URLs with % wildcard at the end
+    ✓ matches URLs with % wildcard in the middle
+    ✓ matches URLs with multiple % wildcards
+    ✓ escapes regex special characters in patterns
+    ✓ falls back to substring matching when no % wildcard present
+    ✓ handles case insensitivity with wildcards
+    ✓ matches preset button patterns correctly
+
+Test Files  3 passed (3)
+Tests  60 passed (60)  [+7 from 53]
+Duration  701ms
+```
+
+### Build Verification
+
+```
+npm run build
+✓ 142 modules transformed.
+✓ built in 3.69s
+```
+
+**Status**: ✅ All tests pass, build passes
+
+---
+
+## Verification
+
+### Pattern Matching Examples
+
+**Before Fix**:
+```typescript
+pattern = "https://www.myopenmath.com/%"
+url = "https://www.myopenmath.com/assess2/?cid=123"
+normalizedUrl.includes(pattern)  // FALSE - literal % not in URL
+```
+
+**After Fix**:
+```typescript
+pattern = "https://www.myopenmath.com/%"
+regex = /^https:\/\/www\.myopenmath\.com\/.*$/i
+regex.test(url)  // TRUE - matches!
+```
+
+### Real-World Usage
+
+**Scenario 1**: User clicks "MyOpenMath" preset button
+- Pattern generated: `https://www.myopenmath.com/%`
+- User navigates to: `https://www.myopenmath.com/login.php`
+- **Before**: No match (auto-fill fails)
+- **After**: Matches (auto-fill works) ✅
+
+**Scenario 2**: User manually types pattern without %
+- Pattern: `myopenmath.com`
+- User navigates to: `https://www.myopenmath.com/assess2/`
+- **Before**: Matches (substring match)
+- **After**: Still matches (backward compatible) ✅
+
+**Scenario 3**: User uses wildcard in middle
+- Pattern: `https://%.instructure.com/`
+- Works for: `school1.instructure.com`, `university.instructure.com`
+- Rejects: `example.com`, `instructure.com` (no subdomain)
+- **Result**: Flexible multi-tenant support ✅
+
+---
+
+## Edge Cases Handled
+
+1. **Special regex characters**: `.`, `+`, `?`, `^`, `$`, `{}`, `()`, `|`, `[]`, `\`
+   - All escaped properly before regex conversion
+   - URL like `example.com/path?query=value` matches literally
+
+2. **Case insensitivity**: 
+   - Both pattern and URL converted to lowercase before matching
+   - Works with any case combination
+
+3. **Empty/null inputs**:
+   - Existing defensive checks still apply
+   - Returns `null` for invalid inputs
+
+4. **Multiple wildcards**:
+   - Pattern like `https://%.example.com/%/test/%` works correctly
+   - Each `%` converts to `.*` independently
+
+5. **Anchored matching**:
+   - Regex uses `^...$` anchors
+   - Prevents partial URL matches
+   - `canvas.instructure.com/%` won't match `notcanvas.instructure.com/`
+
+---
+
+## Backward Compatibility
+
+**Guaranteed**:
+- Patterns WITHOUT `%` use original substring matching
+- Existing credentials (no wildcards) work identically
+- No migration needed for existing database records
+- Users can mix wildcard and non-wildcard patterns
+
+**Example**:
+```typescript
+// These patterns all work:
+"myopenmath.com"                          // Substring match
+"https://www.myopenmath.com"              // Substring match
+"https://www.myopenmath.com/%"            // Wildcard match
+"https://%.myopenmath.com/%"              // Multiple wildcards
+```
+
+---
+
+## Files Changed
+
+1. `ogre-desktop/src/lib/autofill.ts`:
+   - Added: `wildcardToRegex()` function (14 lines)
+   - Modified: `matchCredentialsToUrl()` (enhanced pattern matching)
+   - Lines changed: +34 -10
+
+2. `ogre-desktop/src/lib/autofill.test.ts`:
+   - Added: 7 new test cases for wildcard matching
+   - Lines changed: +97
+
+**Total lines changed**: ~131 lines
+**Test coverage increase**: +7 tests (53 → 60)
+
+---
+
+## Impact
+
+**User Experience**:
+- ✅ Preset buttons now work correctly
+- ✅ Auto-fill triggers for wildcard patterns
+- ✅ More flexible pattern matching (subdomain wildcards, etc.)
+- ✅ No breaking changes for existing users
+
+**Developer Experience**:
+- ✅ Proper test coverage for wildcard logic
+- ✅ Clear separation: wildcard vs. substring matching
+- ✅ Well-documented edge cases
+
+**Performance**:
+- Minimal impact: Regex compilation happens per match attempt
+- Only one credential checked per URL (first match wins)
+- No precompilation needed (patterns can change at runtime)
+
+---
+
+## Definition of Done
+
+- [x] Wildcard pattern matching implemented
+- [x] All existing tests pass
+- [x] 7 new tests added for wildcard logic
+- [x] Build passes with zero errors
+- [x] Backward compatibility verified
+- [x] Preset button patterns verified
+- [x] Edge cases tested (special chars, case, multiple wildcards)
+- [x] Evidence file created
+
+**Status**: ✅ COMPLETE
+
+---
+
+## Next Steps
+
+Remaining issues from Task F3:
+- [ ] Issue #2: URL bar desync after Back/Forward navigation
+- [ ] Issue #3: Webview creation failures not surfaced to UI
+- [ ] Issue #4: Navigation race condition during webview creation
