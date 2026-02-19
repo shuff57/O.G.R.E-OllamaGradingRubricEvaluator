@@ -184,6 +184,19 @@ export function generateAutoFillScript(username: string, password: string): stri
  * @param credentials - Array of stored site credentials
  * @returns The best matching SiteCredential, or null
  */
+/**
+ * Converts SQL-style wildcard pattern (%) to regex pattern
+ * Escapes special regex characters except %
+ */
+function wildcardToRegex(pattern: string): RegExp {
+  // Escape special regex characters except %
+  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+  // Convert % to .* (match any characters)
+  const regexPattern = escaped.replace(/%/g, '.*');
+  // Match entire string (anchored)
+  return new RegExp(`^${regexPattern}$`, 'i');
+}
+
 export function matchCredentialsToUrl(
   url: string,
   credentials: SiteCredential[],
@@ -195,8 +208,19 @@ export function matchCredentialsToUrl(
   const normalizedUrl = url.toLowerCase();
 
   for (const cred of credentials) {
-    if (normalizedUrl.includes(cred.url_pattern.toLowerCase())) {
-      return cred;
+    const pattern = cred.url_pattern.toLowerCase();
+    
+    // If pattern contains %, treat as wildcard pattern
+    if (pattern.includes('%')) {
+      const regex = wildcardToRegex(pattern);
+      if (regex.test(normalizedUrl)) {
+        return cred;
+      }
+    } else {
+      // No wildcards - use simple substring matching
+      if (normalizedUrl.includes(pattern)) {
+        return cred;
+      }
     }
   }
 

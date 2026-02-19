@@ -533,6 +533,36 @@ INSERT OR IGNORE INTO app_settings (key, value) VALUES ('history_visible_columns
 );",
             kind: MigrationKind::Up,
         },
+        // Migration 6: site_profiles table
+        Migration {
+            version: 6,
+            description: "create_site_profiles",
+            sql: "CREATE TABLE IF NOT EXISTS site_profiles (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    url_patterns TEXT NOT NULL,
+    selectors TEXT NOT NULL,
+    feedback TEXT NOT NULL,
+    save TEXT NOT NULL,
+    navigation TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);",
+            kind: MigrationKind::Up,
+        },
+        // Migration 7: batch_session table for resume persistence
+        Migration {
+            version: 7,
+            description: "create_batch_session",
+            sql: "CREATE TABLE IF NOT EXISTS batch_session (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    url TEXT NOT NULL,
+    last_student_name TEXT NOT NULL,
+    timestamp TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_batch_session_url ON batch_session(url);",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()

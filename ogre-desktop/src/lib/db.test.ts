@@ -27,7 +27,11 @@ import {
   getSiteCredentialsByUrl,
   saveSiteCredential,
   deleteSiteCredential,
+  getBatchSession,
+  saveBatchSession,
+  clearBatchSession,
   type SiteCredential,
+  type BatchSession,
 } from './db';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -181,5 +185,128 @@ describe('db.ts — Site Credential CRUD', () => {
     expect(result).toHaveLength(2);
     expect(result[0].username).toBe('teacher1');
     expect(result[1].username).toBe('teacher2');
+  });
+});
+
+// ── Tests: Batch Session (Resume Persistence) ──────────────────────────
+
+function makeSession(overrides: Partial<BatchSession> = {}): BatchSession {
+  return {
+    id: 1,
+    url: 'https://myopenmath.com/gradeallq2.php?cid=123',
+    last_student_name: 'Smith, Jane',
+    timestamp: '2025-02-18T12:00:00',
+    ...overrides,
+  };
+}
+
+describe('db.ts — Batch Session CRUD', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // ── getBatchSession ──────────────────────────────────────────────────
+
+  it('getBatchSession returns session when one exists for the URL', async () => {
+    const session = makeSession();
+    mockSelect.mockResolvedValueOnce([session]);
+
+    const result = await getBatchSession('https://myopenmath.com/gradeallq2.php?cid=123');
+    expect(result).toEqual(session);
+    expect(mockSelect).toHaveBeenCalledWith(
+      'SELECT * FROM batch_session WHERE url = $1',
+      ['https://myopenmath.com/gradeallq2.php?cid=123'],
+    );
+  });
+
+  it('getBatchSession returns null when no session exists', async () => {
+    mockSelect.mockResolvedValueOnce([]);
+
+    const result = await getBatchSession('https://example.com/no-session');
+    expect(result).toBeNull();
+  });
+
+  // ── saveBatchSession ─────────────────────────────────────────────────
+
+  it('saveBatchSession upserts the session with URL and student name', async () => {
+    mockExecute.mockResolvedValueOnce({});
+
+    await saveBatchSession('https://myopenmath.com/gradeallq2.php?cid=123', 'Doe, John');
+    expect(mockExecute).toHaveBeenCalledTimes(1);
+
+    const sql = mockExecute.mock.calls[0][0] as string;
+    expect(sql).toContain('INSERT INTO batch_session');
+    expect(sql).toContain('ON CONFLICT');
+    expect(sql).toContain('last_student_name');
+
+    const params = mockExecute.mock.calls[0][1] as unknown[];
+    expect(params[0]).toBe('https://myopenmath.com/gradeallq2.php?cid=123');
+    expect(params[1]).toBe('Doe, John');
+  });
+
+  it('saveBatchSession updates existing session on conflict', async () => {
+    mockExecute.mockResolvedValueOnce({});
+
+    await saveBatchSession('https://myopenmath.com/gradeallq2.php?cid=123', 'Smith, Alice');
+    const sql = mockExecute.mock.calls[0][0] as string;
+    expect(sql).toContain('ON CONFLICT(url) DO UPDATE');
+  });
+
+  // ── clearBatchSession ────────────────────────────────────────────────
+
+  it('clearBatchSession deletes session by URL', async () => {
+    mockExecute.mockResolvedValueOnce({});
+
+    await clearBatchSession('https://myopenmath.com/gradeallq2.php?cid=123');
+    expect(mockExecute).toHaveBeenCalledWith(
+      'DELETE FROM batch_session WHERE url = $1',
+      ['https://myopenmath.com/gradeallq2.php?cid=123'],
+    );
+  });
+
+  it('clearBatchSession is safe when no session exists', async () => {
+    mockExecute.mockResolvedValueOnce({});
+
+    await clearBatchSession('https://nonexistent.com/page');
+    expect(mockExecute).toHaveBeenCalledTimes(1);
+  });
+
+  // ── Session lifecycle scenarios ──────────────────────────────────────
+
+  it('save then get returns the saved session data', async () => {
+    mockExecute.mockResolvedValueOnce({});
+    await saveBatchSession('https://example.com/grade', 'Johnson, Bob');
+
+    const session = makeSession({
+      url: 'https://example.com/grade',
+      last_student_name: 'Johnson, Bob',
+    });
+    mockSelect.mockResolvedValueOnce([session]);
+
+    const result = await getBatchSession('https://example.com/grade');
+    expect(result).toEqual(session);
+    expect(result?.last_student_name).toBe('Johnson, Bob');
+  });
+
+  it('clear then get returns null', async () => {
+    mockExecute.mockResolvedValueOnce({});
+    await clearBatchSession('https://example.com/grade');
+
+    mockSelect.mockResolvedValueOnce([]);
+    const result = await getBatchSession('https://example.com/grade');
+    expect(result).toBeNull();
+  });
+
+  it('different URLs have independent sessions', async () => {
+    const session1 = makeSession({ url: 'https://site-a.com/grade', last_student_name: 'Alice' });
+    const session2 = makeSession({ id: 2, url: 'https://site-b.com/grade', last_student_name: 'Bob' });
+
+    mockSelect.mockResolvedValueOnce([session1]);
+    const result1 = await getBatchSession('https://site-a.com/grade');
+    expect(result1?.last_student_name).toBe('Alice');
+
+    mockSelect.mockResolvedValueOnce([session2]);
+    const result2 = await getBatchSession('https://site-b.com/grade');
+    expect(result2?.last_student_name).toBe('Bob');
   });
 });

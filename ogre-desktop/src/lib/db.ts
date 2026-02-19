@@ -44,6 +44,25 @@ export interface SiteCredential {
   updated_at: string;
 }
 
+export interface SiteProfile {
+  id: string;
+  name: string;
+  url_patterns: string;
+  selectors: string;
+  feedback: string;
+  save: string;
+  navigation: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BatchSession {
+  id: number;
+  url: string;
+  last_student_name: string;
+  timestamp: string;
+}
+
 // ── Database Singleton ───────────────────────────────────────────────────
 
 let db: Database | null = null;
@@ -358,4 +377,141 @@ export async function saveSiteCredential(credential: {
 export async function deleteSiteCredential(id: number): Promise<void> {
   const database = await initDB();
   await database.execute("DELETE FROM site_credentials WHERE id = $1", [id]);
+}
+
+// ── Site Profiles ───────────────────────────────────────────────────────
+
+/**
+ * Get all site profiles, ordered by name.
+ */
+export async function getSiteProfiles(): Promise<SiteProfile[]> {
+  const database = await initDB();
+  return await database.select<SiteProfile[]>(
+    "SELECT * FROM site_profiles ORDER BY name"
+  );
+}
+
+/**
+ * Get a single site profile by id.
+ */
+export async function getSiteProfile(id: string): Promise<SiteProfile | null> {
+  const database = await initDB();
+  const rows = await database.select<SiteProfile[]>(
+    "SELECT * FROM site_profiles WHERE id = $1",
+    [id]
+  );
+  return rows.length > 0 ? rows[0] : null;
+}
+
+/**
+ * Save (upsert) a site profile.
+ * If id is provided and exists, updates the profile.
+ * Otherwise, inserts a new profile.
+ */
+export async function saveSiteProfile(profile: {
+  id?: string;
+  name: string;
+  url_patterns: string;
+  selectors: string;
+  feedback: string;
+  save: string;
+  navigation: string;
+}): Promise<string> {
+  const database = await initDB();
+  const id = profile.id || crypto.randomUUID();
+
+  if (profile.id) {
+    // Update existing profile
+    await database.execute(
+      `UPDATE site_profiles
+       SET name = $1, url_patterns = $2, selectors = $3, feedback = $4, save = $5, navigation = $6, updated_at = datetime('now')
+       WHERE id = $7`,
+      [
+        profile.name,
+        profile.url_patterns,
+        profile.selectors,
+        profile.feedback,
+        profile.save,
+        profile.navigation,
+        profile.id,
+      ]
+    );
+    return profile.id;
+  } else {
+    // Insert new profile
+    await database.execute(
+      `INSERT INTO site_profiles (id, name, url_patterns, selectors, feedback, save, navigation)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        id,
+        profile.name,
+        profile.url_patterns,
+        profile.selectors,
+        profile.feedback,
+        profile.save,
+        profile.navigation,
+      ]
+    );
+    return id;
+  }
+}
+
+/**
+ * Delete a site profile by id.
+ */
+export async function deleteSiteProfile(id: string): Promise<void> {
+  const database = await initDB();
+  await database.execute("DELETE FROM site_profiles WHERE id = $1", [id]);
+}
+
+/**
+ * Find site profiles matching a given URL.
+ * Returns all profiles where the URL matches any of the url_patterns.
+ */
+export async function findSiteProfilesByUrl(url: string): Promise<SiteProfile[]> {
+  const database = await initDB();
+  return await database.select<SiteProfile[]>(
+    "SELECT * FROM site_profiles WHERE $1 LIKE url_patterns ORDER BY name",
+    [url]
+  );
+}
+
+// ── Batch Session (Resume Persistence) ─────────────────────────────────
+
+/**
+ * Get the batch session for a given URL.
+ * Returns null if no session exists for that URL.
+ */
+export async function getBatchSession(url: string): Promise<BatchSession | null> {
+  const database = await initDB();
+  const rows = await database.select<BatchSession[]>(
+    "SELECT * FROM batch_session WHERE url = $1",
+    [url]
+  );
+  return rows.length > 0 ? rows[0] : null;
+}
+
+/**
+ * Save (upsert) the batch session resume point for a URL.
+ * Records the last successfully graded student name so grading can resume.
+ */
+export async function saveBatchSession(url: string, lastStudentName: string): Promise<void> {
+  const database = await initDB();
+  await database.execute(
+    `INSERT INTO batch_session (url, last_student_name, timestamp)
+     VALUES ($1, $2, datetime('now'))
+     ON CONFLICT(url) DO UPDATE SET
+       last_student_name = $2,
+       timestamp = datetime('now')`,
+    [url, lastStudentName]
+  );
+}
+
+/**
+ * Clear the batch session for a given URL.
+ * Called on batch completion or when user chooses "Start Fresh".
+ */
+export async function clearBatchSession(url: string): Promise<void> {
+  const database = await initDB();
+  await database.execute("DELETE FROM batch_session WHERE url = $1", [url]);
 }

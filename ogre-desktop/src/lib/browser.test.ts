@@ -36,6 +36,9 @@ import {
   listenBrowserPageLoaded,
   injectAutofill,
   GRADING_SITE_PRESETS,
+  captureWebviewScreenshot,
+  captureWebviewArea,
+  cropImageData,
 } from './browser';
 
 // ── Tests ────────────────────────────────────────────────────────────────
@@ -207,5 +210,114 @@ describe('browser.ts — Autofill injection', () => {
     expect(mockInvoke).toHaveBeenCalledWith('inject_autofill', {
       script: '/* mock script */',
     });
+  });
+});
+
+// ── Screenshot Capture Tests ─────────────────────────────────────────────
+
+describe('browser.ts — Screenshot capture exports', () => {
+  it('exports captureWebviewScreenshot function', () => {
+    expect(typeof captureWebviewScreenshot).toBe('function');
+  });
+
+  it('exports captureWebviewArea function', () => {
+    expect(typeof captureWebviewArea).toBe('function');
+  });
+
+  it('exports cropImageData function', () => {
+    expect(typeof cropImageData).toBe('function');
+  });
+});
+
+describe('browser.ts — captureWebviewScreenshot', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('loads html2canvas when not already present, then captures', async () => {
+    // 1st invoke: evalScriptJSON checks typeof html2canvas → "false" (not loaded)
+    mockInvoke.mockResolvedValueOnce('false');
+    // 2nd invoke: evalScriptJSON loads html2canvas CDN → '"loaded"'
+    mockInvoke.mockResolvedValueOnce('"loaded"');
+    // 3rd invoke: evalScriptJSON captures screenshot → data URL
+    mockInvoke.mockResolvedValueOnce('"data:image/jpeg;base64,abc123"');
+
+    const result = await captureWebviewScreenshot();
+    expect(result).toBe('data:image/jpeg;base64,abc123');
+    expect(mockInvoke).toHaveBeenCalledTimes(3);
+
+    // All three calls go through eval_webview_script
+    for (let i = 0; i < 3; i++) {
+      expect(mockInvoke.mock.calls[i][0]).toBe('eval_webview_script');
+    }
+  });
+
+  it('skips CDN load when html2canvas is already present', async () => {
+    // 1st invoke: html2canvas already loaded → "true"
+    mockInvoke.mockResolvedValueOnce('true');
+    // 2nd invoke: capture screenshot
+    mockInvoke.mockResolvedValueOnce('"data:image/jpeg;base64,xyz789"');
+
+    const result = await captureWebviewScreenshot();
+    expect(result).toBe('data:image/jpeg;base64,xyz789');
+    // Only 2 calls: check + capture (no CDN load)
+    expect(mockInvoke).toHaveBeenCalledTimes(2);
+  });
+
+  it('throws when capture returns invalid data', async () => {
+    mockInvoke.mockResolvedValueOnce('true');    // html2canvas present
+    mockInvoke.mockResolvedValueOnce('""');       // empty string from capture
+
+    await expect(captureWebviewScreenshot()).rejects.toThrow('invalid image data');
+  });
+
+  it('throws when capture returns null', async () => {
+    mockInvoke.mockResolvedValueOnce('true');    // html2canvas present
+    mockInvoke.mockResolvedValueOnce('null');     // null from capture
+
+    await expect(captureWebviewScreenshot()).rejects.toThrow('invalid image data');
+  });
+
+  it('propagates CDN load errors', async () => {
+    mockInvoke.mockResolvedValueOnce('false');   // not loaded
+    mockInvoke.mockRejectedValueOnce(new Error('CDN unreachable'));
+
+    await expect(captureWebviewScreenshot()).rejects.toThrow('CDN unreachable');
+  });
+
+  it('propagates webview eval errors (e.g. webview not open)', async () => {
+    mockInvoke.mockRejectedValueOnce(new Error('Embedded browser not open'));
+
+    await expect(captureWebviewScreenshot()).rejects.toThrow('Embedded browser not open');
+  });
+});
+
+describe('browser.ts — captureWebviewArea', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls captureWebviewScreenshot internally (verifies invoke chain)', async () => {
+    // Mock the full chain: check + capture
+    mockInvoke.mockResolvedValueOnce('true');
+    mockInvoke.mockResolvedValueOnce('"data:image/jpeg;base64,fullpage"');
+
+    // captureWebviewArea calls captureWebviewScreenshot then cropImageData.
+    // cropImageData uses new Image() / canvas which don't exist in node env.
+    // So we expect it to reject at the crop step.
+    await expect(captureWebviewArea(10, 20, 100, 80)).rejects.toThrow();
+
+    // But it should have called the webview eval first
+    expect(mockInvoke).toHaveBeenCalledTimes(2);
+    expect(mockInvoke.mock.calls[0][0]).toBe('eval_webview_script');
+  });
+});
+
+describe('browser.ts — cropImageData', () => {
+  it('rejects in node environment (no DOM Image/Canvas)', async () => {
+    // cropImageData relies on new Image() + canvas - unavailable in node test env
+    await expect(
+      cropImageData('data:image/jpeg;base64,abc', 0, 0, 50, 50)
+    ).rejects.toThrow();
   });
 });

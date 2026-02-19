@@ -641,6 +641,156 @@ CRITICAL: Only flag genuine inconsistencies. Do NOT adjust scores just to create
  * @param {number} maxScore - Maximum possible score
  * @returns {Array} - Array of { band, prompt, studentIndices } objects (only bands with cross-chunk students)
  */
+/**
+ * Build a grading prompt for a single student (used by /api/chat grader mode).
+ * Simplified version of buildBatchPrompt for one student at a time.
+ * @param {Object} rubric - Rubric object with essayPrompt, checklistItems, rubricItems, modelText, maxScore
+ * @param {string} studentWork - The student's response text
+ * @param {string} instructions - Additional grading instructions or message from the user
+ * @returns {string} - Complete prompt for AI grading
+ */
+export function buildSingleGradePrompt(rubric, studentWork, instructions) {
+  const maxScore = rubric.maxScore || '10';
+  const essayPrompt = rubric.essayPrompt || '(No prompt provided)';
+
+  let prompt = `You are an expert grading assistant. Grade this student's work against the provided rubric.
+
+GRADING PHILOSOPHY:
+These are high school seniors, not college students or experts. Grade generously:
+- Give full credit for demonstrating understanding, even if the explanation lacks polish
+- Award substantial partial credit for correct reasoning with minor errors
+- Focus on mathematical thinking and effort, not perfect execution
+- Distinguish conceptual misunderstandings (serious) from minor mistakes (not serious)
+- Wrong terminology with correct concept = most of the points
+- Minor errors or omissions lose at most 1 point per category
+- Any substantive attempt that engages with the prompt earns at least 40% of max score
+
+MAX SCORE: ${maxScore}
+
+QUESTION/PROMPT:
+${essayPrompt}
+`;
+
+  // Add checklist items if present
+  if (rubric.checklistItems && rubric.checklistItems.length > 0) {
+    prompt += '\nGRADING CHECKLIST:\n';
+    for (const item of rubric.checklistItems) {
+      if (item.category) prompt += `- ${item.category} (${item.points} points)\n`;
+      if (item.items) {
+        for (const sub of item.items) {
+          prompt += `  - ${sub}\n`;
+        }
+      }
+    }
+  }
+
+  // Add rubric targets if present
+  if (rubric.rubricItems && rubric.rubricItems.length > 0) {
+    prompt += '\nKEY CONCEPTS TO ADDRESS:\n';
+    for (const item of rubric.rubricItems) {
+      if (item.category) prompt += `${item.category}:\n`;
+      if (item.items) {
+        for (const sub of item.items) {
+          prompt += `  - ${sub}\n`;
+        }
+      }
+    }
+  }
+
+  // Add model response if present
+  if (rubric.modelText) {
+    prompt += `\nMODEL RESPONSE (for reference):\n${rubric.modelText}\n`;
+  }
+
+  prompt += `
+STUDENT WORK:
+${studentWork || '(No response submitted)'}
+`;
+
+  if (instructions) {
+    prompt += `
+ADDITIONAL INSTRUCTIONS:
+${instructions}
+`;
+  }
+
+  prompt += `
+RESPONSE FORMAT:
+You MUST respond with a valid JSON object ONLY. No markdown, no code fences, no explanation.
+
+{
+  "score": <number 0 to ${maxScore}, half-points allowed e.g. 7.5>,
+  "feedback": "<constructive feedback string, use \\\\( ... \\\\) for LaTeX math>"
+}`;
+
+  return prompt;
+}
+
+/**
+ * Parse a single grade AI response into { score, feedback }.
+ * Handles JSON extraction, code fences, thinking blocks, and score clamping.
+ * @param {string} aiText - Raw AI response text
+ * @param {number} maxScore - Maximum possible score
+ * @returns {{ score: number, feedback: string }}
+ */
+export function parseSingleGradeResponse(aiText, maxScore) {
+  let text = aiText.trim();
+
+  // Strip <think>...</think> reasoning blocks
+  text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+
+  // Strip markdown code fences if present
+  const fenceMatch = text.match(/```json\s*([\s\S]*?)\s*```/) ||
+                     text.match(/```\s*([\s\S]*?)\s*```/);
+  if (fenceMatch) {
+    text = fenceMatch[1].trim();
+  }
+
+  // Attempt 1: Direct JSON parse
+  try {
+    const parsed = JSON.parse(text);
+    return clampSingleResult(parsed, maxScore);
+  } catch { /* continue */ }
+
+  // Attempt 2: Fix LaTeX backslashes then parse
+  try {
+    const fixed = text.replace(/\\(?!["\\/bfnrtu])/g, '\\\\');
+    const parsed = JSON.parse(fixed);
+    return clampSingleResult(parsed, maxScore);
+  } catch { /* continue */ }
+
+  // Attempt 3: Extract JSON object from surrounding text
+  const objMatch = text.match(/\{[\s\S]*\}/);
+  if (objMatch) {
+    try {
+      const parsed = JSON.parse(objMatch[0]);
+      return clampSingleResult(parsed, maxScore);
+    } catch { /* continue */ }
+    try {
+      const fixed = objMatch[0].replace(/\\(?!["\\/bfnrtu])/g, '\\\\');
+      const parsed = JSON.parse(fixed);
+      return clampSingleResult(parsed, maxScore);
+    } catch { /* continue */ }
+  }
+
+  // Attempt 4: Regex extraction
+  const regexMatch = text.match(/"score"\s*:\s*(\d+\.?\d*)\s*,\s*"feedback"\s*:\s*"([^"]*)"/);
+  if (regexMatch) {
+    return clampSingleResult({ score: parseFloat(regexMatch[1]), feedback: regexMatch[2] }, maxScore);
+  }
+
+  return { score: 0, feedback: 'Error parsing AI response. Please try again.' };
+}
+
+function clampSingleResult(parsed, maxScore) {
+  let score = parseFloat(parsed.score);
+  if (isNaN(score) || score < 0) score = 0;
+  if (score > maxScore) score = maxScore;
+  score = Math.round(score * 2) / 2; // snap to nearest 0.5
+  const feedback = (parsed.feedback || '').trim() || 'Graded by AI.';
+  return { score, feedback };
+}
+
 export function buildPairwiseSweepPrompts(results, students, anchors, chunkMap, maxScore) {
   // Define score bands based on anchors
   const bands = [

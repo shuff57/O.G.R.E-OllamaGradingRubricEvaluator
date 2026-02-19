@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { listRubrics, createRubric, updateRubric, deleteRubric } from '../lib/rubric-api';
   import type { SavedRubric, RubricCriterion } from '../lib/rubric-api';
+  import RubricImport from '../components/grading/RubricImport.svelte';
 
   let rubrics: SavedRubric[] = [];
   let loading = true;
@@ -10,6 +11,7 @@
   // Edit / Create state
   let editing: SavedRubric | null = null;
   let isNew = false;
+  let showImport = false;
 
   // Form fields
   let formName = '';
@@ -70,6 +72,11 @@
   function cancelForm() {
     editing = null;
     isNew = false;
+  }
+
+  async function handleImportComplete(rubricId: string) {
+    showImport = false;
+    await loadData();
   }
 
   function addCriterionRow() {
@@ -142,13 +149,28 @@
       <h1>Rubric Library</h1>
       <p class="text-muted">{rubrics.length} saved rubric{rubrics.length !== 1 ? 's' : ''}</p>
     </div>
-    {#if !isNew && !editing}
-      <button class="btn-primary" on:click={openCreate}>+ New Rubric</button>
+    {#if !isNew && !editing && !showImport}
+      <div style="display: flex; gap: var(--spacing-2);">
+        <button class="btn-ghost" on:click={() => showImport = true}>Import from Screenshot</button>
+        <button class="btn-primary" on:click={openCreate}>+ New Rubric</button>
+      </div>
     {/if}
   </header>
 
   {#if error}
     <div class="error-banner">{error}</div>
+  {/if}
+
+  <!-- Import from Screenshot -->
+  {#if showImport}
+    <section class="card form-card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-4);">
+        <h3>Import Rubric from Screenshot</h3>
+        <button class="btn-ghost btn-sm" on:click={() => showImport = false}>Cancel</button>
+      </div>
+      
+      <RubricImport onImport={handleImportComplete} />
+    </section>
   {/if}
 
   <!-- Create / Edit Form -->

@@ -10,10 +10,12 @@ import { streamSSE } from 'hono/streaming';
 import {
   generateScoringAnchors,
   buildBatchPrompt,
+  buildSingleGradePrompt,
   buildOutlierReviewPrompt,
   buildCompactSweepPrompt,
   buildPairwiseSweepPrompts,
   parseBatchResponse,
+  parseSingleGradeResponse,
   detectOutliers,
   chunkStudents,
   mergeResults,
@@ -334,6 +336,122 @@ app.delete('/api/rubrics/:id', (c) => {
   const deleted = deleteRubric(id);
   if (!deleted) return c.json({ error: 'Rubric not found' }, 404);
   return c.json({ success: true });
+});
+
+// ── Single Grading & Solver Chat ─────────────────────────────────────────
+
+/**
+ * POST /api/chat
+ * Single grading and solver chat endpoint.
+ *
+ * Body: { message, rubric?, studentWork?, model?, provider? }
+ *
+ * Grader mode (rubric present): Returns JSON { score, feedback, provider, model }
+ * Solver mode (no rubric): Returns SSE stream
+ *   Events:
+ *     status  — { status: 'thinking', provider, model }
+ *     message — { content: string }
+ *     done    — { provider, model }
+ *     error   — { message: string }
+ */
+app.post('/api/chat', async (c) => {
+  const timestamp = () => new Date().toLocaleTimeString();
+
+  let body;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+
+  const { message, rubric, studentWork, model, provider } = body;
+
+  if (!message || typeof message !== 'string') {
+    return c.json({ error: 'Missing required field: message' }, 400);
+  }
+
+  // Resolve provider: use specified or fall back to active provider
+  let providerId = provider;
+  let effectiveModel = model;
+
+  if (!providerId) {
+    const activeProvider = providerConfigs.find(p => p.is_active);
+    if (!activeProvider) {
+      return c.json({ error: 'No active provider configured. Set a provider or pass provider in request.' }, 400);
+    }
+    providerId = activeProvider.id;
+    if (!effectiveModel) effectiveModel = activeProvider.model;
+  }
+
+  if (!effectiveModel) {
+    const p = providerConfigs.find(pc => pc.id === providerId);
+    effectiveModel = p?.model;
+    if (!effectiveModel) {
+      return c.json({ error: 'No model specified and no default model for provider' }, 400);
+    }
+  }
+
+  // Determine mode: grader (rubric present) vs solver (no rubric)
+  const isGraderMode = !!rubric;
+
+  if (isGraderMode) {
+    // ── Grader mode: single student grading, JSON response ──
+    try {
+      const prompt = buildSingleGradePrompt(rubric, studentWork || '', message);
+      const providerConfig = resolveProviderConfig(providerId, effectiveModel);
+
+      console.log(`[${timestamp()}] [chat] Grader mode: provider=${providerId} model=${effectiveModel}`);
+      const aiText = await callProviderDirect(providerId, providerConfig, [{ role: 'user', content: prompt }], timestamp());
+
+      const maxScore = parseFloat(rubric.maxScore) || 10;
+      const result = parseSingleGradeResponse(aiText, maxScore);
+
+      return c.json({
+        ...result,
+        provider: providerId,
+        model: effectiveModel,
+      });
+    } catch (error) {
+      console.error(`[${timestamp()}] [chat] Grader error:`, error.message);
+      return c.json({ error: error.message }, 500);
+    }
+  } else {
+    // ── Solver mode: general AI chat, SSE response ──
+    let sseId = 0;
+
+    return streamSSE(c, async (stream) => {
+      try {
+        await stream.writeSSE({
+          event: 'status',
+          data: JSON.stringify({ status: 'thinking', provider: providerId, model: effectiveModel }),
+          id: String(sseId++),
+        });
+
+        const providerConfig = resolveProviderConfig(providerId, effectiveModel);
+        console.log(`[${timestamp()}] [chat] Solver mode: provider=${providerId} model=${effectiveModel}`);
+        const aiText = await callProviderDirect(providerId, providerConfig, [{ role: 'user', content: message }], timestamp());
+
+        await stream.writeSSE({
+          event: 'message',
+          data: JSON.stringify({ content: aiText }),
+          id: String(sseId++),
+        });
+
+        await stream.writeSSE({
+          event: 'done',
+          data: JSON.stringify({ provider: providerId, model: effectiveModel }),
+          id: String(sseId++),
+        });
+      } catch (error) {
+        console.error(`[${timestamp()}] [chat] Solver error:`, error.message);
+        await stream.writeSSE({
+          event: 'error',
+          data: JSON.stringify({ message: error.message }),
+          id: String(sseId++),
+        });
+      }
+    });
+  }
 });
 
 /**
@@ -966,7 +1084,7 @@ app.post('/api/grade', async (c) => {
     return c.json({ error: 'Invalid JSON body' }, 400);
   }
 
-  const { provider, model, rubric, students, strategy, chunkSize: rawChunkSize, sweep } = body;
+  const { provider, model, rubric, students, strategy, chunkSize: rawChunkSize, sweep, customInstructions } = body;
   const useParallel = strategy === 'parallel'; // default: serial (more reliable)
   const chunkSize = Math.max(5, Math.min(50, parseInt(rawChunkSize) || 30));
   // sweep: 'none' (default for single chunk), 'compact', 'pairwise', 'auto' (compact if multi-chunk)
@@ -977,6 +1095,11 @@ app.post('/api/grade', async (c) => {
   if (!rubric) return c.json({ error: 'Missing required field: rubric' }, 400);
   if (!students || !Array.isArray(students) || students.length === 0) {
     return c.json({ error: 'Missing or invalid field: students (must be non-empty array)' }, 400);
+  }
+
+  // Inject custom instructions into rubric so buildBatchPrompt can use them
+  if (customInstructions) {
+    rubric.customInstructions = customInstructions;
   }
 
   const maxScore = parseFloat(rubric.maxScore) || 10;

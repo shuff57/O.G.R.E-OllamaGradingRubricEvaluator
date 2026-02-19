@@ -62,7 +62,11 @@
       "WebFetch(domain:docs.rs)",
       "WebFetch(domain:v2.tauri.app)",
       "Bash(cargo check:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(while:*)",
+      "Bash(do sleep 5)",
+      "Bash(done)",
+      "Bash(npx svelte-check:*)"
     ]
   }
 }
