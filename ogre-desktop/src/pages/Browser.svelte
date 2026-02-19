@@ -291,10 +291,14 @@
 
   async function toggleDrawer() {
     showGradingPanel = !showGradingPanel;
+    // Always start expanded when opening the drawer
+    if (showGradingPanel) {
+      gradingPanelCollapsed = false;
+    }
     // Save drawer state to storage
-    await setSetting('ogreDrawerState', JSON.stringify({ 
-      open: showGradingPanel, 
-      width: gradingPanelWidth 
+    await setSetting('ogreDrawerState', JSON.stringify({
+      open: showGradingPanel,
+      width: gradingPanelWidth
     }));
   }
 </script>

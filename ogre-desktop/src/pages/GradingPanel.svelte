@@ -318,18 +318,18 @@
   onClose={closeOverlay}
 />
 
-/*
- * Z-Index Hierarchy (cross-component layering):
- * - ScreenshotOverlay: 10000 (highest – fullscreen capture overlay)
- * - GradingPanel (drawer): 9999 (side panel above webview)
- * - Webview: 0 (default, base layer)
- *
- * Internal z-indexes (scoped within their parent stacking context):
- * - .resize-handle (GradingPanel): 100 (above panel content)
- * - .instruction-bar (ScreenshotOverlay): 10
- * - .selection-rect (ScreenshotOverlay): 2
- */
 <style>
+  /*
+   * Z-Index Hierarchy (cross-component layering):
+   * - ScreenshotOverlay: 10000 (highest – fullscreen capture overlay)
+   * - GradingPanel (drawer): 9999 (side panel above webview)
+   * - Webview: 0 (default, base layer)
+   *
+   * Internal z-indexes (scoped within their parent stacking context):
+   * - .resize-handle (GradingPanel): 100 (above panel content)
+   * - .instruction-bar (ScreenshotOverlay): 10
+   * - .selection-rect (ScreenshotOverlay): 2
+   */
   .grading-panel {
     position: fixed; top: 0; right: 0; height: 100vh; z-index: 9999;
     background-color: var(--color-bg-sidebar);
