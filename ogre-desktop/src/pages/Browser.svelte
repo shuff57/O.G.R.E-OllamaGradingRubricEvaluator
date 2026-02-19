@@ -42,6 +42,7 @@
   let unlistenStatus: (() => void) | undefined;
   let resizeTimeout: ReturnType<typeof setTimeout> | undefined;
   let sidebarAnimationId: number | undefined;
+  let drawerResizeTimeout: ReturnType<typeof setTimeout> | undefined;
 
   /** Show a transient toast notification */
   function showToast(message: string, durationMs = 3000) {
@@ -79,16 +80,11 @@
     // Calculate presets panel height if visible
     const presetsPanel = showPresets ? document.querySelector('.presets-panel') : null;
     const presetsPanelHeight = presetsPanel ? presetsPanel.getBoundingClientRect().height : 0;
-    
-    // Calculate grading panel width
-    let gradingPanelCurrentWidth = 0;
-    if (showGradingPanel) {
-      gradingPanelCurrentWidth = gradingPanelCollapsed ? 60 : gradingPanelWidth;
-    }
 
+    const drawerWidth = (showGradingPanel && !gradingPanelCollapsed) ? gradingPanelWidth : 0;
     const x = sidebarWidth;
     const y = navBarHeight + presetsPanelHeight;
-    const width = window.innerWidth - sidebarWidth - gradingPanelCurrentWidth;
+    const width = window.innerWidth - sidebarWidth - drawerWidth;
     const height = window.innerHeight - y;
     
     if (width > 0 && height > 0) {
@@ -107,6 +103,18 @@
     if (browserCreated) {
       tick().then(() => updateWebviewBounds());
     }
+  }
+
+  // Save drawer width to storage when it changes (debounced)
+  $: {
+    gradingPanelWidth;
+    if (drawerResizeTimeout) clearTimeout(drawerResizeTimeout);
+    drawerResizeTimeout = setTimeout(async () => {
+      await setSetting('ogreDrawerState', JSON.stringify({ 
+        open: showGradingPanel, 
+        width: gradingPanelWidth 
+      }));
+    }, 300);
   }
 
   /** Debounced window resize handler */
@@ -142,6 +150,24 @@
     const saved = await getSetting('browser_saved_urls');
     if (saved) {
       try { savedUrls = JSON.parse(saved); } catch { savedUrls = []; }
+    }
+
+    // Load saved drawer state
+    const savedDrawerState = await getSetting('ogreDrawerState');
+    if (savedDrawerState) {
+      try {
+        const state = JSON.parse(savedDrawerState);
+        if (state.open !== undefined) showGradingPanel = state.open;
+        if (state.width !== undefined) gradingPanelWidth = state.width;
+      } catch {
+        // Use defaults if parsing fails
+        showGradingPanel = false;
+        gradingPanelWidth = 400;
+      }
+    } else {
+      // Use defaults if no saved state
+      showGradingPanel = false;
+      gradingPanelWidth = 400;
     }
 
     // Set up listeners
@@ -200,6 +226,7 @@
     if (unlistenLoaded) unlistenLoaded();
     if (unlistenStatus) unlistenStatus();
     if (resizeTimeout) clearTimeout(resizeTimeout);
+    if (drawerResizeTimeout) clearTimeout(drawerResizeTimeout);
     if (sidebarAnimationId) cancelAnimationFrame(sidebarAnimationId);
     window.removeEventListener('resize', handleResize);
     window.removeEventListener('ogre:sidebar-changed', handleSidebarChanged);
@@ -261,6 +288,15 @@
     savedUrls = savedUrls.filter((_, i) => i !== index);
     await setSetting('browser_saved_urls', JSON.stringify(savedUrls));
   }
+
+  async function toggleDrawer() {
+    showGradingPanel = !showGradingPanel;
+    // Save drawer state to storage
+    await setSetting('ogreDrawerState', JSON.stringify({ 
+      open: showGradingPanel, 
+      width: gradingPanelWidth 
+    }));
+  }
 </script>
 
 <div class="browser-container">
@@ -293,7 +329,7 @@
     <button class="toggle-btn" on:click={() => showPresets = !showPresets} title="Toggle Presets">
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
     </button>
-    <button class="toggle-btn" on:click={() => showGradingPanel = !showGradingPanel} title="Toggle Grading Panel" class:active={showGradingPanel}>
+    <button class="toggle-btn" on:click={toggleDrawer} title="Toggle Grading Panel" class:active={showGradingPanel}>
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
     </button>
   </div>
@@ -352,7 +388,10 @@
     </div>
 
     {#if showGradingPanel}
-      <GradingPanel bind:isCollapsed={gradingPanelCollapsed} bind:width={gradingPanelWidth} />
+      <GradingPanel 
+        bind:isCollapsed={gradingPanelCollapsed} 
+        bind:width={gradingPanelWidth}
+      />
     {/if}
   </div>
 </div>

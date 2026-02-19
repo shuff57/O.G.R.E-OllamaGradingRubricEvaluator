@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import ScreenshotOverlay from '../components/ScreenshotOverlay.svelte';
   import ProviderSelector from '../components/grading/ProviderSelector.svelte';
   import RubricCard from '../components/grading/RubricCard.svelte';
@@ -13,7 +13,10 @@
 
   let { 
     isCollapsed = $bindable(false),
-    width = $bindable(400) 
+    width = $bindable(400),
+  }: {
+    isCollapsed?: boolean;
+    width?: number;
   } = $props();
 
   let activeMode = $state('grader'); // 'grader' | 'solver' | 'batch'
@@ -75,7 +78,14 @@
     isCapturing = true;
     captureError = '';
 
+    // Save current drawer state so we can restore after capture
+    const wasCollapsed = isCollapsed;
+
     try {
+      // Hide drawer and floating button before capture for a clean screenshot
+      isCollapsed = true;
+      await tick(); // Wait for DOM to reflect hidden state
+
       capturedImage = await captureWebviewScreenshot();
       await hideWebview();
       showScreenshotOverlay = true;
@@ -83,6 +93,8 @@
       captureError = err instanceof Error ? err.message : 'Screenshot capture failed';
       setTimeout(() => { if (captureError) captureError = ''; }, 5000);
     } finally {
+      // Restore drawer and floating button visibility
+      isCollapsed = wasCollapsed;
       isCapturing = false;
     }
   }
@@ -126,16 +138,98 @@
     }
   }
 
+  // Resize logic
+  let isResizing = $state(false);
+  let resizeStartX = 0;
+  let resizeStartWidth = 0;
+
+  function handleResizeStart(e: MouseEvent) {
+    e.preventDefault();
+    isResizing = true;
+    resizeStartX = e.clientX;
+    resizeStartWidth = width;
+    
+    window.addEventListener('mousemove', handleResizeMove);
+    window.addEventListener('mouseup', handleResizeEnd);
+    document.body.style.cursor = 'ew-resize';
+    document.body.style.userSelect = 'none';
+  }
+
+  function handleResizeKeydown(e: KeyboardEvent) {
+    const RESIZE_INCREMENT = 20; // pixels to adjust per keypress
+    
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      const newWidth = Math.min(width + RESIZE_INCREMENT, window.innerWidth * 0.8);
+      width = newWidth; // Browser.svelte will auto-save via debounced reactive statement
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      const newWidth = Math.max(width - RESIZE_INCREMENT, 360);
+      width = newWidth;
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      width = 360; // minimum width
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      width = window.innerWidth * 0.8; // maximum width
+    }
+  }
+
+  function handleResizeMove(e: MouseEvent) {
+    if (!isResizing) return;
+    
+    // Calculate new width based on mouse position relative to right edge
+    let newWidth = window.innerWidth - e.clientX;
+    
+    // Apply constraints
+    const minWidth = 360;
+    const maxWidth = window.innerWidth * 0.8;
+    
+    width = Math.max(minWidth, Math.min(newWidth, maxWidth));
+  }
+
+  function handleResizeEnd() {
+    isResizing = false;
+    window.removeEventListener('mousemove', handleResizeMove);
+    window.removeEventListener('mouseup', handleResizeEnd);
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }
+
   onMount(() => {
     window.addEventListener('keydown', handleKeydown);
   });
 
   onDestroy(() => {
     window.removeEventListener('keydown', handleKeydown);
+    if (isResizing) {
+      window.removeEventListener('mousemove', handleResizeMove);
+      window.removeEventListener('mouseup', handleResizeEnd);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
   });
 </script>
 
-<div class="grading-panel" class:collapsed={isCollapsed} style="width: {isCollapsed ? '60px' : `${width}px`}">
+<div class="grading-panel" class:collapsed={isCollapsed} style="width: {width}px">
+  <!-- Resize Handle -->
+  {#if !isCollapsed}
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <div 
+      class="resize-handle"
+      role="separator" 
+      aria-orientation="vertical"
+      aria-label="Resize panel (use arrow keys, Home, or End; drag with mouse)"
+      aria-valuenow={width}
+      aria-valuemin={360}
+      aria-valuemax={Math.floor(typeof window !== 'undefined' ? window.innerWidth * 0.8 : 800)}
+      tabindex="0"
+      onmousedown={handleResizeStart}
+      onkeydown={handleResizeKeydown}
+    ></div>
+  {/if}
+
   <!-- Header -->
   <div class="panel-header">
     {#if !isCollapsed}
@@ -224,13 +318,30 @@
   onClose={closeOverlay}
 />
 
+/*
+ * Z-Index Hierarchy (cross-component layering):
+ * - ScreenshotOverlay: 10000 (highest – fullscreen capture overlay)
+ * - GradingPanel (drawer): 9999 (side panel above webview)
+ * - Webview: 0 (default, base layer)
+ *
+ * Internal z-indexes (scoped within their parent stacking context):
+ * - .resize-handle (GradingPanel): 100 (above panel content)
+ * - .instruction-bar (ScreenshotOverlay): 10
+ * - .selection-rect (ScreenshotOverlay): 2
+ */
 <style>
   .grading-panel {
-    height: 100%; background-color: var(--color-bg-sidebar);
-    border-left: 1px solid var(--color-border);
+    position: fixed; top: 0; right: 0; height: 100vh; z-index: 9999;
+    background-color: var(--color-bg-sidebar);
+    border-left: 1px solid rgba(255,255,255,0.1);
+    box-shadow: -4px 0 20px rgba(0,0,0,0.3);
     display: flex; flex-direction: column;
-    transition: width var(--transition-normal);
+    transform: translateX(0);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     overflow: hidden; flex-shrink: 0;
+  }
+  .grading-panel.collapsed {
+    transform: translateX(100%);
   }
   .panel-header {
     height: var(--header-height, 64px);
@@ -275,5 +386,21 @@
     flex: 1; overflow-y: auto;
     display: flex; flex-direction: column;
     padding: var(--spacing-4); gap: var(--spacing-4);
+  }
+  
+  .resize-handle {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 6px;
+    height: 100%;
+    cursor: ew-resize;
+    z-index: 100;
+    transition: background-color 0.2s;
+  }
+  
+  .resize-handle:hover,
+  .resize-handle:active {
+    background-color: rgba(88, 166, 255, 0.3);
   }
 </style>
