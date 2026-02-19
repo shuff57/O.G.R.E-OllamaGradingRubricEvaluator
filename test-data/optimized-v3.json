@@ -1,0 +1,120 @@
+{
+  "timestamp": "2026-02-15T06:10:12.768Z",
+  "strategy": "parallel",
+  "provider": "github-models",
+  "model": "claude-haiku-4.5",
+  "studentCount": 30,
+  "elapsedSeconds": 33.189,
+  "serverElapsedSeconds": 33.2,
+  "stats": {
+    "mean": 5.57,
+    "stdDev": 3.08,
+    "outliers": 0,
+    "adjusted": 0
+  },
+  "anchors": {
+    "excellent": 9,
+    "adequate": 7,
+    "minimal": 3
+  },
+  "results": [
+    {
+      "index": 0,
+      "name": "Anderson, Marcus",
+      "score": 9.5,
+      "feedback": "Excellent response demonstrating comprehensive understanding of all key concepts. Clear CLT statement (2/2), correct SE formula with explanation of inverse relationship (3/3), proper MOE connection with logical chain (3/3), and strong practical implications including the inverse square root relationship with concrete numerical example and real-world context (2/2). Minor: could have been slightly more explicit about \"regardless of underlying population distribution\" in CLT statement, but this is a very minor omission. This response exceeds the model answer in clarity and pedagogical value.",
+      "adjusted": false
+    },
+    {
+      "index": 1,
+      "name": "Brooks, Jaylen",
+      "score": 7.5,
+      "feedback": "Good grasp of core concepts. CLT statement is present but somewhat vague (1.5/2) — correctly identifies that sample means become normal with large n, but doesn't explicitly mention the sampling distribution of x̄ or the condition. SE formula and inverse relationship are correct (3/3). MOE connection is clear with proper formula (3/3). Practical implications touch on the inverse square root pattern (1.5/2) — mentions diminishing returns but lacks a concrete example. Strong overall execution with minor clarity gaps.",
+      "adjusted": false
+    },
+    {
+      "index": 2,
+      "name": "Chen, Lily",
+      "score": 6.5,
+      "feedback": "Solid understanding of main concepts with some gaps. CLT statement is present but incomplete (1.5/2) — mentions normality and sample size but lacks clarity about the sampling distribution of x̄ specifically. SE formula and explanation are correct (3/3). MOE connection is present and logical (3/3) — shows the chain clearly. Practical implications are minimal (0/2) — mentions tighter confidence intervals but no discussion of diminishing returns or inverse square root relationship. Good foundation but needs deeper practical engagement.",
+      "adjusted": false
+    },
+    {
+      "index": 3,
+      "name": "Davis, Amara",
+      "score": 8.5,
+      "feedback": "Strong comprehensive response. CLT statement is clear and accurate (2/2) — explicitly discusses the sampling distribution becoming approximately normal. SE formula is correct with proper explanation (3/3). MOE connection is excellent (3/3) — shows clear logical chain with arrows indicating the progression. Practical implications are strong (2/2) — discusses diminishing returns explicitly and connects to narrower confidence intervals. Minor: could have included a specific numerical example like the polling context.",
+      "adjusted": false
+    },
+    {
+      "index": 4,
+      "name": "Evans, Tyler",
+      "score": 6.5,
+      "feedback": "Adequate response with solid understanding of main concepts. CLT statement is present but vague (1.5/2) — mentions that larger samples lead to better estimates through CLT but doesn't clearly state what CLT says about the sampling distribution of x̄. SE formula is correct (3/3). MOE connection is clear and logical (3/3). Practical implications are minimal (0/2) — mentions reliability and tighter margins but no discussion of the inverse square root relationship or diminishing returns. Good basics, needs stronger practical analysis.",
+      "adjusted": false
+    },
+    {
+      "index": 6,
+      "name": "Garcia, Diego",
+      "score": 6.5,
+      "feedback": "Adequate response showing solid understanding of main concepts with minor gaps. CLT statement is present but somewhat vague (1.5/2) — correctly identifies normality with large n but lacks clarity about the sampling distribution of the mean specifically. SE formula is correct and relationship explained well (3/3). MOE connection is established but the explanation is incomplete — mentions the 4× relationship but doesn't explicitly show the mechanism or formula (2/3). Practical implications are minimal — mentions the inverse relationship but lacks depth or concrete examples (0.5/2). Strengthen response by: (1) being more explicit about what CLT says about the sampling distribution, (2) showing the full MOE formula, and (3) providing specific numerical examples or survey contexts.",
+      "adjusted": false
+    },
+    {
+      "index": 12,
+      "name": "Martinez, Sofia",
+      "score": 7.5,
+      "feedback": "Solid response with good grasp of core concepts and clear explanations. CLT statement is present and accurate (2/2) — correctly describes the tightening clustering of the sampling distribution. SE formula and relationship are correct (3/3). MOE connection is well-explained with the formula and logical chain \\(\\uparrow n \\to \\downarrow SE \\to \\downarrow MOE\\) clearly shown (3/3). Practical implications are addressed with a specific example using the 500 to 2000 respondent case (1.5/2) — demonstrates understanding of diminishing returns but could strengthen by explicitly discussing the inverse square root pattern and why researchers stop at certain sample sizes. Overall strong work; minor gaps prevent perfect score.",
+      "adjusted": false
+    },
+    {
+      "index": 18,
+      "name": "Smith, Jordan",
+      "score": 1.5,
+      "feedback": "This response contains fundamental conceptual errors that prevent credit for most components. CLT statement: partially acknowledges normality but lacks clarity (0.5/2). SE formula: INCORRECT — states SE = σ × √n when it should be σ/√n; this is a critical error (0/3). MOE relationship: INCORRECT direction — claims margin of error gets bigger with more samples, which is backwards (0/3). Practical implications: none substantively addressed (0/2). While the response shows minimal engagement with the topic, the attempt to address CLT and basic concepts earns minimal partial credit. Urgent need for review: the inverse relationship between sample size and margin of error is foundational. Recommend revisiting: (1) the correct SE formula, (2) how √n in denominator creates inverse relationship, (3) why larger samples reduce uncertainty.",
+      "adjusted": false
+    },
+    {
+      "index": 24,
+      "name": "Young, Caleb",
+      "score": 2.5,
+      "feedback": "This response demonstrates very limited understanding and lacks substantive engagement with most key concepts. CLT statement: vague and incomplete — mentions normal distributions and large samples but does not clearly state what CLT says about the sampling distribution of the mean (0.5/2). SE formula/explanation: absent — no formula provided or explanation of mechanism (0/3). MOE connection: only intuitive claim that MOE goes down with more data; no formula or logical mechanism explained (0.5/3). Practical implications: generic mention of surveys and polls without any depth or specific reasoning (0.5/2). The response reads more like initial thoughts than a complete explanation. To improve: (1) provide the actual SE = σ/√n formula and explain it, (2) write the MOE = z* × SE formula, (3) trace through the logical chain connecting these, (4) give a concrete numerical example showing how doubling sample size affects MOE, (5) discuss why researchers choose specific sample sizes.",
+      "adjusted": false
+    },
+    {
+      "index": 25,
+      "name": "Zhang, Amy",
+      "score": 8.5,
+      "feedback": "Excellent response demonstrating strong understanding of the core relationship between sample size and margin of error. CLT statement is implicit but somewhat underdeveloped (1.5/2) — you correctly invoke CLT and the inverse square root relationship but don't explicitly state that the sampling distribution of \\(\\bar{x}\\) approaches normality as n increases. SE formula is correct (\\(SE = \\sigma/\\sqrt{n}\\)) with clear explanation of inverse relationship (3/3). MOE connection is excellent with proper formula and logical chain (3/3). Practical implications are strong (2/2) — you clearly articulate diminishing marginal returns and the quadratic scaling principle, and provide a concrete example (n ≈ 1,068 for ±3% at 95% confidence). Consider strengthening the explicit CLT statement in future responses by clearly stating what the theorem claims about the shape of the sampling distribution.",
+      "adjusted": false
+    },
+    {
+      "index": 26,
+      "name": "Adams, Hailey",
+      "score": 4.5,
+      "feedback": "Your response shows basic understanding but lacks the depth and rigor expected. CLT statement is vague and incomplete (0.5/2) — you mention 'sample means have a normal distribution' but don't clearly explain that this is the sampling distribution of \\(\\bar{x}\\) approaching normality as n increases, nor do you mention the condition of sufficiently large n. SE formula and explanation are absent (0/3) — you state SE 'gets smaller' but provide no formula or mathematical explanation of how or why. MOE connection is minimal (1/2) — you correctly note that MOE decreases with n, but don't explain the mechanism (MOE = z* × SE) or show how SE's decrease causes MOE's decrease. Practical implications are minimal (0.5/2) — you mention accuracy but don't discuss diminishing returns or provide concrete examples. To improve: include the SE formula, explain the inverse square root relationship explicitly, and provide a real-world example with specific numbers.",
+      "adjusted": false
+    },
+    {
+      "index": 27,
+      "name": "Bennett, Chase",
+      "score": 0,
+      "feedback": "No response submitted.",
+      "adjusted": false
+    },
+    {
+      "index": 28,
+      "name": "Cooper, Maya",
+      "score": 0.5,
+      "feedback": "This response demonstrates minimal substantive engagement with the question. While you identify three relevant terms (Central Limit Theorem, Margin of Error, Sample Size), you provide no explanation of what CLT states (0/2), no standard error formula or analysis (0/3), no connection between SE and MOE (0/3), and no practical implications (0/2). The statement 'More samples is better for accuracy' shows intuitive understanding but falls far short of explaining the mathematical relationships required by the prompt. For credit, you need to: (1) explicitly state what CLT says about the sampling distribution of the mean, (2) provide and explain the SE formula, (3) show how SE connects to MOE, and (4) discuss practical consequences like diminishing returns.",
+      "adjusted": false
+    },
+    {
+      "index": 29,
+      "name": "Diaz, Roberto",
+      "score": 8,
+      "feedback": "Strong, well-reasoned response demonstrating solid understanding of all major concepts. CLT statement is excellent (2/2) — you clearly explain that the sampling distribution of sample means becomes approximately normal regardless of population shape when n is sufficiently large (n ≥ 30). SE formula is correct (\\(SE = \\sigma/\\sqrt{n}\\)) with good explanation of its meaning and inverse relationship with n (3/3). MOE connection is well-explained (3/3) — you show the formula and the logical chain that increasing n shrinks SE which shrinks MOE, resulting in narrower confidence intervals. Practical implications are solid (1.5/2) — you mention precision improvements and provide a concrete application (medical trials for treatment effect detection), but you could strengthen this by explicitly discussing the inverse square root relationship or the 'diminishing returns' concept (e.g., needing to quadruple n to halve MOE). Overall, this is a comprehensive and mathematically sound response.",
+      "adjusted": false
+    }
+  ]
+}

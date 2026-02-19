@@ -4,3 +4,26 @@ node_modules/
 
 grading-server/dist/
 
+# Build artifacts
+*.bun-build
+*.log
+test-output.txt
+
+# Invalid/temp paths
+%APPDATA%/
+UsersshuffAppDataLocalTempopencode/
+nul
+
+# Test results
+test-results/
+tests/
+
+# MCP cache
+.playwright-mcp/
+
+# Sisyphus evidence (local only)
+.sisyphus/evidence/
+ogre-desktop/.sisyphus/
+
+# Tauri build artifacts
+ogre-desktop/src-tauri/target/
