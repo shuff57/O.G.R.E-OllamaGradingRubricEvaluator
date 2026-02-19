@@ -13,15 +13,13 @@
   import type { SessionCompletePayload } from './lib/server';
   import { updateActiveProvider } from './lib/db';
   import { checkForUpdates, type UpdateCheckResult } from './lib/updater';
-  import { hideWebview, showWebview, setWebviewBounds } from './lib/browser';
+  import { hideWebview, showWebview } from './lib/browser';
   import type { Update } from '@tauri-apps/plugin-updater';
 
   // Webview layout constants (must match CSS variables in app.css)
   const SIDEBAR_EXPANDED_WIDTH = 250;
   const SIDEBAR_COLLAPSED_WIDTH = 60;
-  const URL_BAR_HEIGHT = 50;
   const SIDEBAR_TRANSITION_MS = 300;
-  const RESIZE_DEBOUNCE_MS = 100;
 
   let currentPage = 'dashboard';
   let sidebarCollapsed = false;
@@ -39,30 +37,6 @@
   let sessionVersion = 0;
   let unlistenSession: (() => void) | undefined;
   let unlistenProviderChange: (() => void) | undefined;
-  let resizeTimeout: ReturnType<typeof setTimeout>;
-
-  // Recalculate embedded webview bounds based on sidebar state and window size.
-  // The native webview is an OS-level overlay positioned in logical pixels
-  // relative to the window origin, NOT relative to the DOM.
-  function recalculateWebviewBounds() {
-    if (currentPage !== 'browser') return;
-    const sidebarWidth = sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_EXPANDED_WIDTH;
-    const x = sidebarWidth;
-    const y = URL_BAR_HEIGHT;
-    const width = window.innerWidth - sidebarWidth;
-    const height = window.innerHeight - URL_BAR_HEIGHT;
-    if (width > 0 && height > 0) {
-      setWebviewBounds(x, y, width, height).catch(() => {
-        // Webview may not exist yet — silently ignore
-      });
-    }
-  }
-
-  // Debounced window resize handler for webview bounds
-  function handleWindowResize() {
-    clearTimeout(resizeTimeout);
-    resizeTimeout = setTimeout(recalculateWebviewBounds, RESIZE_DEBOUNCE_MS);
-  }
 
   // Modal z-ordering: native webview renders ON TOP of all DOM elements,
   // so it must be hidden when modals appear to avoid covering them.
@@ -70,7 +44,7 @@
     hideWebview().catch(() => {});
   } else if (currentPage === 'browser') {
     showWebview().catch(() => {});
-    recalculateWebviewBounds();
+    window.dispatchEvent(new CustomEvent('ogre:sidebar-changed'));
   }
 
   onMount(async () => {
@@ -119,8 +93,8 @@
       }
     });
 
-    // Listen for window resize to recalculate webview bounds
-    window.addEventListener('resize', handleWindowResize);
+    // Listen for cross-component navigation events (e.g. RubricCard → Rubrics page)
+    window.addEventListener('ogre:navigate', handleNavigateEvent as EventListener);
 
     // Check for updates after app loads (non-blocking)
     checkForUpdates().then((result: UpdateCheckResult) => {
@@ -136,23 +110,20 @@
   onDestroy(() => {
     if (unlistenSession) unlistenSession();
     if (unlistenProviderChange) unlistenProviderChange();
-    window.removeEventListener('resize', handleWindowResize);
-    clearTimeout(resizeTimeout);
+    window.removeEventListener('ogre:navigate', handleNavigateEvent as EventListener);
   });
+
+  /** Handle cross-component navigation via custom DOM events. */
+  function handleNavigateEvent(e: CustomEvent<string>) {
+    if (e.detail) navigate(e.detail);
+  }
 
   function navigate(page: string) {
     currentPage = page;
     if (page === 'browser') {
-      const wasCollapsed = sidebarCollapsed;
       sidebarCollapsed = true;
-      // Show webview and animate bounds in sync with sidebar collapse
       showWebview().catch(() => {});
-      
-      // Animate from current width to collapsed width
-      animateWebviewBounds(
-        wasCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_EXPANDED_WIDTH,
-        SIDEBAR_COLLAPSED_WIDTH
-      );
+      window.dispatchEvent(new CustomEvent('ogre:sidebar-changed'));
     } else {
       sidebarCollapsed = false;
       // Hide webview immediately when leaving browser page (preserves session)
@@ -161,40 +132,12 @@
   }
 
   function toggleSidebar() {
-    const fromWidth = sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_EXPANDED_WIDTH;
-    const toWidth = sidebarCollapsed ? SIDEBAR_EXPANDED_WIDTH : SIDEBAR_COLLAPSED_WIDTH;
-    
     sidebarCollapsed = !sidebarCollapsed;
-    
-    // Animate webview bounds in sync with sidebar transition
+
     if (currentPage === 'browser') {
-      animateWebviewBounds(fromWidth, toWidth);
+      window.dispatchEvent(new CustomEvent('ogre:sidebar-changed'));
     }
   }
-
-  // Smoothly animate webview bounds from one sidebar width to another
-  function animateWebviewBounds(fromWidth: number, toWidth: number) {
-    const frames = 8; // Number of animation frames
-    const interval = SIDEBAR_TRANSITION_MS / frames;
-    
-    for (let i = 1; i <= frames; i++) {
-      setTimeout(() => {
-        // Interpolate width
-        const progress = i / frames;
-        const currentWidth = fromWidth + (toWidth - fromWidth) * progress;
-        
-        const x = currentWidth;
-        const y = URL_BAR_HEIGHT;
-        const width = window.innerWidth - currentWidth;
-        const height = window.innerHeight - URL_BAR_HEIGHT;
-        
-        if (width > 0 && height > 0) {
-          setWebviewBounds(x, y, width, height).catch(() => {});
-        }
-      }, interval * i);
-    }
-  }
-
 
   function handleSetupComplete() {
     setupComplete = true;

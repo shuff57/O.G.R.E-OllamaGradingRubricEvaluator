@@ -8,18 +8,25 @@
     reloadBrowser,
     setWebviewBounds,
     getEmbeddedUrl,
+    hideWebview,
+    showWebview,
     listenBrowserUrlChanged, 
     listenBrowserPageLoaded,
+    listenBrowserStatus,
     injectAutofill,
     GRADING_SITE_PRESETS 
   } from '../lib/browser';
   import { getSetting, setSetting, getSiteCredentials } from '../lib/db';
   import { matchCredentialsToUrl } from '../lib/autofill';
+  import GradingPanel from './GradingPanel.svelte';
 
   // State
   let urlInput = '';
   let isLoading = false;
   let showPresets = true;
+  let showGradingPanel = false;
+  let gradingPanelCollapsed = false;
+  let gradingPanelWidth = 400;
   let browserCreated = false;
   let toastMessage = '';
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
@@ -32,6 +39,9 @@
   // Event Listeners
   let unlistenUrl: (() => void) | undefined;
   let unlistenLoaded: (() => void) | undefined;
+  let unlistenStatus: (() => void) | undefined;
+  let resizeTimeout: ReturnType<typeof setTimeout> | undefined;
+  let sidebarAnimationId: number | undefined;
 
   /** Show a transient toast notification */
   function showToast(message: string, durationMs = 3000) {
@@ -70,9 +80,15 @@
     const presetsPanel = showPresets ? document.querySelector('.presets-panel') : null;
     const presetsPanelHeight = presetsPanel ? presetsPanel.getBoundingClientRect().height : 0;
     
+    // Calculate grading panel width
+    let gradingPanelCurrentWidth = 0;
+    if (showGradingPanel) {
+      gradingPanelCurrentWidth = gradingPanelCollapsed ? 60 : gradingPanelWidth;
+    }
+
     const x = sidebarWidth;
     const y = navBarHeight + presetsPanelHeight;
-    const width = window.innerWidth - sidebarWidth;
+    const width = window.innerWidth - sidebarWidth - gradingPanelCurrentWidth;
     const height = window.innerHeight - y;
     
     if (width > 0 && height > 0) {
@@ -82,12 +98,43 @@
     }
   }
 
-  // Recalculate webview bounds when presets panel visibility changes
+  // Recalculate webview bounds when presets panel or grading panel visibility changes
   $: {
     showPresets;
+    showGradingPanel;
+    gradingPanelCollapsed;
+    gradingPanelWidth;
     if (browserCreated) {
       tick().then(() => updateWebviewBounds());
     }
+  }
+
+  /** Debounced window resize handler */
+  function handleResize() {
+    if (resizeTimeout) clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(() => updateWebviewBounds(), 100);
+  }
+
+  /** Animate webview bounds in sync with sidebar CSS transition via RAF */
+  function handleSidebarChanged() {
+    // Cancel any in-progress animation
+    if (sidebarAnimationId) cancelAnimationFrame(sidebarAnimationId);
+
+    const startTime = performance.now();
+    const duration = 300; // Match sidebar CSS transition duration
+
+    function animateFrame() {
+      const elapsed = performance.now() - startTime;
+      updateWebviewBounds();
+
+      if (elapsed < duration) {
+        sidebarAnimationId = requestAnimationFrame(animateFrame);
+      } else {
+        sidebarAnimationId = undefined;
+      }
+    }
+
+    sidebarAnimationId = requestAnimationFrame(animateFrame);
   }
 
   onMount(async () => {
@@ -104,7 +151,27 @@
 
     unlistenLoaded = await listenBrowserPageLoaded(async (url: string) => {
       isLoading = false;
+      urlInput = url; // Sync URL bar with actual webview URL (fixes back/forward desync)
       await tryAutofill(url);
+    });
+
+    // Listen for webview creation success/failure
+    unlistenStatus = await listenBrowserStatus(async (status: string) => {
+      if (status === 'embedded-open') {
+        browserCreated = true;
+        showPresets = false;
+        isLoading = false;
+        
+        // Set bounds BEFORE showing to avoid flash at Rust's default position (x=0, y=60).
+        // tick() ensures DOM has updated (presets panel hidden, etc.) before measuring.
+        await tick();
+        updateWebviewBounds();
+        await showWebview().catch(() => {});
+      } else if (status === 'error') {
+        browserCreated = false;
+        isLoading = false;
+        showToast('Failed to create browser. Please try again.');
+      }
     });
 
     // Check if webview already exists (persists across page switches)
@@ -120,11 +187,22 @@
     } catch {
       // Webview doesn't exist yet — that's fine
     }
+
+    // Handle window resize with debounce
+    window.addEventListener('resize', handleResize);
+
+    // Handle sidebar changes with RAF animation
+    window.addEventListener('ogre:sidebar-changed', handleSidebarChanged);
   });
 
   onDestroy(() => {
     if (unlistenUrl) unlistenUrl();
     if (unlistenLoaded) unlistenLoaded();
+    if (unlistenStatus) unlistenStatus();
+    if (resizeTimeout) clearTimeout(resizeTimeout);
+    if (sidebarAnimationId) cancelAnimationFrame(sidebarAnimationId);
+    window.removeEventListener('resize', handleResize);
+    window.removeEventListener('ogre:sidebar-changed', handleSidebarChanged);
   });
 
   // Navigation Handlers
@@ -134,9 +212,8 @@
     try {
       if (!browserCreated) {
         // First navigation: create the embedded webview
+        // browserCreated will be set by the status listener when creation succeeds
         await createEmbeddedBrowser(urlInput);
-        browserCreated = true;
-        showPresets = false;
         // Wait for DOM to update, then set accurate bounds
         await tick();
         updateWebviewBounds();
@@ -216,6 +293,9 @@
     <button class="toggle-btn" on:click={() => showPresets = !showPresets} title="Toggle Presets">
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
     </button>
+    <button class="toggle-btn" on:click={() => showGradingPanel = !showGradingPanel} title="Toggle Grading Panel" class:active={showGradingPanel}>
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+    </button>
   </div>
 
   <!-- Presets Panel (Collapsible) -->
@@ -258,14 +338,21 @@
     </div>
   {/if}
 
-  <!-- Webview Area (native webview overlays this div) -->
-  <div class="webview-area">
-    {#if !browserCreated}
-    <div class="placeholder-text">
-      <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="4.93" y1="4.93" x2="9.17" y2="9.17"/><line x1="14.83" y1="14.83" x2="19.07" y2="19.07"/><line x1="14.83" y1="9.17" x2="19.07" y2="4.93"/><line x1="14.83" y1="9.17" x2="18.36" y2="5.64"/><line x1="4.93" y1="19.07" x2="9.17" y2="14.83"/></svg>
-      <p>Embedded Browser Area</p>
-      <p class="sub">Enter a URL above to get started</p>
+  <!-- Browser Content Area -->
+  <div class="browser-content">
+    <!-- Webview Area (native webview overlays this div) -->
+    <div class="webview-area">
+      {#if !browserCreated}
+      <div class="placeholder-text">
+        <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="4.93" y1="4.93" x2="9.17" y2="9.17"/><line x1="14.83" y1="14.83" x2="19.07" y2="19.07"/><line x1="14.83" y1="9.17" x2="19.07" y2="4.93"/><line x1="14.83" y1="9.17" x2="18.36" y2="5.64"/><line x1="4.93" y1="19.07" x2="9.17" y2="14.83"/></svg>
+        <p>Embedded Browser Area</p>
+        <p class="sub">Enter a URL above to get started</p>
+      </div>
+      {/if}
     </div>
+
+    {#if showGradingPanel}
+      <GradingPanel bind:isCollapsed={gradingPanelCollapsed} bind:width={gradingPanelWidth} />
     {/if}
   </div>
 </div>
@@ -277,6 +364,13 @@
     height: 100%;
     background: var(--color-bg-main);
     overflow: hidden;
+  }
+
+  .browser-content {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    position: relative;
   }
 
   .nav-bar {
@@ -359,6 +453,11 @@
   .toggle-btn:hover {
     background: var(--color-bg-hover);
     color: var(--color-text-primary);
+  }
+
+  .toggle-btn.active {
+    background: var(--color-bg-selected);
+    color: var(--color-primary);
   }
 
   /* Presets Panel */
