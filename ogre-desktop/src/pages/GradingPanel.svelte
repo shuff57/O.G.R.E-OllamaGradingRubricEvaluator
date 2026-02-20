@@ -10,8 +10,9 @@
   import { captureWebviewScreenshot, hideWebview, showWebview } from '../lib/browser';
   import type { SavedRubric } from '../lib/rubric-api';
   import type { GradeRubric } from '../lib/grading-api';
+  import { ICON_STRIP_WIDTH } from '../lib/constants';
 
-  let { 
+  let {
     isCollapsed = $bindable(false),
     width = $bindable(400),
   }: {
@@ -63,6 +64,7 @@
   function setMode(modeId: string) {
     if (batchRunning) return; // Prevent mode switching during batch grading
     activeMode = modeId;
+    if (isCollapsed) isCollapsed = false; // Expand when clicking a mode icon while collapsed
   }
 
   /**
@@ -211,7 +213,7 @@
   });
 </script>
 
-<div class="grading-panel" class:collapsed={isCollapsed} style="width: {width}px">
+<div class="grading-panel" class:collapsed={isCollapsed} style="width: {isCollapsed ? ICON_STRIP_WIDTH : width}px">
   <!-- Resize Handle -->
   {#if !isCollapsed}
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -321,27 +323,22 @@
 <style>
   /*
    * Z-Index Hierarchy (cross-component layering):
-   * - ScreenshotOverlay: 10000 (highest – fullscreen capture overlay)
-   * - GradingPanel (drawer): 9999 (side panel above webview)
-   * - Webview: 0 (default, base layer)
+   * - ScreenshotOverlay: 10000 (highest – fullscreen capture overlay, position: fixed)
+   * - GradingPanel: in-flow flex child of .browser-content (no z-index needed)
+   * - Webview: 0 (native OS window, positioned by Tauri bounds)
    *
    * Internal z-indexes (scoped within their parent stacking context):
    * - .resize-handle (GradingPanel): 100 (above panel content)
-   * - .instruction-bar (ScreenshotOverlay): 10
-   * - .selection-rect (ScreenshotOverlay): 2
    */
   .grading-panel {
-    position: fixed; top: 0; right: 0; height: 100vh; z-index: 9999;
+    position: relative;
+    height: 100%;
     background-color: var(--color-bg-sidebar);
     border-left: 1px solid rgba(255,255,255,0.1);
     box-shadow: -4px 0 20px rgba(0,0,0,0.3);
     display: flex; flex-direction: column;
-    transform: translateX(0);
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     overflow: hidden; flex-shrink: 0;
-  }
-  .grading-panel.collapsed {
-    transform: translateX(100%);
   }
   .panel-header {
     height: var(--header-height, 64px);
@@ -367,6 +364,10 @@
     background-color: var(--color-bg-sidebar);
     border-bottom: 1px solid var(--color-border); flex-shrink: 0;
   }
+  .grading-panel.collapsed .panel-header {
+    justify-content: center;
+    padding: 0 var(--spacing-1);
+  }
   .grading-panel.collapsed .mode-tabs {
     grid-template-columns: 1fr; padding: var(--spacing-2) var(--spacing-1);
   }
@@ -377,7 +378,8 @@
     cursor: pointer; color: var(--color-text-secondary);
     font-size: 0.9rem; font-weight: 500; transition: all var(--transition-fast);
   }
-  .grading-panel.collapsed .mode-tab { padding: var(--spacing-3) var(--spacing-1); }
+  .grading-panel.collapsed .mode-tab { padding: var(--spacing-2); justify-content: center; }
+  .grading-panel.collapsed .mode-icon { font-size: 1.2rem; }
   .mode-tab:hover:not(:disabled) { background-color: var(--color-bg-card-hover); color: var(--color-text-primary); }
   .mode-tab.active { background-color: var(--color-primary-bg); color: var(--color-primary); font-weight: 600; }
   .mode-tab.disabled { opacity: 0.4; cursor: not-allowed; }

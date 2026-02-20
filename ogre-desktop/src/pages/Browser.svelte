@@ -18,6 +18,7 @@
   } from '../lib/browser';
   import { getSetting, setSetting, getSiteCredentials } from '../lib/db';
   import { matchCredentialsToUrl } from '../lib/autofill';
+  import { ICON_STRIP_WIDTH } from '../lib/constants';
   import GradingPanel from './GradingPanel.svelte';
 
   // State
@@ -81,7 +82,9 @@
     const presetsPanel = showPresets ? document.querySelector('.presets-panel') : null;
     const presetsPanelHeight = presetsPanel ? presetsPanel.getBoundingClientRect().height : 0;
 
-    const drawerWidth = (showGradingPanel && !gradingPanelCollapsed) ? gradingPanelWidth : 0;
+    const drawerWidth = showGradingPanel
+      ? (gradingPanelCollapsed ? ICON_STRIP_WIDTH : gradingPanelWidth)
+      : 0;
     const x = sidebarWidth;
     const y = navBarHeight + presetsPanelHeight;
     const width = window.innerWidth - sidebarWidth - drawerWidth;
@@ -105,14 +108,17 @@
     }
   }
 
-  // Save drawer width to storage when it changes (debounced)
+  // Save drawer state to storage when any property changes (debounced)
   $: {
     gradingPanelWidth;
+    gradingPanelCollapsed;
+    showGradingPanel;
     if (drawerResizeTimeout) clearTimeout(drawerResizeTimeout);
     drawerResizeTimeout = setTimeout(async () => {
-      await setSetting('ogreDrawerState', JSON.stringify({ 
-        open: showGradingPanel, 
-        width: gradingPanelWidth 
+      await setSetting('ogreDrawerState', JSON.stringify({
+        open: showGradingPanel,
+        width: gradingPanelWidth,
+        collapsed: gradingPanelCollapsed
       }));
     }, 300);
   }
@@ -159,6 +165,7 @@
         const state = JSON.parse(savedDrawerState);
         if (state.open !== undefined) showGradingPanel = state.open;
         if (state.width !== undefined) gradingPanelWidth = state.width;
+        if (state.collapsed !== undefined) gradingPanelCollapsed = state.collapsed;
       } catch {
         // Use defaults if parsing fails
         showGradingPanel = false;
@@ -289,17 +296,13 @@
     await setSetting('browser_saved_urls', JSON.stringify(savedUrls));
   }
 
-  async function toggleDrawer() {
+  function toggleDrawer() {
     showGradingPanel = !showGradingPanel;
     // Always start expanded when opening the drawer
     if (showGradingPanel) {
       gradingPanelCollapsed = false;
     }
-    // Save drawer state to storage
-    await setSetting('ogreDrawerState', JSON.stringify({
-      open: showGradingPanel,
-      width: gradingPanelWidth
-    }));
+    // State is persisted by the debounced reactive block
   }
 </script>
 
