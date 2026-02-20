@@ -58,6 +58,7 @@
   ];
 
   function toggleCollapse() {
+    if (isResizing) return; // Prevent collapse during active drag
     isCollapsed = !isCollapsed;
   }
 
@@ -144,6 +145,10 @@
   let isResizing = $state(false);
   let resizeStartX = 0;
   let resizeStartWidth = 0;
+  
+  // Non-reactive — intentionally plain let, NOT $state()
+  let rafId: number | undefined;
+  let pendingWidth: number = 0;
 
   function handleResizeStart(e: MouseEvent) {
     e.preventDefault();
@@ -187,11 +192,26 @@
     const minWidth = 360;
     const maxWidth = window.innerWidth * 0.8;
     
-    width = Math.max(minWidth, Math.min(newWidth, maxWidth));
+    // Store pending width (non-reactive, no Svelte update yet)
+    pendingWidth = Math.max(minWidth, Math.min(newWidth, maxWidth));
+    
+    // Schedule RAF update — only one pending at a time
+    if (rafId === undefined) {
+      rafId = requestAnimationFrame(() => {
+        width = pendingWidth;
+        rafId = undefined;
+      });
+    }
   }
 
   function handleResizeEnd() {
     isResizing = false;
+    // Cancel any pending RAF and flush final width immediately
+    if (rafId !== undefined) {
+      cancelAnimationFrame(rafId);
+      rafId = undefined;
+      width = pendingWidth; // Apply final position
+    }
     window.removeEventListener('mousemove', handleResizeMove);
     window.removeEventListener('mouseup', handleResizeEnd);
     document.body.style.cursor = '';
@@ -210,10 +230,14 @@
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     }
+    if (rafId !== undefined) {
+      cancelAnimationFrame(rafId);
+      rafId = undefined;
+    }
   });
 </script>
 
-<div class="grading-panel" class:collapsed={isCollapsed} style="width: {isCollapsed ? ICON_STRIP_WIDTH : width}px">
+<div class="grading-panel" class:collapsed={isCollapsed} class:resizing={isResizing} style="width: {isCollapsed ? ICON_STRIP_WIDTH : width}px">
   <!-- Resize Handle -->
   {#if !isCollapsed}
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -339,6 +363,9 @@
     display: flex; flex-direction: column;
     transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     overflow: hidden; flex-shrink: 0;
+  }
+  .grading-panel.resizing {
+    transition: none !important;
   }
   .panel-header {
     height: var(--header-height, 64px);
