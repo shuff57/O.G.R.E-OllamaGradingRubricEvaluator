@@ -76,6 +76,19 @@
   let isStrict = $state(false);
   let isReviewMode = $state(false);
 
+  // ── Review Gate ──────────────────────────────────────────────────────
+  type ReviewData = {
+    studentIndex: number;
+    score: number;
+    feedback: string;
+    studentName: string;
+    maxScore: number;
+    chunkIndex: number;
+    chunkTotal: number;
+  };
+  let pendingReview = $state<ReviewData | null>(null);
+  let reviewResolve: ((decision: { action: 'approve' | 'skip' }) => void) | null = null;
+
   // ── Rubric Review ────────────────────────────────────────────────────
   type BatchPhase = 'idle' | 'extracting' | 'review' | 'grading' | 'done';
   let batchPhase = $state<BatchPhase>('idle');
@@ -455,10 +468,22 @@
   }
 
   // ── Apply result ─────────────────────────────────────────────────────
-  async function applyResult(result: { studentIndex: number; score: number; feedback: string }): Promise<void> {
+  async function applyResult(result: { studentIndex: number; score: number; feedback: string }, chunkIndex = 0, chunkTotal = 1): Promise<void> {
     if (!batchGrader) return;
     const student = batchGrader.studentsToGrade.find(s => s.index === result.studentIndex);
-    currentStudentName = student?.name || `Student ${result.studentIndex}`;
+    const studentName = student?.name || `Student ${result.studentIndex}`;
+
+    // Review gate: if review mode is on, wait for user decision before filling
+    if (isReviewMode) {
+      const maxScore = parseInt(rubricMaxScore) || 10;
+      const decision = await requestStudentReview(result, studentName, maxScore, chunkIndex, chunkTotal);
+      if (decision.action === 'skip') {
+        updateBatchState();
+        return;
+      }
+    }
+
+    currentStudentName = studentName;
     try {
       await batchGrader.applyGrade(result.studentIndex, result.score, result.feedback);
       // Persist resume point after each successful grade
@@ -473,10 +498,12 @@
   }
 
   async function flushPausedBuffer(): Promise<void> {
+    const total = pausedResultBuffer.length;
+    let idx = 0;
     while (pausedResultBuffer.length > 0) {
       if (isBatchPaused) break;
       const result = pausedResultBuffer.shift()!;
-      await applyResult(result);
+      await applyResult(result, idx++, total);
       await new Promise(resolve => setTimeout(resolve, 100));
     }
   }
@@ -496,11 +523,13 @@
   async function handleSSEChunk(data: BatchChunkEvent) {
     if (isAutoStopped) return;
     if (!batchGrader) return;
-    for (const result of data.results) {
+    const results = data.results;
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
       if (isBatchPaused) {
         pausedResultBuffer.push(result);
       } else {
-        await applyResult(result);
+        await applyResult(result, i, results.length);
         await new Promise(resolve => setTimeout(resolve, 150));
       }
     }
@@ -510,11 +539,13 @@
     if (isAutoStopped) return;
     if (!batchGrader) return;
     phaseMessage = `Applying ${data.adjustedResults.length} outlier adjustment(s)...`;
-    for (const result of data.adjustedResults) {
+    const adjustedResults = data.adjustedResults;
+    for (let i = 0; i < adjustedResults.length; i++) {
+      const result = adjustedResults[i];
       if (isBatchPaused) {
         pausedResultBuffer.push(result);
       } else {
-        await applyResult(result);
+        await applyResult(result, i, adjustedResults.length);
         await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
@@ -571,6 +602,12 @@
   }
 
   function handleStopBatch() {
+    // Clean up any pending review
+    if (reviewResolve) {
+      reviewResolve({ action: 'skip' });
+      pendingReview = null;
+      reviewResolve = null;
+    }
     if (batchHandle) { batchHandle.cancel(); batchHandle = null; }
     if (batchGrader) batchGrader.stop();
     isBatchRunning = false;
@@ -608,6 +645,38 @@
     phaseMessage = '';
     batchError = '';
     batchGrader = null;
+    pendingReview = null;
+    reviewResolve = null;
+  }
+
+  // ── Review Gate Functions ────────────────────────────────────────────
+  function requestStudentReview(
+    result: { studentIndex: number; score: number; feedback: string },
+    studentName: string,
+    maxScore: number,
+    index: number,
+    total: number
+  ): Promise<{ action: 'approve' | 'skip' }> {
+    return new Promise((resolve) => {
+      pendingReview = { ...result, studentName, maxScore, chunkIndex: index, chunkTotal: total };
+      reviewResolve = resolve;
+    });
+  }
+
+  function handleApprove() {
+    if (reviewResolve) {
+      reviewResolve({ action: 'approve' });
+      pendingReview = null;
+      reviewResolve = null;
+    }
+  }
+
+  function handleSkip() {
+    if (reviewResolve) {
+      reviewResolve({ action: 'skip' });
+      pendingReview = null;
+      reviewResolve = null;
+    }
   }
 
   onDestroy(() => {
@@ -889,6 +958,26 @@
       {#if currentStudentName}
         <div class="current-student">
           <small class="text-muted">Filling: {currentStudentName}</small>
+        </div>
+      {/if}
+
+      {#if pendingReview}
+        <div class="review-panel">
+          <div class="review-header">
+            <span class="review-title">👁 Review</span>
+            <span class="review-counter">{pendingReview.chunkIndex + 1} of {pendingReview.chunkTotal}</span>
+          </div>
+          <div class="review-summary">
+            <div class="review-student-row">
+              <strong>{pendingReview.studentName}</strong>
+              <span class="review-score">{pendingReview.score}/{pendingReview.maxScore}</span>
+            </div>
+            <div class="review-feedback">{pendingReview.feedback}</div>
+          </div>
+          <div class="review-actions">
+            <button class="btn-primary" onclick={handleApprove}>✓ Approve</button>
+            <button class="btn-secondary" onclick={handleSkip}>⏭ Skip</button>
+          </div>
         </div>
       {/if}
     </div>
@@ -1653,5 +1742,57 @@
 
   .fill-mode-option input[type="radio"] {
     display: none;
+  }
+
+  /* ── Review Panel ── */
+  .review-panel {
+    padding: 12px;
+    background: rgba(251, 191, 36, 0.08);
+    border: 1px solid var(--color-warning, #f59e0b);
+    border-radius: 6px;
+    margin-top: 8px;
+  }
+  .review-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .review-title {
+    font-weight: 600;
+    font-size: 0.85em;
+    color: var(--color-warning, #f59e0b);
+  }
+  .review-counter {
+    font-size: 0.78em;
+    color: var(--color-text-secondary);
+  }
+  .review-summary {
+    margin-bottom: 10px;
+  }
+  .review-student-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+  }
+  .review-score {
+    font-size: 1.05em;
+    font-weight: 500;
+  }
+  .review-feedback {
+    font-size: 0.82em;
+    color: var(--color-text-secondary);
+    max-height: 100px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    line-height: 1.4;
+  }
+  .review-actions {
+    display: flex;
+    gap: var(--spacing-2, 8px);
+  }
+  .review-actions button {
+    flex: 1;
   }
 </style>

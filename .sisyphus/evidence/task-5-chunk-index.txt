@@ -1,0 +1,9 @@
+== grep: applyResult called with 3 args in handleSSEChunk and handleSSEOutlier ==
+
+Pattern: applyResult\(result,\s*i,\s*results\.length\)
+Match: BatchPanel.svelte line 532: await applyResult(result, i, results.length);
+
+Also verified via grep for all applyResult calls with index args:
+- handleSSEChunk (line 532): await applyResult(result, i, results.length);
+- handleSSEOutlier (line 546): await applyResult(result, i, adjustedResults.length);
+- flushPausedBuffer (line 508): await applyResult(result, idx++, total);

@@ -1,0 +1,33 @@
+== tsc --noEmit (npx tsc -p jsconfig.json --noEmit) ==
+Pre-existing errors only:
+src/drawer-injection.js(5,14): error TS2339: Property 'OgreDrawer' does not exist on type 'Window & typeof globalThis'.
+src/drawer-injection.js(52,14): error TS2339: Property 'OgreDrawer' does not exist on type 'Window & typeof globalThis'.
+src/drawer-injection.js(709,14): error TS2339: Property 'OgreDrawer' does not exist on type 'Window & typeof globalThis'.
+src/drawer-injection.js(710,14): error TS2339: Property 'OgreDrawer' does not exist on type 'Window & typeof globalThis'.
+
+== svelte-check ==
+Pre-existing errors only (5 total):
+- drawer-injection.js: 4 errors (window.OgreDrawer)
+- discovery-picker-integration.ts: 1 error (SelectorMap cast)
+
+No new errors from BatchPanel.svelte changes.
+
+== vitest run ==
+ ✓ src/lib/autofill.test.ts (30 tests) 23ms
+ ✓ src/lib/rubric-utils.test.ts (32 tests) 31ms
+ ✓ src/lib/db.test.ts (19 tests) 29ms
+ ✓ src/lib/site-profiles.test.ts (34 tests) 38ms
+ ✓ src/lib/confirmation-flow.test.ts (27 tests) 37ms
+ ✓ src/lib/discovery-picker-integration.test.ts (44 tests) 49ms
+ ✓ src/lib/page-refresh.test.ts (23 tests) 46ms
+ ✓ src/lib/browser.test.ts (31 tests) 55ms
+ ✓ src/lib/batch-grader.test.ts (13 tests) 38ms
+ ✓ src/lib/sse-parser.test.ts (22 tests) 122ms
+ ✓ src/lib/element-picker.test.ts (33 tests) 149ms
+ ✓ src/lib/discover.test.ts (113 tests | 26 skipped) 47ms
+ ✓ src/lib/ai-retry.test.ts (33 tests) 526ms
+ ✓ src/lib/grading-api.test.ts (53 tests) 463ms
+
+ Test Files  14 passed (14)
+      Tests  481 passed | 26 todo (507)
+   Duration  3.17s

@@ -1,0 +1,16 @@
+== grep: reviewResolve cleanup in handleStopBatch ==
+
+Pattern: reviewResolve (in BatchPanel.svelte)
+Relevant matches in handleStopBatch (lines 598-614):
+  Line 606: if (reviewResolve) {
+  Line 607:   reviewResolve({ action: 'skip' });
+  Line 608:   pendingReview = null;
+  Line 609:   reviewResolve = null;
+
+handleStopBatch already has full cleanup:
+1. Checks if reviewResolve exists
+2. Resolves with 'skip' action
+3. Clears pendingReview
+4. Clears reviewResolve
+
+No changes needed — verified as already present.

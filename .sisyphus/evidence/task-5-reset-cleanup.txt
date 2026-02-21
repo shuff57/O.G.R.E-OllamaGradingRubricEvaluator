@@ -1,0 +1,14 @@
+== grep: pendingReview=null and reviewResolve=null in handleReset ==
+
+Pattern: pendingReview = null|reviewResolve = null
+Matches in BatchPanel.svelte:
+  Line 608: pendingReview = null;    (handleStopBatch)
+  Line 609: reviewResolve = null;    (handleStopBatch)
+  Line 648: pendingReview = null;    (handleReset - NEW)
+  Line 649: reviewResolve = null;    (handleReset - NEW)
+  Line 669: pendingReview = null;    (handleApprove)
+  Line 670: reviewResolve = null;    (handleApprove)
+  Line 677: pendingReview = null;    (handleSkip)
+  Line 678: reviewResolve = null;    (handleSkip)
+
+handleReset now properly clears review state (lines 648-649).
