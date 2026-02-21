@@ -40,6 +40,7 @@ import {
 } from './automation.js';
 import { loadConfig, saveConfig, watchConfig } from './config.js';
 import { loadRubrics, createRubric, updateRubric, deleteRubric } from './rubric-store.js';
+import { withRetry } from './ai-retry.js';
 
 const app = new Hono();
 const PORT = 3456;
@@ -81,7 +82,9 @@ async function callProviderDirect(provider, config, messages, timestamp) {
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => '');
-    throw new Error(`${provider} API error ${response.status}: ${errorText.slice(0, 200)}`);
+    const err = new Error(`${provider} API error ${response.status}: ${errorText.slice(0, 200)}`);
+    err.status = response.status;
+    throw err;
   }
 
   const data = await response.json();
@@ -364,7 +367,7 @@ app.post('/api/chat', async (c) => {
     return c.json({ error: 'Invalid JSON body' }, 400);
   }
 
-  const { message, rubric, studentWork, model, provider } = body;
+  const { message, rubric, studentWork, model, provider, systemPrompt, images } = body;
 
   if (!message || typeof message !== 'string') {
     return c.json({ error: 'Missing required field: message' }, 400);
@@ -401,7 +404,10 @@ app.post('/api/chat', async (c) => {
       const providerConfig = resolveProviderConfig(providerId, effectiveModel);
 
       console.log(`[${timestamp()}] [chat] Grader mode: provider=${providerId} model=${effectiveModel}`);
-      const aiText = await callProviderDirect(providerId, providerConfig, [{ role: 'user', content: prompt }], timestamp());
+      const aiText = await withRetry(
+        () => callProviderDirect(providerId, providerConfig, [{ role: 'user', content: prompt }], timestamp()),
+        { maxRetries: 3 }
+      );
 
       const maxScore = parseFloat(rubric.maxScore) || 10;
       const result = parseSingleGradeResponse(aiText, maxScore);
@@ -429,7 +435,26 @@ app.post('/api/chat', async (c) => {
 
         const providerConfig = resolveProviderConfig(providerId, effectiveModel);
         console.log(`[${timestamp()}] [chat] Solver mode: provider=${providerId} model=${effectiveModel}`);
-        const aiText = await callProviderDirect(providerId, providerConfig, [{ role: 'user', content: message }], timestamp());
+
+        // Build messages array, honouring optional system prompt and images
+        const solverMessages = [];
+        if (systemPrompt) {
+          solverMessages.push({ role: 'system', content: systemPrompt });
+        }
+
+        // If images provided, build multimodal user content (OpenAI-compatible format)
+        let userContent;
+        if (images && images.length > 0) {
+          userContent = [
+            { type: 'text', text: message },
+            ...images.map(img => ({ type: 'image_url', image_url: { url: img } })),
+          ];
+        } else {
+          userContent = message;
+        }
+        solverMessages.push({ role: 'user', content: userContent });
+
+        const aiText = await callProviderDirect(providerId, providerConfig, solverMessages, timestamp());
 
         await stream.writeSSE({
           event: 'message',

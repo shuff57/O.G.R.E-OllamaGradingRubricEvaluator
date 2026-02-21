@@ -2,6 +2,8 @@ import { PROVIDERS, getActiveProvider, setActiveProvider, proxyFetch, callProvid
 import BatchGrader from './batch-grader.js';
 import SiteProfiles from './site-profiles.js';
 import Discover from './discover.js';
+import Prompts, { parseJSONResponse } from './prompts.js';
+import { withRetry } from './ai-retry.js';
 import {
   startGitHubDeviceFlow,
   startChatGPTDeviceFlow,
@@ -810,16 +812,22 @@ document.getElementById('btnImportRubric').addEventListener('click', async () =>
     // Use buildChatRequest but disable streaming
     const req = provider.buildChatRequest(config, messages, { stream: false });
 
-    const response = await fetch(req.url, {
-      method: "POST",
-      headers: req.headers,
-      body: JSON.stringify(req.body)
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) throw new Error("401 Unauthorized. Check API Key.");
-      throw new Error(`API Error: ${response.status}`);
-    }
+    const response = await withRetry(
+      async () => {
+        const res = await fetch(req.url, {
+          method: "POST",
+          headers: req.headers,
+          body: JSON.stringify(req.body)
+        });
+        if (!res.ok) {
+          const err = new Error(res.status === 401 ? "401 Unauthorized. Check API Key." : `API Error: ${res.status}`);
+          err.status = res.status;
+          throw err;
+        }
+        return res;
+      },
+      { maxRetries: 3, onRetry: (attempt, err) => showStatus(`Retrying... (attempt ${attempt}/3)`, 'blue') }
+    );
 
     const data = await response.json();
     let content = "";
@@ -829,10 +837,7 @@ document.getElementById('btnImportRubric').addEventListener('click', async () =>
     else if (data.choices && data.choices[0] && data.choices[0].message) content = data.choices[0].message.content; // OpenAI/GitHub
     else if (data.response) content = data.response; // Legacy Ollama Generate
     
-    // Clean JSON
-    content = content.replace(/```json/g, "").replace(/```/g, "").trim();
-    
-    const parsed = JSON.parse(content);
+    const parsed = parseJSONResponse(content);
     
     if (parsed && parsed.rubric && Array.isArray(parsed.rubric)) {
       // 3. Populate Table
@@ -898,16 +903,22 @@ document.getElementById('btnImportRubricImage').addEventListener('click', async 
 
     const req = provider.buildChatRequest(config, messages, { stream: false });
 
-    const response = await fetch(req.url, {
-      method: "POST",
-      headers: req.headers,
-      body: JSON.stringify(req.body)
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) throw new Error("401 Unauthorized. Check API Key.");
-      throw new Error(`API Error: ${response.status}`);
-    }
+    const response = await withRetry(
+      async () => {
+        const res = await fetch(req.url, {
+          method: "POST",
+          headers: req.headers,
+          body: JSON.stringify(req.body)
+        });
+        if (!res.ok) {
+          const err = new Error(res.status === 401 ? "401 Unauthorized. Check API Key." : `API Error: ${res.status}`);
+          err.status = res.status;
+          throw err;
+        }
+        return res;
+      },
+      { maxRetries: 3, onRetry: (attempt, err) => showStatus(`Retrying... (attempt ${attempt}/3)`, 'blue') }
+    );
 
     const data = await response.json();
     let content = "";
@@ -916,8 +927,7 @@ document.getElementById('btnImportRubricImage').addEventListener('click', async 
     else if (data.choices && data.choices[0] && data.choices[0].message) content = data.choices[0].message.content;
     else if (data.response) content = data.response;
 
-    content = content.replace(/```json/g, "").replace(/```/g, "").trim();
-    const parsed = JSON.parse(content);
+    const parsed = parseJSONResponse(content);
     
     if (parsed && parsed.rubric && Array.isArray(parsed.rubric)) {
       const tbody = document.querySelector('#rubricTable tbody');
@@ -1702,26 +1712,33 @@ async function streamChat(messages, mode) {
 
     const req = provider.buildChatRequest(config, messages, options);
 
-    const response = await fetch(req.url, {
-      method: "POST",
-      headers: req.headers,
-      body: JSON.stringify(req.body)
-    });
-
-    if (!response.ok) {
-      let errorMessage = `API Error: ${response.status}`;
-      try {
-        const errorData = await response.json();
-        if (errorData && errorData.error) errorMessage = `${provider.name} Error: ${errorData.error.message || errorData.error}`;
-      } catch (e) {
-        try {
-          const errorText = await response.text();
-          if (errorText) errorMessage = `API Error: ${errorText}`;
-        } catch (e2) {}
-      }
-      if (response.status === 401) throw new Error("401 Unauthorized. Please check your API Key.");
-      throw new Error(errorMessage);
-    }
+    const response = await withRetry(
+      async () => {
+        const res = await fetch(req.url, {
+          method: "POST",
+          headers: req.headers,
+          body: JSON.stringify(req.body)
+        });
+        if (!res.ok) {
+          let errorMessage = `API Error: ${res.status}`;
+          try {
+            const errorData = await res.json();
+            if (errorData && errorData.error) errorMessage = `${provider.name} Error: ${errorData.error.message || errorData.error}`;
+          } catch (e) {
+            try {
+              const errorText = await res.text();
+              if (errorText) errorMessage = `API Error: ${errorText}`;
+            } catch (e2) {}
+          }
+          if (res.status === 401) errorMessage = "401 Unauthorized. Please check your API Key.";
+          const err = new Error(errorMessage);
+          err.status = res.status;
+          throw err;
+        }
+        return res;
+      },
+      { maxRetries: 3, onRetry: (attempt, err) => showStatus(`Retrying... (attempt ${attempt}/3)`, 'blue') }
+    );
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -3838,19 +3855,14 @@ async function generateRubricFromContent(content, maxScore) {
   try {
     const config = getProviderConfigFromUI(currentProviderId);
     config.model = document.getElementById('modelName').value;
-    const result = await callProviderAI(currentProviderId, config, [
-      { role: 'user', content: prompt }
-    ]);
+    const result = await withRetry(
+      () => callProviderAI(currentProviderId, config, [
+        { role: 'user', content: prompt }
+      ]),
+      { maxRetries: 3, onRetry: (attempt, err) => showStatus(`Retrying... (attempt ${attempt}/3)`, 'blue') }
+    );
 
-    // Parse structured JSON response (same format as extraction prompt)
-    let jsonString = (result || '').trim();
-    if (jsonString.startsWith('```json')) {
-      jsonString = jsonString.replace(/^```json\n?/, '').replace(/\n?```$/, '');
-    } else if (jsonString.startsWith('```')) {
-      jsonString = jsonString.replace(/^```\n?/, '').replace(/\n?```$/, '');
-    }
-
-    const parsed = JSON.parse(jsonString);
+    const parsed = parseJSONResponse(result);
     if (!parsed?.rubric?.length) throw new Error('No rubric criteria returned');
 
     // Store the structured rubric for per-question filtering during grading
@@ -4740,10 +4752,13 @@ async function generateStudentSummary(studentName, questionResults, totalScore, 
 
   try {
     const config = getProviderConfigFromUI(currentProviderId);
-    const result = await callProviderAI(currentProviderId, config, [
-      { role: 'system', content: 'You are a grading assistant. Write a brief, constructive overall comment for this student.' },
-      { role: 'user', content: prompt },
-    ]);
+    const result = await withRetry(
+      () => callProviderAI(currentProviderId, config, [
+        { role: 'system', content: 'You are a grading assistant. Write a brief, constructive overall comment for this student.' },
+        { role: 'user', content: prompt },
+      ]),
+      { maxRetries: 3, onRetry: (attempt, err) => showStatus(`Retrying... (attempt ${attempt}/3)`, 'blue') }
+    );
     return result || formatFallbackSummary(questionResults, totalScore, totalMax);
   } catch {
     return formatFallbackSummary(questionResults, totalScore, totalMax);
