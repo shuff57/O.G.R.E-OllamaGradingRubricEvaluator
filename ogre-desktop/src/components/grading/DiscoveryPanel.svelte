@@ -67,6 +67,10 @@
   let confirmationFlow = $state<ConfirmationFlow | null>(null);
   let isRefining = $state(false);
 
+  // Stale-data warning state
+  let staleWarning = $state(false);
+  let lastDiscoveryUrl = $state('');
+
   // Friendly labels for selector keys
   const SELECTOR_LABELS: Record<string, string> = {
     studentSection: 'Student Section',
@@ -77,6 +81,16 @@
     questionRegion: 'Question Region',
     fullCreditLink: 'Full Credit Link',
   };
+
+  // ── Effects ───────────────────────────────────────────────────────────
+
+  $effect(() => {
+    const url = pageLoadedUrl;
+    if (!url) return;
+    if (lastDiscoveryUrl && url !== lastDiscoveryUrl) {
+      staleWarning = true;
+    }
+  });
 
   // ── Actions ───────────────────────────────────────────────────────────
 
@@ -106,6 +120,10 @@
       validationResults = workflow.validation;
       screenshot = workflow.screenshot;
       phase = 'review';
+      
+      // Update stale-data tracking
+      lastDiscoveryUrl = pageLoadedUrl;
+      staleWarning = false;
       
       // Auto-suggest name from page title if available (simplified)
       profileName = 'New Grading Profile'; 
@@ -399,6 +417,14 @@
     </p>
   </div>
 
+  <!-- ── Stale Data Warning ── -->
+  {#if staleWarning}
+    <div class="stale-warning">
+      <small>⚠ Page has changed — discovery results may be outdated.</small>
+      <button class="btn-link" onclick={() => { staleWarning = false; }}>Dismiss</button>
+    </div>
+  {/if}
+
   <!-- ── Main Action ── -->
   {#if phase === 'idle' || phase === 'error'}
     <button class="btn-primary full-width" onclick={handleStartDiscovery}>
@@ -564,6 +590,34 @@
     margin: 0;
     font-size: 0.85rem;
     color: var(--color-text-secondary);
+  }
+
+  /* ── Stale Warning ── */
+  .stale-warning {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 10px;
+    background: #fef3c7;
+    border: 1px solid #f59e0b;
+    border-radius: 4px;
+    margin-bottom: 8px;
+    color: #92400e;
+  }
+
+  .btn-link {
+    background: transparent;
+    border: none;
+    color: #92400e;
+    cursor: pointer;
+    font-size: 0.85rem;
+    text-decoration: underline;
+    padding: 0;
+  }
+
+  .btn-link:hover {
+    opacity: 0.8;
   }
 
   /* ── Buttons ── */

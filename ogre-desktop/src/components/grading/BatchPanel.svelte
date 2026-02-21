@@ -31,6 +31,7 @@
   import { getBatchSession, saveBatchSession, clearBatchSession } from '../../lib/db';
   import { getEmbeddedUrl } from '../../lib/browser';
   import type { BatchLogEntry } from '../../lib/batch-grader';
+  import { refreshPageData, buildBatchResetState, stopActiveBatch } from '../../lib/page-refresh';
 
   // Props
   let {
@@ -91,6 +92,7 @@
   let currentStudentName = $state('');
   let phaseMessage = $state('');
   let pausedResultBuffer: Array<{ studentIndex: number; score: number; feedback: string }> = [];
+  let isAutoStopped = false; // plain let, not $state — no reactivity needed
 
   let progressPercent = $derived(
     batchProgress && batchProgress.totalStudents > 0
@@ -102,6 +104,18 @@
   let resumeAfter = $state('');
   let savedSessionStudent = $state<string | null>(null);
   let currentPageUrl = $state('');
+
+  // ── Reusable page data refresh ──────────────────────────────────────
+  async function doRefreshPageData() {
+    const url = pageLoadedUrl || currentPageUrl;
+    const result = await refreshPageData(url);
+    currentPageUrl = result.pageUrl;
+    detectedProfile = result.detectedProfile;
+    profileWarning = result.detectedProfile
+      ? ''
+      : '⚠ No profile found for this site. Using MyOpenMath default.';
+    savedSessionStudent = result.savedSessionStudent;
+  }
 
   // ── Auto-detect profile on mount + check for saved session ──────────
   onMount(async () => {
@@ -120,33 +134,8 @@
       currentPageUrl = '';
     }
 
-    // Auto-detect profile based on URL
-    try {
-      const storage = new ProfileStorageImpl();
-      const matches = await storage.findProfilesByUrl(currentPageUrl);
-      if (matches.length > 0) {
-        detectedProfile = matches[0];
-        profileWarning = '';
-      } else {
-        detectedProfile = null;
-        profileWarning = '⚠ No profile found for this site. Using MyOpenMath default.';
-      }
-    } catch {
-      detectedProfile = null;
-      profileWarning = '⚠ Could not detect profile. Using MyOpenMath default.';
-    }
-
-    // Check for an existing batch session for the current page
-    try {
-      if (currentPageUrl) {
-        const session = await getBatchSession(currentPageUrl);
-        if (session) {
-          savedSessionStudent = session.last_student_name;
-        }
-      }
-    } catch {
-      // Non-fatal — no session to resume
-    }
+    // Detect profile + check saved session
+    await doRefreshPageData();
 
     // Pre-select profile if returning from discovery
     if (preselectedProfileId) {
@@ -155,6 +144,35 @@
         selectedProfileId = preselectedProfileId;
       }
     }
+  });
+
+  // ── Re-detect when page URL changes ───────────────────────────────
+  $effect(() => {
+    const url = pageLoadedUrl;
+    if (!url) return; // ignore empty initial value
+
+    // Auto-stop if batch is active
+    if (batchPhase !== 'idle' || isBatchRunning) {
+      isAutoStopped = true;
+      stopActiveBatch(batchHandle, batchGrader, pausedResultBuffer);
+      const reset = buildBatchResetState();
+      batchPhase = reset.batchPhase;
+      batchProgress = reset.batchProgress;
+      batchLog = reset.batchLog;
+      extractedRubric = reset.extractedRubric;
+      rubricText = reset.rubricText;
+      phaseMessage = reset.phaseMessage;
+      batchError = reset.batchError;
+      batchGrader = reset.batchGrader;
+      batchHandle = reset.batchHandle;
+      isBatchRunning = reset.isBatchRunning;
+      isBatchPaused = reset.isBatchPaused;
+      currentStudentName = reset.currentStudentName;
+      resumeAfter = reset.resumeAfter;
+    }
+
+    // Re-detect profile and session for new URL
+    doRefreshPageData();
   });
 
   function updateBatchState() {
@@ -207,6 +225,7 @@
 
   // ── Phase 1: Extract ─────────────────────────────────────────────────
   async function handleExtract() {
+    isAutoStopped = false;
     batchError = '';
     phaseMessage = '';
     batchPhase = 'extracting';
@@ -245,6 +264,7 @@
   async function handleContinueGrading() {
     if (!batchGrader) return;
 
+    isAutoStopped = false;
     batchError = '';
     const studentsToGrade = batchGrader.studentsToGrade;
 
@@ -379,6 +399,7 @@
   }
 
   async function handleSSEChunk(data: BatchChunkEvent) {
+    if (isAutoStopped) return;
     if (!batchGrader) return;
     for (const result of data.results) {
       if (isBatchPaused) {
@@ -391,6 +412,7 @@
   }
 
   async function handleSSEOutlier(data: BatchOutlierEvent) {
+    if (isAutoStopped) return;
     if (!batchGrader) return;
     phaseMessage = `Applying ${data.adjustedResults.length} outlier adjustment(s)...`;
     for (const result of data.adjustedResults) {
@@ -404,6 +426,7 @@
   }
 
   async function handleSSEDone(data: BatchDoneEvent) {
+    if (isAutoStopped) return;
     phaseMessage = `Complete — ${data.metadata.totalStudents} students in ${data.metadata.elapsedSeconds}s`;
     if (pausedResultBuffer.length > 0 && !isBatchPaused) {
       await flushPausedBuffer();
@@ -426,6 +449,7 @@
   }
 
   function handleSSEError(data: BatchErrorEvent) {
+    if (isAutoStopped) return;
     batchError = data.message;
     phaseMessage = '';
     if (batchGrader) batchGrader.stop();
