@@ -4,7 +4,7 @@
    * Fetches rubrics from the grading server and shows a dropdown to select.
    * Emits the full SavedRubric object so parents can pass rubric data downstream.
    */
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { listRubrics } from '../../lib/rubric-api';
   import type { SavedRubric } from '../../lib/rubric-api';
 
@@ -26,6 +26,11 @@
 
   onMount(async () => {
     await fetchRubrics();
+    window.addEventListener('ogre:rubric-saved', fetchRubrics);
+  });
+
+  onDestroy(() => {
+    window.removeEventListener('ogre:rubric-saved', fetchRubrics);
   });
 
   async function fetchRubrics() {
@@ -43,7 +48,7 @@
 
   function handleChange(e: Event) {
     const id = (e.target as HTMLSelectElement).value;
-    const rubric = rubrics.find(r => r.id === id) ?? null;
+    const rubric = id === '' ? null : (rubrics.find(r => r.id === id) ?? null);
     selectedRubric = rubric;
     onRubricChange?.(rubric);
   }
@@ -82,7 +87,7 @@
       value={selectedRubric?.id ?? ''}
       onchange={handleChange}
     >
-      <option value="" disabled>Select a rubric...</option>
+      <option value="">None (use page rubric)</option>
       {#each rubrics as rubric (rubric.id)}
         <option value={rubric.id}>
           {rubric.name} ({rubric.maxScore} pts)

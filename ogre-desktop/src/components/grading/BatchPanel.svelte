@@ -28,10 +28,12 @@
     BatchErrorEvent,
   } from '../../lib/grading-api';
   import { createRubric } from '../../lib/rubric-api';
+  import type { SavedRubric } from '../../lib/rubric-api';
   import { getBatchSession, saveBatchSession, clearBatchSession } from '../../lib/db';
   import { getEmbeddedUrl } from '../../lib/browser';
   import type { BatchLogEntry } from '../../lib/batch-grader';
   import { refreshPageData, buildBatchResetState, stopActiveBatch } from '../../lib/page-refresh';
+  import { criteriaToText } from '../../lib/rubric-utils';
 
   // Props
   let {
@@ -42,6 +44,7 @@
     preselectedProfileId = null as string | null,
     pageLoadedUrl = '',
     refreshKey = 0,
+    selectedRubric = null as SavedRubric | null,
   } = $props();
 
   // ── Profile Selection ────────────────────────────────────────────────
@@ -76,6 +79,7 @@
   let rubricText = $state('');
   let rubricMaxScore = $state('10');
   let extractedRubric = $state<Rubric | null>(null);
+  let sourceRubricId = $state<string | null>(null);
   let saveRubricName = $state('');
   let saveRubricTags = $state('');
   let showSaveDialog = $state(false);
@@ -229,6 +233,29 @@
       lines.push(rubric.modelText);
     }
     return lines.join('\n').trim() || '(No rubric data found on page)';
+  }
+
+  // ── Library rubric helpers ──────────────────────────────────────────
+  function loadLibraryRubric(rubric: SavedRubric) {
+    sourceRubricId = rubric.id;
+    rubricText = criteriaToText(rubric.criteria);
+    rubricMaxScore = String(rubric.maxScore);
+    extractedRubric = {
+      essayPrompt: '',
+      checklistItems: rubric.criteria.map(c => ({
+        category: c.criteria,
+        items: c.description ? [c.description] : [],
+      })),
+      rubricItems: [],
+      modelText: null,
+      maxScore: String(rubric.maxScore),
+    };
+  }
+
+  function clearLibraryRubric() {
+    sourceRubricId = null;
+    rubricText = '';
+    extractedRubric = null;
   }
 
   // ── Phase 1: Extract ─────────────────────────────────────────────────
@@ -512,6 +539,7 @@
   }
 
   function handleReset() {
+    sourceRubricId = null;
     batchPhase = 'idle';
     batchProgress = null;
     batchLog = [];

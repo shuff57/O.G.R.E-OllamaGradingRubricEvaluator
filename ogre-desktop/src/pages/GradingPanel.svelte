@@ -357,17 +357,18 @@
       {#if activeMode === 'solver'}
         <SolverChat />
       {/if}
-      {#if activeMode === 'batch'}
-        <BatchPanel
-          provider={activeProvider}
-          model={activeModel}
-          bind:isBatchRunning={batchRunning}
-          {onRequestDiscovery}
-          {preselectedProfileId}
-          {pageLoadedUrl}
-          {refreshKey}
-        />
-      {/if}
+       {#if activeMode === 'batch'}
+         <BatchPanel
+           provider={activeProvider}
+           model={activeModel}
+           bind:isBatchRunning={batchRunning}
+           {onRequestDiscovery}
+           {preselectedProfileId}
+           {pageLoadedUrl}
+           {refreshKey}
+           {selectedRubric}
+         />
+       {/if}
 
       {#if activeMode === 'discovery'}
         <DiscoveryPanel
