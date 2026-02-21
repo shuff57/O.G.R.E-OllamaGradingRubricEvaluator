@@ -498,7 +498,14 @@
 <section class="batch-panel">
   <!-- ── Site Profile Selection ──────────────────────────────────── -->
   <div class="section-card">
-    <h3>Site Profile</h3>
+    <div class="section-header-row">
+      <h3>Site Profile</h3>
+      <button
+        class="btn-link auto-discover-btn"
+        onclick={() => onRequestDiscovery()}
+        disabled={isBatchRunning}
+      >🔍 Auto-Discover</button>
+    </div>
     <div class="profile-bar">
       <select
         class="profile-select"
@@ -845,6 +852,27 @@
     display: flex;
     flex-direction: column;
     gap: var(--spacing-2);
+  }
+
+  .section-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .auto-discover-btn {
+    font-size: 0.75rem;
+    opacity: 0.7;
+    padding: 0;
+  }
+
+  .auto-discover-btn:hover:not(:disabled) {
+    opacity: 1;
+  }
+
+  .auto-discover-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
   }
 
   .profile-bar {
