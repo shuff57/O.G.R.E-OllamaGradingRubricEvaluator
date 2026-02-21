@@ -41,6 +41,7 @@ export interface BatchResetState {
   isBatchPaused: false;
   currentStudentName: string;
   resumeAfter: string;
+  sourceRubricId: null;
 }
 
 // ============================================================================
@@ -109,6 +110,7 @@ export function buildBatchResetState(): BatchResetState {
     isBatchPaused: false,
     currentStudentName: '',
     resumeAfter: '',
+    sourceRubricId: null,
   };
 }
 

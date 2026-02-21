@@ -203,3 +203,50 @@ describe("hasUnsavedChanges", () => {
     expect(hasUnsavedChanges(text, original)).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Additional round-trip fidelity, edge cases, and hasUnsavedChanges correctness
+// ---------------------------------------------------------------------------
+
+describe("round-trip and edge cases", () => {
+  it("round-trips 3 criteria with different point values", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "Mathematical Reasoning", description: "Shows clear logical steps", points: 5 },
+      { criteria: "Accuracy", description: "Correct final answer", points: 10 },
+      { criteria: "Presentation", description: "Neat and organized", points: 3 },
+    ];
+    const text = criteriaToText(criteria);
+    const parsed = textToCriteria(text);
+    expect(parsed).toEqual(criteria);
+  });
+
+  it("criteriaToText returns empty string for empty array", () => {
+    expect(criteriaToText([])).toBe("");
+  });
+
+  it("textToCriteria returns empty array for empty string", () => {
+    expect(textToCriteria("")).toEqual([]);
+  });
+
+  it("textToCriteria returns empty array for random text without format", () => {
+    expect(textToCriteria("random text without format")).toEqual([]);
+  });
+
+  it("hasUnsavedChanges returns true when point values differ", () => {
+    const original: RubricCriterion[] = [
+      { criteria: "Writing Quality", description: "Clear grammar", points: 10 },
+      { criteria: "Analysis", description: "Insightful", points: 8 },
+    ];
+    const modifiedText = "Writing Quality (10pts): Clear grammar\nAnalysis (15pts): Insightful";
+    expect(hasUnsavedChanges(modifiedText, original)).toBe(true);
+  });
+
+  it("hasUnsavedChanges returns false when criteria are identical", () => {
+    const original: RubricCriterion[] = [
+      { criteria: "Writing Quality", description: "Clear grammar", points: 10 },
+      { criteria: "Analysis", description: "Insightful", points: 8 },
+    ];
+    const identicalText = criteriaToText(original);
+    expect(hasUnsavedChanges(identicalText, original)).toBe(false);
+  });
+});

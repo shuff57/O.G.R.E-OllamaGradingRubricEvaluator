@@ -285,12 +285,17 @@
 
       const rubric = batchGrader.rubric;
       if (rubric) {
-        extractedRubric = rubric;
+      extractedRubric = rubric;
         rubricText = formatRubricForDisplay(rubric);
         rubricMaxScore = rubric.maxScore || '10';
+        if (sourceRubricId !== null) { sourceRubricId = null; }
       } else {
-        rubricText = '(Could not extract rubric from page)';
-        rubricMaxScore = '10';
+        if (sourceRubricId !== null) {
+          phaseMessage = 'No rubric found on page. Using loaded library rubric.';
+        } else {
+          rubricText = '(Could not extract rubric from page)';
+          rubricMaxScore = '10';
+        }
       }
 
       if (batchGrader.studentsToGrade.length === 0) {

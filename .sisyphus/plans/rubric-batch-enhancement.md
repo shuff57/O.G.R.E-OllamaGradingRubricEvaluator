@@ -646,7 +646,7 @@ Max Concurrent: 3 (Wave 1)
   - Files: `ogre-desktop/src/components/grading/BatchPanel.svelte`
   - Pre-commit: `cd ogre-desktop && npx tsc --noEmit && npx vitest run`
 
-- [ ] 7. Handle extraction vs library rubric interaction + edge cases
+- [x] 7. Handle extraction vs library rubric interaction + edge cases
 
   **What to do**:
   - In `BatchPanel.svelte`, modify `handleExtract()` (line 235-269) to handle the case where a library rubric is already loaded:
@@ -729,7 +729,7 @@ Max Concurrent: 3 (Wave 1)
   - Files: `ogre-desktop/src/components/grading/BatchPanel.svelte`, `ogre-desktop/src/lib/page-refresh.ts`
   - Pre-commit: `cd ogre-desktop && npx tsc --noEmit && npx vitest run`
 
-- [ ] 8. Add vitest tests for new conversion paths + round-trip fidelity
+- [x] 8. Add vitest tests for new conversion paths + round-trip fidelity
 
   **What to do**:
   - In `ogre-desktop/src/lib/rubric-utils.test.ts`, add new test cases:
