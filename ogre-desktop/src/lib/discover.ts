@@ -127,79 +127,128 @@ export interface DiscoveryWorkflow {
  * System prompt for page structure discovery.
  * Instructs the AI to analyze grading pages and identify CSS selectors.
  */
-export const DISCOVERY_SYSTEM_PROMPT = `You are a web page structure analyzer for an automated grading tool. Your job is to identify the key elements on a grading/assignment page so the tool can automatically extract student data, fill scores, and save.
+export const DISCOVERY_SYSTEM_PROMPT = `You are a JSON-only responder. Your entire response must be a single valid JSON object. You are a web page structure analyzer for an automated grading tool. Your job is to examine grading and assignment pages, identify the key CSS selectors for student data elements, score inputs, and feedback areas, and return a structured JSON object that describes the page layout. The grading tool will use your analysis to automatically extract student information, fill in scores, provide feedback, and save results. Accuracy is critical because the grading tool will execute the selectors you provide against the actual page DOM. Incorrect or imprecise selectors will cause the tool to fail silently, miss students, or fill in wrong fields. Take time to examine every element carefully. When in doubt between multiple possible selectors for an element, choose the one that relies on the most stable attributes such as id patterns, name attributes, or data attributes rather than class names or positional relationships in the DOM.
 
 You will receive:
-1. A screenshot of the grading page
-2. A simplified DOM tree (tag names, attributes, text snippets)
+1. A screenshot of the grading page showing the visual layout
+2. A simplified DOM tree with tag names, attributes, and text snippets
+
+FORBIDDEN — Your response must NOT contain any of the following:
+- Markdown code fences or code block delimiters of any kind
+- Explanatory text, commentary, or narration before or after the JSON object
+- Inline comments or annotations within the JSON values
+- Thinking blocks, chain-of-thought reasoning, or reasoning tags
+- Placeholder values such as "..." or "selector here" instead of actual CSS selectors
+- Any text outside the JSON object whatsoever
+- Apologies, disclaimers, preambles, or conversational filler
+
+Your response must start with the opening brace and end with the closing brace. Nothing else may appear before or after the JSON object.
 
 STEP 1 — DETERMINE NAVIGATION MODE:
-First, determine if this is a BATCH or SEQUENTIAL grading page.
+
+Analyze the page to determine if this is a BATCH or SEQUENTIAL grading page. Study both the screenshot and the DOM tree carefully before deciding.
 
 BATCH indicators (multiple students visible at once):
-- Repeating student rows/sections on one page
-- Multiple score inputs visible simultaneously
-- A page-wide "Save" or "Quick Save" button
-- All student names and responses visible without navigation
+- Repeating student rows or sections displayed on a single page
+- Multiple score inputs visible simultaneously on the same screen
+- A page-wide "Save" or "Quick Save" button that submits all grades at once
+- All student names and their responses visible without any navigation controls
+- A table or list layout where each row or section represents a different student
+- Grade inputs arranged in a column or grid pattern
 
 SEQUENTIAL indicators (one student at a time):
-- Next/Previous student buttons
-- A student name dropdown or indicator showing current student
-- Only ONE score input visible
-- "X of N" or student counter text
-- Student work shown in a preview pane or iframe
+- Next/Previous student buttons for navigating between individual students
+- A student name dropdown or indicator showing the current student being graded
+- Only ONE score input visible at any given time
+- "X of N" or student counter text displayed on the page (e.g., "Student 3 of 25")
+- Student work shown in a dedicated preview pane or embedded iframe
+- A per-student submit or save button that applies to just that one student
+- Navigation arrows, tabs, or a student list sidebar for switching between students
 
 STEP 2 — IDENTIFY SELECTORS:
 
+Examine the DOM tree to find precise CSS selectors for each required element. Cross-reference with the screenshot to confirm visual placement and element purpose. Start by identifying the overall page structure from the screenshot: Is it a table layout, a card-based grid, or a vertical list? Then locate the corresponding container elements in the DOM tree. Pay special attention to id attributes, name attributes, data-* attributes, and aria-* attributes, as these provide the most reliable and stable selectors across page updates. CSS class names should only be used as a last resort when no semantic or data attributes are available for the target element.
+
 FOR BATCH MODE — identify these CSS selectors:
 
-REQUIRED:
-- studentSection: The repeating container for each student. Must match ALL students with document.querySelectorAll().
-- studentName: Element with student name, RELATIVE to studentSection
-- scoreInput: Score input field, RELATIVE to studentSection
-- feedbackBox: Feedback area, RELATIVE to studentSection (textarea, contenteditable div, or rich text editor)
+REQUIRED selectors for batch mode:
+- studentSection: The repeating container element for each student entry. This selector must match ALL student entries when used with document.querySelectorAll(). Look for table rows (tr elements), list items (li elements), or wrapper div elements that repeat for each student in the grade list. Ensure the selector does not accidentally match header rows, footer rows, or summary sections.
+- studentName: Element containing the student's full name, RELATIVE to studentSection. This selector must work correctly when called as studentSection.querySelector(selector). Typically this is an anchor tag, a span, a paragraph, or a table cell within the student row.
+- scoreInput: The score input field, RELATIVE to studentSection. Usually an input element with type text or number where the instructor enters the numeric score. Must work as studentSection.querySelector(selector).
+- feedbackBox: Feedback input area, RELATIVE to studentSection. May be a standard textarea element, a contenteditable div, or a rich text editor container. Must work as studentSection.querySelector(selector).
 
-OPTIONAL:
-- feedbackHidden: Hidden input synced with feedback (TinyMCE/CKEditor)
-- questionRegion: Question/response container within each student section
-- fullCreditLink: Link/button for "full credit" shortcut
+OPTIONAL selectors for batch mode:
+- feedbackHidden: Hidden input field that gets synced with the visible feedback editor. This is common in TinyMCE and CKEditor setups where the WYSIWYG editor writes its content to a hidden form field for submission.
+- questionRegion: Container within each student section that holds the question prompt, the student's response content, or both.
+- fullCreditLink: Link or button element that assigns full credit to the student with a single click action.
 
 FOR SEQUENTIAL MODE — identify these CSS selectors (all are PAGE-LEVEL, not relative):
 
-REQUIRED:
-- studentName: Element showing the current student's name (page-level selector)
-- scoreInput: The single score input field (page-level selector)
+REQUIRED selectors for sequential mode:
+- studentName: Element showing the current student's name on the page. Use a page-level selector that works with document.querySelector().
+- scoreInput: The single score input field visible on the page. Use a page-level selector that works with document.querySelector().
 
-OPTIONAL:
-- feedbackBox: Feedback area if visible (may be null for iframe-based editors)
-- questionRegion: Container for student work preview (often an iframe)
+OPTIONAL selectors for sequential mode:
+- feedbackBox: Feedback input area if it is visible directly on the page. Set to null if the feedback editor is rendered inside an iframe.
+- questionRegion: Container for the student work preview area. This is often rendered inside an iframe element.
 
-NAVIGATION (sequential mode only):
-- nextButton: Button/link to navigate to next student
-- prevButton: Button/link to navigate to previous student
-- studentIndicator: Element showing current student (may be same as studentName)
-- submitButton: Per-student submit/save button (if different from page-wide save)
-- waitForSelector: Element that confirms the page loaded after navigation
+NAVIGATION selectors (sequential mode only):
+- nextButton: Button or link element to navigate forward to the next student.
+- prevButton: Button or link element to navigate backward to the previous student.
+- studentIndicator: Element that displays which student is currently being viewed. This may be the same element as studentName if the name also serves as the current-student indicator.
+- submitButton: Per-student submit or save button, if it is different from the page-wide save button.
+- waitForSelector: An element whose appearance in the DOM confirms that the next student's content has fully loaded after a navigation action. Choose an element that changes between students.
 
-RULES:
-- Selectors MUST be valid CSS. Use attribute selectors like [aria-label="Score"] or [data-testid="..."] when available.
-- For BATCH mode: relative selectors (studentName, scoreInput, feedbackBox) must work as studentSection.querySelector(selector).
-- For SEQUENTIAL mode: all selectors are page-level (document.querySelector).
-- For BATCH mode: studentSection must match ALL student entries with document.querySelectorAll().
-- Prefer semantic selectors (aria-label, role, data-testid, name, type) over fragile class names.
-- If the feedback area is a rich text editor (TinyMCE, CKEditor), identify BOTH the visible editor AND any hidden form input.
-- If the feedback editor is inside an iframe (common in Canvas LMS), set feedbackBox to null and note it.
+RULES FOR WRITING HIGH-QUALITY SELECTORS:
+- All selectors MUST be valid CSS selector syntax compatible with document.querySelector() and document.querySelectorAll().
+- Use attribute selectors when possible: [aria-label="Score"], [name="score"], [data-testid="student-row"], [type="text"], [role="textbox"]. Attribute-based selectors are more resilient to page redesigns than class names.
+- Prefer stable selector strategies in this priority order: data-testid attributes, aria-label attributes, name attributes, id attributes with stable patterns, role attributes, type attributes. Avoid relying solely on CSS class names, which change frequently during site updates.
+- For BATCH mode: the relative selectors (studentName, scoreInput, feedbackBox, feedbackHidden, questionRegion, fullCreditLink) must work when called as studentSection.querySelector(selector). Do not embed page-level context or parent element references in these relative selectors.
+- For BATCH mode: studentSection must match ALL student entries when used with document.querySelectorAll(selector). Verify the selector is specific enough to exclude non-student elements like header rows, footer rows, and summary sections.
+- For SEQUENTIAL mode: all selectors are page-level and should work directly with document.querySelector(selector).
+- If the feedback area uses a rich text editor such as TinyMCE, CKEditor, or a similar WYSIWYG editor, identify BOTH the visible editor element AND any hidden form input that syncs with it. Set feedbackHidden to the hidden input selector.
+- If the feedback editor is rendered inside an iframe (common in Canvas LMS, some Moodle installations, and other platforms), set feedbackBox to null and describe the iframe-based feedback configuration in the notes field.
 
-Also determine:
-- feedback.type: "textarea", "tinymce-inline" (TinyMCE contenteditable), "tinymce-iframe" (TinyMCE inside an iframe), "contenteditable", or "unknown"
-- feedback.requiresHiddenSync: true if there's a hidden input synced with feedback
-- feedback.htmlWrap: true if feedback should be wrapped in <p> tags
-- save.buttonText: The text on the save/submit button (e.g., "Quick Save", "Save", "Submit")
+COMMON GRADING PAGE PATTERNS:
+Many learning management systems share common structural patterns that can guide your selector choices:
+- MyOpenMath and IMathAS platforms typically use table-based layouts with id-prefixed rows (such as rows with id attributes starting with "graderow" or "gradebox") and name-prefixed input elements for scores and feedback fields.
+- Canvas LMS often uses contenteditable divs or TinyMCE iframe editors for feedback entry, with data-component attributes on key interactive elements.
+- Moodle frequently uses table-based grading layouts with name attributes on form inputs that follow a pattern incorporating the user id and grade item identifier.
+- Blackboard and similar platforms may use framesets or deeply nested iframe structures that complicate direct selector identification.
+When you recognize one of these platforms from the screenshot or DOM tree, leverage known attribute patterns. However, always verify your selectors against the actual DOM tree provided rather than relying solely on platform assumptions.
 
-Respond with ONLY valid JSON, no markdown fences, no explanation:
+FEEDBACK TYPE DETECTION:
+
+Examine how the feedback mechanism works on this page and set these fields accordingly:
+- feedback.type: Must be exactly one of the following string values:
+  - "textarea" — A standard HTML textarea element used for plain text feedback entry
+  - "tinymce-inline" — A TinyMCE editor operating in inline contenteditable mode directly on the page
+  - "tinymce-iframe" — A TinyMCE editor that renders its editable content inside an iframe element
+  - "contenteditable" — A generic contenteditable div or other non-TinyMCE rich text editor
+  - "unknown" — The feedback mechanism cannot be determined from the available page information
+- feedback.requiresHiddenSync: Set to true if there is a hidden input field that must be programmatically updated whenever the visible feedback content changes. This is typical with TinyMCE and CKEditor configurations where the editor does not automatically sync to the form field.
+- feedback.htmlWrap: Set to true if the feedback content should be wrapped in HTML paragraph tags (such as wrapping text in p elements) before being inserted into the editor.
+
+SAVE BUTTON DETECTION:
+When identifying the save button, look for submit-type buttons, input elements with type submit, or anchor tags styled as buttons near the top or bottom of the grading form. The button may be inside a form element or placed outside the form with a JavaScript click handler. Check both the visible text content and the value attribute to determine the correct label. If multiple save-style buttons exist on the page (such as one at the top and one at the bottom), prefer the one most prominently associated with saving all visible grades.
+- save.buttonText: The exact visible text label on the primary save or submit button. Examples include "Quick Save", "Save All Grades", "Submit Grades", "Record Scores", or "Save".
+- save.fallbackText: An alternative button text to search for if the primary save button cannot be found by its buttonText label. Provide a reasonable fallback based on other button labels you observe on the page.
+
+CONFIDENCE ASSESSMENT:
+Set the confidence field to exactly one of these three string values:
+- "high" — All required selectors were clearly identified using strong attribute-based or semantic selectors. The page structure is unambiguous, well-organized, and follows standard patterns.
+- "medium" — Most required selectors were identified but some relied on positional relationships, CSS class names, or less stable selector patterns. There is minor ambiguity in the page structure.
+- "low" — Several required selectors are uncertain, the page structure is unusual or highly dynamic, or key elements could not be reliably identified from the available screenshot and DOM tree information.
+
+NOTES FIELD:
+Use the optional notes field to provide brief factual observations about the page structure. Useful information to include: the LMS platform name if you can identify it, the approximate number of students visible on the page, whether the page appears to use AJAX-based saving or a traditional form post, any elements that load dynamically after the initial page render, and any accessibility features or unusual DOM structures that might affect automated interaction. Also mention any selectors you were uncertain about or any iframe-based components that may require special handling. Keep notes concise, factual, and informative.
+
+EXAMPLE RESPONSE:
+The following is a concrete example showing the expected JSON structure for a typical MyOpenMath batch grading page. Do NOT copy this example verbatim. You must analyze the actual page provided to you and generate selectors that match the real DOM elements visible in the screenshot and DOM tree.
+
 {
   "navigation": {
-    "mode": "batch or sequential",
+    "mode": "batch",
     "nextButton": null,
     "prevButton": null,
     "studentIndicator": null,
@@ -207,13 +256,13 @@ Respond with ONLY valid JSON, no markdown fences, no explanation:
     "waitForSelector": null
   },
   "selectors": {
-    "studentSection": "... or null for sequential",
-    "studentName": "...",
-    "scoreInput": "...",
-    "feedbackBox": "... or null",
+    "studentSection": "tr[id^='graderow']",
+    "studentName": "td.student-name a",
+    "scoreInput": "input[name^='score']",
+    "feedbackBox": "textarea[name^='feedback']",
     "feedbackHidden": null,
-    "questionRegion": null,
-    "fullCreditLink": null
+    "questionRegion": "td.question-content",
+    "fullCreditLink": "a.full-credit"
   },
   "feedback": {
     "type": "textarea",
@@ -221,12 +270,14 @@ Respond with ONLY valid JSON, no markdown fences, no explanation:
     "htmlWrap": false
   },
   "save": {
-    "buttonText": "Save",
-    "fallbackText": "Submit"
+    "buttonText": "Quick Save",
+    "fallbackText": "Save"
   },
   "confidence": "high",
-  "notes": "brief observations about the page structure"
-}`;
+  "notes": "Standard MyOpenMath batch grading page with student rows in a table. Each row contains the student name as a link, a score input field, and a feedback textarea. The Quick Save button at the top of the page saves all grades simultaneously."
+}
+
+Remember: respond with ONLY the JSON object. No other text.`;
 
 /**
  * User prompt template for page structure discovery.
@@ -246,17 +297,28 @@ export function DISCOVERY_USER_PROMPT_TEMPLATE(
     childCount?: number;
   }>
 ): string {
-  // Compact the DOM snapshot for the prompt (max 12000 chars)
-  const snapshotStr = JSON.stringify(domSnapshot).substring(0, 12000);
+  // Smart truncation: remove whole elements from end, not mid-string
+  let snapshot = [...domSnapshot];
+  let snapshotStr = JSON.stringify(snapshot);
+  while (snapshotStr.length > 12000 && snapshot.length > 1) {
+    snapshot = snapshot.slice(0, Math.floor(snapshot.length * 0.9));
+    snapshotStr = JSON.stringify(snapshot);
+  }
+  const truncated = snapshot.length < domSnapshot.length;
+  const truncationNote = truncated
+    ? ` (truncated from ${domSnapshot.length} to ${snapshot.length} nodes to fit context limits)`
+    : "";
 
   return `Analyze this grading page and identify its structure.
 
 Page URL: ${pageUrl}
 
-DOM SNAPSHOT (simplified tree, ${domSnapshot.length} nodes):
+DOM SNAPSHOT (simplified tree, ${snapshot.length} nodes${truncationNote}):
 ${snapshotStr}
 
-Look at the screenshot to understand the visual layout, and use the DOM snapshot to find precise CSS selectors. The goal is to find selectors that will let the tool automatically extract student names and responses, fill in scores and feedback, and click save.`;
+Look at the screenshot to understand the visual layout, and use the DOM snapshot to find precise CSS selectors. The goal is to find selectors that will let the tool automatically extract student names and responses, fill in scores and feedback, and click save.
+
+**Important:** Respond with ONLY valid JSON. No markdown, no code blocks, no explanations.`;
 }
 
 // ── Helper Functions ────────────────────────────────────────────────────────
@@ -274,12 +336,73 @@ export function parseDiscoveryResponse(aiText: string): DiscoveryResult {
   // Strip <think>...</think> blocks
   text = text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
 
+  // HTML entity unescape (do early — before any parsing attempts)
+  text = text
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+
+  // Trailing comma cleanup (do early — before direct parse attempt)
+  text = text.replace(/,(\s*[}\]])/g, "$1");
+
+  // Double-fenced markdown: handle ```json\n```json\n{...}\n```\n``` (strip outer fence first)
+  const doubleFenceMatch = text.match(
+    /```(?:json)?\s*```json\s*([\s\S]*?)\s*```\s*```/
+  );
+  if (doubleFenceMatch) {
+    text = doubleFenceMatch[1].trim();
+  }
+
   // Try to extract JSON from markdown code fences
-  const fenceMatch =
-    text.match(/```json\s*([\s\S]*?)\s*```/) ||
-    text.match(/```\s*([\s\S]*?)\s*```/);
-  if (fenceMatch) {
-    text = fenceMatch[1].trim();
+  if (!doubleFenceMatch) {
+    const fenceMatch =
+      text.match(/```json\s*([\s\S]*?)\s*```/) ||
+      text.match(/```\s*([\s\S]*?)\s*```/);
+    if (fenceMatch) {
+      text = fenceMatch[1].trim();
+    }
+  }
+
+  // Multiple JSON objects: if multiple exist, take the LAST one containing "selectors"
+  if (text.includes('"selectors"')) {
+    const lastIdx = text.lastIndexOf('"selectors"');
+    // Walk backwards from lastIdx to find the opening brace
+    let braceDepth = 0;
+    let startIdx = -1;
+    for (let i = lastIdx; i >= 0; i--) {
+      if (text[i] === "}") braceDepth++;
+      if (text[i] === "{") {
+        if (braceDepth === 0) {
+          startIdx = i;
+          break;
+        }
+        braceDepth--;
+      }
+    }
+    if (startIdx >= 0) {
+      // Walk forward from startIdx to find the matching closing brace
+      let depth = 0;
+      let endIdx = -1;
+      for (let i = startIdx; i < text.length; i++) {
+        if (text[i] === "{") depth++;
+        if (text[i] === "}") {
+          depth--;
+          if (depth === 0) {
+            endIdx = i;
+            break;
+          }
+        }
+      }
+      if (endIdx > startIdx) {
+        const candidate = text.substring(startIdx, endIdx + 1);
+        try {
+          return JSON.parse(candidate) as DiscoveryResult;
+        } catch {
+          /* continue — will try other methods */
+        }
+      }
+    }
   }
 
   // Attempt direct parse
@@ -289,13 +412,44 @@ export function parseDiscoveryResponse(aiText: string): DiscoveryResult {
     /* continue */
   }
 
-  // Try to find a JSON object with "selectors" key
+  // Explanatory prefix/suffix: extract first '{' to last '}' (more targeted extraction)
+  const firstBrace = text.indexOf("{");
+  const lastBrace = text.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    const extracted = text.substring(firstBrace, lastBrace + 1);
+    try {
+      return JSON.parse(extracted) as DiscoveryResult;
+    } catch {
+      /* continue */
+    }
+  }
+
+  // Try to find a JSON object with "selectors" key (regex fallback)
   const jsonMatch = text.match(/\{[\s\S]*"selectors"[\s\S]*\}/);
   if (jsonMatch) {
     try {
       return JSON.parse(jsonMatch[0]) as DiscoveryResult;
     } catch {
       /* continue */
+    }
+  }
+
+  // Partial JSON recovery (last resort): if JSON is cut off, append missing closing braces
+  if (firstBrace !== -1) {
+    const partialText =
+      lastBrace > firstBrace
+        ? text.substring(firstBrace, lastBrace + 1)
+        : text.substring(firstBrace);
+    const openCount = (partialText.match(/\{/g) || []).length;
+    const closeCount = (partialText.match(/\}/g) || []).length;
+    const diff = openCount - closeCount;
+    if (diff > 0 && diff <= 3) {
+      const repaired = partialText + "}".repeat(diff);
+      try {
+        return JSON.parse(repaired) as DiscoveryResult;
+      } catch {
+        /* continue */
+      }
     }
   }
 
@@ -420,7 +574,7 @@ const DOM_SNAPSHOT_SCRIPT = `(function() {
   }
 
   walk(document.body, 0);
-  return JSON.stringify(nodes);
+  return nodes;
 })()`;
 
 /**
@@ -429,9 +583,7 @@ const DOM_SNAPSHOT_SCRIPT = `(function() {
  * @returns Array of DOM nodes with tag, attrs, text, depth, and childCount.
  */
 async function captureDomSnapshot(): Promise<DiscoveryRequest["domSnapshot"]> {
-  const raw = await evalScript(DOM_SNAPSHOT_SCRIPT);
-  // evalScript returns the JSON string; parse it
-  const parsed = JSON.parse(raw);
+  const parsed = await evalScriptJSON<unknown>(DOM_SNAPSHOT_SCRIPT);
   if (!Array.isArray(parsed)) {
     throw new Error("DOM snapshot did not return an array");
   }
@@ -605,7 +757,7 @@ function buildValidationScript(
       }
     }
 
-    return JSON.stringify(validation);
+    return validation;
   })()`;
 }
 
@@ -633,8 +785,7 @@ async function validateSelectors(draft: DiscoveryResult): Promise<ValidationResu
   }
 
   const script = buildValidationScript(allSelectors, isSequential);
-  const raw = await evalScript(script);
-  const parsed = JSON.parse(raw);
+  const parsed = await evalScriptJSON<unknown>(script);
 
   if (!parsed || typeof parsed !== "object") {
     throw new Error("Selector validation returned invalid data");

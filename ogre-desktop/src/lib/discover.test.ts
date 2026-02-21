@@ -397,11 +397,13 @@ describe("DISCOVERY_USER_PROMPT_TEMPLATE", () => {
     expect(prompt).toContain("simplified tree");
     
     // The JSON string in the prompt should be truncated to 12000 chars
-    // (the function calls substring(0, 12000) on the JSON)
+    // (the function uses smart truncation: removes whole elements from end, not mid-string)
     const jsonMatch = prompt.match(/DOM SNAPSHOT[\s\S]*?:\n([\s\S]*?)\n\nLook at/);
     if (jsonMatch) {
       // The JSON portion should be reasonable in size (not the full 1000 elements)
       expect(jsonMatch[1].length).toBeLessThanOrEqual(12100);
+      // Verify the JSON is valid (not cut mid-object)
+      expect(() => JSON.parse(jsonMatch[1])).not.toThrow();
     }
   });
 });
