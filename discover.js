@@ -8,6 +8,8 @@
  * Flow: capturePageSnapshot → discoverSelectors → validateSelectors → testFill
  */
 
+import { withRetry } from './ai-retry.js';
+
 // ============================================================================
 // DOM Snapshot Capture
 // ============================================================================
@@ -183,13 +185,21 @@ RULES:
 - If the feedback area is a rich text editor (TinyMCE, CKEditor), identify BOTH the visible editor AND any hidden form input.
 - If the feedback editor is inside an iframe (common in Canvas LMS), set feedbackBox to null and note it.
 
+CONFIDENCE GUIDANCE:
+- Set confidence to "high" only if you found all required selectors in the DOM snapshot and they are clearly visible.
+- Set confidence to "medium" if you found most selectors but had to make reasonable inferences about some.
+- Set confidence to "low" if you are guessing selectors rather than finding them in the DOM snapshot, or if the page doesn't appear to be a grading page.
+
+EDGE CASES:
+- If the page doesn't appear to be a grading page (no student names, scores, or feedback areas visible), return all selectors as null with confidence "low" and explain in notes.
+
 Also determine:
 - feedback.type: "textarea", "tinymce-inline" (TinyMCE contenteditable), "tinymce-iframe" (TinyMCE inside an iframe), "contenteditable", or "unknown"
 - feedback.requiresHiddenSync: true if there's a hidden input synced with feedback
 - feedback.htmlWrap: true if feedback should be wrapped in <p> tags
 - save.buttonText: The text on the save/submit button (e.g., "Quick Save", "Save", "Submit")
 
-Respond with ONLY valid JSON, no markdown fences, no explanation:
+Respond with ONLY valid JSON, no markdown fences, no explanation, no code blocks:
 {
   "navigation": {
     "mode": "batch or sequential",
@@ -289,7 +299,10 @@ async function discoverSelectors(tabId, pageUrl, aiCallFn) {
 
   // Step 2: Build prompt and call AI
   const { systemPrompt, userPrompt } = buildDiscoveryPrompt(domSnapshot, pageUrl);
-  const aiResponse = await aiCallFn(systemPrompt, userPrompt, screenshot);
+  const aiResponse = await withRetry(
+    () => aiCallFn(systemPrompt, userPrompt, screenshot),
+    { maxRetries: 3 }
+  );
 
   // Step 3: Parse response
   const discovery = parseDiscoveryResponse(aiResponse);

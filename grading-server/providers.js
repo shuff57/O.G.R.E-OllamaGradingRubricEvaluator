@@ -137,10 +137,30 @@ export function buildGoogleGeminiRequest(config, messages) {
       systemInstruction = msg.content;
     } else {
       const role = msg.role === 'assistant' ? 'model' : 'user';
-      geminiMessages.push({
-        role,
-        parts: [{ text: msg.content }],
-      });
+
+      // Build Gemini parts from content — supports string or OpenAI-style content array
+      let parts;
+      if (Array.isArray(msg.content)) {
+        parts = msg.content.map(item => {
+          if (item.type === 'text') {
+            return { text: item.text };
+          } else if (item.type === 'image_url') {
+            // Convert data URL to Gemini inline_data format
+            const dataUrl = item.image_url?.url || '';
+            const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+            if (match) {
+              return { inline_data: { mime_type: match[1], data: match[2] } };
+            }
+            // Non-data URLs: pass as text (Gemini can't fetch remote URLs)
+            return { text: `[Image: ${dataUrl}]` };
+          }
+          return { text: String(item) };
+        });
+      } else {
+        parts = [{ text: msg.content }];
+      }
+
+      geminiMessages.push({ role, parts });
     }
   }
 

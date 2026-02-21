@@ -1,3 +1,20 @@
+import { GRADING_PHILOSOPHY } from './grading-constants.js';
+
+/**
+ * Strips markdown JSON fences and parses raw AI response text as JSON.
+ * @param {string} text - Raw AI response that may contain ```json fences.
+ * @returns {object} Parsed JSON object.
+ * @throws {Error} Descriptive error if JSON parsing fails.
+ */
+export function parseJSONResponse(text) {
+  const cleaned = (text || '').replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch (e) {
+    throw new Error(`Failed to parse JSON response: ${e.message}\nRaw text: ${cleaned.slice(0, 200)}`);
+  }
+}
+
 const Prompts = {
   /**
    * Generates the prompt for extracting a rubric from selected text.
@@ -5,35 +22,52 @@ const Prompts = {
    * @returns {string} The formatted prompt for the LLM.
    */
   getRubricExtractionPrompt: (selection) => {
-    return `You are a data extraction assistant. 
-  Extract grading rubric criteria from the following text.
-  Return ONLY a valid JSON object with this structure:
-  {
-    "rubric": [
-      { "criteria": "Criteria Name", "description": "Description of criteria", "points": "Points value (number or string)" }
-    ]
-  }
-  Do not include markdown formatting or explanations.
-  
-  Text to parse:
-  ${selection}`;
+    return `You are a data extraction assistant specialized in parsing grading rubrics.
+
+Your task: Extract grading rubric criteria from the provided text and return ONLY valid JSON.
+
+CRITICAL INSTRUCTIONS:
+- Return ONLY valid JSON. No markdown code fences. No explanation text. No extra commentary.
+- If no rubric criteria are found in the text, return exactly: {"rubric": []}
+- Each criterion must have: "criteria" (name), "description" (details), and "points" (value as number or string).
+
+EXAMPLE:
+Input text:
+"Participation (5 points): Student actively engages in class discussions.
+Homework (10 points): All assignments completed on time."
+
+Expected JSON output:
+{"rubric": [{"criteria": "Participation", "description": "Student actively engages in class discussions.", "points": "5"}, {"criteria": "Homework", "description": "All assignments completed on time.", "points": "10"}]}
+
+Now extract the rubric from this text:
+${selection}`;
   },
 
-  /**
-   * Generates the prompt for extracting a rubric from an image.
-   * @returns {string} The formatted prompt for the LLM.
-   */
-  getRubricExtractionFromImagePrompt: () => {
-    return `You are a data extraction assistant. 
-  Extract grading rubric criteria from the provided image.
-  Return ONLY a valid JSON object with this structure:
-  {
-    "rubric": [
-      { "criteria": "Criteria Name", "description": "Description of criteria", "points": "Points value (number or string)" }
-    ]
-  }
-  Do not include markdown formatting or explanations.`;
-  },
+   /**
+    * Generates the prompt for extracting a rubric from an image.
+    * @returns {string} The formatted prompt for the LLM.
+    */
+   getRubricExtractionFromImagePrompt: () => {
+     return `You are a data extraction assistant specialized in parsing grading rubrics from images.
+
+Your task: Extract grading rubric criteria from the provided image and return ONLY valid JSON.
+
+CRITICAL INSTRUCTIONS:
+- Return ONLY valid JSON. No markdown code fences. No explanation text. No extra commentary.
+- If no rubric criteria are visible, return exactly: {"rubric": []}
+- Each criterion must have: "criteria" (name), "description" (details), and "points" (value as number or string).
+
+IMAGE CHALLENGES:
+The image may contain tables, handwritten text, or low-resolution content. Extract all visible criteria even if partially readable.
+
+EXAMPLE:
+Input image: A rubric table with rows for "Participation (5 points): Student actively engages in class discussions" and "Homework (10 points): All assignments completed on time."
+
+Expected JSON output:
+{"rubric": [{"criteria": "Participation", "description": "Student actively engages in class discussions.", "points": "5"}, {"criteria": "Homework", "description": "All assignments completed on time.", "points": "10"}]}
+
+Now extract the rubric from the provided image.`;
+   },
 
   /**
    * Generates the system instruction for the grading task.
@@ -57,7 +91,11 @@ const Prompts = {
     ],
     "totalScore": "Total Score / number of criteria (if applicable)",
   }
-  Do include markdown formatting for the JSON but no explanations outside the JSON.`;
+  
+  GRADING PHILOSOPHY:
+  ${GRADING_PHILOSOPHY}
+  
+  Return ONLY valid JSON. No markdown code fences. No explanation text outside the JSON.`;
   },
 
    /**
@@ -65,19 +103,21 @@ const Prompts = {
     * @param {string} rubricText - The context or topic (optional).
     * @returns {string} The system instruction for the LLM.
     */
-   getSolverSystemPrompt: (rubricText) => {
-     return `You are an expert tutor. Your goal is to guide the student to the solution, but NEVER just give the answer immediately.
-     
-     Follow this strict call-and-response structure based on the interaction number:
-     1. First interaction (Student Q1): Provide minimal, broad help. Hint at the concept but do not reveal the steps.
-     2. Second interaction (Student Q2 - wrong answer): Provide directed, medium help. Point out the specific area of error or a more specific strategy.
-     3. Third interaction (Student Q3 - wrong answer): Provide even more direct, strong help. Explicitly state the next step or formula to use.
-     4. Fourth interaction (Student Q4 - wrong answer): Solve the problem completely and provide step-by-step help.
-     
-     Context/Topic: ${rubricText}
-     
-     Maintain a helpful, encouraging, but firm tone. Do not skip steps in the guidance process.`;
-   },
+    getSolverSystemPrompt: (rubricText) => {
+      return `You are an expert tutor. Your goal is to guide the student to the solution, but NEVER just give the answer immediately.
+
+Respond in plain text with step-by-step guidance. Use LaTeX notation (\\( ... \\)) for math expressions when helpful.
+      
+Follow this strict call-and-response structure based on the interaction number:
+1. First interaction (Student Q1): Provide minimal, broad help. Hint at the concept but do not reveal the steps.
+2. Second interaction (Student Q2 - wrong answer): Provide directed, medium help. Point out the specific area of error or a more specific strategy.
+3. Third interaction (Student Q3 - wrong answer): Provide even more direct, strong help. Explicitly state the next step or formula to use.
+4. Fourth interaction (Student Q4 - wrong answer): Solve the problem completely and provide step-by-step help.
+      
+Context/Topic: ${rubricText}
+      
+Maintain a helpful, encouraging, but firm tone. Do not skip steps in the guidance process.`;
+    },
 
    /**
     * Generates the prompt for creating a rubric from assignment content (question text, descriptions).
@@ -88,7 +128,7 @@ const Prompts = {
     * @returns {string} The formatted prompt for the LLM.
     */
    getRubricGenerationPrompt: (content, maxScore) => {
-     return `You are an experienced teacher creating a grading rubric for high school seniors.
+      return `You are an experienced teacher creating a grading rubric for high school seniors.
 Given the following assignment content, create clear grading criteria for FREE RESPONSE / ESSAY questions ONLY.
 Ignore multiple choice, true/false, matching, fill-in-the-blank, and other auto-graded question types.
 The criteria point values must total ${maxScore}.
@@ -99,17 +139,20 @@ For single-question assignments, use "question": 1 for all criteria.
 Keep descriptions concise (1 sentence each). Use this format for each description:
 "Full: [what earns full credit] | Partial: [what earns partial] | None: [what earns zero]"
 
+CRITICAL INSTRUCTIONS:
+- Return ONLY valid JSON. No markdown code fences. No explanation text. No extra commentary.
+- If the content is empty or too short to generate meaningful criteria, return exactly: {"rubric": []}
+
 Return ONLY a valid JSON object with this structure:
 {
   "rubric": [
     { "criteria": "Short Criteria Name", "description": "Full: ... | Partial: ... | None: ...", "points": 5, "question": 1 }
   ]
 }
-Do not include markdown formatting or explanations.
 
 Assignment (max ${maxScore} points):
 ${content}`;
-   },
+    },
 
    /**
     * Generates the system instruction for batch grading with custom instructions support.
@@ -118,18 +161,11 @@ ${content}`;
     * @param {string} customInstructions - Optional custom grading instructions to append.
     * @returns {string} The system instruction for batch grading.
     */
-   getBatchGradingSystemPrompt: (rubric, maxScore, customInstructions) => {
-     let prompt = `You are a generous grading assistant. Grade the student work below against the rubric.
+    getBatchGradingSystemPrompt: (rubric, maxScore, customInstructions) => {
+      let prompt = `You are a generous grading assistant. Grade the student work below against the rubric.
 
 GRADING PHILOSOPHY:
-These are high school seniors, not college students or experts. Grade generously:
-- Give full credit for demonstrating understanding, even if the explanation lacks polish
-- Award substantial partial credit for correct reasoning with minor errors
-- Focus on mathematical thinking and effort, not perfect execution
-- Distinguish conceptual misunderstandings (serious) from minor mistakes (not serious)
-- Wrong terminology with correct concept = most of the points
-- Minor errors or omissions lose at most 1 point per category
-- Any substantive attempt that engages with the prompt earns at least 40% of max score
+${GRADING_PHILOSOPHY}
 
 RUBRIC:
 ${rubric}
@@ -149,31 +185,7 @@ Do not include markdown formatting or explanations outside the JSON.`;
      }
 
      return prompt;
-   },
+    }
+  };
 
-   /**
-    * Parses batch grading response JSON, handling markdown code blocks.
-    * @param {string} responseText - The response text from the LLM.
-    * @returns {object} Parsed object with { score, feedback }.
-    */
-   parseBatchGradingResponse: (responseText) => {
-     try {
-       // Remove markdown code block if present
-       let jsonString = responseText.trim();
-       if (jsonString.startsWith('```json')) {
-         jsonString = jsonString.replace(/^```json\n?/, '').replace(/\n?```$/, '');
-       } else if (jsonString.startsWith('```')) {
-         jsonString = jsonString.replace(/^```\n?/, '').replace(/\n?```$/, '');
-       }
-
-       const parsed = JSON.parse(jsonString);
-       return {
-         score: parsed.score,
-         feedback: parsed.feedback
-       };
-     } catch (e) {
-       console.error('Error parsing batch grading response:', e);
-       throw new Error(`Failed to parse grading response: ${e.message}`);
-     }
-   }
-};
+export default Prompts;
