@@ -23,6 +23,7 @@
 
   // State
   let urlInput = '';
+  let pageLoadedUrl = '';
   let isLoading = false;
   let showPresets = true;
   let showGradingPanel = false;
@@ -185,6 +186,7 @@
     unlistenLoaded = await listenBrowserPageLoaded(async (url: string) => {
       isLoading = false;
       urlInput = url; // Sync URL bar with actual webview URL (fixes back/forward desync)
+      pageLoadedUrl = url;
       await tryAutofill(url);
     });
 
@@ -398,6 +400,7 @@
       <GradingPanel 
         bind:isCollapsed={gradingPanelCollapsed} 
         bind:width={gradingPanelWidth}
+        pageLoadedUrl={pageLoadedUrl}
       />
     {/if}
   </div>

@@ -15,9 +15,11 @@
   let {
     isCollapsed = $bindable(false),
     width = $bindable(400),
+    pageLoadedUrl = '',
   }: {
     isCollapsed?: boolean;
     width?: number;
+    pageLoadedUrl?: string;
   } = $props();
 
   let activeMode = $state('grader'); // 'grader' | 'solver' | 'batch'
@@ -331,6 +333,7 @@
           bind:isBatchRunning={batchRunning}
           {onRequestDiscovery}
           {preselectedProfileId}
+          {pageLoadedUrl}
         />
       {/if}
 
@@ -339,6 +342,7 @@
           provider={activeProvider}
           model={activeModel}
           {returnToBatch}
+          {pageLoadedUrl}
           onProfileSaved={(profile) => {
             console.log('Saved profile:', profile);
             if (returnToBatch) {

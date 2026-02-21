@@ -36,11 +36,13 @@
     provider = '',
     model = '',
     returnToBatch = false,
+    pageLoadedUrl = '',
     onProfileSaved = () => {},
   } = $props<{
     provider?: string;
     model?: string;
     returnToBatch?: boolean;
+    pageLoadedUrl?: string;
     onProfileSaved?: (profile: SiteProfile) => void;
   }>();
 

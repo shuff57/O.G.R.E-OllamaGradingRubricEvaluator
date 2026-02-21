@@ -39,6 +39,7 @@
     isBatchRunning = $bindable(false),
     onRequestDiscovery = () => {},
     preselectedProfileId = null as string | null,
+    pageLoadedUrl = '',
   } = $props();
 
   // ── Profile Selection ────────────────────────────────────────────────
