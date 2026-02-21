@@ -412,3 +412,107 @@ describe('URL pattern round-trip (findProfilesByUrl)', () => {
     expect(matches).toHaveLength(0);
   });
 });
+
+// ── Edge Case Tests ─────────────────────────────────────────────────────────
+
+describe('confirmation flow edge cases', () => {
+  function makeSels(overrides: Partial<SelectorMap> = {}): SelectorMap {
+    return {
+      studentSection: '.student-section',
+      studentName: '.student-name',
+      scoreInput: '.score-input',
+      feedbackBox: '.feedback-box',
+      ...overrides,
+    };
+  }
+
+  function makeVal(selectors: SelectorMap): ValidationResults {
+    const results: ValidationResults = {};
+    for (const [key, value] of Object.entries(selectors)) {
+      if (value != null) {
+        results[key] = { matchCount: 5, sampleText: `Sample for ${key}`, valid: true };
+      } else {
+        results[key] = { matchCount: 0, sampleText: '', valid: false, skipped: true };
+      }
+    }
+    return results;
+  }
+
+  it('back() clears previously confirmed selector so it can be re-confirmed', () => {
+    const selectors = makeSels();
+    const flow = createConfirmationFlow(selectors, makeVal(selectors), 'batch');
+
+    // Accept first step (studentSection)
+    flow.accept();
+    expect(flow.getConfirmedSelectors().studentSection).toBe('.student-section');
+
+    // Go back — confirmed value should be removed
+    flow.back();
+    expect(flow.getConfirmedSelectors().studentSection).toBeUndefined();
+    expect(flow.getState()!.key).toBe('studentSection');
+  });
+
+  it('all required selectors null → flow starts as "complete" immediately', () => {
+    const selectors = makeSels({
+      studentSection: null,
+      studentName: null,
+      scoreInput: null,
+    });
+    const flow = createConfirmationFlow(selectors, makeVal(selectors), 'batch');
+
+    expect(flow.phase).toBe('complete');
+    expect(flow.getState()).toBeNull();
+    expect(flow.getConfirmedSelectors()).toEqual({});
+  });
+
+  it('cancel after partial progress preserves confirmed selectors in map', () => {
+    const selectors = makeSels();
+    const flow = createConfirmationFlow(selectors, makeVal(selectors), 'batch');
+
+    flow.accept(); // confirm studentSection
+    flow.cancel();
+
+    expect(flow.phase).toBe('cancelled');
+    // Confirmed map still has what was accepted before cancellation
+    expect(flow.getConfirmedSelectors().studentSection).toBe('.student-section');
+  });
+
+  it('double cancel is a no-op', () => {
+    const selectors = makeSels();
+    const flow = createConfirmationFlow(selectors, makeVal(selectors), 'batch');
+
+    flow.cancel();
+    expect(flow.phase).toBe('cancelled');
+
+    // Second cancel should not throw
+    flow.cancel();
+    expect(flow.phase).toBe('cancelled');
+  });
+
+  it('feedbackBox null does not appear as a step in batch mode', () => {
+    const selectors = makeSels({ feedbackBox: null });
+    const flow = createConfirmationFlow(selectors, makeVal(selectors), 'batch');
+
+    // Walk all steps, collect keys
+    const keys: string[] = [];
+    while (flow.phase === 'confirming') {
+      const s = flow.getState();
+      if (s) keys.push(s.key);
+      flow.accept();
+    }
+
+    expect(keys).not.toContain('feedbackBox');
+    expect(flow.phase).toBe('complete');
+  });
+
+  it('sequential mode with null studentName only has scoreInput step', () => {
+    const selectors = makeSels({ studentName: null });
+    const flow = createConfirmationFlow(selectors, makeVal(selectors), 'sequential');
+
+    expect(flow.getState()!.totalSteps).toBe(1);
+    expect(flow.getState()!.key).toBe('scoreInput');
+
+    flow.accept();
+    expect(flow.phase).toBe('complete');
+  });
+});

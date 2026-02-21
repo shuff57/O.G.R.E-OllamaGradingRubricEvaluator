@@ -584,7 +584,8 @@
     background: var(--color-primary-dark);
   }
   
-  .btn-primary:disabled {
+  .btn-primary:disabled,
+  .btn-secondary:disabled {
     opacity: 0.6;
     cursor: not-allowed;
   }
