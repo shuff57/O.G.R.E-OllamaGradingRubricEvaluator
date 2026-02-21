@@ -67,11 +67,14 @@
   const PRESETS = {
     nonZero: 'IMPORTANT: Only provide feedback for students who earn a non-zero score. If a student\'s score is 0, set feedback to an empty string "". Do NOT write feedback for zero-score students.',
     lenient: 'Grade very leniently. Give partial credit for any attempt that is vaguely correct.',
+    strict: 'Grade strictly according to the rubric. Deduct points for minor errors.',
   };
   
   let customInstructions = $state('');
   let isNonZeroOnly = $state(false);
   let isLenient = $state(false);
+  let isStrict = $state(false);
+  let isReviewMode = $state(false);
 
   // ── Rubric Review ────────────────────────────────────────────────────
   type BatchPhase = 'idle' | 'extracting' | 'review' | 'grading' | 'done';
@@ -371,6 +374,7 @@
     if (customInstructions.trim()) instructionsParts.push(customInstructions.trim());
     if (isNonZeroOnly) instructionsParts.push(PRESETS.nonZero);
     if (isLenient) instructionsParts.push(PRESETS.lenient);
+    if (isStrict) instructionsParts.push(PRESETS.strict);
 
     try {
       batchHandle = startBatchGrading(
@@ -674,6 +678,14 @@
           />
           <span>Lenient Grading</span>
         </label>
+        <label class="preset-label">
+          <input
+            type="checkbox"
+            bind:checked={isStrict}
+            disabled={isBatchRunning}
+          />
+          <span>Strict</span>
+        </label>
       </div>
       <textarea
         class="instructions-textarea"
@@ -777,8 +789,33 @@
       </summary>
       {@render rubricContent()}
     </details>
-  {/if}
+   {/if}
 
+  <!-- ── Fill Mode Toggle ────────────────────────────────────────── -->
+  <div class="fill-mode-toggle">
+    <label class="fill-mode-option">
+      <input
+        type="radio"
+        name="fillMode"
+        value="auto"
+        checked={!isReviewMode}
+        onchange={() => { isReviewMode = false; }}
+        disabled={isBatchRunning}
+      />
+      <span>⚡ Auto</span>
+    </label>
+    <label class="fill-mode-option">
+      <input
+        type="radio"
+        name="fillMode"
+        value="review"
+        checked={isReviewMode}
+        onchange={() => { isReviewMode = true; }}
+        disabled={isBatchRunning}
+      />
+      <span>👁 Review</span>
+    </label>
+  </div>
 
   <!-- ── Resume After ────────────────────────────────────────────── -->
   {#if batchPhase === 'idle'}
@@ -1588,5 +1625,33 @@
     color: var(--color-error);
     margin-top: 2px;
     font-size: 0.75rem;
+  }
+
+  /* ── Fill Mode Toggle ── */
+  .fill-mode-toggle {
+    display: flex;
+    gap: var(--spacing-2, 8px);
+    align-items: center;
+  }
+
+  .fill-mode-option {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--color-border, #444);
+    cursor: pointer;
+    font-size: 0.85em;
+    user-select: none;
+  }
+
+  .fill-mode-option:has(input:checked) {
+    background: var(--color-bg-alt, #1a1a2e);
+    border-color: var(--color-primary, #6366f1);
+  }
+
+  .fill-mode-option input[type="radio"] {
+    display: none;
   }
 </style>
