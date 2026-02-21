@@ -4,6 +4,7 @@ import {
   isValidDiscoveryResult,
   DISCOVERY_SYSTEM_PROMPT,
   DISCOVERY_USER_PROMPT_TEMPLATE,
+  DISCOVERY_MAX_ATTEMPTS,
   parseRubricExtractionResponse,
   isValidRubricExtractionResult,
   RUBRIC_EXTRACTION_PROMPT,
@@ -109,6 +110,106 @@ It appears to be a batch grading interface.
     const result = parseDiscoveryResponse(noSelectors);
     expect(result).toBeDefined();
     expect(result.navigation).toBeDefined();
+  });
+
+  it("cleans up trailing commas before parsing", () => {
+    const withTrailingCommas = `{
+      "navigation": { "mode": "batch", "nextButton": null, "prevButton": null, "studentIndicator": null, "submitButton": null, "waitForSelector": null, },
+      "selectors": { "studentSection": "tr.student", "studentName": "td.name", "scoreInput": "input.score", "feedbackBox": "textarea", "feedbackHidden": null, "questionRegion": null, "fullCreditLink": null, },
+      "feedback": { "type": "textarea", "requiresHiddenSync": false, "htmlWrap": false, },
+      "save": { "buttonText": "Save", },
+      "confidence": "high",
+    }`;
+
+    const result = parseDiscoveryResponse(withTrailingCommas);
+    expect(result.navigation.mode).toBe("batch");
+    expect(result.selectors.studentSection).toBe("tr.student");
+    expect(result.confidence).toBe("high");
+  });
+
+  it("handles double-fenced markdown code blocks", () => {
+    const doubleFenced = "```json\n```json\n" + JSON.stringify({
+      navigation: { mode: "batch", nextButton: null, prevButton: null, studentIndicator: null, submitButton: null, waitForSelector: null },
+      selectors: { studentSection: "tr.student", studentName: "td.name", scoreInput: "input.score", feedbackBox: "textarea", feedbackHidden: null, questionRegion: null, fullCreditLink: null },
+      feedback: { type: "textarea", requiresHiddenSync: false, htmlWrap: false },
+      save: { buttonText: "Save" },
+      confidence: "high",
+    }) + "\n```\n```";
+
+    const result = parseDiscoveryResponse(doubleFenced);
+    expect(result.navigation.mode).toBe("batch");
+    expect(result.selectors.studentSection).toBe("tr.student");
+  });
+
+  it("unescapes HTML entities before parsing", () => {
+    const htmlEncoded = `{
+      &quot;navigation&quot;: { &quot;mode&quot;: &quot;batch&quot;, &quot;nextButton&quot;: null, &quot;prevButton&quot;: null, &quot;studentIndicator&quot;: null, &quot;submitButton&quot;: null, &quot;waitForSelector&quot;: null },
+      &quot;selectors&quot;: { &quot;studentSection&quot;: &quot;tr.student&quot;, &quot;studentName&quot;: &quot;td.name&quot;, &quot;scoreInput&quot;: &quot;input.score&quot;, &quot;feedbackBox&quot;: &quot;textarea&quot;, &quot;feedbackHidden&quot;: null, &quot;questionRegion&quot;: null, &quot;fullCreditLink&quot;: null },
+      &quot;feedback&quot;: { &quot;type&quot;: &quot;textarea&quot;, &quot;requiresHiddenSync&quot;: false, &quot;htmlWrap&quot;: false },
+      &quot;save&quot;: { &quot;buttonText&quot;: &quot;Save&quot; },
+      &quot;confidence&quot;: &quot;high&quot;
+    }`;
+
+    const result = parseDiscoveryResponse(htmlEncoded);
+    expect(result.navigation.mode).toBe("batch");
+    expect(result.save.buttonText).toBe("Save");
+    expect(result.confidence).toBe("high");
+  });
+
+  it("extracts JSON from explanatory prefix and suffix text", () => {
+    const withExplanation = `Based on my analysis of the page, here is the structured result:
+
+{
+  "navigation": { "mode": "batch", "nextButton": null, "prevButton": null, "studentIndicator": null, "submitButton": null, "waitForSelector": null },
+  "selectors": { "studentSection": "tr.student", "studentName": "td.name", "scoreInput": "input.score", "feedbackBox": "textarea", "feedbackHidden": null, "questionRegion": null, "fullCreditLink": null },
+  "feedback": { "type": "textarea", "requiresHiddenSync": false, "htmlWrap": false },
+  "save": { "buttonText": "Save" },
+  "confidence": "medium"
+}
+
+I hope this analysis helps with your grading automation setup!`;
+
+    const result = parseDiscoveryResponse(withExplanation);
+    expect(result.navigation.mode).toBe("batch");
+    expect(result.confidence).toBe("medium");
+  });
+
+  it("picks the last JSON object containing 'selectors' when multiple objects exist", () => {
+    const multipleObjects = `{
+  "navigation": { "mode": "sequential" },
+  "selectors": { "studentSection": ".wrong-first" }
+}
+
+After re-examining, here is the corrected result:
+
+{
+  "navigation": { "mode": "batch", "nextButton": null, "prevButton": null, "studentIndicator": null, "submitButton": null, "waitForSelector": null },
+  "selectors": { "studentSection": "tr.correct", "studentName": "td.name", "scoreInput": "input.score", "feedbackBox": "textarea", "feedbackHidden": null, "questionRegion": null, "fullCreditLink": null },
+  "feedback": { "type": "textarea", "requiresHiddenSync": false, "htmlWrap": false },
+  "save": { "buttonText": "Save" },
+  "confidence": "high"
+}`;
+
+    const result = parseDiscoveryResponse(multipleObjects);
+    expect(result.selectors.studentSection).toBe("tr.correct");
+    expect(result.navigation.mode).toBe("batch");
+  });
+
+  it("recovers partial JSON with missing closing braces (up to 3)", () => {
+    // Simulate a response cut off — missing the outer closing brace.
+    // Partial recovery finds firstBrace..lastBrace, counts imbalance, appends '}'.
+    const partialJson = `{
+  "navigation": { "mode": "batch", "nextButton": null, "prevButton": null, "studentIndicator": null, "submitButton": null, "waitForSelector": null },
+  "selectors": { "studentSection": "tr.student", "studentName": "td.name", "scoreInput": "input.score", "feedbackBox": "textarea", "feedbackHidden": null, "questionRegion": null, "fullCreditLink": null },
+  "feedback": { "type": "textarea", "requiresHiddenSync": false, "htmlWrap": false },
+  "save": { "buttonText": "Save" }
+`;
+    // Missing the outer closing `}` — recovery appends it
+
+    const result = parseDiscoveryResponse(partialJson);
+    expect(result.navigation.mode).toBe("batch");
+    expect(result.selectors.studentSection).toBe("tr.student");
+    expect(result.save.buttonText).toBe("Save");
   });
 });
 
@@ -314,6 +415,24 @@ describe("DISCOVERY_SYSTEM_PROMPT", () => {
     expect(DISCOVERY_SYSTEM_PROMPT).toContain('"save"');
     expect(DISCOVERY_SYSTEM_PROMPT).toContain('"confidence"');
   });
+
+  it("first 200 chars contain 'JSON' (bookend — anchors model to JSON output)", () => {
+    const first200 = DISCOVERY_SYSTEM_PROMPT.substring(0, 200);
+    expect(first200).toContain("JSON");
+  });
+
+  it("last 200 chars contain 'JSON' (bookend — reinforces JSON output at end)", () => {
+    const last200 = DISCOVERY_SYSTEM_PROMPT.substring(DISCOVERY_SYSTEM_PROMPT.length - 200);
+    expect(last200).toContain("JSON");
+  });
+
+  it("contains FORBIDDEN negative constraints section", () => {
+    expect(DISCOVERY_SYSTEM_PROMPT).toContain("FORBIDDEN");
+  });
+
+  it("contains concrete example with real CSS selectors", () => {
+    expect(DISCOVERY_SYSTEM_PROMPT).toContain("tr[id^='graderow']");
+  });
 });
 
 // ── DISCOVERY_USER_PROMPT_TEMPLATE ─────────────────────────────────────────
@@ -405,6 +524,35 @@ describe("DISCOVERY_USER_PROMPT_TEMPLATE", () => {
       // Verify the JSON is valid (not cut mid-object)
       expect(() => JSON.parse(jsonMatch[1])).not.toThrow();
     }
+  });
+
+  it("includes truncation note when snapshot is truncated", () => {
+    const largeDomSnapshot = Array(1000)
+      .fill(null)
+      .map((_, i) => ({
+        depth: i % 8,
+        tag: "div",
+        attrs: { id: `elem-${i}` },
+        text: `Element ${i}`,
+        childCount: Math.floor(Math.random() * 10),
+      }));
+
+    const prompt = DISCOVERY_USER_PROMPT_TEMPLATE(
+      "https://example.com",
+      largeDomSnapshot
+    );
+
+    // When truncated, the prompt should mention truncation
+    expect(prompt).toContain("truncated from");
+    expect(prompt).toContain("to fit context limits");
+  });
+});
+
+// ── DISCOVERY_MAX_ATTEMPTS ────────────────────────────────────────────────────
+
+describe("DISCOVERY_MAX_ATTEMPTS", () => {
+  it("is exported and equals 3", () => {
+    expect(DISCOVERY_MAX_ATTEMPTS).toBe(3);
   });
 });
 

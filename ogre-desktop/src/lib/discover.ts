@@ -112,6 +112,8 @@ export interface DiscoveryProgress {
   message: string;
   progress?: number; // 0-100
   error?: string;
+  /** Current attempt number (1-based, only set when retrying). */
+  attempt?: number;
 }
 
 /** Complete discovery workflow result. */
@@ -120,6 +122,9 @@ export interface DiscoveryWorkflow {
   validation: ValidationResults;
   screenshot: string;
 }
+
+/** Maximum number of AI call attempts before giving up. */
+export const DISCOVERY_MAX_ATTEMPTS = 3;
 
 // ── Prompt Templates ────────────────────────────────────────────────────────
 
@@ -511,6 +516,8 @@ export interface DiscoveryOptions {
   model?: string;
   /** Progress callback — fires at each stage of the workflow. */
   onProgress?: (progress: DiscoveryProgress) => void;
+  /** Maximum number of AI call attempts (defaults to DISCOVERY_MAX_ATTEMPTS). */
+  maxAttempts?: number;
 }
 
 // ── DOM Snapshot Capture ────────────────────────────────────────────────
@@ -830,38 +837,69 @@ export async function runDiscovery(
       getEmbeddedUrl(),
     ]);
 
-    // ── Stage 2: Send to AI for analysis ────────────────────────────────
-    onProgress?.({
-      stage: "analyzing",
-      message: "Analyzing page structure with AI...",
-      progress: 30,
-    });
-
+    // ── Stages 2–3: AI call + parse (with retry) ─────────────────────────
     const userPrompt = DISCOVERY_USER_PROMPT_TEMPLATE(pageUrl, domSnapshot);
-    const aiResponseText = await callDiscoveryAI(
-      DISCOVERY_SYSTEM_PROMPT,
-      userPrompt,
-      screenshot,
-      options,
-    );
+    const maxAttempts = options.maxAttempts ?? DISCOVERY_MAX_ATTEMPTS;
+    const attemptErrors: string[] = [];
+    let draft!: DiscoveryResult;
 
-    if (!aiResponseText.trim()) {
-      throw new Error("AI returned empty response");
-    }
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        // ── Stage 2: Send to AI for analysis ────────────────────────────
+        onProgress?.({
+          stage: "analyzing",
+          message:
+            attempt === 1
+              ? "Analyzing page structure with AI..."
+              : `AI response invalid, retrying... (attempt ${attempt} of ${maxAttempts})`,
+          progress: 30,
+          attempt,
+        });
 
-    // ── Stage 3: Parse AI response ──────────────────────────────────────
-    onProgress?.({
-      stage: "analyzing",
-      message: "Parsing AI response...",
-      progress: 60,
-    });
+        const aiResponseText = await callDiscoveryAI(
+          DISCOVERY_SYSTEM_PROMPT,
+          userPrompt,
+          screenshot,
+          options,
+        );
 
-    const draft = parseDiscoveryResponse(aiResponseText);
+        if (!aiResponseText.trim()) {
+          throw new Error("AI returned empty response");
+        }
 
-    if (!isValidDiscoveryResult(draft)) {
-      throw new Error(
-        "AI response parsed but missing required fields (studentName, scoreInput, navigation.mode, feedback, or save)",
-      );
+        // ── Stage 3: Parse AI response ──────────────────────────────────
+        onProgress?.({
+          stage: "analyzing",
+          message: "Parsing AI response...",
+          progress: 60,
+          attempt,
+        });
+
+        draft = parseDiscoveryResponse(aiResponseText);
+
+        if (!isValidDiscoveryResult(draft)) {
+          throw new Error(
+            "AI response parsed but missing required fields (studentName, scoreInput, navigation.mode, feedback, or save)",
+          );
+        }
+
+        // Success — break out of retry loop
+        break;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+
+        // HTTP errors: don't retry, propagate immediately
+        if (message.includes("HTTP")) throw err;
+
+        attemptErrors.push(`Attempt ${attempt}: ${message}`);
+
+        // If last attempt, throw combined error
+        if (attempt === maxAttempts) {
+          throw new Error(
+            `Discovery failed after ${maxAttempts} attempts:\n${attemptErrors.join("\n")}`,
+          );
+        }
+      }
     }
 
     // ── Stage 4: Validate selectors on the live page ────────────────────
