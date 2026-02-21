@@ -1,81 +1,30 @@
-═══════════════════════════════════════════════════════════════════════════════
-TASK 1 COMPLETION SUMMARY: Site Profiles TypeScript Interfaces
-═══════════════════════════════════════════════════════════════════════════════
+TASK 1: Convert prompts.js to ES Module
+========================================
 
-✅ STATUS: COMPLETE
+CHANGES MADE:
+1. prompts.js: Added "export default Prompts;" at end (line 181)
+2. sidepanel.js: Added "import Prompts from './prompts.js';" at line 5
+3. sidepanel.html: Removed "<script src="prompts.js"></script>" (was line 2273)
 
-DELIVERABLES:
-─────────────
+QA VERIFICATION:
+✓ Module exports: All 6 functions exported correctly
+  - getRubricExtractionPrompt: function
+  - getGradingSystemPrompt: function
+  - getSolverSystemPrompt: function
+  - getRubricExtractionFromImagePrompt: function
+  - getRubricGenerationPrompt: function
+  - getBatchGradingSystemPrompt: function
 
-1. ogre-desktop/src/lib/site-profiles.ts (206 lines)
-   ✅ Imports core interfaces from batch-grader.ts (no duplication)
-   ✅ Defines ExtractionConfig interface (3 response methods, 3 max score methods)
-   ✅ Defines SiteProfileWithExtraction interface
-   ✅ Defines ProfileStorage interface (7 CRUD methods)
-   ✅ Exports DEFAULT_MYOPENMATH_PROFILE with full extraction config
-   ✅ Exports DEFAULT_CANVAS_SPEEDGRADER_PROFILE with full extraction config
-   ✅ Exports BUILT_IN_PROFILES array
+✓ HTML cleanup: prompts.js script tag removed
+  - grep count: 0 (no references to prompts.js in HTML)
 
-2. ogre-desktop/src/lib/site-profiles.test.ts (284 lines)
-   ✅ 20 type validation tests (all passing)
-   ✅ Tests for SiteProfile, SiteSelectors, FeedbackConfig, SaveConfig, NavigationConfig
-   ✅ Tests for ExtractionConfig (response/max score methods)
-   ✅ Tests for built-in profiles (MyOpenMath, Canvas)
-   ✅ Tests for type compatibility and URL pattern matching
-   ✅ TDD placeholders for ProfileStorage implementation
+✓ Call sites intact: All 5 references to Prompts.* still present
+  - Line 808: Prompts.getRubricExtractionPrompt(selection)
+  - Line 890: Prompts.getRubricExtractionFromImagePrompt()
+  - Line 1600: Prompts.getSolverSystemPrompt(rubricText)
+  - Line 1619: Prompts.getGradingSystemPrompt(rubricText)
+  - Line 3837: Prompts.getRubricGenerationPrompt(content, maxScore)
 
-TEST RESULTS:
-─────────────
-✅ 20 pass
-❌ 0 fail
-   60 expect() calls
-   Ran 20 tests across 1 file. [98.00ms]
+✓ LSP diagnostics: No errors in prompts.js or sidepanel.js
 
-INTERFACES PORTED:
-──────────────────
-✅ SiteProfile (from batch-grader.ts)
-✅ SiteSelectors (from batch-grader.ts)
-✅ FeedbackConfig (from batch-grader.ts)
-✅ SaveConfig (from batch-grader.ts)
-✅ NavigationConfig (from batch-grader.ts)
-✅ ExtractionConfig (new, from site-profiles.js)
-✅ SiteProfileWithExtraction (new, extends SiteProfile)
-✅ ProfileStorage (new, CRUD interface)
-
-BUILT-IN PROFILES:
-──────────────────
-✅ MyOpenMath
-   - Mode: batch
-   - Feedback: tinymce-inline
-   - Response: childIndex method
-   - Max Score: parentTextRegex method
-
-✅ Canvas SpeedGrader
-   - Mode: sequential
-   - Feedback: tinymce-iframe
-   - Response: iframe method
-   - Max Score: inputLabel method
-
-KEY DESIGN DECISIONS:
-─────────────────────
-1. Reused existing interfaces from batch-grader.ts to avoid duplication
-2. ExtractionConfig supports flexible extraction methods (childIndex, iframe, selector)
-3. ProfileStorage uses async/await for database-agnostic operations
-4. Built-in profiles include complete extraction configuration
-5. Tests use TDD approach with implementation placeholders
-6. No implementation logic yet (types and interfaces only)
-
-EVIDENCE FILES:
-───────────────
-✅ .sisyphus/evidence/task-1-site-profiles.txt
-✅ .sisyphus/evidence/task-1-summary.txt
-✅ .sisyphus/notepads/ext-desktop-feature-parity/learnings.md (appended)
-
-NEXT STEPS:
-───────────
-1. Implement ProfileStorage with SQLite backend
-2. Add profile discovery mechanism
-3. Add profile validation and error handling
-4. Implement URL pattern matching algorithm
-
-═══════════════════════════════════════════════════════════════════════════════
+STATUS: COMPLETE
