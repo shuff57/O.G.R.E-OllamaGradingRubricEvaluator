@@ -37,6 +37,8 @@
     provider = '',
     model = '',
     isBatchRunning = $bindable(false),
+    onRequestDiscovery = () => {},
+    preselectedProfileId = null as string | null,
   } = $props();
 
   // ── Profile Selection ────────────────────────────────────────────────
@@ -143,6 +145,14 @@
       }
     } catch {
       // Non-fatal — no session to resume
+    }
+
+    // Pre-select profile if returning from discovery
+    if (preselectedProfileId) {
+      const found = allProfiles.find(p => p.id === preselectedProfileId);
+      if (found) {
+        selectedProfileId = preselectedProfileId;
+      }
     }
   });
 
@@ -762,9 +772,25 @@
 
 <div class="panel-footer">
   {#if batchPhase === 'idle' && !savedSessionStudent}
-    <button class="btn-primary full-width" onclick={handleExtract}>
-      Start Batch
-    </button>
+    {#if profileWarning && !isBatchRunning}
+      <div class="discover-cta-card">
+        <div class="discover-cta-icon">🔍</div>
+        <div class="discover-cta-content">
+          <div class="discover-cta-title">No profile found for this page</div>
+          <div class="discover-cta-desc">Use AI to discover the grading page structure and create a profile</div>
+        </div>
+        <button class="btn-primary full-width" onclick={() => onRequestDiscovery()}>
+          Discover This Page
+        </button>
+        <button class="btn-link" onclick={handleExtract}>
+          Or use default profile anyway
+        </button>
+      </div>
+    {:else}
+      <button class="btn-primary full-width" onclick={handleExtract}>
+        Start Batch
+      </button>
+    {/if}
   {:else if batchPhase === 'extracting'}
     <button class="btn-primary full-width" disabled>
       Extracting...
@@ -1133,6 +1159,48 @@
 
   .resume-session-actions .btn-secondary {
     flex-shrink: 0;
+  }
+
+  /* ── Discover CTA Card ── */
+  .discover-cta-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--spacing-2);
+    padding: var(--spacing-3);
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    text-align: center;
+  }
+
+  .discover-cta-icon {
+    font-size: 2rem;
+  }
+
+  .discover-cta-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+
+  .discover-cta-desc {
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+  }
+
+  .btn-link {
+    background: none;
+    border: none;
+    color: var(--color-text-secondary);
+    font-size: 0.8rem;
+    cursor: pointer;
+    text-decoration: underline;
+    padding: 0;
+  }
+
+  .btn-link:hover {
+    color: var(--color-text-primary);
   }
 
   /* ── Status & Progress ── */

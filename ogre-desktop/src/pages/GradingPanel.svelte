@@ -37,6 +37,10 @@
   // Rubric state: flows from RubricCard → StudentWorkCard / BatchPanel
   let selectedRubric = $state<SavedRubric | null>(null);
 
+  // Batch-discovery round trip state
+  let returnToBatch = $state(false);
+  let preselectedProfileId = $state<string | null>(null);
+
   /** Convert a SavedRubric (library format) to GradeRubric (grading API format). */
   function toGradeRubric(saved: SavedRubric | null): GradeRubric | undefined {
     if (!saved) return undefined;
@@ -66,6 +70,12 @@
     if (batchRunning) return; // Prevent mode switching during batch grading
     activeMode = modeId;
     if (isCollapsed) isCollapsed = false; // Expand when clicking a mode icon while collapsed
+  }
+
+  function onRequestDiscovery() {
+    returnToBatch = true;
+    activeMode = 'discovery';
+    if (isCollapsed) isCollapsed = false;
   }
 
   /**
@@ -319,6 +329,8 @@
           provider={activeProvider}
           model={activeModel}
           bind:isBatchRunning={batchRunning}
+          {onRequestDiscovery}
+          {preselectedProfileId}
         />
       {/if}
 
@@ -326,10 +338,14 @@
         <DiscoveryPanel
           provider={activeProvider}
           model={activeModel}
+          {returnToBatch}
           onProfileSaved={(profile) => {
             console.log('Saved profile:', profile);
-            // Optional: Could switch to batch mode automatically here
-            // setMode('batch');
+            if (returnToBatch) {
+              preselectedProfileId = profile.id;
+              returnToBatch = false;
+              activeMode = 'batch';
+            }
           }}
         />
       {/if}
