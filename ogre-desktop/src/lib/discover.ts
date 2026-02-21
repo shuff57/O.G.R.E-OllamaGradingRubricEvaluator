@@ -680,7 +680,7 @@ async function callDiscoveryAI(
  * Extract accumulated message content from SSE response text.
  * Parses `event: message` events and concatenates their content fields.
  */
-function extractContentFromSSE(sseText: string): string {
+export function extractContentFromSSE(sseText: string): string {
   let content = "";
   const blocks = sseText.split(/\n\n/);
 
@@ -1003,6 +1003,43 @@ Return ONLY a valid JSON object with this structure:
 Do not include markdown formatting, code fences, or explanations outside the JSON.`;
 
 /**
+ * Generate a rubric creation prompt for the given assignment content.
+ *
+ * Ported from Chrome extension's prompts.js getRubricGenerationPrompt().
+ * Instructs the AI to create grading criteria for FREE RESPONSE questions only.
+ *
+ * @param content - Assignment question/prompt/description text
+ * @param maxScore - Maximum score for this assignment (criteria must total this)
+ * @returns Formatted prompt string for the AI
+ */
+export function RUBRIC_GENERATION_PROMPT(content: string, maxScore: number): string {
+  return `You are an experienced teacher creating a grading rubric for high school seniors.
+Given the following assignment content, create clear grading criteria for FREE RESPONSE / ESSAY questions ONLY.
+Ignore multiple choice, true/false, matching, fill-in-the-blank, and other auto-graded question types.
+The criteria point values must total ${maxScore}.
+
+If there are multiple questions, tag each criterion with its question number.
+For single-question assignments, use "question": 1 for all criteria.
+
+Keep descriptions concise (1 sentence each). Use this format for each description:
+"Full: [what earns full credit] | Partial: [what earns partial] | None: [what earns zero]"
+
+CRITICAL INSTRUCTIONS:
+- Return ONLY valid JSON. No markdown code fences. No explanation text. No extra commentary.
+- If the content is empty or too short to generate meaningful criteria, return exactly: {"rubric": []}
+
+Return ONLY a valid JSON object with this structure:
+{
+  "rubric": [
+    { "criteria": "Short Criteria Name", "description": "Full: ... | Partial: ... | None: ...", "points": 5, "question": 1 }
+  ]
+}
+
+Assignment (max ${maxScore} points):
+${content}`;
+}
+
+/**
  * Parse AI response text into structured rubric criteria.
  *
  * Handles common AI response quirks:
@@ -1173,6 +1210,93 @@ export async function parseRubricFromScreenshot(
 
   if (!aiText.trim()) {
     throw new Error("AI returned empty response for rubric extraction");
+  }
+
+  return parseRubricExtractionResponse(aiText);
+}
+
+/**
+ * Generate rubric criteria from assignment text via AI.
+ *
+ * Sends the assignment content to the grading server's /api/chat endpoint
+ * in solver mode (no rubric field, no images). The AI analyzes the text
+ * and returns structured criteria with names, descriptions, and point values.
+ *
+ * Uses the same JSON format as parseRubricFromScreenshot() — compatible with
+ * the SavedRubric format used by rubric-api.ts.
+ *
+ * @param text - Assignment question/prompt/description text to generate rubric from
+ * @param maxScore - Maximum score (criteria point values will total this)
+ * @param options - Optional provider/model overrides
+ * @returns Generated rubric criteria, max score, and suggested name
+ * @throws Error if the AI call fails or the response cannot be parsed
+ *
+ * @example
+ * ```ts
+ * const result = await generateRubricFromText(assignmentText, 10);
+ * // result.criteria: RubricCriterion[]
+ * // result.maxScore: number (sum of criteria points)
+ * // result.suggestedName: string (may be empty)
+ * // Populate formCriteria = result.criteria in the UI
+ * ```
+ */
+export async function generateRubricFromText(
+  text: string,
+  maxScore: number,
+  options?: { provider?: string; model?: string },
+): Promise<RubricExtractionResult> {
+  if (!text || !text.trim()) {
+    throw new Error("Assignment text is required for rubric generation");
+  }
+
+  const token = getHandshakeToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+
+  const body: Record<string, unknown> = {
+    message: RUBRIC_GENERATION_PROMPT(text.trim(), maxScore),
+  };
+
+  if (options?.provider) body.provider = options.provider;
+  if (options?.model) body.model = options.model;
+
+  const response = await withRetry(async () => {
+    const res = await tauriFetch(`${SERVER_BASE}/api/chat`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      let errorMsg = `Rubric generation failed (HTTP ${res.status})`;
+      try {
+        const errData = (await res.json()) as { error?: string };
+        errorMsg = errData.error || errorMsg;
+      } catch {
+        // Use status-based message
+      }
+      const err = new Error(errorMsg);
+      (err as Error & { status: number }).status = res.status;
+      throw err;
+    }
+    return res;
+  });
+
+  // Handle SSE or JSON response (same pattern as callDiscoveryAI)
+  const contentType = response.headers.get("content-type") || "";
+
+  let aiText: string;
+  if (contentType.includes("text/event-stream")) {
+    const sseText = await response.text();
+    aiText = extractContentFromSSE(sseText);
+  } else {
+    const data = (await response.json()) as { content?: string; message?: string };
+    aiText = data.content || data.message || "";
+  }
+
+  if (!aiText.trim()) {
+    throw new Error("AI returned empty response for rubric generation");
   }
 
   return parseRubricExtractionResponse(aiText);

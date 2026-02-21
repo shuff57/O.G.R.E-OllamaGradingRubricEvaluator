@@ -3,6 +3,7 @@
   import { listRubrics, createRubric, updateRubric, deleteRubric } from '../lib/rubric-api';
   import type { SavedRubric, RubricCriterion } from '../lib/rubric-api';
   import RubricImport from '../components/grading/RubricImport.svelte';
+  import { generateRubricFromText } from '../lib/discover';
 
   let rubrics: SavedRubric[] = [];
   let loading = true;
@@ -21,6 +22,11 @@
   let formCriteria: RubricCriterion[] = [];
 
   let confirmDeleteId: string | null = null;
+
+  // Generate from text state
+  let generateText = '';
+  let generating = false;
+  let generateError = '';
 
   onMount(async () => {
     await loadData();
@@ -47,6 +53,8 @@
     formMaxScore = 10;
     formTags = '';
     formCriteria = [{ criteria: '', description: '', points: 0 }];
+    generateText = '';
+    generateError = '';
   }
 
   function openEdit(rubric: SavedRubric) {
@@ -57,6 +65,8 @@
     formMaxScore = rubric.maxScore;
     formTags = rubric.tags.join(', ');
     formCriteria = rubric.criteria.map(c => ({ ...c }));
+    generateText = '';
+    generateError = '';
   }
 
   function openDuplicate(rubric: SavedRubric) {
@@ -141,6 +151,28 @@
   function totalPoints(criteria: RubricCriterion[]): number {
     return criteria.reduce((sum, c) => sum + (c.points || 0), 0);
   }
+
+  async function handleGenerateRubric() {
+    if (!generateText.trim() || generating) return;
+    generating = true;
+    generateError = '';
+    try {
+      const result = await generateRubricFromText(generateText.trim(), formMaxScore);
+      if (result.criteria.length === 0) {
+        generateError = "AI couldn't generate criteria from this text. Try adding more detail.";
+        return;
+      }
+      formCriteria = result.criteria;
+      formMaxScore = result.maxScore;
+      if (!formName.trim() && result.suggestedName) {
+        formName = result.suggestedName;
+      }
+    } catch (err) {
+      generateError = err instanceof Error ? err.message : 'Failed to generate rubric';
+    } finally {
+      generating = false;
+    }
+  }
 </script>
 
 <div class="page-container">
@@ -197,6 +229,17 @@
       <div class="form-group">
         <label for="rubricDesc">Description <span class="text-muted">(optional)</span></label>
         <textarea id="rubricDesc" bind:value={formDescription} rows="2" placeholder="Brief description of when to use this rubric"></textarea>
+      </div>
+
+      <div class="form-group">
+        <label for="generateText">Generate from Assignment Text <span class="text-muted">(optional)</span></label>
+        <textarea id="generateText" bind:value={generateText} rows="4" placeholder="Paste the assignment questions or description here, then click Generate..."></textarea>
+        {#if generateError}
+          <div class="error-banner" style="margin-top: var(--spacing-2);">{generateError}</div>
+        {/if}
+        <button class="btn-ghost btn-sm" on:click={handleGenerateRubric} disabled={!generateText.trim() || generating} style="margin-top: var(--spacing-2);">
+          {generating ? 'Generating...' : 'Generate Rubric'}
+        </button>
       </div>
 
       <div class="form-group">
