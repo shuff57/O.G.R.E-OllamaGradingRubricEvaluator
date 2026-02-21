@@ -19,24 +19,33 @@
   import {
     refineSelector,
     mergeSelectorSources,
+    clearRefinementHighlights,
   } from '../../lib/discovery-picker-integration';
+  import {
+    createConfirmationFlow,
+    getRequiredSelectorKeys,
+    type ConfirmationFlow,
+    type ConfirmationStepState,
+  } from '../../lib/confirmation-flow';
   import type { ElementPickerResult } from '../../lib/element-picker';
   import { ProfileStorageImpl, type SiteProfile } from '../../lib/site-profiles';
-  import { getEmbeddedUrl } from '../../lib/browser';
+  import { getEmbeddedUrl, evalScript } from '../../lib/browser';
   
   // Props
   let {
     provider = '',
     model = '',
+    returnToBatch = false,
     onProfileSaved = () => {},
   } = $props<{
     provider?: string;
     model?: string;
+    returnToBatch?: boolean;
     onProfileSaved?: (profile: SiteProfile) => void;
   }>();
 
   // ── State ─────────────────────────────────────────────────────────────
-  type DiscoveryPhase = 'idle' | 'running' | 'review' | 'saving' | 'error';
+  type DiscoveryPhase = 'idle' | 'running' | 'review' | 'confirming' | 'saving' | 'error';
   
   let phase = $state<DiscoveryPhase>('idle');
   let progressMessage = $state('');
@@ -51,6 +60,21 @@
   let showSaveDialog = $state(false);
   let profileName = $state('');
   let saveStatus = $state('');
+
+  // Confirmation flow state
+  let confirmationFlow = $state<ConfirmationFlow | null>(null);
+  let isRefining = $state(false);
+
+  // Friendly labels for selector keys
+  const SELECTOR_LABELS: Record<string, string> = {
+    studentSection: 'Student Section',
+    studentName: 'Student Name',
+    scoreInput: 'Score Input',
+    feedbackBox: 'Feedback Area',
+    feedbackHidden: 'Feedback Hidden Input',
+    questionRegion: 'Question Region',
+    fullCreditLink: 'Full Credit Link',
+  };
 
   // ── Actions ───────────────────────────────────────────────────────────
 
@@ -86,6 +110,53 @@
     } catch (err) {
       phase = 'error';
       error = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  async function handleStartConfirmation() {
+    if (!discoveryResult || !validationResults) return;
+    
+    confirmationFlow = createConfirmationFlow(
+      discoveryResult.selectors,
+      validationResults,
+      discoveryResult.navigation.mode
+    );
+    
+    phase = 'confirming';
+    
+    // Highlight first step's matches
+    const state = confirmationFlow.getState();
+    if (state?.selector) {
+      await highlightSelector(state.selector);
+    }
+  }
+
+  async function highlightSelector(selector: string) {
+    if (!selector) return;
+    try {
+      await evalScript(`(function(selector) {
+        document.querySelectorAll('[data-ogre-refine-highlight]').forEach(function(el) {
+          el.style.outline = el.dataset.ogreOriginalOutline || '';
+          el.style.outlineOffset = el.dataset.ogreOriginalOutlineOffset || '';
+          el.removeAttribute('data-ogre-refine-highlight');
+          el.removeAttribute('data-ogre-original-outline');
+          el.removeAttribute('data-ogre-original-outline-offset');
+        });
+        if (!selector) return;
+        try {
+          var matches = document.querySelectorAll(selector);
+          for (var i = 0; i < matches.length; i++) {
+            var el = matches[i];
+            el.dataset.ogreOriginalOutline = el.style.outline || '';
+            el.dataset.ogreOriginalOutlineOffset = el.style.outlineOffset || '';
+            el.style.outline = '3px dashed #f59e0b';
+            el.style.outlineOffset = '2px';
+            el.setAttribute('data-ogre-refine-highlight', 'true');
+          }
+        } catch(e) {}
+      })(${JSON.stringify(selector)})`);
+    } catch {
+      // Non-fatal — webview may not be ready
     }
   }
 
@@ -125,6 +196,95 @@
     } catch (err) {
       // User cancelled or error - ignore
       console.log('Refinement cancelled or failed', err);
+    }
+  }
+
+  async function handleConfirmAccept() {
+    if (!confirmationFlow) return;
+    confirmationFlow.accept();
+    
+    if (confirmationFlow.phase === 'complete') {
+      await handleConfirmationComplete();
+    } else {
+      const state = confirmationFlow.getState();
+      if (state?.selector) {
+        await highlightSelector(state.selector);
+      } else {
+        await clearRefinementHighlights();
+      }
+    }
+  }
+
+  async function handleConfirmRefine() {
+    if (!confirmationFlow || isRefining) return;
+    const state = confirmationFlow.getState();
+    if (!state) return;
+    
+    isRefining = true;
+    try {
+      const pickerResult = await refineSelector(state.selector || '');
+      const newSelector = mergeSelectorSources(state.selector || '', pickerResult);
+      confirmationFlow.refine(newSelector);
+      
+      if (confirmationFlow.phase === 'complete') {
+        await handleConfirmationComplete();
+      } else {
+        const nextState = confirmationFlow.getState();
+        if (nextState?.selector) {
+          await highlightSelector(nextState.selector);
+        } else {
+          await clearRefinementHighlights();
+        }
+      }
+    } catch {
+      // Picker cancelled — stay on current step
+    } finally {
+      isRefining = false;
+    }
+  }
+
+  async function handleConfirmBack() {
+    if (!confirmationFlow) return;
+    confirmationFlow.back();
+    const state = confirmationFlow.getState();
+    if (state?.selector) {
+      await highlightSelector(state.selector);
+    }
+  }
+
+  async function handleConfirmCancel() {
+    if (!confirmationFlow) return;
+    confirmationFlow.cancel();
+    await clearRefinementHighlights();
+    confirmationFlow = null;
+    phase = 'review';
+  }
+
+  async function handleConfirmationComplete() {
+    if (!confirmationFlow || !discoveryResult) return;
+    
+    const confirmedSelectors = confirmationFlow.getConfirmedSelectors();
+    
+    // Merge confirmed selectors back into discoveryResult
+    discoveryResult = {
+      ...discoveryResult,
+      selectors: {
+        ...discoveryResult.selectors,
+        ...confirmedSelectors,
+      }
+    };
+    
+    await clearRefinementHighlights();
+    confirmationFlow = null;
+    
+    if (returnToBatch) {
+      // Auto-save with generated name
+      profileName = 'Discovered Profile';
+      await handleSaveProfile();
+    } else {
+      // Show save dialog as normal
+      phase = 'review';
+      showSaveDialog = true;
     }
   }
 
@@ -289,11 +449,62 @@
         <button class="btn-secondary" onclick={() => { phase = 'idle'; }}>
           Discard
         </button>
-        <button class="btn-primary" onclick={() => { showSaveDialog = true; }}>
-          Save as Profile
-        </button>
+        {#if returnToBatch}
+          <button class="btn-primary" onclick={handleStartConfirmation}>
+            Confirm Selectors
+          </button>
+        {:else}
+          <button class="btn-primary" onclick={() => { showSaveDialog = true; }}>
+            Save as Profile
+          </button>
+        {/if}
       </div>
     </div>
+  {/if}
+
+  <!-- ── Confirmation Phase ── -->
+  {#if phase === 'confirming' && confirmationFlow}
+    {@const confirmState = confirmationFlow.getState()}
+    {#if confirmState}
+      <div class="confirmation-card">
+        <div class="confirm-progress">
+          <span class="confirm-step-label">Step {confirmState.stepIndex + 1} of {confirmState.totalSteps}</span>
+          <div class="confirm-progress-bar">
+            <div class="confirm-progress-fill" style="width: {((confirmState.stepIndex) / confirmState.totalSteps) * 100}%"></div>
+          </div>
+        </div>
+        
+        <div class="confirm-selector-info">
+          <div class="confirm-selector-name">{SELECTOR_LABELS[confirmState.key] ?? confirmState.key}</div>
+          {#if confirmState.selector}
+            <code class="confirm-selector-value">{confirmState.selector}</code>
+            <div class="confirm-match-info">
+              <span class="confirm-match-count">{confirmState.matchCount} match{confirmState.matchCount !== 1 ? 'es' : ''}</span>
+              {#if confirmState.sampleText}
+                <span class="confirm-sample-text">"{confirmState.sampleText}"</span>
+              {/if}
+            </div>
+          {:else}
+            <div class="confirm-not-detected">Not detected — will be skipped</div>
+          {/if}
+        </div>
+        
+        <div class="confirm-actions">
+          <button class="btn-secondary small" onclick={handleConfirmBack} disabled={confirmState.stepIndex === 0}>
+            ← Back
+          </button>
+          <button class="btn-secondary small" onclick={handleConfirmCancel}>
+            Cancel
+          </button>
+          <button class="btn-secondary small" onclick={handleConfirmRefine} disabled={isRefining}>
+            {isRefining ? 'Picking...' : 'Refine'}
+          </button>
+          <button class="btn-primary small" onclick={handleConfirmAccept} disabled={isRefining}>
+            Accept ✓
+          </button>
+        </div>
+      </div>
+    {/if}
   {/if}
 
   <!-- ── Save Dialog ── -->
@@ -563,6 +774,108 @@
     display: flex;
     justify-content: flex-end;
     gap: var(--spacing-2);
+  }
+
+  /* ── Confirmation Phase ── */
+  .confirmation-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-3);
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-primary);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-3);
+  }
+
+  .confirm-progress {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-1);
+  }
+
+  .confirm-step-label {
+    font-size: 0.75rem;
+    color: var(--color-text-secondary);
+    font-weight: 500;
+  }
+
+  .confirm-progress-bar {
+    height: 4px;
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+  }
+
+  .confirm-progress-fill {
+    height: 100%;
+    background: var(--color-primary);
+    transition: width 0.3s ease;
+  }
+
+  .confirm-selector-info {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-1);
+  }
+
+  .confirm-selector-name {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+
+  .confirm-selector-value {
+    font-family: monospace;
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+    background: var(--color-bg-main);
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    word-break: break-all;
+  }
+
+  .confirm-match-info {
+    display: flex;
+    gap: var(--spacing-2);
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .confirm-match-count {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--color-success, #22c55e);
+    background: rgba(34, 197, 94, 0.1);
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+  }
+
+  .confirm-sample-text {
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+    font-style: italic;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 200px;
+  }
+
+  .confirm-not-detected {
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+    font-style: italic;
+  }
+
+  .confirm-actions {
+    display: flex;
+    gap: var(--spacing-2);
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+
+  .btn-primary.small, .btn-secondary.small {
+    padding: var(--spacing-1) var(--spacing-2);
+    font-size: 0.85rem;
   }
 
   /* ── Error ── */
