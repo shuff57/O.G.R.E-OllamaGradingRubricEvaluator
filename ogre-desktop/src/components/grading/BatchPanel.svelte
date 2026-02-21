@@ -27,13 +27,13 @@
     BatchDoneEvent,
     BatchErrorEvent,
   } from '../../lib/grading-api';
-  import { createRubric } from '../../lib/rubric-api';
+  import { createRubric, updateRubric } from '../../lib/rubric-api';
   import type { SavedRubric } from '../../lib/rubric-api';
   import { getBatchSession, saveBatchSession, clearBatchSession } from '../../lib/db';
   import { getEmbeddedUrl } from '../../lib/browser';
   import type { BatchLogEntry } from '../../lib/batch-grader';
   import { refreshPageData, buildBatchResetState, stopActiveBatch } from '../../lib/page-refresh';
-  import { criteriaToText } from '../../lib/rubric-utils';
+  import { criteriaToText, textToCriteria } from '../../lib/rubric-utils';
 
   // Props
   let {
@@ -187,6 +187,18 @@
     }
   });
 
+  // ── Sync with selected library rubric (when idle) ────────────────────
+  $effect(() => {
+    // Only apply if we are in idle phase (don't overwrite extraction results)
+    if (batchPhase === 'idle') {
+      if (selectedRubric) {
+        loadLibraryRubric(selectedRubric);
+      } else {
+        clearLibraryRubric();
+      }
+    }
+  });
+
   function updateBatchState() {
     if (!batchGrader) return;
     batchProgress = batchGrader.getProgress();
@@ -310,6 +322,29 @@
       return;
     }
 
+    // Parse textarea content and apply to extractedRubric
+    const parsedCriteria = textToCriteria(rubricText);
+    if (parsedCriteria.length > 0) {
+      const checklistItems = parsedCriteria.map(c => ({
+        category: c.criteria,
+        items: c.description ? [c.description] : [],
+      }));
+      if (extractedRubric) {
+        extractedRubric.checklistItems = checklistItems;
+      } else {
+        extractedRubric = {
+          essayPrompt: '',
+          checklistItems,
+          rubricItems: [],
+          modelText: null,
+          maxScore: rubricMaxScore,
+        };
+      }
+    } else if (!rubricText.trim() && !extractedRubric) {
+      batchError = 'No rubric text. Load a rubric from the library or type one manually.';
+      return;
+    }
+
     // Build rubric from (possibly edited) review text
     const rubric = extractedRubric ?? batchGrader.rubric;
     if (!rubric) {
@@ -375,22 +410,38 @@
     try {
       await createRubric({
         name: saveRubricName.trim(),
-        description: '', // Optional description
+        description: '',
         maxScore: parseInt(rubricMaxScore) || 10,
-        criteria: (extractedRubric?.checklistItems ?? []).map(item => ({
-          criteria: item.category,
-          description: item.items.join('; '),
-          points: 0,
-        })),
+        criteria: textToCriteria(rubricText),
         tags: saveRubricTags.split(',').map(t => t.trim()).filter(Boolean),
       });
       saveStatus = 'Saved!';
       showSaveDialog = false;
       saveRubricName = '';
       saveRubricTags = '';
+      window.dispatchEvent(new CustomEvent('ogre:rubric-saved'));
       setTimeout(() => { saveStatus = ''; }, 3000);
     } catch (err) {
       saveStatus = err instanceof Error ? err.message : 'Save failed';
+    }
+  }
+
+  // ── Update existing rubric in library ───────────────────────────────
+  async function handleUpdateRubric() {
+    if (!sourceRubricId) return;
+    const rubricName = selectedRubric?.name || 'this rubric';
+    if (!confirm(`Update will overwrite '${rubricName}' in library. Continue?`)) return;
+    saveStatus = '';
+    try {
+      await updateRubric(sourceRubricId, {
+        criteria: textToCriteria(rubricText),
+        maxScore: parseInt(rubricMaxScore) || 10,
+      });
+      saveStatus = 'Updated!';
+      window.dispatchEvent(new CustomEvent('ogre:rubric-saved'));
+      setTimeout(() => { saveStatus = ''; }, 3000);
+    } catch (err) {
+      saveStatus = err instanceof Error ? err.message : 'Update failed';
     }
   }
 
@@ -629,77 +680,100 @@
     </div>
   </details>
 
-  <!-- ── Rubric Review (shown after extraction) ──────────────────── -->
-  {#if batchPhase === 'review' || batchPhase === 'grading' || batchPhase === 'done'}
+
+  <!-- ── Rubric Review Content Snippet ───────────────────────────── -->
+  {#snippet rubricContent()}
+    <div class="section-content">
+      <p class="review-hint">
+        {#if sourceRubricId && selectedRubric}
+          Rubric loaded from library: <strong>{selectedRubric.name}</strong>
+        {:else if extractedRubric}
+          Rubric extracted from page. Review and edit if needed.
+        {:else}
+          Type a rubric or click <strong>Start Batch</strong> to extract from page.
+        {/if}
+      </p>
+      <textarea
+        class="rubric-textarea"
+        rows="8"
+        placeholder="Rubric / grading criteria will appear here..."
+        bind:value={rubricText}
+        disabled={batchPhase === 'grading' || batchPhase === 'extracting'}
+      ></textarea>
+      <div class="max-score-row">
+        <label for="batch-max-score" class="max-score-label">Max Score:</label>
+        <input
+          id="batch-max-score"
+          type="number"
+          class="max-score-input"
+          bind:value={rubricMaxScore}
+          min="0"
+          disabled={batchPhase === 'grading' || batchPhase === 'extracting'}
+        />
+      </div>
+      <div class="rubric-actions">
+        <button
+          class="btn-secondary small"
+          onclick={() => { showSaveDialog = !showSaveDialog; }}
+          disabled={batchPhase === 'grading' || batchPhase === 'extracting'}
+        >Save to Library</button>
+        {#if sourceRubricId}
+          <button
+            class="btn-secondary small"
+            onclick={handleUpdateRubric}
+            disabled={batchPhase === 'grading' || batchPhase === 'extracting'}
+          >Update {selectedRubric?.name || 'Library Rubric'}</button>
+        {/if}
+        {#if batchPhase === 'review'}
+          <button
+            class="btn-primary small"
+            onclick={handleContinueGrading}
+            disabled={!batchGrader || batchGrader.studentsToGrade.length === 0}
+          >Continue Grading</button>
+        {/if}
+      </div>
+      {#if saveStatus}
+        <small class="save-status">{saveStatus}</small>
+      {/if}
+      {#if showSaveDialog}
+        <div class="save-dialog">
+          <input
+            type="text"
+            placeholder="Rubric name (e.g., Math Quiz Ch5)"
+            bind:value={saveRubricName}
+          />
+          <input
+            type="text"
+            placeholder="Tags (comma-separated, optional)"
+            bind:value={saveRubricTags}
+          />
+          <div class="save-dialog-actions">
+            <button class="btn-primary small" onclick={handleSaveRubric} disabled={!saveRubricName.trim()}>Save</button>
+            <button class="btn-secondary small" onclick={() => { showSaveDialog = false; }}>Cancel</button>
+          </div>
+        </div>
+      {/if}
+    </div>
+  {/snippet}
+
+  <!-- ── Rubric Review (Always Visible) ──────────────────────────── -->
+  {#if batchPhase === 'idle' || batchPhase === 'extracting'}
+    <div class="section-card">
+      <div class="section-header-row">
+        <h3>Rubric</h3>
+      </div>
+      {@render rubricContent()}
+    </div>
+  {:else if batchPhase === 'review' || batchPhase === 'grading' || batchPhase === 'done'}
     <details class="section-details" open>
       <summary class="section-summary">
         <span>Rubric Review</span>
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="chevron"><polyline points="6 9 12 15 18 9"></polyline></svg>
       </summary>
-      <div class="section-content">
-        <p class="review-hint">
-          {#if extractedRubric}
-            Rubric extracted from page. Review and edit if needed.
-          {:else}
-            No rubric found on page. You can type one manually.
-          {/if}
-        </p>
-        <textarea
-          class="rubric-textarea"
-          rows="8"
-          placeholder="Rubric / grading criteria will appear here..."
-          bind:value={rubricText}
-          disabled={batchPhase === 'grading'}
-        ></textarea>
-        <div class="max-score-row">
-          <label for="batch-max-score" class="max-score-label">Max Score:</label>
-          <input
-            id="batch-max-score"
-            type="number"
-            class="max-score-input"
-            bind:value={rubricMaxScore}
-            min="0"
-            disabled={batchPhase === 'grading'}
-          />
-        </div>
-        <div class="rubric-actions">
-          <button
-            class="btn-secondary small"
-            onclick={() => { showSaveDialog = !showSaveDialog; }}
-            disabled={batchPhase === 'grading'}
-          >Save to Library</button>
-          {#if batchPhase === 'review'}
-            <button
-              class="btn-primary small"
-              onclick={handleContinueGrading}
-              disabled={!batchGrader || batchGrader.studentsToGrade.length === 0}
-            >Continue Grading</button>
-          {/if}
-        </div>
-        {#if saveStatus}
-          <small class="save-status">{saveStatus}</small>
-        {/if}
-        {#if showSaveDialog}
-          <div class="save-dialog">
-            <input
-              type="text"
-              placeholder="Rubric name (e.g., Math Quiz Ch5)"
-              bind:value={saveRubricName}
-            />
-            <input
-              type="text"
-              placeholder="Tags (comma-separated, optional)"
-              bind:value={saveRubricTags}
-            />
-            <div class="save-dialog-actions">
-              <button class="btn-primary small" onclick={handleSaveRubric} disabled={!saveRubricName.trim()}>Save</button>
-              <button class="btn-secondary small" onclick={() => { showSaveDialog = false; }}>Cancel</button>
-            </div>
-          </div>
-        {/if}
-      </div>
+      {@render rubricContent()}
     </details>
   {/if}
+
 
   <!-- ── Resume After ────────────────────────────────────────────── -->
   {#if batchPhase === 'idle'}
