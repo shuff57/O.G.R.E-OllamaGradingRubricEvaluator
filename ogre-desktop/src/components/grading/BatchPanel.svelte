@@ -41,6 +41,7 @@
     onRequestDiscovery = () => {},
     preselectedProfileId = null as string | null,
     pageLoadedUrl = '',
+    refreshKey = 0,
   } = $props();
 
   // ── Profile Selection ────────────────────────────────────────────────
@@ -173,6 +174,13 @@
 
     // Re-detect profile and session for new URL
     doRefreshPageData();
+  });
+
+  // ── Manual refresh trigger ──────────────────────────────────────────
+  $effect(() => {
+    if (refreshKey > 0) {
+      doRefreshPageData();
+    }
   });
 
   function updateBatchState() {

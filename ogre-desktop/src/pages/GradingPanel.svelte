@@ -25,6 +25,8 @@
   let activeMode = $state('grader'); // 'grader' | 'solver' | 'batch'
   let showScreenshotOverlay = $state(false);
   let batchRunning = $state(false);
+  let refreshKey = $state(0);
+  let isRefreshing = $state(false);
 
   // Screenshot capture state
   let capturedImage = $state('');
@@ -66,6 +68,12 @@
   function toggleCollapse() {
     if (isResizing) return; // Prevent collapse during active drag
     isCollapsed = !isCollapsed;
+  }
+
+  function handleManualRefresh() {
+    isRefreshing = true;
+    refreshKey++;
+    setTimeout(() => { isRefreshing = false; }, 800);
   }
 
   function setMode(modeId: string) {
@@ -272,6 +280,17 @@
   <div class="panel-header">
     {#if !isCollapsed}
       <h2 class="panel-title">AI Grading</h2>
+      <button 
+        class="icon-btn toggle-btn refresh-btn" 
+        class:spinning={isRefreshing}
+        onclick={handleManualRefresh}
+        title="Refresh page data"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M23 4v6h-6M1 20v-6h6"/>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+        </svg>
+      </button>
     {/if}
     <button class="icon-btn toggle-btn" onclick={toggleCollapse} title={isCollapsed ? "Expand Panel (Ctrl+B)" : "Collapse Panel (Ctrl+B / Esc)"}>
       {#if isCollapsed}
@@ -334,6 +353,7 @@
           {onRequestDiscovery}
           {preselectedProfileId}
           {pageLoadedUrl}
+          {refreshKey}
         />
       {/if}
 
@@ -343,6 +363,7 @@
           model={activeModel}
           {returnToBatch}
           {pageLoadedUrl}
+          {refreshKey}
           onProfileSaved={(profile) => {
             console.log('Saved profile:', profile);
             if (returnToBatch) {
@@ -405,6 +426,16 @@
   }
   .toggle-btn:hover {
     background-color: var(--color-bg-card-hover); color: var(--color-text-primary);
+  }
+  .refresh-btn {
+    margin-right: auto;
+  }
+  @keyframes spin-once {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  .refresh-btn.spinning svg {
+    animation: spin-once 0.8s ease-in-out;
   }
   .mode-tabs {
     display: grid; grid-template-columns: 1fr 1fr; padding: var(--spacing-2); gap: var(--spacing-1);

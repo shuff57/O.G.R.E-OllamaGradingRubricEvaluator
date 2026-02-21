@@ -37,12 +37,14 @@
     model = '',
     returnToBatch = false,
     pageLoadedUrl = '',
+    refreshKey = 0,
     onProfileSaved = () => {},
   } = $props<{
     provider?: string;
     model?: string;
     returnToBatch?: boolean;
     pageLoadedUrl?: string;
+    refreshKey?: number;
     onProfileSaved?: (profile: SiteProfile) => void;
   }>();
 
@@ -89,6 +91,12 @@
     if (!url) return;
     if (lastDiscoveryUrl && url !== lastDiscoveryUrl) {
       staleWarning = true;
+    }
+  });
+
+  $effect(() => {
+    if (refreshKey > 0) {
+      staleWarning = false;
     }
   });
 
