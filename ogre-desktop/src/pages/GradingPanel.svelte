@@ -11,6 +11,7 @@
   import type { SavedRubric } from '../lib/rubric-api';
   import type { GradeRubric } from '../lib/grading-api';
   import { ICON_STRIP_WIDTH } from '../lib/constants';
+  import { createDebouncedRefresh } from '../lib/page-refresh';
 
   let {
     isCollapsed = $bindable(false),
@@ -27,6 +28,17 @@
   let batchRunning = $state(false);
   let refreshKey = $state(0);
   let isRefreshing = $state(false);
+
+  // Debounced handler for auto-detection: prevents rapid browser-page-loaded events from
+  // triggering multiple refreshes in quick succession (300ms debounce)
+  const debouncedPageRefresh = createDebouncedRefresh(() => {
+    refreshKey++;
+  }, 300);
+
+  $effect(() => {
+    if (!pageLoadedUrl) return; // ignore initial empty value
+    debouncedPageRefresh(pageLoadedUrl);
+  });
 
   // Screenshot capture state
   let capturedImage = $state('');
