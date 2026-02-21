@@ -3,6 +3,8 @@
  * Handles batch grading with scoring anchors, chunking, and outlier detection
  */
 
+import { GRADING_PHILOSOPHY } from './grading-constants.js';
+
 /**
  * Generate scoring anchors (Excellent, Adequate, Below Average, Minimal) for calibration
  * @param {Object} rubric - Rubric with essayPrompt, checklistItems, rubricItems, maxScore
@@ -76,17 +78,10 @@ export function buildBatchPrompt(rubric, students, anchors, bridgeResponses = nu
     essayPrompt = essayPrompt.replace(/\n\nADDITIONAL GRADING INSTRUCTIONS:\n[\s\S]+$/, '').trim();
   }
 
-  let prompt = `You are an expert grading assistant. Grade ALL students in this batch against the provided rubric.
+   let prompt = `You are an expert grading assistant. Grade ALL students in this batch against the provided rubric.
 
 GRADING PHILOSOPHY:
-These are high school seniors, not college students or experts. Grade generously:
-- Give full credit for demonstrating understanding, even if the explanation lacks polish
-- Award substantial partial credit for correct reasoning with minor errors
-- Focus on mathematical thinking and effort, not perfect execution
-- Distinguish conceptual misunderstandings (serious) from minor mistakes (not serious)
-- Wrong terminology with correct concept = most of the points
-- Minor errors or omissions lose at most 1 point per category
-- Any substantive attempt that engages with the prompt earns at least 40% of max score
+${GRADING_PHILOSOPHY}
 
 MAX SCORE: ${maxScore}
 
@@ -423,14 +418,7 @@ BATCH CONTEXT:
 - Total students in batch: ${stats.totalStudents}
 
 GRADING PHILOSOPHY:
-These are high school seniors, not college students or experts. Grade generously:
-- Give full credit for demonstrating understanding, even if the explanation lacks polish
-- Award substantial partial credit for correct reasoning with minor errors
-- Focus on mathematical thinking and effort, not perfect execution
-- Distinguish conceptual misunderstandings (serious) from minor mistakes (not serious)
-- Wrong terminology with correct concept = most of the points
-- Minor errors or omissions lose at most 1 point per category
-- Any substantive attempt that engages with the prompt earns at least 40% of max score
+${GRADING_PHILOSOPHY}
 
 MAX SCORE: ${maxScore}
 
@@ -656,14 +644,7 @@ export function buildSingleGradePrompt(rubric, studentWork, instructions) {
   let prompt = `You are an expert grading assistant. Grade this student's work against the provided rubric.
 
 GRADING PHILOSOPHY:
-These are high school seniors, not college students or experts. Grade generously:
-- Give full credit for demonstrating understanding, even if the explanation lacks polish
-- Award substantial partial credit for correct reasoning with minor errors
-- Focus on mathematical thinking and effort, not perfect execution
-- Distinguish conceptual misunderstandings (serious) from minor mistakes (not serious)
-- Wrong terminology with correct concept = most of the points
-- Minor errors or omissions lose at most 1 point per category
-- Any substantive attempt that engages with the prompt earns at least 40% of max score
+${GRADING_PHILOSOPHY}
 
 MAX SCORE: ${maxScore}
 
@@ -715,8 +696,11 @@ ${instructions}
   }
 
   prompt += `
+SCORING GUIDANCE:
+Half-point scores are allowed (e.g., 7.5).
+
 RESPONSE FORMAT:
-You MUST respond with a valid JSON object ONLY. No markdown, no code fences, no explanation.
+Return ONLY valid JSON. No markdown code fences. No explanation text.
 
 {
   "score": <number 0 to ${maxScore}, half-points allowed e.g. 7.5>,

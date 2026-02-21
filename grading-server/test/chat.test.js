@@ -457,3 +457,36 @@ describe('POST /api/chat — Input validation patterns', () => {
     expect(active).toBeUndefined();
   });
 });
+
+// ── buildSingleGradePrompt — Prompt Snapshot Tests ──────────────────────
+
+describe('buildSingleGradePrompt — prompt snapshot guards', () => {
+  const sampleRubric = {
+    essayPrompt: 'Describe the water cycle.',
+    maxScore: '10',
+    checklistItems: [
+      { category: 'Science (5 pts)', points: 5, items: ['Evaporation', 'Condensation'] },
+    ],
+  };
+
+  it('should include half-point scoring instruction', () => {
+    const prompt = buildSingleGradePrompt(sampleRubric, 'Water evaporates and rains', '');
+    expect(prompt.toLowerCase()).toContain('half');
+  });
+
+  it('should not contain markdown code fences', () => {
+    const prompt = buildSingleGradePrompt(sampleRubric, 'Student answer here', '');
+    expect(prompt).not.toContain('```');
+  });
+
+  it('should instruct model to return JSON', () => {
+    const prompt = buildSingleGradePrompt(sampleRubric, 'Student answer here', '');
+    expect(prompt).toContain('JSON');
+  });
+
+  it('should embed the student work text verbatim', () => {
+    const studentText = 'The water cycle involves evaporation, condensation, and precipitation.';
+    const prompt = buildSingleGradePrompt(sampleRubric, studentText, '');
+    expect(prompt).toContain(studentText);
+  });
+});

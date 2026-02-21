@@ -10,6 +10,7 @@ import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { getHandshakeToken } from "./provider-sync";
 import { fetchAvailableModels } from "./oauth";
 import { parseSSEStream, parseSSEText } from "./sse-parser";
+import { withRetry } from "./ai-retry";
 import type {
   BatchGradingCallbacks,
   CancellationToken,
@@ -54,6 +55,8 @@ export interface GradeRequest {
   provider?: string;
   /** Model override (defaults to provider's configured model) */
   model?: string;
+  /** Callback fired before each retry attempt */
+  onRetry?: (attempt: number, error: Error) => void;
 }
 
 /** Response from the grading server's /api/chat grader mode. */
@@ -81,6 +84,8 @@ export interface SolverMessageOptions {
   message: string;
   model?: string;
   provider?: string;
+  /** Callback fired before each retry attempt */
+  onRetry?: (attempt: number, error: Error) => void;
 }
 
 /** Provider configuration returned by GET /api/providers. */
@@ -198,24 +203,32 @@ export async function gradeStudent(req: GradeRequest): Promise<GradeResponse> {
   if (req.provider) body.provider = req.provider;
   if (req.model) body.model = req.model;
 
-  const response = await tauriFetch(`${SERVER_BASE}/api/chat`, {
-    method: "POST",
-    headers: authHeaders(),
-    body: JSON.stringify(body),
-  });
+  const data = await withRetry(
+    async () => {
+      const response = await tauriFetch(`${SERVER_BASE}/api/chat`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify(body),
+      });
 
-  if (!response.ok) {
-    let errorMessage: string;
-    try {
-      const errorData = await response.json();
-      errorMessage = errorData.error || `Grading failed (HTTP ${response.status})`;
-    } catch {
-      errorMessage = `Grading failed (HTTP ${response.status})`;
-    }
-    throw new Error(errorMessage);
-  }
+      if (!response.ok) {
+        let errorMessage: string;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || `Grading failed (HTTP ${response.status})`;
+        } catch {
+          errorMessage = `Grading failed (HTTP ${response.status})`;
+        }
+        const err = new Error(errorMessage);
+        (err as Error & { status: number }).status = response.status;
+        throw err;
+      }
 
-  const data = await response.json();
+      return await response.json();
+    },
+    { onRetry: req.onRetry },
+  );
+
   return {
     score: data.score,
     feedback: data.feedback,
@@ -250,22 +263,31 @@ export async function sendSolverMessage(
   if (options.model) body.model = options.model;
   if (options.provider) body.provider = options.provider;
 
-  const response = await tauriFetch(`${SERVER_BASE}/api/chat`, {
-    method: "POST",
-    headers: authHeaders(),
-    body: JSON.stringify(body),
-  });
+  const response = await withRetry(
+    async () => {
+      const res = await tauriFetch(`${SERVER_BASE}/api/chat`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify(body),
+      });
 
-  if (!response.ok) {
-    let errorMsg = `Server error ${response.status}`;
-    try {
-      const errData = await response.json();
-      errorMsg = errData.error || errorMsg;
-    } catch {
-      // Use status-based message
-    }
-    throw new Error(errorMsg);
-  }
+      if (!res.ok) {
+        let errorMsg = `Server error ${res.status}`;
+        try {
+          const errData = await res.json();
+          errorMsg = errData.error || errorMsg;
+        } catch {
+          /* Use status-based message */
+        }
+        const err = new Error(errorMsg);
+        (err as Error & { status: number }).status = res.status;
+        throw err;
+      }
+
+      return res;
+    },
+    { onRetry: options.onRetry },
+  );
 
   // Read the SSE stream.
   // Try ReadableStream first (streaming), fall back to .text() (buffered).

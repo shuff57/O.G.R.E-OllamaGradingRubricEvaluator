@@ -12,6 +12,7 @@ import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { evalScript, evalScriptJSON, captureWebviewScreenshot, getEmbeddedUrl } from "./browser";
 import { getHandshakeToken } from "./provider-sync";
 import type { RubricCriterion } from "./rubric-api";
+import { withRetry } from "./ai-retry";
 
 const SERVER_BASE = "http://localhost:3456";
 
@@ -638,22 +639,26 @@ async function callDiscoveryAI(
   if (options?.provider) body.provider = options.provider;
   if (options?.model) body.model = options.model;
 
-  const response = await tauriFetch(`${SERVER_BASE}/api/chat`, {
-    method: "POST",
-    headers: authHeaders(),
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    let errorMsg = `Discovery AI call failed (HTTP ${response.status})`;
-    try {
-      const errData = (await response.json()) as { error?: string };
-      errorMsg = errData.error || errorMsg;
-    } catch {
-      // Use status-based message
+  const response = await withRetry(async () => {
+    const res = await tauriFetch(`${SERVER_BASE}/api/chat`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      let errorMsg = `Discovery AI call failed (HTTP ${res.status})`;
+      try {
+        const errData = (await res.json()) as { error?: string };
+        errorMsg = errData.error || errorMsg;
+      } catch {
+        // Use status-based message
+      }
+      const err = new Error(errorMsg);
+      (err as Error & { status: number }).status = res.status;
+      throw err;
     }
-    throw new Error(errorMsg);
-  }
+    return res;
+  });
 
   // The server may return SSE or JSON depending on mode.
   // For discovery, we send systemPrompt which triggers non-grader mode.
@@ -974,6 +979,19 @@ RULES:
 - If you can identify a title or assignment name, include it as "suggestedName".
 - Keep descriptions concise but complete (1-2 sentences).
 
+EXAMPLE:
+Input rubric text: "Writing Quality (10 pts): Clear grammar, style, and organization. Argument Strength (15 pts): Thesis is supported with evidence and logical reasoning. Question 2 - Analysis (5 pts): Correctly identifies key themes."
+
+Expected output:
+{
+  "suggestedName": "",
+  "rubric": [
+    { "criteria": "Writing Quality", "description": "Clear grammar, style, and organization", "points": 10 },
+    { "criteria": "Argument Strength", "description": "Thesis is supported with evidence and logical reasoning", "points": 15 },
+    { "criteria": "Analysis", "description": "Correctly identifies key themes", "points": 5, "question": 2 }
+  ]
+}
+
 Return ONLY a valid JSON object with this structure:
 {
   "suggestedName": "Assignment or Rubric Title (or empty string)",
@@ -1144,11 +1162,13 @@ export async function parseRubricFromScreenshot(
   // - Sending images via POST /api/chat with systemPrompt + images array
   // - Parsing SSE or JSON responses
   // - Auth headers
-  const aiText = await callDiscoveryAI(
-    RUBRIC_EXTRACTION_PROMPT,
-    "Extract the grading rubric from this screenshot image. Return structured JSON with all criteria, point values, and descriptions.",
-    imageDataUrl,
-    options,
+  const aiText = await withRetry(() =>
+    callDiscoveryAI(
+      RUBRIC_EXTRACTION_PROMPT,
+      "Extract the grading rubric from this screenshot image. Return structured JSON with all criteria, point values, and descriptions.",
+      imageDataUrl,
+      options,
+    )
   );
 
   if (!aiText.trim()) {

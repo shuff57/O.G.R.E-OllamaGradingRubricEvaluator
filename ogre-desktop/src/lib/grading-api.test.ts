@@ -27,6 +27,11 @@ vi.mock("./oauth", () => ({
   fetchAvailableModels: mockFetchAvailableModels,
 }));
 
+// ── Mock ai-retry (pass-through — no delays in tests) ──────────────────
+vi.mock("./ai-retry", () => ({
+  withRetry: (fn: () => Promise<unknown>) => fn(),
+}));
+
 // ── Mock sse-parser (for startBatchGrading) ─────────────────────────────
 const { mockParseSSEStream, mockParseSSEText } = vi.hoisted(() => ({
   mockParseSSEStream: vi.fn().mockResolvedValue(undefined),

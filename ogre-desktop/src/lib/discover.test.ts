@@ -433,6 +433,11 @@ describe("DISCOVERY_SYSTEM_PROMPT", () => {
   it("contains concrete example with real CSS selectors", () => {
     expect(DISCOVERY_SYSTEM_PROMPT).toContain("tr[id^='graderow']");
   });
+
+  it("does not contain CoT instructions like 'let's think step by step'", () => {
+    expect(DISCOVERY_SYSTEM_PROMPT).not.toContain("let's think step by step");
+    expect(DISCOVERY_SYSTEM_PROMPT).not.toContain("think step by step");
+  });
 });
 
 // ── DISCOVERY_USER_PROMPT_TEMPLATE ─────────────────────────────────────────
@@ -611,6 +616,18 @@ describe("RUBRIC_EXTRACTION_PROMPT", () => {
     expect(RUBRIC_EXTRACTION_PROMPT).toContain("numbers");
     expect(RUBRIC_EXTRACTION_PROMPT).toContain("maximum value");
     expect(RUBRIC_EXTRACTION_PROMPT).toContain("question number");
+  });
+
+  it("instructs the AI to return JSON", () => {
+    expect(RUBRIC_EXTRACTION_PROMPT).toContain("JSON");
+  });
+
+  it("does not contain markdown code fences that confuse models", () => {
+    expect(RUBRIC_EXTRACTION_PROMPT).not.toContain("```");
+  });
+
+  it("includes a few-shot EXAMPLE for calibration", () => {
+    expect(RUBRIC_EXTRACTION_PROMPT).toContain("EXAMPLE");
   });
 });
 
@@ -861,6 +878,203 @@ describe("isValidRubricExtractionResult", () => {
       criteria: [{ criteria: "Participation", description: "Present", points: 0 }],
       maxScore: 0,
     })).toBe(true);
+  });
+});
+
+// ── parseRubricExtractionResponse — additional edge cases ───────────────
+
+describe("parseRubricExtractionResponse (edge cases)", () => {
+  it("parses JSON in generic code fences (no language tag)", () => {
+    const response = `\`\`\`
+{
+  "rubric": [
+    { "criteria": "Logic", "description": "Sound reasoning", "points": 8 }
+  ]
+}
+\`\`\``;
+
+    const result = parseRubricExtractionResponse(response);
+    expect(result.criteria).toHaveLength(1);
+    expect(result.criteria[0].criteria).toBe("Logic");
+    expect(result.maxScore).toBe(8);
+  });
+
+  it("strips multiple <think> blocks", () => {
+    const response = `<think>First thought block</think>
+<think>Second thought block</think>
+{
+  "rubric": [
+    { "criteria": "Depth", "description": "In-depth analysis", "points": 10 }
+  ]
+}`;
+
+    const result = parseRubricExtractionResponse(response);
+    expect(result.criteria).toHaveLength(1);
+    expect(result.criteria[0].criteria).toBe("Depth");
+  });
+
+  it("handles <think> block combined with code fences", () => {
+    const response = `<think>
+Let me extract this rubric...
+</think>
+
+\`\`\`json
+{
+  "rubric": [
+    { "criteria": "Structure", "description": "Well organized", "points": 5 }
+  ],
+  "suggestedName": "Essay Rubric"
+}
+\`\`\``;
+
+    const result = parseRubricExtractionResponse(response);
+    expect(result.criteria[0].criteria).toBe("Structure");
+    expect(result.suggestedName).toBe("Essay Rubric");
+  });
+
+  it("skips non-object items in rubric array", () => {
+    const json = JSON.stringify({
+      rubric: [
+        { criteria: "Valid", description: "ok", points: 5 },
+        null,
+        42,
+        "string item",
+        { criteria: "Also Valid", description: "ok too", points: 3 },
+      ],
+    });
+
+    const result = parseRubricExtractionResponse(json);
+    expect(result.criteria).toHaveLength(2);
+    expect(result.criteria[0].criteria).toBe("Valid");
+    expect(result.criteria[1].criteria).toBe("Also Valid");
+  });
+
+  it("omits question number when value is 0 (not > 0)", () => {
+    const json = JSON.stringify({
+      rubric: [
+        { criteria: "Item", description: "d", points: 5, question: 0 },
+      ],
+    });
+
+    const result = parseRubricExtractionResponse(json);
+    expect(result.criteria[0].question).toBeUndefined();
+  });
+
+  it("omits question number when value is negative", () => {
+    const json = JSON.stringify({
+      rubric: [
+        { criteria: "Item", description: "d", points: 5, question: -1 },
+      ],
+    });
+
+    const result = parseRubricExtractionResponse(json);
+    expect(result.criteria[0].question).toBeUndefined();
+  });
+
+  it("omits question number when string is non-numeric", () => {
+    const json = JSON.stringify({
+      rubric: [
+        { criteria: "Item", description: "d", points: 5, question: "abc" },
+      ],
+    });
+
+    const result = parseRubricExtractionResponse(json);
+    expect(result.criteria[0].question).toBeUndefined();
+  });
+
+  it("omits question number when string is '0'", () => {
+    const json = JSON.stringify({
+      rubric: [
+        { criteria: "Item", description: "d", points: 5, question: "0" },
+      ],
+    });
+
+    const result = parseRubricExtractionResponse(json);
+    expect(result.criteria[0].question).toBeUndefined();
+  });
+
+  it("throws when rubric field is a string, not an array", () => {
+    const json = JSON.stringify({ rubric: "not an array" });
+    expect(() => parseRubricExtractionResponse(json))
+      .toThrow("AI response contains no rubric criteria");
+  });
+
+  it("throws when rubric field is an object, not an array", () => {
+    const json = JSON.stringify({ rubric: { criteria: "test" } });
+    expect(() => parseRubricExtractionResponse(json))
+      .toThrow("AI response contains no rubric criteria");
+  });
+
+  it("returns empty string when suggestedName is a number", () => {
+    const json = JSON.stringify({
+      rubric: [{ criteria: "Test", description: "d", points: 5 }],
+      suggestedName: 123,
+    });
+
+    const result = parseRubricExtractionResponse(json);
+    expect(result.suggestedName).toBe("");
+  });
+
+  it("trims whitespace from criteria name and description", () => {
+    const json = JSON.stringify({
+      rubric: [
+        { criteria: "  Padded Name  ", description: "  Padded Desc  ", points: 5 },
+      ],
+    });
+
+    const result = parseRubricExtractionResponse(json);
+    expect(result.criteria[0].criteria).toBe("Padded Name");
+    expect(result.criteria[0].description).toBe("Padded Desc");
+  });
+
+  it("trims whitespace from suggestedName", () => {
+    const json = JSON.stringify({
+      rubric: [{ criteria: "T", description: "d", points: 1 }],
+      suggestedName: "  My Rubric  ",
+    });
+
+    const result = parseRubricExtractionResponse(json);
+    expect(result.suggestedName).toBe("My Rubric");
+  });
+
+  it("computes maxScore as sum of all criteria points", () => {
+    const json = JSON.stringify({
+      rubric: [
+        { criteria: "A", description: "a", points: 10 },
+        { criteria: "B", description: "b", points: 7.5 },
+        { criteria: "C", description: "c", points: 2.5 },
+      ],
+    });
+
+    const result = parseRubricExtractionResponse(json);
+    expect(result.maxScore).toBe(20);
+  });
+
+  it("handles leading/trailing whitespace around the entire response", () => {
+    const json = `   \n\n  ${JSON.stringify({
+      rubric: [{ criteria: "Test", description: "d", points: 5 }],
+    })}  \n\n  `;
+
+    const result = parseRubricExtractionResponse(json);
+    expect(result.criteria).toHaveLength(1);
+  });
+
+  it("handles missing description gracefully (defaults to empty string)", () => {
+    const json = JSON.stringify({
+      rubric: [{ criteria: "No Desc", points: 5 }],
+    });
+
+    const result = parseRubricExtractionResponse(json);
+    expect(result.criteria[0].description).toBe("");
+  });
+
+  it("handles missing points gracefully (defaults to 0)", () => {
+    const json = JSON.stringify({
+      rubric: [{ criteria: "No Points", description: "d" }],
+    });
+
+    const result = parseRubricExtractionResponse(json);
+    expect(result.criteria[0].points).toBe(0);
   });
 });
 
