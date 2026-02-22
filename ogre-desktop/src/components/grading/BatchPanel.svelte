@@ -5,8 +5,9 @@
    * Features:
    * - Site profile selection (MyOpenMath, Canvas SpeedGrader, auto-detect)
    * - Grading instructions with presets (Non-Zero Only, Lenient, Strict)
-   * - Rubric review section (extract → review → grade flow)
    * - Progress tracking with pause/resume/stop
+   * Rubric state (rubricText, rubricMaxScore, extractedRubric, sourceRubricId,
+   * batchPhase, essayPrompt) is owned by GradingPanel; RubricCard renders the UI.
    */
   import { onMount, onDestroy } from 'svelte';
   import {
@@ -27,15 +28,16 @@
     BatchDoneEvent,
     BatchErrorEvent,
   } from '../../lib/grading-api';
-  import { createRubric, updateRubric } from '../../lib/rubric-api';
+
   import type { SavedRubric } from '../../lib/rubric-api';
   import { getBatchSession, saveBatchSession, clearBatchSession } from '../../lib/db';
   import { getEmbeddedUrl } from '../../lib/browser';
   import type { BatchLogEntry } from '../../lib/batch-grader';
   import { refreshPageData, buildBatchResetState, stopActiveBatch } from '../../lib/page-refresh';
-  import { criteriaToText, textToCriteria } from '../../lib/rubric-utils';
+  import { textToCriteria } from '../../lib/rubric-utils';
 
   // Props
+  type BatchPhase = 'idle' | 'extracting' | 'review' | 'grading' | 'done';
   let {
     provider = '',
     model = '',
@@ -44,6 +46,14 @@
     pageLoadedUrl = '',
     refreshKey = 0,
     selectedRubric = null as SavedRubric | null,
+    onRequestDiscovery = () => {},
+    // Rubric state — owned by GradingPanel, RubricCard renders the UI
+    rubricText = $bindable(''),
+    rubricMaxScore = $bindable('10'),
+    extractedRubric = $bindable<Rubric | null>(null),
+    sourceRubricId = $bindable<string | null>(null),
+    batchPhase = $bindable<BatchPhase>('idle'),
+    essayPrompt = $bindable(''),
   } = $props();
 
 
@@ -90,16 +100,8 @@
   let reviewResolve: ((decision: { action: 'approve' | 'skip' }) => void) | null = null;
 
   // ── Rubric Review ────────────────────────────────────────────────────
-  type BatchPhase = 'idle' | 'extracting' | 'review' | 'grading' | 'done';
-  let batchPhase = $state<BatchPhase>('idle');
-  let rubricText = $state('');
-  let rubricMaxScore = $state('10');
-  let extractedRubric = $state<Rubric | null>(null);
-  let sourceRubricId = $state<string | null>(null);
-  let saveRubricName = $state('');
-  let saveRubricTags = $state('');
-  let showSaveDialog = $state(false);
-  let saveStatus = $state('');
+  // (rubricText, rubricMaxScore, extractedRubric, sourceRubricId, batchPhase, essayPrompt
+  //  are $bindable props — owned by GradingPanel, RubricCard renders the UI.)
 
   // ── Batch State ──────────────────────────────────────────────────────
   let batchGrader = $state<BatchGrader | null>(null);
@@ -203,17 +205,7 @@
     }
   });
 
-  // ── Sync with selected library rubric (when idle) ────────────────────
-  $effect(() => {
-    // Only apply if we are in idle phase (don't overwrite extraction results)
-    if (batchPhase === 'idle') {
-      if (selectedRubric) {
-        loadLibraryRubric(selectedRubric);
-      } else {
-        clearLibraryRubric();
-      }
-    }
-  });
+  // NOTE: loadLibraryRubric / clearLibraryRubric now live in RubricCard.
 
   function updateBatchState() {
     if (!batchGrader) return;
@@ -263,28 +255,6 @@
     return lines.join('\n').trim() || '(No rubric data found on page)';
   }
 
-  // ── Library rubric helpers ──────────────────────────────────────────
-  function loadLibraryRubric(rubric: SavedRubric) {
-    sourceRubricId = rubric.id;
-    rubricText = criteriaToText(rubric.criteria);
-    rubricMaxScore = String(rubric.maxScore);
-    extractedRubric = {
-      essayPrompt: '',
-      checklistItems: rubric.criteria.map(c => ({
-        category: c.criteria,
-        items: c.description ? [c.description] : [],
-      })),
-      rubricItems: [],
-      modelText: null,
-      maxScore: String(rubric.maxScore),
-    };
-  }
-
-  function clearLibraryRubric() {
-    sourceRubricId = null;
-    rubricText = '';
-    extractedRubric = null;
-  }
 
   // ── Phase 1: Extract ─────────────────────────────────────────────────
   async function handleExtract() {
@@ -304,12 +274,14 @@
       extractedRubric = rubric;
         rubricText = formatRubricForDisplay(rubric);
         rubricMaxScore = rubric.maxScore || '10';
+        essayPrompt = rubric.essayPrompt || '';
         if (sourceRubricId !== null) { sourceRubricId = null; }
       } else {
+        essayPrompt = '';
         if (sourceRubricId !== null) {
           phaseMessage = 'No rubric found on page. Using loaded library rubric.';
         } else {
-          rubricText = '(Could not extract rubric from page)';
+          rubricText = '';
           rubricMaxScore = '10';
         }
       }
@@ -425,47 +397,6 @@
     }
   }
 
-  // ── Save rubric to library ───────────────────────────────────────────
-  async function handleSaveRubric() {
-    if (!saveRubricName.trim()) return;
-    saveStatus = '';
-    try {
-      await createRubric({
-        name: saveRubricName.trim(),
-        description: '',
-        maxScore: parseInt(rubricMaxScore) || 10,
-        criteria: textToCriteria(rubricText),
-        tags: saveRubricTags.split(',').map(t => t.trim()).filter(Boolean),
-      });
-      saveStatus = 'Saved!';
-      showSaveDialog = false;
-      saveRubricName = '';
-      saveRubricTags = '';
-      window.dispatchEvent(new CustomEvent('ogre:rubric-saved'));
-      setTimeout(() => { saveStatus = ''; }, 3000);
-    } catch (err) {
-      saveStatus = err instanceof Error ? err.message : 'Save failed';
-    }
-  }
-
-  // ── Update existing rubric in library ───────────────────────────────
-  async function handleUpdateRubric() {
-    if (!sourceRubricId) return;
-    const rubricName = selectedRubric?.name || 'this rubric';
-    if (!confirm(`Update will overwrite '${rubricName}' in library. Continue?`)) return;
-    saveStatus = '';
-    try {
-      await updateRubric(sourceRubricId, {
-        criteria: textToCriteria(rubricText),
-        maxScore: parseInt(rubricMaxScore) || 10,
-      });
-      saveStatus = 'Updated!';
-      window.dispatchEvent(new CustomEvent('ogre:rubric-saved'));
-      setTimeout(() => { saveStatus = ''; }, 3000);
-    } catch (err) {
-      saveStatus = err instanceof Error ? err.message : 'Update failed';
-    }
-  }
 
   // ── Apply result ─────────────────────────────────────────────────────
   async function applyResult(result: { studentIndex: number; score: number; feedback: string }, chunkIndex = 0, chunkTotal = 1): Promise<void> {
@@ -692,7 +623,7 @@
       <h3>Site Profile</h3>
       <button
         class="btn-link add-profile-btn"
-        onclick={() => window.dispatchEvent(new CustomEvent('ogre:navigate', { detail: 'profiles' }))}
+        onclick={() => onRequestDiscovery()}
         disabled={isBatchRunning}
       >➕ Add New Profile</button>
     </div>
@@ -767,98 +698,16 @@
   </details>
 
 
-  <!-- ── Rubric Review Content Snippet ───────────────────────────── -->
-  {#snippet rubricContent()}
-    <div class="section-content">
-      <p class="review-hint">
-        {#if sourceRubricId && selectedRubric}
-          Rubric loaded from library: <strong>{selectedRubric.name}</strong>
-        {:else if extractedRubric}
-          Rubric extracted from page. Review and edit if needed.
-        {:else}
-          Type a rubric or click <strong>Start Batch</strong> to extract from page.
-        {/if}
-      </p>
-      <textarea
-        class="rubric-textarea"
-        rows="8"
-        placeholder="Rubric / grading criteria will appear here..."
-        bind:value={rubricText}
-        disabled={batchPhase === 'grading' || batchPhase === 'extracting'}
-      ></textarea>
-      <div class="max-score-row">
-        <label for="batch-max-score" class="max-score-label">Max Score:</label>
-        <input
-          id="batch-max-score"
-          type="number"
-          class="max-score-input"
-          bind:value={rubricMaxScore}
-          min="0"
-          disabled={batchPhase === 'grading' || batchPhase === 'extracting'}
-        />
-      </div>
-      <div class="rubric-actions">
-        <button
-          class="btn-secondary small"
-          onclick={() => { showSaveDialog = !showSaveDialog; }}
-          disabled={batchPhase === 'grading' || batchPhase === 'extracting'}
-        >Save to Library</button>
-        {#if sourceRubricId}
-          <button
-            class="btn-secondary small"
-            onclick={handleUpdateRubric}
-            disabled={batchPhase === 'grading' || batchPhase === 'extracting'}
-          >Update {selectedRubric?.name || 'Library Rubric'}</button>
-        {/if}
-        {#if batchPhase === 'review'}
-          <button
-            class="btn-primary small"
-            onclick={handleContinueGrading}
-            disabled={!batchGrader || batchGrader.studentsToGrade.length === 0}
-          >Continue Grading</button>
-        {/if}
-      </div>
-      {#if saveStatus}
-        <small class="save-status">{saveStatus}</small>
-      {/if}
-      {#if showSaveDialog}
-        <div class="save-dialog">
-          <input
-            type="text"
-            placeholder="Rubric name (e.g., Math Quiz Ch5)"
-            bind:value={saveRubricName}
-          />
-          <input
-            type="text"
-            placeholder="Tags (comma-separated, optional)"
-            bind:value={saveRubricTags}
-          />
-          <div class="save-dialog-actions">
-            <button class="btn-primary small" onclick={handleSaveRubric} disabled={!saveRubricName.trim()}>Save</button>
-            <button class="btn-secondary small" onclick={() => { showSaveDialog = false; }}>Cancel</button>
-          </div>
-        </div>
-      {/if}
-    </div>
-  {/snippet}
 
-  <!-- ── Rubric Review (Always Visible) ──────────────────────────── -->
-  {#if batchPhase === 'idle' || batchPhase === 'extracting'}
-    <div class="section-card">
-      <div class="section-header-row">
-        <h3>Rubric</h3>
-      </div>
-      {@render rubricContent()}
-    </div>
-  {:else if batchPhase === 'review' || batchPhase === 'grading' || batchPhase === 'done'}
-    <details class="section-details" open>
-      <summary class="section-summary">
-        <span>Rubric Review</span>
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="chevron"><polyline points="6 9 12 15 18 9"></polyline></svg>
-      </summary>
-      {@render rubricContent()}
-    </details>
-   {/if}
+  {#if batchPhase === 'review'}
+  <div class="continue-grading-row">
+    <button
+      class="btn-primary small"
+      onclick={handleContinueGrading}
+      disabled={!batchGrader || batchGrader.studentsToGrade.length === 0}
+    >▶ Continue Grading</button>
+  </div>
+  {/if}
 
   <!-- ── Fill Mode Toggle ────────────────────────────────────────── -->
   <div class="fill-mode-toggle">
@@ -1052,7 +901,7 @@
           <div class="discover-cta-title">No profile found for this page</div>
           <div class="discover-cta-desc">Use AI to discover the grading page structure and create a profile</div>
         </div>
-        <button class="btn-primary full-width" onclick={() => window.dispatchEvent(new CustomEvent('ogre:navigate', { detail: 'profiles' }))}>
+        <button class="btn-primary full-width" onclick={() => onRequestDiscovery()}>
           Discover This Page
         </button>
         <button class="btn-link" onclick={handleExtract}>
@@ -1348,41 +1197,6 @@
     gap: var(--spacing-2);
   }
 
-  .save-status {
-    color: var(--color-success);
-    font-size: 0.8rem;
-  }
-
-  .save-dialog {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-2);
-    padding: var(--spacing-2);
-    background: var(--color-bg-main);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-  }
-
-  .save-dialog input {
-    width: 100%;
-    background-color: var(--color-bg-card);
-    border: 1px solid var(--color-border);
-    color: var(--color-text-primary);
-    border-radius: var(--radius-md);
-    padding: var(--spacing-1) var(--spacing-2);
-    font-size: 0.85rem;
-    box-sizing: border-box;
-  }
-
-  .save-dialog input:focus {
-    outline: none;
-    border-color: var(--color-primary);
-  }
-
-  .save-dialog-actions {
-    display: flex;
-    gap: var(--spacing-2);
-  }
 
   /* ── Resume After ── */
   .resume-row {
@@ -1794,5 +1608,20 @@
   }
   .review-actions button {
     flex: 1;
+  }
+
+  /* ── Continue Grading Row ── */
+  .continue-grading-row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-3, 12px);
+    padding: var(--spacing-3, 12px);
+    background: rgba(99, 102, 241, 0.08);
+    border: 1px solid var(--color-primary, #6366f1);
+    border-radius: var(--radius-md, 6px);
+    margin-top: 4px;
+  }
+  .continue-grading-row .btn-primary {
+    flex-shrink: 0;
   }
 </style>

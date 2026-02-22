@@ -43,7 +43,7 @@
   // so it must be hidden when modals appear to avoid covering them.
   $: if (showUpdateModal) {
     hideWebview().catch(() => {});
-  } else if (currentPage === 'browser' || currentPage === 'profiles') {
+  } else if (currentPage === 'browser') {
     showWebview().catch(() => {});
     window.dispatchEvent(new CustomEvent('ogre:sidebar-changed'));
   }
@@ -121,7 +121,7 @@
 
   function navigate(page: string) {
     currentPage = page;
-    if (page === 'browser' || page === 'profiles') {
+    if (page === 'browser') {
       sidebarCollapsed = true;
       showWebview().catch(() => {});
       window.dispatchEvent(new CustomEvent('ogre:sidebar-changed'));
@@ -135,7 +135,7 @@
   function toggleSidebar() {
     sidebarCollapsed = !sidebarCollapsed;
 
-    if (currentPage === 'browser' || currentPage === 'profiles') {
+    if (currentPage === 'browser') {
       window.dispatchEvent(new CustomEvent('ogre:sidebar-changed'));
     }
   }

@@ -6,10 +6,11 @@
   import StudentWorkCard from '../components/grading/StudentWorkCard.svelte';
   import SolverChat from '../components/grading/SolverChat.svelte';
   import BatchPanel from '../components/grading/BatchPanel.svelte';
-  // DiscoveryPanel removed - will be used on Profiles page instead
+  import DiscoveryPanel from '../components/grading/DiscoveryPanel.svelte';
   import { captureWebviewScreenshot, hideWebview, showWebview } from '../lib/browser';
   import type { SavedRubric } from '../lib/rubric-api';
   import type { GradeRubric } from '../lib/grading-api';
+  import type { Rubric } from '../lib/batch-grader';
   import { ICON_STRIP_WIDTH } from '../lib/constants';
   import { createDebouncedRefresh } from '../lib/page-refresh';
 
@@ -23,7 +24,7 @@
     pageLoadedUrl?: string;
   } = $props();
 
-  let activeMode = $state('grader'); // 'grader' | 'solver'
+  let activeMode = $state('grader'); // 'grader' | 'solver' | 'discovery'
   let graderSubMode = $state('single'); // 'single' | 'batch'
   let showScreenshotOverlay = $state(false);
   let batchRunning = $state(false);
@@ -51,10 +52,25 @@
   let activeProvider = $state('ollama-local');
   let activeModel = $state('');
 
-  // Rubric state: flows from RubricCard → StudentWorkCard / BatchPanel
+  // Rubric state — lifted here so RubricCard and BatchPanel share it
   let selectedRubric = $state<SavedRubric | null>(null);
+  let rubricText = $state('');
+  let rubricMaxScore = $state('10');
+  let extractedRubric = $state<Rubric | null>(null);
+  let sourceRubricId = $state<string | null>(null);
+  let batchPhase = $state<'idle' | 'extracting' | 'review' | 'grading' | 'done'>('idle');
+  let essayPrompt = $state('');
 
+  let returnToBatch = $state(false);
+  let preselectedProfileId = $state<string | null>(null);
 
+  /** Switch to Discover tab; return to batch mode when done. */
+  function onRequestDiscovery(profileId?: string) {
+    returnToBatch = true;
+    preselectedProfileId = profileId ?? null;
+    activeMode = 'discovery';
+    if (isCollapsed) isCollapsed = false;
+  }
 
   /** Convert a SavedRubric (library format) to GradeRubric (grading API format). */
   function toGradeRubric(saved: SavedRubric | null): GradeRubric | undefined {
@@ -71,7 +87,8 @@
 
   const MODES = [
     { id: 'grader', label: 'Grader', icon: '📝' },
-    { id: 'solver', label: 'Solver', icon: '💡' }
+    { id: 'solver', label: 'Solver', icon: '💡' },
+    { id: 'discovery', label: 'Discover', icon: '🔍' },
   ];
 
   function toggleCollapse() {
@@ -345,7 +362,18 @@
           </label>
         </div>
         <ProviderSelector bind:provider={activeProvider} bind:model={activeModel} />
-        <RubricCard bind:selectedRubric={selectedRubric} />
+        <RubricCard
+          bind:selectedRubric
+          bind:rubricText
+          bind:rubricMaxScore
+          bind:sourceRubricId
+          {extractedRubric}
+          fallbackText={essayPrompt}
+          provider={activeProvider}
+          model={activeModel}
+          phase={batchPhase}
+          showActions={graderSubMode === 'batch'}
+        />
         {#if graderSubMode === 'single'}
           <StudentWorkCard
             onScreenshot={handleScreenshot}
@@ -365,11 +393,35 @@
             {pageLoadedUrl}
             {refreshKey}
             {selectedRubric}
+            {onRequestDiscovery}
+            bind:rubricText
+            bind:rubricMaxScore
+            bind:extractedRubric
+            bind:sourceRubricId
+            bind:batchPhase
+            bind:essayPrompt
           />
         {/if}
       {/if}
       {#if activeMode === 'solver'}
         <SolverChat />
+      {/if}
+      {#if activeMode === 'discovery'}
+        <ProviderSelector bind:provider={activeProvider} bind:model={activeModel} />
+        <DiscoveryPanel
+          provider={activeProvider}
+          model={activeModel}
+          returnToBatch={returnToBatch}
+          pageLoadedUrl={pageLoadedUrl}
+          refreshKey={refreshKey}
+          onProfileSaved={() => {
+            if (returnToBatch) {
+              activeMode = 'grader';
+              graderSubMode = 'batch';
+              returnToBatch = false;
+            }
+          }}
+        />
       {/if}
     </div>
   {/if}
@@ -435,7 +487,7 @@
     animation: spin-once 0.8s ease-in-out;
   }
   .mode-tabs {
-    display: grid; grid-template-columns: 1fr 1fr; padding: var(--spacing-2); gap: var(--spacing-1);
+    display: grid; grid-template-columns: 1fr 1fr 1fr; padding: var(--spacing-2); gap: var(--spacing-1);
     background-color: var(--color-bg-sidebar);
     border-bottom: 1px solid var(--color-border); flex-shrink: 0;
   }
