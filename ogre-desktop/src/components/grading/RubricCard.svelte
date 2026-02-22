@@ -1,28 +1,87 @@
 <script lang="ts">
   /**
-   * RubricCard - Rubric display/selection from library.
-   * Fetches rubrics from the grading server and shows a dropdown to select.
-   * Emits the full SavedRubric object so parents can pass rubric data downstream.
+   * RubricCard - Unified rubric editor and library picker.
+   *
+   * Tiered rubricText population (when phase === 'idle'):
+   *   Tier 1: Library rubric selected → criteriaToText(selectedRubric.criteria)
+   *   Tier 2: Extraction ran         → extractedRubric present (text already set by BatchPanel)
+   *   Tier 3: Nothing yet            → fallbackText (essayPrompt from page)
+   *
+   * showActions=true (batch mode): textarea is editable + Save/Update/Generate buttons visible.
+   * showActions=false (single mode): textarea is read-only preview only.
    */
   import { onMount, onDestroy } from 'svelte';
-  import { listRubrics } from '../../lib/rubric-api';
+  import { listRubrics, createRubric, updateRubric } from '../../lib/rubric-api';
   import type { SavedRubric } from '../../lib/rubric-api';
+  import { criteriaToText, textToCriteria } from '../../lib/rubric-utils';
+  import { generateRubricFromText } from '../../lib/discover';
+  import type { Rubric } from '../../lib/batch-grader';
+
+  type BatchPhase = 'idle' | 'extracting' | 'review' | 'grading' | 'done';
 
   interface Props {
-    /** The currently selected rubric object (two-way bindable). */
     selectedRubric?: SavedRubric | null;
-    /** Callback when the selected rubric changes. */
-    onRubricChange?: (rubric: SavedRubric | null) => void;
+    rubricText?: string;
+    rubricMaxScore?: string;
+    extractedRubric?: Rubric | null;
+    sourceRubricId?: string | null;
+    fallbackText?: string;
+    provider?: string;
+    model?: string;
+    phase?: BatchPhase;
+    showActions?: boolean;
   }
 
   let {
     selectedRubric = $bindable(null),
-    onRubricChange,
+    rubricText = $bindable(''),
+    rubricMaxScore = $bindable('10'),
+    extractedRubric = null as Rubric | null,
+    sourceRubricId = $bindable<string | null>(null),
+    fallbackText = '',
+    provider = '',
+    model = '',
+    phase = 'idle' as BatchPhase,
+    showActions = true,
   }: Props = $props();
 
+  // ── Library state ──────────────────────────────────────────────────
   let rubrics = $state<SavedRubric[]>([]);
   let loading = $state(true);
   let error = $state('');
+
+  // ── Save dialog ────────────────────────────────────────────────────
+  let showSaveDialog = $state(false);
+  let saveRubricName = $state('');
+  let saveRubricTags = $state('');
+  let saveStatus = $state('');
+
+  // ── Generate state ─────────────────────────────────────────────────
+  let isGenerating = $state(false);
+  let generateError = $state('');
+
+  // Whether the textarea looks like structured criteria (Name (Npts): Desc)
+  let looksLikeCriteria = $derived(textToCriteria(rubricText).length > 0);
+
+  // Show Generate button when we have text but it's not criteria yet
+  let showGenerateBtn = $derived(
+    showActions && !looksLikeCriteria && rubricText.trim().length > 0 && phase === 'idle'
+  );
+
+  // ── Tier 1/3 $effect ───────────────────────────────────────────────
+  // Tier 1: library rubric selected → fill textarea with criteria text
+  // Tier 3: no library rubric + no extractedRubric → fill with fallbackText
+  $effect(() => {
+    if (phase !== 'idle') return;
+    if (selectedRubric) {
+      sourceRubricId = selectedRubric.id;
+      rubricText = criteriaToText(selectedRubric.criteria);
+      rubricMaxScore = String(selectedRubric.maxScore);
+    } else if (!extractedRubric && fallbackText && !rubricText) {
+      // Only fill with fallback if textarea is currently empty (don't overwrite user edits)
+      rubricText = fallbackText;
+    }
+  });
 
   onMount(async () => {
     await fetchRubrics();
@@ -46,109 +105,275 @@
     }
   }
 
-  function handleChange(e: Event) {
+  function handleDropdownChange(e: Event) {
     const id = (e.target as HTMLSelectElement).value;
-    const rubric = id === '' ? null : (rubrics.find(r => r.id === id) ?? null);
-    selectedRubric = rubric;
-    onRubricChange?.(rubric);
+    if (id === '') {
+      selectedRubric = null;
+      sourceRubricId = null;
+      // If extractedRubric present, its text is already in rubricText — leave it.
+      // If no extracted rubric, clear toward Tier 3 fallback.
+      if (!extractedRubric) {
+        rubricText = fallbackText;
+      }
+    } else {
+      const found = rubrics.find(r => r.id === id) ?? null;
+      selectedRubric = found;
+      // $effect handles rubricText/sourceRubricId update
+    }
   }
 
   function handleManageLibrary() {
-    // Navigate to the Rubrics page via a custom DOM event.
-    // App.svelte listens for this to switch pages.
     window.dispatchEvent(new CustomEvent('ogre:navigate', { detail: 'rubrics' }));
   }
+
+  // ── Save ───────────────────────────────────────────────────────────
+  async function handleSaveRubric() {
+    if (!saveRubricName.trim()) return;
+    saveStatus = '';
+    try {
+      await createRubric({
+        name: saveRubricName.trim(),
+        description: '',
+        maxScore: parseInt(rubricMaxScore) || 10,
+        criteria: textToCriteria(rubricText),
+        tags: saveRubricTags.split(',').map(t => t.trim()).filter(Boolean),
+      });
+      saveStatus = 'Saved!';
+      showSaveDialog = false;
+      saveRubricName = '';
+      saveRubricTags = '';
+      window.dispatchEvent(new CustomEvent('ogre:rubric-saved'));
+      setTimeout(() => { saveStatus = ''; }, 3000);
+    } catch (err) {
+      saveStatus = err instanceof Error ? err.message : 'Save failed';
+    }
+  }
+
+  // ── Update ─────────────────────────────────────────────────────────
+  async function handleUpdateRubric() {
+    if (!sourceRubricId) return;
+    const rubricName = selectedRubric?.name || 'this rubric';
+    if (!confirm(`Update will overwrite '${rubricName}' in library. Continue?`)) return;
+    saveStatus = '';
+    try {
+      await updateRubric(sourceRubricId, {
+        criteria: textToCriteria(rubricText),
+        maxScore: parseInt(rubricMaxScore) || 10,
+      });
+      saveStatus = 'Updated!';
+      window.dispatchEvent(new CustomEvent('ogre:rubric-saved'));
+      setTimeout(() => { saveStatus = ''; }, 3000);
+    } catch (err) {
+      saveStatus = err instanceof Error ? err.message : 'Update failed';
+    }
+  }
+
+  // ── Generate Rubric ────────────────────────────────────────────────
+  async function handleGenerateRubric() {
+    if (!rubricText.trim()) return;
+    isGenerating = true;
+    generateError = '';
+    try {
+      const result = await generateRubricFromText(rubricText, parseInt(rubricMaxScore) || 10, {
+        provider: provider || undefined,
+        model: model || undefined,
+      });
+      rubricText = criteriaToText(result.criteria);
+      if (result.maxScore) rubricMaxScore = String(result.maxScore);
+    } catch (err) {
+      generateError = err instanceof Error ? err.message : 'Generation failed';
+    } finally {
+      isGenerating = false;
+    }
+  }
+
+  // Status hint text
+  let statusHint = $derived(
+    sourceRubricId
+      ? `📚 Library: ${selectedRubric?.name ?? 'loaded'}`
+      : extractedRubric
+        ? '🔍 Extracted from page'
+        : fallbackText && rubricText === fallbackText
+          ? '📄 Question text from page (edit or generate rubric)'
+          : ''
+  );
+
+  let isDisabled = $derived(phase === 'extracting' || phase === 'grading');
 </script>
 
-<section class="rubric-card">
-  <div class="section-header">
-    <h3>Rubric</h3>
-    <button class="text-btn" onclick={handleManageLibrary}>Manage Library</button>
-  </div>
+<details class="section-details">
+  <summary class="section-summary">
+    <span>Rubric</span>
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="chevron"><polyline points="6 9 12 15 18 9"></polyline></svg>
+  </summary>
+  <div class="section-content">
+    {#if statusHint}
+      <span class="status-hint">{statusHint}</span>
+    {/if}
 
-  {#if loading}
-    <div class="rubric-loading">
-      <span class="dot-pulse"></span>
-      <span class="loading-text">Loading rubrics...</span>
-    </div>
-  {:else if error}
-    <div class="rubric-error">
-      <span>{error}</span>
-      <button class="text-btn" onclick={fetchRubrics}>Retry</button>
-    </div>
-  {:else if rubrics.length === 0}
-    <div class="rubric-empty">
-      <p>No rubrics in library.</p>
-      <button class="text-btn" onclick={handleManageLibrary}>Create one</button>
-    </div>
-  {:else}
-    <select
-      class="rubric-select"
-      value={selectedRubric?.id ?? ''}
-      onchange={handleChange}
-    >
-      <option value="">None (use page rubric)</option>
-      {#each rubrics as rubric (rubric.id)}
-        <option value={rubric.id}>
-          {rubric.name} ({rubric.maxScore} pts)
-        </option>
-      {/each}
-    </select>
+    <!-- Library Dropdown -->
+    {#if loading}
+      <div class="rubric-loading">
+        <span class="dot-pulse"></span>
+        <span class="loading-text">Loading rubrics...</span>
+      </div>
+    {:else if error}
+      <div class="rubric-error">
+        <span>{error}</span>
+        <button class="text-btn" onclick={fetchRubrics}>Retry</button>
+      </div>
+    {:else if rubrics.length === 0}
+      <div class="rubric-empty">
+        <p>No rubrics in library.</p>
+        <button class="text-btn" onclick={handleManageLibrary}>Create one</button>
+      </div>
+    {:else}
+      <select
+        class="rubric-select"
+        value={selectedRubric?.id ?? ''}
+        onchange={handleDropdownChange}
+        disabled={isDisabled}
+      >
+        <option value="">None (use page rubric / manual)</option>
+        {#each rubrics as rubric (rubric.id)}
+          <option value={rubric.id}>
+            {rubric.name} ({rubric.maxScore} pts)
+          </option>
+        {/each}
+      </select>
+    {/if}
 
-    <!-- Selected rubric detail preview -->
-    {#if selectedRubric}
-      <div class="rubric-preview">
-        <div class="preview-header">
-          <span class="preview-name">{selectedRubric.name}</span>
-          <span class="preview-score">{selectedRubric.maxScore} pts</span>
-        </div>
-        {#if selectedRubric.criteria.length > 0}
-          <div class="criteria-chips">
-            {#each selectedRubric.criteria.slice(0, 4) as c}
-              <span class="criterion-chip">{c.criteria} ({c.points}pts)</span>
-            {/each}
-            {#if selectedRubric.criteria.length > 4}
-              <span class="more-badge">+{selectedRubric.criteria.length - 4} more</span>
-            {/if}
-          </div>
+    <!-- Manage Library link -->
+    <button class="text-btn manage-library-btn" onclick={(e) => { e.preventDefault(); e.stopPropagation(); handleManageLibrary(); }}>Manage Library</button>
+    <!-- Rubric textarea — always visible -->
+    <textarea
+      class="rubric-textarea"
+      rows={showActions ? 8 : 5}
+      placeholder={showActions
+        ? 'Rubric criteria will appear here. One per line: Name (10pts): Description\nOr paste question text and click Generate Rubric.'
+        : 'No rubric loaded.'}
+      bind:value={rubricText}
+      disabled={isDisabled || !showActions}
+      readonly={!showActions}
+    ></textarea>
+
+    {#if showActions}
+      <!-- Max Score row -->
+      <div class="max-score-row">
+        <label class="max-score-label" for="rubric-max-score">Max Score:</label>
+        <input
+          id="rubric-max-score"
+          type="number"
+          class="max-score-input"
+          bind:value={rubricMaxScore}
+          min="1"
+          max="1000"
+          disabled={isDisabled}
+        />
+      </div>
+
+      <!-- Action row -->
+      <div class="rubric-actions">
+        {#if sourceRubricId}
+          <button class="btn-secondary small" onclick={handleUpdateRubric} disabled={isDisabled}>
+            Update Library
+          </button>
+        {/if}
+        <button class="btn-secondary small" onclick={() => { showSaveDialog = !showSaveDialog; }} disabled={isDisabled}>
+          Save to Library
+        </button>
+        {#if showGenerateBtn}
+          <button class="btn-primary small" onclick={handleGenerateRubric} disabled={isGenerating || isDisabled}>
+            {isGenerating ? 'Generating…' : '✨ Generate Rubric'}
+          </button>
+        {/if}
+        {#if saveStatus}
+          <span class="save-status">{saveStatus}</span>
         {/if}
       </div>
+
+      <!-- Save dialog -->
+      {#if showSaveDialog}
+        <div class="save-dialog">
+          <input
+            type="text"
+            placeholder="Rubric name"
+            bind:value={saveRubricName}
+          />
+          <input
+            type="text"
+            placeholder="Tags (comma-separated, optional)"
+            bind:value={saveRubricTags}
+          />
+          <div class="save-dialog-actions">
+            <button class="btn-primary small" onclick={handleSaveRubric} disabled={!saveRubricName.trim()}>
+              Save
+            </button>
+            <button class="btn-secondary small" onclick={() => { showSaveDialog = false; }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      {/if}
+
+      {#if generateError}
+        <div class="generate-error">
+          <small>{generateError}</small>
+          <button class="error-dismiss" onclick={() => { generateError = ''; }}>&times;</button>
+        </div>
+      {/if}
     {/if}
-  {/if}
-</section>
+
+  </div>
+</details>
 
 <style>
-  .rubric-card {
+  /* ── Collapsible section ── */
+  .section-details {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+
+  .section-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-2) var(--spacing-3);
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    background: var(--color-bg-main);
+    user-select: none;
+    list-style: none;
+  }
+
+  .section-summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .section-summary .chevron {
+    transition: transform 0.2s ease;
+    color: var(--color-text-secondary);
+  }
+
+  .section-details[open] .chevron {
+    transform: rotate(180deg);
+  }
+
+  .status-hint {
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+    font-style: italic;
+    margin-bottom: var(--spacing-1);
+  }
+
+  .section-content {
+    padding: var(--spacing-3);
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-3);
-  }
-
-  .section-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  h3 {
-    font-size: 0.85rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--color-text-secondary);
-    margin: 0;
-  }
-
-  .text-btn {
-    background: none;
-    border: none;
-    color: var(--color-primary);
-    font-size: 0.8rem;
-    cursor: pointer;
-    padding: 0;
-  }
-
-  .text-btn:hover {
-    text-decoration: underline;
+    gap: var(--spacing-2);
   }
 
   .rubric-select {
@@ -166,6 +391,10 @@
     outline: none;
     border-color: var(--color-primary);
     box-shadow: 0 0 0 2px var(--color-primary-bg);
+  }
+
+  .rubric-select:disabled {
+    opacity: 0.6;
   }
 
   /* Loading state */
@@ -219,56 +448,127 @@
   .rubric-empty p {
     margin: 0 0 var(--spacing-2) 0;
   }
+  /* Textarea */
+  .rubric-textarea {
+    width: 100%;
+    background-color: var(--color-bg-main);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-primary);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-2);
+    font-family: var(--font-body);
+    font-size: 0.85rem;
+    resize: vertical;
+    box-sizing: border-box;
+    line-height: 1.5;
+  }
 
-  /* Selected rubric preview */
-  .rubric-preview {
+  .rubric-textarea:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px var(--color-primary-bg);
+  }
+
+  .rubric-textarea:disabled,
+  .rubric-textarea[readonly] {
+    opacity: 0.65;
+    cursor: default;
+  }
+
+  /* Max score row */
+  .max-score-row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+  }
+
+  .max-score-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    white-space: nowrap;
+  }
+
+  .max-score-input {
+    width: 80px;
+    background-color: var(--color-bg-main);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-primary);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-1) var(--spacing-2);
+    font-size: 0.85rem;
+  }
+
+  .max-score-input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+  }
+
+  /* Action row */
+  .rubric-actions {
+    display: flex;
+    gap: var(--spacing-2);
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .save-status {
+    color: var(--color-success, #22c55e);
+    font-size: 0.8rem;
+  }
+
+  /* Save dialog */
+  .save-dialog {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+    padding: var(--spacing-2);
     background: var(--color-bg-main);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
-    padding: var(--spacing-2) var(--spacing-3);
   }
 
-  .preview-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: var(--spacing-2);
-  }
-
-  .preview-name {
-    font-size: 0.82rem;
-    font-weight: 600;
-    color: var(--color-text-primary);
-  }
-
-  .preview-score {
-    font-size: 0.75rem;
-    font-weight: 500;
-    color: var(--color-primary);
-    background: var(--color-primary-bg);
-    padding: 1px 6px;
-    border-radius: var(--radius-full, 999px);
-  }
-
-  .criteria-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--spacing-1);
-    align-items: center;
-  }
-
-  .criterion-chip {
-    background: var(--color-bg-card-hover, rgba(255,255,255,0.05));
+  .save-dialog input {
+    width: 100%;
+    background-color: var(--color-bg-card, var(--color-bg-main));
     border: 1px solid var(--color-border);
-    padding: 1px 6px;
+    color: var(--color-text-primary);
     border-radius: var(--radius-md);
-    font-size: 0.72rem;
-    color: var(--color-text-secondary);
+    padding: var(--spacing-1) var(--spacing-2);
+    font-size: 0.85rem;
+    box-sizing: border-box;
   }
 
-  .more-badge {
-    font-size: 0.72rem;
+  .save-dialog input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+  }
+
+  .save-dialog-actions {
+    display: flex;
+    gap: var(--spacing-2);
+  }
+
+  /* Generate error */
+  .generate-error {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-2);
+    font-size: 0.82rem;
+    color: var(--color-error, #e55);
+    padding: var(--spacing-2);
+    background: var(--color-error-bg, rgba(200,50,50,0.08));
+    border-radius: var(--radius-md);
+  }
+
+  .error-dismiss {
+    background: none;
+    border: none;
     color: var(--color-text-secondary);
-    font-style: italic;
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0 4px;
+    line-height: 1;
   }
 </style>
