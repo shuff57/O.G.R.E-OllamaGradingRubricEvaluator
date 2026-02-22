@@ -104,7 +104,7 @@ ogre-desktop/
 
 ### Creating a Release
 
-See **[RELEASE.md](../RELEASE.md)** in the root directory for complete instructions.
+See **[RELEASE.md](./RELEASE.md)** in the ogre-desktop directory for complete instructions.
 
 **Quick reference:**
 
@@ -216,4 +216,4 @@ MIT License — see [LICENSE](../LICENSE) file for details.
 - 📖 [Main Documentation](../README.md)
 - 🐛 [Report Issues](https://github.com/shuff57/O.G.R.E-OllamaGradingRubricEvaluator/issues)
 - 📦 [Latest Releases](https://github.com/shuff57/O.G.R.E-OllamaGradingRubricEvaluator/releases)
-- 📋 [Release Guide](../RELEASE.md)
+ 📋 [Release Guide](./RELEASE.md)

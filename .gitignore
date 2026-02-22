@@ -8,11 +8,11 @@ grading-server/dist/
 *.bun-build
 *.log
 test-output.txt
+build-output.txt
+nul
 
 # Invalid/temp paths
-%APPDATA%/
-UsersshuffAppDataLocalTempopencode/
-nul
+
 
 # Test results
 test-results/

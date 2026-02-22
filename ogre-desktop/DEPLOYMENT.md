@@ -250,7 +250,7 @@ User sees updated history
 **Error:** "OAuth sign-in failed"
 - **Check:** OAuth app client IDs in `src/lib/oauth.ts` must match your OAuth apps
 - **Check:** Redirect URIs in Google/GitHub OAuth app settings include `ogre://oauth/callback/{provider}`
-- **Note:** See [OAUTH_APP_SETUP.md](../OAUTH_APP_SETUP.md) for backend setup
+ **Note:** See [OAUTH_APP_SETUP.md](./OAUTH_APP_SETUP.md) for backend setup
 
 **Error:** "Failed to fetch models"
 - **Check:** OAuth token is valid and not expired
