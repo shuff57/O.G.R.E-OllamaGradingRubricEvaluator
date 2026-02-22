@@ -253,14 +253,12 @@ export async function startChatGPTDeviceFlow(): Promise<DeviceFlowResult> {
 const ANTHROPIC_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 const ANTHROPIC_AUTH_URL = "https://claude.ai/oauth/authorize";
 const ANTHROPIC_TOKEN_URL = "https://console.anthropic.com/v1/oauth/token";
-const ANTHROPIC_REDIRECT_URI = "http://localhost";
-const ANTHROPIC_SCOPE = "org:create_api_key";
+const ANTHROPIC_REDIRECT_URI = "https://console.anthropic.com/oauth/code/callback";
+const ANTHROPIC_SCOPE = "org:create_api_key user:profile user:inference";
 
 export async function startClaudeCodePasteFlow(): Promise<CodePasteFlowResult> {
   const code_verifier = generateCodeVerifier();
   const code_challenge = await generateCodeChallenge(code_verifier);
-  const state = generateState();
-
   const authUrl = new URL(ANTHROPIC_AUTH_URL);
   authUrl.searchParams.set("response_type", "code");
   authUrl.searchParams.set("client_id", ANTHROPIC_CLIENT_ID);
@@ -268,7 +266,8 @@ export async function startClaudeCodePasteFlow(): Promise<CodePasteFlowResult> {
   authUrl.searchParams.set("code_challenge", code_challenge);
   authUrl.searchParams.set("code_challenge_method", "S256");
   authUrl.searchParams.set("scope", ANTHROPIC_SCOPE);
-  authUrl.searchParams.set("state", state);
+  authUrl.searchParams.set("state", code_verifier);
+  authUrl.searchParams.set("code", "true");
 
   const authUrlStr = authUrl.toString();
   await open(authUrlStr);
@@ -280,6 +279,8 @@ export async function startClaudeCodePasteFlow(): Promise<CodePasteFlowResult> {
     cancel: () => { cancelled = true; },
     exchangeCode: async (code: string) => {
       if (cancelled) return { success: false, error: "Cancelled" };
+      const authCode = code.includes('#') ? code.split('#')[0] : code;
+      const pastedState = code.includes('#') ? code.split('#')[1] : undefined;
 
       try {
         const res = await tauriFetch(ANTHROPIC_TOKEN_URL, {
@@ -288,9 +289,10 @@ export async function startClaudeCodePasteFlow(): Promise<CodePasteFlowResult> {
           body: JSON.stringify({
             grant_type: "authorization_code",
             client_id: ANTHROPIC_CLIENT_ID,
-            code,
+            code: authCode,
             redirect_uri: ANTHROPIC_REDIRECT_URI,
             code_verifier,
+            state: pastedState || code_verifier,
           }),
         });
 
@@ -307,7 +309,9 @@ export async function startClaudeCodePasteFlow(): Promise<CodePasteFlowResult> {
         await saveOAuthToken({
           provider: "anthropic",
           access_token: data.access_token,
-          token_type: "Bearer",
+          refresh_token: data.refresh_token ?? null,
+          token_type: data.token_type || "Bearer",
+          expires_at: data.expires_in ? Date.now() + data.expires_in * 1000 : null,
         });
 
         return { success: true, accessToken: data.access_token };
@@ -491,9 +495,13 @@ export async function fetchAvailableModels(
     }
 
     case "anthropic": {
+      const oauthData = await getOAuthToken('anthropic');
+      const anthropicAuthHeader = oauthData?.token_type === 'Bearer'
+        ? { 'Authorization': `Bearer ${accessToken}` }
+        : { 'x-api-key': accessToken };
       const res = await tauriFetch("https://api.anthropic.com/v1/models", {
         headers: {
-          "x-api-key": accessToken,
+          ...anthropicAuthHeader,
           "anthropic-version": "2023-06-01",
         },
       });

@@ -31,9 +31,33 @@ export function buildOllamaRequest(config, messages) {
     headers['Authorization'] = `Bearer ${config.apiKey}`;
   }
 
+  // Ollama uses { content: string, images: string[] } — NOT OpenAI multimodal arrays.
+  // Convert any messages whose content is an OpenAI-style array.
+  const ollamaMessages = messages.map(msg => {
+    if (!Array.isArray(msg.content)) return msg;
+
+    // Extract text parts and image_url parts separately
+    let text = '';
+    const images = [];
+    for (const part of msg.content) {
+      if (part.type === 'text') {
+        text += part.text;
+      } else if (part.type === 'image_url' && part.image_url?.url) {
+        // Ollama expects raw base64 (no data URL prefix)
+        const url = part.image_url.url;
+        const base64 = url.startsWith('data:') ? url.split(',')[1] : url;
+        images.push(base64);
+      }
+    }
+
+    return images.length > 0
+      ? { role: msg.role, content: text, images }
+      : { role: msg.role, content: text };
+  });
+
   const body = {
     model: config.model,
-    messages: messages,
+    messages: ollamaMessages,
     stream: false,
   };
 
@@ -80,9 +104,12 @@ export function buildOpenAIRequest(config, messages) {
  * @returns {Object} Request object with url, headers, and body
  */
 export function buildAnthropicRequest(config, messages) {
+  const authHeader = config.tokenType === 'Bearer'
+    ? { 'Authorization': `Bearer ${config.apiKey}` }
+    : { 'x-api-key': config.apiKey };
   const headers = {
     'Content-Type': 'application/json',
-    'x-api-key': config.apiKey,
+    ...authHeader,
     'anthropic-version': '2023-06-01',
   };
 

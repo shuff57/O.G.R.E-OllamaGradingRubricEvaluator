@@ -583,7 +583,7 @@
                          <p class="instructions">Authentication page opened in browser.</p>
                          <p class="instructions">Please copy the code from Claude and paste it here:</p>
                          <div class="input-row">
-                            <input type="text" bind:value={claudeCodeInput} placeholder="Paste code here (sk-ant-...)" />
+                            <input type="text" bind:value={claudeCodeInput} placeholder="Paste authorization code here" />
                             <button class="primary small" disabled={!claudeCodeInput || authLoading['anthropic']} on:click={submitClaudeCode}>
                               {#if authLoading['anthropic']}...{:else}Submit Code{/if}
                             </button>

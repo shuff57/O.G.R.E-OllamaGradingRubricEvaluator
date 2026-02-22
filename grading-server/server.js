@@ -64,7 +64,7 @@ async function callProviderDirect(provider, config, messages, timestamp) {
 
   let requestObj;
   switch (provider.toLowerCase()) {
-    case 'ollama': requestObj = buildOllamaRequest(config, messages); break;
+    case 'ollama': case 'ollama-local': case 'ollama-cloud': requestObj = buildOllamaRequest(config, messages); break;
     case 'openai': requestObj = buildOpenAIRequest(config, messages); break;
     case 'anthropic': requestObj = buildAnthropicRequest(config, messages); break;
     case 'google-gemini': requestObj = buildGoogleGeminiRequest(config, messages); break;
@@ -93,7 +93,7 @@ async function callProviderDirect(provider, config, messages, timestamp) {
 
   // Extract text based on provider format
   switch (provider.toLowerCase()) {
-    case 'ollama': return parseOllamaResponse(data);
+    case 'ollama': case 'ollama-local': case 'ollama-cloud': return parseOllamaResponse(data);
     case 'openai': return parseOpenAIResponse(data);
     case 'anthropic': return parseAnthropicResponse(data);
     case 'google-gemini': return parseGoogleGeminiResponse(data);
@@ -1069,11 +1069,12 @@ function resolveProviderConfig(providerId, model) {
   const p = providerConfigs.find(pc => pc.id === providerId);
   const apiUrl = p?.api_url || '';
   const apiKey = p?.credentials?.api_key || p?.credentials?.access_token || '';
+  const tokenType = p?.credentials?.token_type || null;
 
   let effectiveApiUrl = apiUrl;
   if (!effectiveApiUrl) {
     switch (providerId.toLowerCase()) {
-      case 'ollama': effectiveApiUrl = 'http://localhost:11434'; break;
+      case 'ollama': case 'ollama-local': case 'ollama-cloud': effectiveApiUrl = 'http://localhost:11434'; break;
       case 'openai': effectiveApiUrl = 'https://api.openai.com'; break;
       case 'anthropic': effectiveApiUrl = 'https://api.anthropic.com'; break;
       case 'google-gemini': effectiveApiUrl = 'https://generativelanguage.googleapis.com'; break;
@@ -1081,7 +1082,7 @@ function resolveProviderConfig(providerId, model) {
     }
   }
 
-  return { apiUrl: effectiveApiUrl, apiKey, model };
+  return { apiUrl: effectiveApiUrl, apiKey, model, tokenType };
 }
 
 /**
