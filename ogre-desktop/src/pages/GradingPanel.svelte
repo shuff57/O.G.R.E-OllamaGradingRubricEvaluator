@@ -23,7 +23,8 @@
     pageLoadedUrl?: string;
   } = $props();
 
-  let activeMode = $state('grader'); // 'grader' | 'solver' | 'batch'
+  let activeMode = $state('grader'); // 'grader' | 'solver' | 'discovery'
+  let graderSubMode = $state('single'); // 'single' | 'batch'
   let showScreenshotOverlay = $state(false);
   let batchRunning = $state(false);
   let refreshKey = $state(0);
@@ -73,7 +74,6 @@
   const MODES = [
     { id: 'grader', label: 'Grader', icon: '📝' },
     { id: 'solver', label: 'Solver', icon: '💡' },
-    { id: 'batch', label: 'Batch', icon: '⚡' },
     { id: 'discovery', label: 'Discover', icon: '🔍' }
   ];
 
@@ -334,43 +334,54 @@
 
   {#if !isCollapsed}
     <div class="panel-content">
-      {#if activeMode === 'grader' || activeMode === 'batch' || activeMode === 'discovery'}
-        <ProviderSelector bind:provider={activeProvider} bind:model={activeModel} />
-      {/if}
-      
-      {#if activeMode === 'grader' || activeMode === 'batch'}
-        <RubricCard bind:selectedRubric={selectedRubric} />
-      {/if}
-
       {#if activeMode === 'grader'}
-        <StudentWorkCard
-          onScreenshot={handleScreenshot}
-          provider={activeProvider}
-          model={activeModel}
-          rubric={toGradeRubric(selectedRubric)}
-          {screenshots}
-          onRemoveScreenshot={handleRemoveScreenshot}
-          {isCapturing}
-          {captureError}
-        />
+        <div class="sub-mode-toggle">
+          <label class="sub-mode-option">
+            <input type="radio" name="graderSubMode" value="single"
+              checked={graderSubMode === 'single'}
+              onchange={() => { graderSubMode = 'single'; }}
+              disabled={batchRunning} />
+            <span>📝 Single</span>
+          </label>
+          <label class="sub-mode-option">
+            <input type="radio" name="graderSubMode" value="batch"
+              checked={graderSubMode === 'batch'}
+              onchange={() => { graderSubMode = 'batch'; }}
+              disabled={batchRunning} />
+            <span>⚡ Batch</span>
+          </label>
+        </div>
+        <ProviderSelector bind:provider={activeProvider} bind:model={activeModel} />
+        <RubricCard bind:selectedRubric={selectedRubric} />
+        {#if graderSubMode === 'single'}
+          <StudentWorkCard
+            onScreenshot={handleScreenshot}
+            provider={activeProvider}
+            model={activeModel}
+            rubric={toGradeRubric(selectedRubric)}
+            {screenshots}
+            onRemoveScreenshot={handleRemoveScreenshot}
+            {isCapturing}
+            {captureError}
+          />
+        {:else}
+          <BatchPanel
+            provider={activeProvider}
+            model={activeModel}
+            bind:isBatchRunning={batchRunning}
+            {onRequestDiscovery}
+            {preselectedProfileId}
+            {pageLoadedUrl}
+            {refreshKey}
+            {selectedRubric}
+          />
+        {/if}
       {/if}
       {#if activeMode === 'solver'}
         <SolverChat />
       {/if}
-       {#if activeMode === 'batch'}
-         <BatchPanel
-           provider={activeProvider}
-           model={activeModel}
-           bind:isBatchRunning={batchRunning}
-           {onRequestDiscovery}
-           {preselectedProfileId}
-           {pageLoadedUrl}
-           {refreshKey}
-           {selectedRubric}
-         />
-       {/if}
-
       {#if activeMode === 'discovery'}
+        <ProviderSelector bind:provider={activeProvider} bind:model={activeModel} />
         <DiscoveryPanel
           provider={activeProvider}
           model={activeModel}
@@ -382,7 +393,8 @@
             if (returnToBatch) {
               preselectedProfileId = profile.id;
               returnToBatch = false;
-              activeMode = 'batch';
+              activeMode = 'grader';
+              graderSubMode = 'batch';
             }
           }}
         />
@@ -451,7 +463,7 @@
     animation: spin-once 0.8s ease-in-out;
   }
   .mode-tabs {
-    display: grid; grid-template-columns: 1fr 1fr; padding: var(--spacing-2); gap: var(--spacing-1);
+    display: grid; grid-template-columns: 1fr 1fr 1fr; padding: var(--spacing-2); gap: var(--spacing-1);
     background-color: var(--color-bg-sidebar);
     border-bottom: 1px solid var(--color-border); flex-shrink: 0;
   }
@@ -495,5 +507,38 @@
   .resize-handle:hover,
   .resize-handle:active {
     background-color: rgba(88, 166, 255, 0.3);
+  }
+  
+  /* ── Sub-Mode Toggle (Single / Batch) ── */
+  .sub-mode-toggle {
+    display: flex;
+    gap: var(--spacing-2, 8px);
+    align-items: center;
+  }
+  
+  .sub-mode-option {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--color-border, #444);
+    cursor: pointer;
+    font-size: 0.85em;
+    user-select: none;
+  }
+  
+  .sub-mode-option:has(input:checked) {
+    background: var(--color-bg-alt, #1a1a2e);
+    border-color: var(--color-primary, #6366f1);
+  }
+  
+  .sub-mode-option input[type="radio"] {
+    display: none;
+  }
+  
+  .sub-mode-option:has(input:disabled) {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 </style>
