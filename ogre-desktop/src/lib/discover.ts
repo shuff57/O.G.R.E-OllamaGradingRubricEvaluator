@@ -598,6 +598,23 @@ async function captureDomSnapshot(): Promise<DiscoveryRequest["domSnapshot"]> {
   return parsed;
 }
 
+// ── Provider ID Normalization ─────────────────────────────────────────────
+
+/**
+ * Normalize provider IDs to the server's expected values.
+ * The frontend uses 'ollama-local'/'ollama-cloud' but the server's
+ * callProviderDirect switch only recognises 'ollama'.
+ */
+function normalizeProviderId(id: string): string {
+  switch (id.toLowerCase()) {
+    case "ollama-local":
+    case "ollama-cloud":
+      return "ollama";
+    default:
+      return id;
+  }
+}
+
 // ── AI Call ─────────────────────────────────────────────────────────────
 
 /**
@@ -636,7 +653,7 @@ async function callDiscoveryAI(
     images: [screenshot],
   };
 
-  if (options?.provider) body.provider = options.provider;
+  if (options?.provider) body.provider = normalizeProviderId(options.provider);
   if (options?.model) body.model = options.model;
 
   const response = await withRetry(async () => {
@@ -702,6 +719,14 @@ export function extractContentFromSSE(sseText: string): string {
         if (parsed.content) content += parsed.content;
       } catch {
         // Skip unparseable data
+      }
+    } else if (eventName === "error" && dataStr) {
+      try {
+        const parsed = JSON.parse(dataStr) as { message?: string };
+        if (parsed.message) throw new Error(parsed.message);
+      } catch (e) {
+        if (e instanceof Error && e.message !== dataStr) throw e;
+        throw new Error(`Discovery server error: ${dataStr}`);
       }
     }
   }
