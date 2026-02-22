@@ -1,21 +1,17 @@
 import { open } from "@tauri-apps/plugin-shell";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { saveOAuthToken, getOAuthToken, deleteOAuthToken } from "./db";
-
+import { pushProvidersToServer } from "./provider-sync";
 // ── Types ────────────────────────────────────────────────────────────────
-
 export interface DeviceFlowResult {
   userCode: string;
   verificationUrl: string;
   poll: () => Promise<{ success: boolean; accessToken?: string; error?: string }>;
   cancel: () => void;
+  /** Copy-paste flows expose this to submit the pasted code */
+  submitCode?: (code: string) => void;
 }
 
-export interface CodePasteFlowResult {
-  authUrl: string;
-  exchangeCode: (code: string) => Promise<{ success: boolean; accessToken?: string; error?: string }>;
-  cancel: () => void;
-}
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -248,64 +244,74 @@ export async function startChatGPTDeviceFlow(): Promise<DeviceFlowResult> {
   };
 }
 
-// ── Claude / Anthropic PKCE Code-Paste Flow ──────────────────────────────
-
+// ── Claude / Anthropic OAuth (Copy-Paste Flow) ───────────────────────────
 const ANTHROPIC_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 const ANTHROPIC_AUTH_URL = "https://claude.ai/oauth/authorize";
 const ANTHROPIC_TOKEN_URL = "https://console.anthropic.com/v1/oauth/token";
-const ANTHROPIC_REDIRECT_URI = "https://console.anthropic.com/oauth/code/callback";
 const ANTHROPIC_SCOPE = "org:create_api_key user:profile user:inference";
-
-export async function startClaudeCodePasteFlow(): Promise<CodePasteFlowResult> {
+const ANTHROPIC_REDIRECT_URI = "https://console.anthropic.com/oauth/code/callback";
+const ANTHROPIC_KNOWN_MODELS: string[] = [
+  'claude-sonnet-4-20250514',
+  'claude-opus-4-20250514',
+  'claude-haiku-4-20250414',
+  'claude-3-5-sonnet-20241022',
+  'claude-3-5-haiku-20241022',
+  'claude-3-opus-20240229',
+];
+export async function startClaudeOAuthFlow(): Promise<DeviceFlowResult> {
   const code_verifier = generateCodeVerifier();
   const code_challenge = await generateCodeChallenge(code_verifier);
+  const state = generateState();
+  // Use Anthropic's hosted callback with code=true — causes Anthropic to display
+  // the auth code on-screen so the user can copy and paste it back into the app.
   const authUrl = new URL(ANTHROPIC_AUTH_URL);
+  authUrl.searchParams.set("code", "true");
   authUrl.searchParams.set("response_type", "code");
   authUrl.searchParams.set("client_id", ANTHROPIC_CLIENT_ID);
   authUrl.searchParams.set("redirect_uri", ANTHROPIC_REDIRECT_URI);
   authUrl.searchParams.set("code_challenge", code_challenge);
   authUrl.searchParams.set("code_challenge_method", "S256");
   authUrl.searchParams.set("scope", ANTHROPIC_SCOPE);
-  authUrl.searchParams.set("state", code_verifier);
-  authUrl.searchParams.set("code", "true");
-
+  authUrl.searchParams.set("state", state);
   const authUrlStr = authUrl.toString();
   await open(authUrlStr);
-
-  let cancelled = false;
-
+  // Copy-paste resolver: poll() awaits until submitCode() is called with the pasted value.
+  let resolveCode: ((code: string) => void) | null = null;
+  const codePromise = new Promise<string>(resolve => { resolveCode = resolve; });
   return {
-    authUrl: authUrlStr,
-    cancel: () => { cancelled = true; },
-    exchangeCode: async (code: string) => {
-      if (cancelled) return { success: false, error: "Cancelled" };
-      const authCode = code.includes('#') ? code.split('#')[0] : code;
-      const pastedState = code.includes('#') ? code.split('#')[1] : undefined;
-
+    userCode: "", // Not shown — user pastes the code directly
+    verificationUrl: authUrlStr,
+    submitCode: (code: string) => { resolveCode?.(code); },
+    cancel: () => { resolveCode?.(""); },
+    poll: async () => {
       try {
+        const pastedCode = await codePromise;
+        if (!pastedCode) return { success: false, error: "Cancelled" };
+
+        // Anthropic returns the pasted code as "{auth_code}#{state}"
+        const parts = pastedCode.split("#");
+        const code = parts[0].trim();
+        const pastedState = parts[1]?.trim() || state;
         const res = await tauriFetch(ANTHROPIC_TOKEN_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             grant_type: "authorization_code",
             client_id: ANTHROPIC_CLIENT_ID,
-            code: authCode,
+            code,
             redirect_uri: ANTHROPIC_REDIRECT_URI,
             code_verifier,
-            state: pastedState || code_verifier,
+            state: pastedState,
           }),
         });
-
         if (!res.ok) {
           const errText = await res.text();
           return { success: false, error: `Token exchange failed (${res.status}): ${errText}` };
         }
-
         const data = await res.json();
         if (!data.access_token) {
           return { success: false, error: "No access_token in response" };
         }
-
         await saveOAuthToken({
           provider: "anthropic",
           access_token: data.access_token,
@@ -313,13 +319,68 @@ export async function startClaudeCodePasteFlow(): Promise<CodePasteFlowResult> {
           token_type: data.token_type || "Bearer",
           expires_at: data.expires_in ? Date.now() + data.expires_in * 1000 : null,
         });
-
         return { success: true, accessToken: data.access_token };
       } catch (err: any) {
         return { success: false, error: err.message || String(err) };
       }
     },
   };
+}
+
+// ── Anthropic Token Refresh ──────────────────────────────────────────────
+
+async function refreshAnthropicToken(refreshToken: string): Promise<{
+  access_token: string;
+  refresh_token?: string;
+  expires_in?: number;
+}> {
+  const res = await tauriFetch(ANTHROPIC_TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+      client_id: ANTHROPIC_CLIENT_ID,
+    }),
+  });
+  if (!res.ok) throw new Error(`Token refresh failed: ${res.status}`);
+  return await res.json();
+}
+
+/**
+ * Get a valid Anthropic access token, refreshing if needed.
+ * Call this before any Anthropic Bearer-auth API call.
+ */
+export async function getValidAnthropicToken(): Promise<string | null> {
+  const tokenData = await getOAuthToken("anthropic");
+  if (!tokenData) return null;
+
+  // Check if token expires within 5 minutes
+  const FIVE_MINUTES = 5 * 60 * 1000;
+  if (tokenData.expires_at && tokenData.expires_at < Date.now() + FIVE_MINUTES) {
+    if (!tokenData.refresh_token) {
+      // Token expired and no refresh token — user must re-authenticate
+      return null;
+    }
+
+    try {
+      const refreshed = await refreshAnthropicToken(tokenData.refresh_token);
+      await saveOAuthToken({
+        provider: "anthropic",
+        access_token: refreshed.access_token,
+        refresh_token: refreshed.refresh_token ?? tokenData.refresh_token,
+        token_type: "Bearer",
+        expires_at: refreshed.expires_in ? Date.now() + refreshed.expires_in * 1000 : null,
+      });
+      await pushProvidersToServer();
+      return refreshed.access_token;
+    } catch (err) {
+      console.error("[OAuth] Anthropic token refresh failed:", err);
+      return null;
+    }
+  }
+
+  return tokenData.access_token;
 }
 
 // ── Google Device Flow ───────────────────────────────────────────────────
@@ -495,14 +556,24 @@ export async function fetchAvailableModels(
     }
 
     case "anthropic": {
+      // OAuth tokens cannot access /v1/models - return hardcoded list
       const oauthData = await getOAuthToken('anthropic');
+      if (oauthData?.token_type === 'Bearer') return ANTHROPIC_KNOWN_MODELS;
+
+      // Use refreshed token if available (handles token expiry)
+      const validToken = await getValidAnthropicToken();
+      const effectiveToken = validToken || accessToken;
+
       const anthropicAuthHeader = oauthData?.token_type === 'Bearer'
-        ? { 'Authorization': `Bearer ${accessToken}` }
-        : { 'x-api-key': accessToken };
+        ? { 'Authorization': `Bearer ${effectiveToken}` }
+        : { 'x-api-key': effectiveToken };
       const res = await tauriFetch("https://api.anthropic.com/v1/models", {
         headers: {
           ...anthropicAuthHeader,
           "anthropic-version": "2023-06-01",
+          "anthropic-beta": "oauth-2025-04-20,interleaved-thinking-2025-05-14",
+          "user-agent": "claude-cli/2.1.2 (external, cli)",
+          "anthropic-dangerous-direct-browser-access": "true",
         },
       });
       if (!res.ok) throw new Error(`Failed to fetch Anthropic models: ${res.status}`);

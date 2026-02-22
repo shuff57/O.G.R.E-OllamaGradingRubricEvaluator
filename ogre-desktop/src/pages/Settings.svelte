@@ -16,12 +16,12 @@
   import { 
     startGitHubDeviceFlow, 
     startChatGPTDeviceFlow, 
-    startClaudeCodePasteFlow, 
+    startClaudeOAuthFlow, 
     startGoogleDeviceFlow, 
     signOut, 
     fetchAvailableModels 
   } from '../lib/oauth';
-  import type { DeviceFlowResult, CodePasteFlowResult } from '../lib/oauth';
+  import type { DeviceFlowResult } from '../lib/oauth';
   import { pushProvidersToServer } from '../lib/provider-sync';
 
 
@@ -61,10 +61,10 @@
 
   // Active authentication flows
   let deviceFlows: Record<string, DeviceFlowResult> = {};
-  let claudeFlow: CodePasteFlowResult | null = null;
-  let claudeCodeInput = '';
   let authLoading: Record<string, boolean> = {};
   let authErrors: Record<string, string> = {};
+  // Buffer for Anthropic copy-paste auth code
+  let _anthropicPasteBuffer = '';
 
   // Available providers
   // Note: ollama-cloud and ollama-local were merged into single 'ollama' provider
@@ -235,9 +235,8 @@
         const flow = await startGoogleDeviceFlow();
         handleDeviceFlow(providerId, flow);
       } else if (providerId === 'anthropic') {
-        const flow = await startClaudeCodePasteFlow();
-        claudeFlow = flow;
-        claudeCodeInput = '';
+        const flow = await startClaudeOAuthFlow();
+        handleDeviceFlow(providerId, flow);
       }
     } catch (error) {
       console.error('Auth start failed:', error);
@@ -286,41 +285,9 @@
     }
   }
 
-  async function submitClaudeCode() {
-    if (!claudeFlow || !claudeCodeInput) return;
-    
-    authLoading['anthropic'] = true;
-    authErrors['anthropic'] = '';
-    authLoading = { ...authLoading }; // Trigger reactivity
-    authErrors = { ...authErrors }; // Trigger reactivity
-    
-    try {
-      const result = await claudeFlow.exchangeCode(claudeCodeInput);
-      if (result.success) {
-        oauthStatus['anthropic'] = true;
-        oauthStatus = { ...oauthStatus }; // Trigger reactivity
-        fetchModels('anthropic');
-        pushProvidersToServer();
-        claudeFlow = null;
-        claudeCodeInput = '';
-      } else {
-        authErrors['anthropic'] = result.error || 'Code exchange failed';
-        authErrors = { ...authErrors }; // Trigger reactivity
-      }
-    } catch (error) {
-      authErrors['anthropic'] = error instanceof Error ? error.message : String(error);
-      authErrors = { ...authErrors }; // Trigger reactivity
-    } finally {
-      authLoading['anthropic'] = false;
-      authLoading = { ...authLoading }; // Trigger reactivity
-    }
-  }
 
   function cancelAuth(providerId: string) {
-    if (providerId === 'anthropic' && claudeFlow) {
-      claudeFlow.cancel();
-      claudeFlow = null;
-    } else if (deviceFlows[providerId]) {
+    if (deviceFlows[providerId]) {
       deviceFlows[providerId].cancel();
       delete deviceFlows[providerId];
       deviceFlows = { ...deviceFlows };
@@ -339,6 +306,7 @@
         oauthStatus[providerId] = false;
         oauthStatus = { ...oauthStatus }; // Trigger reactivity
         fetchedModels[providerId] = [];
+        fetchedModels = { ...fetchedModels }; // Trigger reactivity
         pushProvidersToServer();
       }
     } catch (error) {
@@ -350,24 +318,30 @@
 
   async function fetchModels(providerId: string) {
     fetchingModels[providerId] = true;
+    fetchingModels = { ...fetchingModels }; // Trigger reactivity
     modelFetchErrors[providerId] = '';
+    modelFetchErrors = { ...modelFetchErrors }; // Trigger reactivity
     try {
       const providerKey = getProviderKey(providerId);
       if (!providerKey) throw new Error('Invalid provider for model fetching');
       
       const models = await fetchAvailableModels(providerKey);
       fetchedModels[providerId] = models;
+      fetchedModels = { ...fetchedModels }; // Trigger reactivity
       
       // If editing this provider, update its model if empty
       const provider = providers.find(p => p.id === providerId);
       if (provider && !provider.model && models.length > 0) {
         provider.model = models[0];
+        providers = [...providers]; // Trigger reactivity
       }
     } catch (error) {
       console.error('Failed to fetch models:', error);
       modelFetchErrors[providerId] = error instanceof Error ? error.message : (typeof error === 'string' ? error : JSON.stringify(error) || 'Unknown error');
+      modelFetchErrors = { ...modelFetchErrors }; // Trigger reactivity
     } finally {
       fetchingModels[providerId] = false;
+      fetchingModels = { ...fetchingModels }; // Trigger reactivity
     }
   }
 
@@ -563,33 +537,40 @@
                           <span class="icon">✅</span> Signed in
                           <button class="ghost small" on:click={() => handleSignOut(provider.id)}>Sign out</button>
                        </div>
-                     {:else if deviceFlows[provider.id]}
-                       <!-- DEVICE FLOW ACTIVE -->
-                       <div class="device-flow-container">
-                         <p class="instructions">1. Go to: <a href={deviceFlows[provider.id].verificationUrl} target="_blank">{deviceFlows[provider.id].verificationUrl}</a></p>
-                         <p class="instructions">2. Enter code:</p>
-                         <div class="code-display">
-                            {deviceFlows[provider.id].userCode}
-                            <button class="ghost small" title="Copy" on:click={() => navigator.clipboard.writeText(deviceFlows[provider.id].userCode)}>📋</button>
-                         </div>
-                         <div class="polling-indicator">
-                            <span class="spinner">⏳</span> Waiting for authorization...
-                         </div>
-                         <button class="ghost small" on:click={() => cancelAuth(provider.id)}>Cancel</button>
-                       </div>
-                     {:else if provider.id === 'anthropic' && claudeFlow}
-                       <!-- CLAUDE CODE PASTE ACTIVE -->
-                       <div class="device-flow-container">
-                         <p class="instructions">Authentication page opened in browser.</p>
-                         <p class="instructions">Please copy the code from Claude and paste it here:</p>
-                         <div class="input-row">
-                            <input type="text" bind:value={claudeCodeInput} placeholder="Paste authorization code here" />
-                            <button class="primary small" disabled={!claudeCodeInput || authLoading['anthropic']} on:click={submitClaudeCode}>
-                              {#if authLoading['anthropic']}...{:else}Submit Code{/if}
-                            </button>
-                         </div>
-                         <button class="ghost small" on:click={() => cancelAuth(provider.id)}>Cancel</button>
-                       </div>
+     {:else if deviceFlows[provider.id]}
+       <!-- DEVICE FLOW ACTIVE -->
+       <div class="device-flow-container">
+         {#if deviceFlows[provider.id].submitCode}
+           <!-- COPY-PASTE FLOW (Anthropic) -->
+           <p class="instructions">1. Sign in at the page that just opened in your browser.</p>
+           <p class="instructions">2. Copy the code shown on the page and paste it below:</p>
+           <div class="paste-input-row">
+             <input
+               type="text"
+               placeholder="Paste code here (e.g. abc123#xyz...)"
+               on:input={(e) => { _anthropicPasteBuffer = e.currentTarget.value; }}
+             />
+             <button class="btn primary small" on:click={() => {
+               if (_anthropicPasteBuffer) {
+                 deviceFlows[provider.id].submitCode?.(_anthropicPasteBuffer);
+                 _anthropicPasteBuffer = '';
+               }
+             }}>Submit</button>
+           </div>
+         {:else}
+           <!-- STANDARD DEVICE-CODE FLOW (GitHub, OpenAI, Google) -->
+           <p class="instructions">1. Go to: <a href={deviceFlows[provider.id].verificationUrl} target="_blank">{deviceFlows[provider.id].verificationUrl}</a></p>
+           <p class="instructions">2. Enter code:</p>
+           <div class="code-display">
+              {deviceFlows[provider.id].userCode}
+              <button class="ghost small" title="Copy" on:click={() => navigator.clipboard.writeText(deviceFlows[provider.id].userCode)}>📋</button>
+           </div>
+         {/if}
+         <div class="polling-indicator">
+            <span class="spinner">⏳</span> Waiting for authorization...
+         </div>
+         <button class="ghost small" on:click={() => cancelAuth(provider.id)}>Cancel</button>
+       </div>
                      {:else}
                        <!-- NOT SIGNED IN / ACTIONS -->
                        <div class="oauth-actions">
@@ -1311,10 +1292,7 @@
     to { transform: rotate(360deg); }
   }
 
-  .input-row {
-    display: flex;
-    gap: var(--spacing-2);
-  }
+
 
   /* Site Credentials */
   .header-with-action {
@@ -1377,4 +1355,15 @@
   .toggle-password:hover {
     opacity: 1;
   }
+
+  .paste-input-row {
+    display: flex;
+    gap: var(--spacing-2);
+    align-items: center;
+  }
+
+  .paste-input-row input {
+    flex: 1;
+  }
+
 </style>
