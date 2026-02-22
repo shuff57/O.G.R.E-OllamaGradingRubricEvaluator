@@ -260,6 +260,27 @@ const ANTHROPIC_KNOWN_MODELS: string[] = [
   'claude-3-5-haiku-20241022',
   'claude-3-opus-20240229',
 ];
+
+// ── models.dev live model fetch (with 1-hour in-memory cache) ────────────
+let _modelsDevCache: { models: string[]; fetchedAt: number } | null = null;
+const MODELS_DEV_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+async function fetchAnthropicModelsFromModelsDev(): Promise<string[]> {
+  if (_modelsDevCache && Date.now() - _modelsDevCache.fetchedAt < MODELS_DEV_TTL_MS) {
+    return _modelsDevCache.models;
+  }
+  const res = await tauriFetch('https://models.dev/api.json');
+  if (!res.ok) throw new Error(`models.dev fetch failed: ${res.status}`);
+  const data: Record<string, any> = await res.json();
+  const anthropicModels: Record<string, any> = data['anthropic']?.models ?? {};
+  const models = Object.entries(anthropicModels)
+    .filter(([_, m]) => m.status !== 'alpha' && m.status !== 'deprecated')
+    .map(([id]) => id);
+  if (models.length === 0) throw new Error('models.dev returned empty anthropic model list');
+  _modelsDevCache = { models, fetchedAt: Date.now() };
+  return models;
+}
+
 export async function startClaudeOAuthFlow(): Promise<DeviceFlowResult> {
   const code_verifier = generateCodeVerifier();
   const code_challenge = await generateCodeChallenge(code_verifier);
@@ -560,7 +581,13 @@ export async function fetchAvailableModels(
     case "anthropic": {
       // OAuth tokens cannot access /v1/models - return hardcoded list
       const oauthData = await getOAuthToken('anthropic');
-      if (oauthData?.token_type === 'Bearer') return ANTHROPIC_KNOWN_MODELS;
+      if (oauthData?.token_type === 'Bearer') {
+        try {
+          return await fetchAnthropicModelsFromModelsDev();
+        } catch {
+          return ANTHROPIC_KNOWN_MODELS;
+        }
+      }
 
       // Use refreshed token if available (handles token expiry)
       const validToken = await getValidAnthropicToken();
