@@ -6,6 +6,7 @@
   import Settings from './pages/Settings.svelte';
   import Rubrics from './pages/Rubrics.svelte';
   import Browser from './pages/Browser.svelte';
+  import SiteProfiles from './pages/SiteProfiles.svelte';
   import SetupWizard from './pages/SetupWizard.svelte';
   import UpdateModal from './components/UpdateModal.svelte';
   import { getSetting, insertGradingSession } from './lib/db';
@@ -42,7 +43,7 @@
   // so it must be hidden when modals appear to avoid covering them.
   $: if (showUpdateModal) {
     hideWebview().catch(() => {});
-  } else if (currentPage === 'browser') {
+  } else if (currentPage === 'browser' || currentPage === 'profiles') {
     showWebview().catch(() => {});
     window.dispatchEvent(new CustomEvent('ogre:sidebar-changed'));
   }
@@ -120,7 +121,7 @@
 
   function navigate(page: string) {
     currentPage = page;
-    if (page === 'browser') {
+    if (page === 'browser' || page === 'profiles') {
       sidebarCollapsed = true;
       showWebview().catch(() => {});
       window.dispatchEvent(new CustomEvent('ogre:sidebar-changed'));
@@ -134,7 +135,7 @@
   function toggleSidebar() {
     sidebarCollapsed = !sidebarCollapsed;
 
-    if (currentPage === 'browser') {
+    if (currentPage === 'browser' || currentPage === 'profiles') {
       window.dispatchEvent(new CustomEvent('ogre:sidebar-changed'));
     }
   }
@@ -190,6 +191,12 @@
           </span>
           <span class="label">Rubrics</span>
         </button>
+        <button class:active={currentPage === 'profiles'} on:click={() => navigate('profiles')} title="Site Profiles">
+          <span class="icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+          </span>
+          <span class="label">Site Profiles</span>
+        </button>
         <button class:active={currentPage === 'browser'} on:click={() => navigate('browser')} title="Browser">
           <span class="icon">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
@@ -216,6 +223,8 @@
         <Rubrics />
       {:else if currentPage === 'browser'}
         <Browser />
+      {:else if currentPage === 'profiles'}
+        <SiteProfiles />
       {:else if currentPage === 'settings'}
         <Settings />
       {/if}

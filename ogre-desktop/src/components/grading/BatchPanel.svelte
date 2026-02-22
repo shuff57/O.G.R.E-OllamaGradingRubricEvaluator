@@ -40,12 +40,12 @@
     provider = '',
     model = '',
     isBatchRunning = $bindable(false),
-    onRequestDiscovery = () => {},
     preselectedProfileId = null as string | null,
     pageLoadedUrl = '',
     refreshKey = 0,
     selectedRubric = null as SavedRubric | null,
   } = $props();
+
 
   // ── Profile Selection ────────────────────────────────────────────────
   let selectedProfileId = $state('auto');
@@ -691,10 +691,10 @@
     <div class="section-header-row">
       <h3>Site Profile</h3>
       <button
-        class="btn-link auto-discover-btn"
-        onclick={() => onRequestDiscovery()}
+        class="btn-link add-profile-btn"
+        onclick={() => window.dispatchEvent(new CustomEvent('ogre:navigate', { detail: 'profiles' }))}
         disabled={isBatchRunning}
-      >🔍 Auto-Discover</button>
+      >➕ Add New Profile</button>
     </div>
     <div class="profile-bar">
       <select
@@ -1052,7 +1052,7 @@
           <div class="discover-cta-title">No profile found for this page</div>
           <div class="discover-cta-desc">Use AI to discover the grading page structure and create a profile</div>
         </div>
-        <button class="btn-primary full-width" onclick={() => onRequestDiscovery()}>
+        <button class="btn-primary full-width" onclick={() => window.dispatchEvent(new CustomEvent('ogre:navigate', { detail: 'profiles' }))}>
           Discover This Page
         </button>
         <button class="btn-link" onclick={handleExtract}>

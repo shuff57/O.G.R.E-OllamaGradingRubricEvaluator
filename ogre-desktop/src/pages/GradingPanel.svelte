@@ -6,7 +6,7 @@
   import StudentWorkCard from '../components/grading/StudentWorkCard.svelte';
   import SolverChat from '../components/grading/SolverChat.svelte';
   import BatchPanel from '../components/grading/BatchPanel.svelte';
-  import DiscoveryPanel from '../components/grading/DiscoveryPanel.svelte';
+  // DiscoveryPanel removed - will be used on Profiles page instead
   import { captureWebviewScreenshot, hideWebview, showWebview } from '../lib/browser';
   import type { SavedRubric } from '../lib/rubric-api';
   import type { GradeRubric } from '../lib/grading-api';
@@ -23,7 +23,7 @@
     pageLoadedUrl?: string;
   } = $props();
 
-  let activeMode = $state('grader'); // 'grader' | 'solver' | 'discovery'
+  let activeMode = $state('grader'); // 'grader' | 'solver'
   let graderSubMode = $state('single'); // 'single' | 'batch'
   let showScreenshotOverlay = $state(false);
   let batchRunning = $state(false);
@@ -54,9 +54,7 @@
   // Rubric state: flows from RubricCard → StudentWorkCard / BatchPanel
   let selectedRubric = $state<SavedRubric | null>(null);
 
-  // Batch-discovery round trip state
-  let returnToBatch = $state(false);
-  let preselectedProfileId = $state<string | null>(null);
+
 
   /** Convert a SavedRubric (library format) to GradeRubric (grading API format). */
   function toGradeRubric(saved: SavedRubric | null): GradeRubric | undefined {
@@ -73,8 +71,7 @@
 
   const MODES = [
     { id: 'grader', label: 'Grader', icon: '📝' },
-    { id: 'solver', label: 'Solver', icon: '💡' },
-    { id: 'discovery', label: 'Discover', icon: '🔍' }
+    { id: 'solver', label: 'Solver', icon: '💡' }
   ];
 
   function toggleCollapse() {
@@ -94,11 +91,7 @@
     if (isCollapsed) isCollapsed = false; // Expand when clicking a mode icon while collapsed
   }
 
-  function onRequestDiscovery() {
-    returnToBatch = true;
-    activeMode = 'discovery';
-    if (isCollapsed) isCollapsed = false;
-  }
+
 
   /**
    * Screenshot flow:
@@ -369,8 +362,6 @@
             provider={activeProvider}
             model={activeModel}
             bind:isBatchRunning={batchRunning}
-            {onRequestDiscovery}
-            {preselectedProfileId}
             {pageLoadedUrl}
             {refreshKey}
             {selectedRubric}
@@ -379,25 +370,6 @@
       {/if}
       {#if activeMode === 'solver'}
         <SolverChat />
-      {/if}
-      {#if activeMode === 'discovery'}
-        <ProviderSelector bind:provider={activeProvider} bind:model={activeModel} />
-        <DiscoveryPanel
-          provider={activeProvider}
-          model={activeModel}
-          {returnToBatch}
-          {pageLoadedUrl}
-          {refreshKey}
-          onProfileSaved={(profile) => {
-            console.log('Saved profile:', profile);
-            if (returnToBatch) {
-              preselectedProfileId = profile.id;
-              returnToBatch = false;
-              activeMode = 'grader';
-              graderSubMode = 'batch';
-            }
-          }}
-        />
       {/if}
     </div>
   {/if}
@@ -463,7 +435,7 @@
     animation: spin-once 0.8s ease-in-out;
   }
   .mode-tabs {
-    display: grid; grid-template-columns: 1fr 1fr 1fr; padding: var(--spacing-2); gap: var(--spacing-1);
+    display: grid; grid-template-columns: 1fr 1fr; padding: var(--spacing-2); gap: var(--spacing-1);
     background-color: var(--color-bg-sidebar);
     border-bottom: 1px solid var(--color-border); flex-shrink: 0;
   }

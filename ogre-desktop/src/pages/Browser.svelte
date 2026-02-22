@@ -16,6 +16,7 @@
     injectAutofill,
     GRADING_SITE_PRESETS 
   } from '../lib/browser';
+  import { calculateWebviewBounds } from '../lib/webview-layout';
   import { getSetting, setSetting, getSiteCredentials } from '../lib/db';
   import { matchCredentialsToUrl } from '../lib/autofill';
   import { ICON_STRIP_WIDTH } from '../lib/constants';
@@ -86,13 +87,18 @@
     const drawerWidth = showGradingPanel
       ? (gradingPanelCollapsed ? ICON_STRIP_WIDTH : gradingPanelWidth)
       : 0;
-    const x = sidebarWidth;
-    const y = navBarHeight + presetsPanelHeight;
-    const width = window.innerWidth - sidebarWidth - drawerWidth;
-    const height = window.innerHeight - y;
     
-    if (width > 0 && height > 0) {
-      setWebviewBounds(x, y, width, height).catch((e) => {
+    const bounds = calculateWebviewBounds({
+      sidebarWidth,
+      navBarHeight,
+      panelWidth: drawerWidth,
+      windowWidth: window.innerWidth,
+      windowHeight: window.innerHeight,
+      extraTopOffset: presetsPanelHeight,
+    });
+    
+    if (bounds.width > 0 && bounds.height > 0) {
+      setWebviewBounds(bounds.x, bounds.y, bounds.width, bounds.height).catch((e) => {
         console.error('Failed to set webview bounds:', e);
       });
     }

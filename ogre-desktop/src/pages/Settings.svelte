@@ -23,7 +23,7 @@
   } from '../lib/oauth';
   import type { DeviceFlowResult, CodePasteFlowResult } from '../lib/oauth';
   import { pushProvidersToServer } from '../lib/provider-sync';
-  import ProfileManager from '../components/grading/ProfileManager.svelte';
+
 
   let providers: ProviderConfig[] = [];
   let editingProvider: string | null = null;
@@ -913,13 +913,7 @@
     {/if}
   </section>
 
-  <!-- Site Profiles Section -->
-  <section class="card mb-6">
-    <h3>Site Profiles</h3>
-    <p class="mb-6">Manage site-specific selector profiles for grading platforms (Canvas, Blackboard, etc.). Profiles tell O.G.R.E how to find and interact with student work on each platform.</p>
-    
-    <ProfileManager />
-  </section>
+
 
   <!-- Column Visibility Section -->
   <section class="card">
