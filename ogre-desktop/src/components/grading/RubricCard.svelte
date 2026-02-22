@@ -332,7 +332,7 @@
   .section-details {
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
-    overflow: hidden;
+    overflow: clip;
   }
 
   .section-summary {
@@ -448,6 +448,27 @@
   .rubric-empty p {
     margin: 0 0 var(--spacing-2) 0;
   }
+
+  /* Text-link buttons */
+  .text-btn {
+    background: none;
+    border: none;
+    color: var(--color-primary);
+    font-size: 0.8rem;
+    cursor: pointer;
+    padding: 0;
+    font-family: var(--font-body);
+    width: auto;
+  }
+
+  .text-btn:hover {
+    text-decoration: underline;
+  }
+
+  .manage-library-btn {
+    align-self: flex-start;
+  }
+
   /* Textarea */
   .rubric-textarea {
     width: 100%;
@@ -510,6 +531,13 @@
     gap: var(--spacing-2);
     flex-wrap: wrap;
     align-items: center;
+  }
+
+  /* Small button modifier */
+  .btn-primary.small,
+  .btn-secondary.small {
+    padding: var(--spacing-1) var(--spacing-2);
+    font-size: 0.82rem;
   }
 
   .save-status {
