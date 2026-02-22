@@ -251,9 +251,11 @@ const ANTHROPIC_TOKEN_URL = "https://console.anthropic.com/v1/oauth/token";
 const ANTHROPIC_SCOPE = "org:create_api_key user:profile user:inference";
 const ANTHROPIC_REDIRECT_URI = "https://console.anthropic.com/oauth/code/callback";
 const ANTHROPIC_KNOWN_MODELS: string[] = [
-  'claude-sonnet-4-20250514',
   'claude-opus-4-20250514',
-  'claude-haiku-4-20250414',
+  'claude-opus-4-20250220',
+  'claude-sonnet-4-20250514',
+  'claude-sonnet-4-20250220',
+  'claude-3-7-sonnet-20250219',
   'claude-3-5-sonnet-20241022',
   'claude-3-5-haiku-20241022',
   'claude-3-opus-20240229',
