@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import SkillSearch from '../components/skills/SkillSearch.svelte';
+  import SkillCreator from '../components/skills/SkillCreator.svelte';
   import SkillCard from '../components/skills/SkillCard.svelte';
   import { getSkills, saveSkill, deleteSkill, updateSkillActive, type Skill } from '../lib/db';
   import { parseSkill } from '../lib/skill-parser';
@@ -144,9 +145,7 @@
     {:else if currentView === 'find-skills'}
       <SkillSearch />
     {:else if currentView === 'create-skill'}
-      <div class="empty-state">
-        <p>AI skill creator coming soon.</p>
-      </div>
+      <SkillCreator />
     {/if}
   </div>
 </div>
