@@ -319,13 +319,13 @@ export async function extractRubric(selectors: SiteSelectors): Promise<Rubric> {
           };
         }).filter(function(x) { return x.category || x.items.length; });
         var modelDiv = rubDiv.querySelector('div');
-        modelText = modelDiv ? modelDiv.textContent.trim() : null;
+        modelText = modelDiv ? (function() { try { return window.__turndownService.turndown(modelDiv.innerHTML); } catch(e) { return modelDiv.textContent.trim(); } })() : null;
         if (modelText === '') modelText = null;
       }
 
       var promptPs = promptDiv ? promptDiv.querySelectorAll(':scope > p, :scope > div > p') : [];
       essayPrompt = Array.from(promptPs)
-        .map(function(p) { return p.textContent.trim(); })
+        .map(function(p) { try { return window.__turndownService.turndown(p.outerHTML); } catch(e) { return p.textContent.trim(); } })
         .join(' ')
         .substring(0, 500);
 
@@ -390,6 +390,7 @@ export async function extractRubric(selectors: SiteSelectors): Promise<Rubric> {
  * @returns Extracted content and its source identifier
  */
 export async function extractPageContent(): Promise<PageContent> {
+  await ensureTurndownLoaded();
   try {
     const result = await evalScriptJSON<PageContent>(`(function() {
       function cleanText(raw) {
@@ -411,7 +412,7 @@ export async function extractPageContent(): Promise<PageContent> {
           .map(function(el) { return el.textContent.trim(); })
           .filter(function(t) { return t.length > 0; })
           .join('\\n');
-        if (text.length > 30) return { content: cleanText(text).substring(0, 2000), source: 'rubric_table' };
+        if (text.length > 30) return { content: (function() { try { return window.__turndownService.turndown(rubricCriteria[0].innerHTML).substring(0, 3000); } catch(e) { return cleanText(text).substring(0, 2000); } })(), source: 'rubric_table' };
       }
 
       var descSelectors = [
@@ -425,14 +426,14 @@ export async function extractPageContent(): Promise<PageContent> {
         var el = document.querySelector(descSelectors[d]);
         if (el) {
           var text = el.textContent.trim();
-          if (text.length > 30) return { content: cleanText(text).substring(0, 2000), source: 'assignment_description' };
+          if (text.length > 30) return { content: (function() { try { return window.__turndownService.turndown(el.innerHTML).substring(0, 3000); } catch(e) { return cleanText(text).substring(0, 2000); } })(), source: 'assignment_description' };
         }
       }
 
       var qRegion = document.querySelector('.question-region, div[data-qn]');
       if (qRegion) {
         var text = qRegion.textContent.trim();
-        if (text.length > 30) return { content: cleanText(text).substring(0, 2000), source: 'question_region' };
+        if (text.length > 30) return { content: (function() { try { return window.__turndownService.turndown(qRegion.innerHTML).substring(0, 3000); } catch(e) { return cleanText(text).substring(0, 2000); } })(), source: 'question_region' };
       }
 
       var iframeSelectors = [
@@ -448,7 +449,7 @@ export async function extractPageContent(): Promise<PageContent> {
             if (doc && doc.body) {
               var text = doc.body.textContent.trim();
               if (text.length > 30 && text.indexOf('No Preview Available') === -1) {
-                return { content: cleanText(text).substring(0, 2000), source: 'submission_iframe' };
+                return { content: (function() { try { return window.__turndownService.turndown(doc.body.innerHTML).substring(0, 3000); } catch(e) { return cleanText(text).substring(0, 2000); } })(), source: 'submission_iframe' };
               }
             }
           } catch(e) { /* cross-origin */ }
@@ -470,12 +471,12 @@ export async function extractPageContent(): Promise<PageContent> {
           }
         }
         var text = parts.join('\\n');
-        if (text.length > 50) return { content: cleanText(text).substring(0, 2000), source: 'page_headings' };
+        if (text.length > 50) return { content: (function() { try { return window.__turndownService.turndown(document.body.innerHTML).substring(0, 3000); } catch(e) { return cleanText(text).substring(0, 2000); } })(), source: 'page_headings' };
       }
 
       var body = document.body ? document.body.textContent.trim() : '';
       if (body.length > 100) {
-        return { content: cleanText(body).substring(0, 2000), source: 'page_content' };
+        return { content: (function() { try { return window.__turndownService.turndown(document.body.innerHTML).substring(0, 3000); } catch(e) { return cleanText(body).substring(0, 2000); } })(), source: 'page_content' };
       }
 
       return { content: '', source: '' };
