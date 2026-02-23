@@ -1,9 +1,10 @@
 {
-  "active_plan": "C:\\Users\\shuff\\OneDrive\\Documents\\GitHub\\O.G.R.E-OllamaGradingReviewEvaluator\\.sisyphus\\plans\\rubric-batch-enhancement.md",
-  "started_at": "2026-02-21T21:48:00.807Z",
+  "active_plan": "C:\\Users\\shuff\\Documents\\GitHub\\O.G.R.E-OllamaGradingRubricEvaluator\\.sisyphus\\plans\\batch-panel-ux.md",
+  "started_at": "2026-02-23T00:20:20.036Z",
   "session_ids": [
-    "ses_37de5a785ffeMPB9Nhux01Arv3"
+    "ses_37830bdd7ffenp9KHMg4JWb16D",
+    "ses_3784a8ec1ffe7GHds4V6pRe61l"
   ],
-  "plan_name": "rubric-batch-enhancement",
+  "plan_name": "batch-panel-ux",
   "agent": "atlas"
 }

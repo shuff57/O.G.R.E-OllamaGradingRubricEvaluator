@@ -16,6 +16,9 @@
     CANVAS_SPEEDGRADER_PROFILE,
     BUILT_IN_PROFILES,
     detectProfile,
+    extractRubric,
+    extractPageContent,
+    isRubricSufficient,
   } from '../../lib/batch-grader';
   import type { BatchProgress, Rubric, SiteProfile } from '../../lib/batch-grader';
   import { ProfileStorageImpl } from '../../lib/site-profiles';
@@ -81,10 +84,23 @@
   };
   
   let customInstructions = $state('');
-  let isNonZeroOnly = $state(false);
-  let isLenient = $state(false);
-  let isStrict = $state(false);
   let isReviewMode = $state(false);
+
+  // ── Derived state for preset buttons ───────────────────────────────────
+  let isNonZeroActive = $derived(customInstructions.includes(PRESETS.nonZero));
+  let isLenientActive = $derived(customInstructions.includes(PRESETS.lenient));
+  let isStrictActive = $derived(customInstructions.includes(PRESETS.strict));
+
+  function togglePreset(key: 'nonZero' | 'lenient' | 'strict') {
+    const text = PRESETS[key];
+    if (customInstructions.includes(text)) {
+      customInstructions = customInstructions.replace(text, '').replace(/\n{3,}/g, '\n\n').trim();
+    } else {
+      customInstructions = customInstructions.trim()
+        ? customInstructions.trim() + '\n\n' + text
+        : text;
+    }
+  }
 
   // ── Review Gate ──────────────────────────────────────────────────────
   type ReviewData = {
@@ -116,6 +132,7 @@
   let phaseMessage = $state('');
   let pausedResultBuffer: Array<{ studentIndex: number; score: number; feedback: string }> = [];
   let isAutoStopped = false; // plain let, not $state — no reactivity needed
+  let extractionCancelled = $state(false);
 
   let progressPercent = $derived(
     batchProgress && batchProgress.totalStudents > 0
@@ -128,6 +145,33 @@
   let savedSessionStudent = $state<string | null>(null);
   let currentPageUrl = $state('');
 
+  // ── Grading Timer ──────────────────────────────────────────────────
+  let elapsedSeconds = $state(0);
+  let timerInterval: ReturnType<typeof setInterval> | null = null;
+  let batchTimerStart = 0;
+
+  function formatElapsed(s: number): string {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return m > 0 ? `${m}m ${String(sec).padStart(2, '0')}s` : `${s}s`;
+  }
+
+  let elapsedLabel = $derived(formatElapsed(elapsedSeconds));
+
+  function startTimer(): void {
+    batchTimerStart = Date.now();
+    elapsedSeconds = 0;
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+      elapsedSeconds = Math.floor((Date.now() - batchTimerStart) / 1000);
+    }, 1000);
+  }
+
+  function stopTimer(): void {
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+    elapsedSeconds = 0;
+  }
+
   // ── Reusable page data refresh ──────────────────────────────────────
   async function doRefreshPageData() {
     const url = pageLoadedUrl || currentPageUrl;
@@ -139,6 +183,50 @@
       : '⚠ No profile found for this site. Using MyOpenMath default.';
     savedSessionStudent = result.savedSessionStudent;
   }
+
+  // ── Auto-extract rubric on page load ────────────────────────────────
+  async function autoExtractRubric() {
+    // Guard: don't extract if batch is active or library rubric is selected
+    if (batchPhase !== 'idle') return;
+    if (sourceRubricId !== null) return;
+
+    try {
+      const rubric = await extractRubric(activeProfile.selectors);
+      if (extractionCancelled) return;
+      if (isRubricSufficient(rubric)) {
+        extractedRubric = rubric;
+        rubricText = formatRubricForDisplay(rubric);
+        rubricMaxScore = rubric.maxScore || '10';
+        essayPrompt = rubric.essayPrompt || '';
+      } else {
+        // Rubric not sufficient — try fallback page content extraction
+        const pageContent = await extractPageContent();
+        if (pageContent.content) {
+          essayPrompt = pageContent.content;
+        }
+      }
+    } catch {
+      // Silent failure — try extractPageContent as fallback
+      try {
+        const pageContent = await extractPageContent();
+        if (pageContent.content) {
+          essayPrompt = pageContent.content;
+        }
+      } catch {
+        // Completely silent — nothing to extract
+      }
+    }
+  }
+
+  // Effect: auto-extract when profile is detected
+  $effect(() => {
+    const profile = detectedProfile;
+    const url = currentPageUrl;
+    if (!profile || !url) return;
+    if (batchPhase !== 'idle') return;
+    if (sourceRubricId !== null) return;
+    autoExtractRubric();
+  });
 
   // ── Auto-detect profile on mount + check for saved session ──────────
   onMount(async () => {
@@ -192,6 +280,7 @@
       isBatchPaused = reset.isBatchPaused;
       currentStudentName = reset.currentStudentName;
       resumeAfter = reset.resumeAfter;
+      stopTimer();
     }
 
     // Re-detect profile and session for new URL
@@ -259,14 +348,23 @@
   // ── Phase 1: Extract ─────────────────────────────────────────────────
   async function handleExtract() {
     isAutoStopped = false;
+    extractionCancelled = false;
     batchError = '';
     phaseMessage = '';
     batchPhase = 'extracting';
     batchLog = [];
+    startTimer();
 
     try {
       batchGrader = new BatchGrader();
       await batchGrader.start(activeProfile, resumeAfter || null);
+      if (extractionCancelled) {
+        batchGrader.stop();
+        batchGrader = null;
+        batchPhase = 'idle';
+        stopTimer();
+        return;
+      }
       updateBatchState();
 
       const rubric = batchGrader.rubric;
@@ -295,6 +393,7 @@
       batchPhase = 'review';
     } catch (err) {
       batchError = err instanceof Error ? err.message : String(err);
+      stopTimer();
       batchPhase = 'idle';
       batchGrader = null;
     }
@@ -348,18 +447,18 @@
     // Update max score from the review input
     rubric.maxScore = rubricMaxScore;
 
+    // Start elapsed timer for grading phase
+    startTimer();
+
     batchPhase = 'grading';
     isBatchRunning = true;
     isBatchPaused = false;
     isLogExpanded = true;
     phaseMessage = `Sending ${studentsToGrade.length} students to AI...`;
 
-    // Build combined instructions
+    // Build combined instructions (preset texts are now included in customInstructions via toggle buttons)
     const instructionsParts = [];
     if (customInstructions.trim()) instructionsParts.push(customInstructions.trim());
-    if (isNonZeroOnly) instructionsParts.push(PRESETS.nonZero);
-    if (isLenient) instructionsParts.push(PRESETS.lenient);
-    if (isStrict) instructionsParts.push(PRESETS.strict);
 
     try {
       batchHandle = startBatchGrading(
@@ -497,6 +596,7 @@
       try { await clearBatchSession(currentPageUrl); } catch { /* non-fatal */ }
     }
     savedSessionStudent = null;
+    stopTimer();
     isBatchRunning = false;
     isBatchPaused = false;
     currentStudentName = '';
@@ -510,6 +610,7 @@
     batchError = data.message;
     phaseMessage = '';
     if (batchGrader) batchGrader.stop();
+    stopTimer();
     isBatchRunning = false;
     isBatchPaused = false;
     currentStudentName = '';
@@ -541,12 +642,40 @@
     }
     if (batchHandle) { batchHandle.cancel(); batchHandle = null; }
     if (batchGrader) batchGrader.stop();
+    stopTimer();
     isBatchRunning = false;
     isBatchPaused = false;
     currentStudentName = '';
     phaseMessage = '';
     pausedResultBuffer = [];
     batchPhase = 'review';
+    updateBatchState();
+  }
+
+  // ── Cancel (all phases) ────────────────────────────────────────────────
+  function handleCancelBatch() {
+    // Clean up any pending review
+    if (reviewResolve) {
+      reviewResolve({ action: 'skip' });
+      pendingReview = null;
+      reviewResolve = null;
+    }
+    if (batchHandle) { batchHandle.cancel(); batchHandle = null; }
+    if (batchGrader) { batchGrader.stop(); batchGrader = null; }
+    stopTimer();
+    isBatchRunning = false;
+    isBatchPaused = false;
+    currentStudentName = '';
+    phaseMessage = '';
+    pausedResultBuffer = [];
+    batchError = '';
+    extractionCancelled = true; // Signal extraction to abort
+    // Phase-aware reset: extracting/review go to idle, grading goes to review
+    if (batchPhase === 'grading') {
+      batchPhase = 'review';
+    } else {
+      batchPhase = 'idle';
+    }
     updateBatchState();
   }
 
@@ -567,6 +696,7 @@
   }
 
   function handleReset() {
+    stopTimer();
     sourceRubricId = null;
     batchPhase = 'idle';
     batchProgress = null;
@@ -613,6 +743,7 @@
   onDestroy(() => {
     if (batchHandle) { batchHandle.cancel(); batchHandle = null; }
     if (batchGrader) { batchGrader.stop(); batchGrader = null; }
+    stopTimer();
   });
 </script>
 
@@ -661,31 +792,19 @@
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="chevron"><polyline points="6 9 12 15 18 9"></polyline></svg>
     </summary>
     <div class="section-content">
-      <div class="preset-checkboxes">
-        <label class="preset-label">
-          <input
-            type="checkbox"
-            bind:checked={isNonZeroOnly}
-            disabled={isBatchRunning}
-          />
-          <span>Non-Zero Only</span>
-        </label>
-        <label class="preset-label">
-          <input
-            type="checkbox"
-            bind:checked={isLenient}
-            disabled={isBatchRunning}
-          />
-          <span>Lenient Grading</span>
-        </label>
-        <label class="preset-label">
-          <input
-            type="checkbox"
-            bind:checked={isStrict}
-            disabled={isBatchRunning}
-          />
-          <span>Strict</span>
-        </label>
+      <div class="preset-buttons">
+        <button class="btn-preset" class:active={isNonZeroActive}
+          onclick={() => togglePreset('nonZero')} disabled={isBatchRunning}>
+          Non-Zero Only
+        </button>
+        <button class="btn-preset" class:active={isLenientActive}
+          onclick={() => togglePreset('lenient')} disabled={isBatchRunning}>
+          Lenient
+        </button>
+        <button class="btn-preset" class:active={isStrictActive}
+          onclick={() => togglePreset('strict')} disabled={isBatchRunning}>
+          Strict
+        </button>
       </div>
       <textarea
         class="instructions-textarea"
@@ -770,19 +889,28 @@
   {#if batchPhase !== 'idle'}
     <div class="batch-status card">
       <div class="status-row">
-        <span class="label">Status:</span>
-        {#if batchPhase === 'extracting'}
-          <span class="value running">Extracting...</span>
-        {:else if isBatchRunning && isBatchPaused}
-          <span class="value paused">Paused</span>
-        {:else if isBatchRunning}
-          <span class="value running">Running</span>
-        {:else if batchPhase === 'done'}
-          <span class="value complete">Complete</span>
-        {:else if batchPhase === 'review'}
-          <span class="value ready">Review</span>
-        {:else}
-          <span class="value ready">Ready</span>
+        <div class="status-left">
+          <span class="label">Status:</span>
+          <div class="status-value-group">
+            {#if batchPhase === 'extracting'}
+              <span class="spinner" aria-hidden="true"></span>
+              <span class="value running">Extracting...</span>
+            {:else if isBatchRunning && isBatchPaused}
+              <span class="value paused">Paused</span>
+            {:else if isBatchRunning}
+              <span class="spinner" aria-hidden="true"></span>
+              <span class="value running">Running</span>
+            {:else if batchPhase === 'done'}
+              <span class="value complete">Complete</span>
+            {:else if batchPhase === 'review'}
+              <span class="value ready">Review</span>
+            {:else}
+              <span class="value ready">Ready</span>
+            {/if}
+          </div>
+        </div>
+        {#if batchPhase === 'extracting' || (isBatchRunning && !isBatchPaused)}
+          <span class="elapsed-timer">{elapsedLabel}</span>
         {/if}
       </div>
       {#if batchPhase === 'grading' || batchPhase === 'done'}
@@ -914,8 +1042,8 @@
       </button>
     {/if}
   {:else if batchPhase === 'extracting'}
-    <button class="btn-primary full-width" disabled>
-      Extracting...
+    <button class="btn-danger full-width" onclick={handleCancelBatch}>
+      Cancel
     </button>
   {:else if batchPhase === 'grading' && isBatchRunning}
     <div class="batch-controls">
@@ -932,8 +1060,8 @@
     </button>
   {:else if batchPhase === 'review'}
     <div class="batch-controls">
-      <button class="btn-secondary" onclick={handleReset}>
-        Back
+      <button class="btn-secondary" onclick={handleCancelBatch}>
+        Cancel
       </button>
       <button
         class="btn-primary"
@@ -1106,31 +1234,6 @@
     cursor: not-allowed;
   }
 
-
-  /* ── Preset Checkboxes ── */
-  .preset-checkboxes {
-    display: flex;
-    gap: var(--spacing-4);
-    flex-wrap: wrap;
-    padding-bottom: var(--spacing-2);
-  }
-
-  .preset-label {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-2);
-    font-size: 0.85rem;
-    color: var(--color-text-primary);
-    cursor: pointer;
-    user-select: none;
-  }
-
-  .preset-label input[type="checkbox"] {
-    width: 16px;
-    height: 16px;
-    cursor: pointer;
-    accent-color: var(--color-primary);
-  }
 
   .instructions-textarea,
   .rubric-textarea {
@@ -1608,6 +1711,42 @@
   }
   .review-actions button {
     flex: 1;
+  }
+
+  /* ── Spinner + Timer ── */
+  .status-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .status-value-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .elapsed-timer {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .spinner {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    opacity: 0.8;
+    flex-shrink: 0;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
 
   /* ── Continue Grading Row ── */
