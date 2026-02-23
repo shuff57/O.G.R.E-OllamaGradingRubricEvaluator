@@ -199,10 +199,19 @@
         rubricMaxScore = rubric.maxScore || '10';
         essayPrompt = rubric.essayPrompt || '';
       } else {
-        // Rubric not sufficient — try fallback page content extraction
-        const pageContent = await extractPageContent();
-        if (pageContent.content) {
-          essayPrompt = pageContent.content;
+        // Use any partial data the rubric extraction did find
+        if (rubric.essayPrompt || rubric.rubricItems?.length || rubric.checklistItems?.length) {
+          rubricText = formatRubricForDisplay(rubric);
+          rubricMaxScore = rubric.maxScore || '10';
+          essayPrompt = rubric.essayPrompt || '';
+        }
+        // Fall back to page content scan if rubricText is still empty
+        if (!rubricText) {
+          const pageContent = await extractPageContent();
+          if (pageContent.content) {
+            essayPrompt = essayPrompt || pageContent.content;
+            rubricText = pageContent.content;
+          }
         }
       }
     } catch {
@@ -211,6 +220,7 @@
         const pageContent = await extractPageContent();
         if (pageContent.content) {
           essayPrompt = pageContent.content;
+          rubricText = pageContent.content;
         }
       } catch {
         // Completely silent — nothing to extract

@@ -325,6 +325,37 @@ export async function extractRubric(selectors: SiteSelectors): Promise<Rubric> {
         .map(function(p) { return p.textContent.trim(); })
         .join(' ')
         .substring(0, 500);
+
+      // Fallback: if essayPrompt still short/empty, scan all <p> in region
+      // excluding those inside <details> (which contain rubric/checklist items)
+      if (!essayPrompt || essayPrompt.length < 30) {
+        var fallbackPs = Array.from(region.querySelectorAll('p')).filter(function(p) {
+          return !p.closest('details');
+        });
+        var fallbackText = fallbackPs
+          .map(function(p) { return p.textContent.trim(); })
+          .filter(function(t) { return t.length > 5; })
+          .join(' ')
+          .substring(0, 500);
+        if (fallbackText.length > essayPrompt.length) { essayPrompt = fallbackText; }
+      }
+
+      // Fallback: if no rubric/checklist items found via child indices,
+      // scan all <details> elements anywhere in the region
+      if (!checklistItems.length && !rubricItems.length) {
+        Array.from(region.querySelectorAll('details')).forEach(function(det) {
+          var div = det.querySelector('div');
+          if (!div) return;
+          var rows = Array.from(div.querySelectorAll('tr')).map(function(tr) {
+            var bEl = tr.querySelector('b');
+            return {
+              category: bEl ? bEl.textContent.trim() : '',
+              items: Array.from(tr.querySelectorAll('li, label')).map(function(l) { return l.textContent.trim(); })
+            };
+          }).filter(function(x) { return x.category || x.items.length; });
+          if (rows.length) { rubricItems = rubricItems.concat(rows); }
+        });
+      }
     }
 
     var scoreInput = first.querySelector(sel.scoreInput);
