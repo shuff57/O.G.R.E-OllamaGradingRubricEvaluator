@@ -5,18 +5,20 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "npm run build:turndown && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "bash tests/e2e/run-all.sh"
+    "test:e2e": "bash tests/e2e/run-all.sh",
+    "build:turndown": "node scripts/build-turndown-bundle.js"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^6.2.1",
     "@tauri-apps/cli": "^2.10.0",
+    "@types/turndown": "^5.0.6",
     "@vitest/ui": "^4.0.18",
     "svelte": "^5.45.2",
     "vite": "^7.3.1",
@@ -32,6 +34,8 @@
     "gray-matter": "^4.0.3",
     "katex": "^0.16.28",
     "marked": "^17.0.3",
-    "mathlive": "^0.108.3"
+    "mathlive": "^0.108.3",
+    "turndown": "^7.2.2",
+    "turndown-plugin-gfm": "^1.0.2"
   }
 }
