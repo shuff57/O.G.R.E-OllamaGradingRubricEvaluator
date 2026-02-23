@@ -41,6 +41,7 @@ import {
 import { loadConfig, saveConfig, watchConfig } from './config.js';
 import { loadRubrics, createRubric, updateRubric, deleteRubric } from './rubric-store.js';
 import { withRetry } from './ai-retry.js';
+import { handleAgentRequest } from './agent.js';
 
 const app = new Hono();
 const PORT = 3456;
@@ -56,10 +57,74 @@ console.log(`[config] Loaded ${providerConfigs.length} provider(s), token=${hand
  * Call an AI provider directly from the server (bypasses extension proxy).
  * Used for providers that don't require browser auth context (Ollama, OpenAI, etc.)
  */
+// Anthropic OAuth client ID (matches oauth.ts and opencode-anthropic-auth)
+const ANTHROPIC_CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e';
+const ANTHROPIC_TOKEN_URL = 'https://console.anthropic.com/v1/oauth/token';
+const TOKEN_REFRESH_BUFFER_MS = 60 * 1000; // 60-second buffer before expiry
+
+/**
+ * Ensure the Anthropic OAuth token is valid, refreshing it if expired.
+ * Mirrors opencode-anthropic-auth/index.mjs: checks expiry, POSTs refresh grant.
+ * Only applies to Bearer (OAuth) tokens — raw API keys are passed through unchanged.
+ */
+async function ensureValidAnthropicToken(config) {
+  // Only applies to Bearer (OAuth) tokens, not raw API keys
+  if (config.tokenType !== 'Bearer') return config;
+  if (!config.refreshToken) {
+    console.warn('[anthropic] Bearer token has no refresh_token — cannot refresh, proceeding as-is');
+    return config;
+  }
+
+  // Token still valid with buffer — no refresh needed
+  if (config.apiKey && config.expiresAt && config.expiresAt > Date.now() + TOKEN_REFRESH_BUFFER_MS) {
+    return config;
+  }
+
+  console.log('[anthropic] OAuth token expired or missing — refreshing...');
+  const response = await fetch(ANTHROPIC_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      grant_type: 'refresh_token',
+      refresh_token: config.refreshToken,
+      client_id: ANTHROPIC_CLIENT_ID,
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(`Anthropic token refresh failed (${response.status}): ${text.slice(0, 200)}`);
+  }
+
+  const json = await response.json();
+  const newExpiresAt = Date.now() + json.expires_in * 1000;
+
+  // Update in-memory provider config so the refreshed token persists across calls
+  const p = providerConfigs.find(pc => pc.id === 'anthropic');
+  if (p) {
+    p.credentials.access_token = json.access_token;
+    p.credentials.refresh_token = json.refresh_token;
+    p.credentials.expires_at = newExpiresAt;
+    saveConfig({ token: handshakeToken, providers: providerConfigs });
+    console.log('[anthropic] Token refreshed and persisted to config');
+  }
+
+  return {
+    ...config,
+    apiKey: json.access_token,
+    refreshToken: json.refresh_token,
+    expiresAt: newExpiresAt,
+  };
+}
+
 async function callProviderDirect(provider, config, messages, timestamp) {
   // Exchange GitHub OAuth token for Copilot session token
   if (provider.toLowerCase() === 'github-models') {
     config = { ...config, apiKey: await getCopilotSessionToken(config.apiKey) };
+  }
+  // Refresh Anthropic OAuth token if expired (mirrors opencode-anthropic-auth/index.mjs)
+  if (provider.toLowerCase() === 'anthropic') {
+    config = await ensureValidAnthropicToken(config);
   }
 
   let requestObj;
@@ -477,6 +542,18 @@ app.post('/api/chat', async (c) => {
       }
     });
   }
+});
+
+
+/**
+ * POST /api/agent
+ * Browser agent endpoint for natural language browser automation.
+ * 
+ * Body: { messages: [{role, content}], dom?: string, screenshot?: string }
+ * Response: { response: string } (raw AI text, client parses JSON action from it)
+ */
+app.post('/api/agent', async (c) => {
+  return handleAgentRequest(c, { callProviderDirect, resolveProviderConfig, providerConfigs });
 });
 
 /**
@@ -1070,7 +1147,8 @@ function resolveProviderConfig(providerId, model) {
   const apiUrl = p?.api_url || '';
   const apiKey = p?.credentials?.api_key || p?.credentials?.access_token || '';
   const tokenType = p?.credentials?.token_type || null;
-
+  const refreshToken = p?.credentials?.refresh_token || null;
+  const expiresAt = p?.credentials?.expires_at || null;
   let effectiveApiUrl = apiUrl;
   if (!effectiveApiUrl) {
     switch (providerId.toLowerCase()) {
@@ -1082,7 +1160,7 @@ function resolveProviderConfig(providerId, model) {
     }
   }
 
-  return { apiUrl: effectiveApiUrl, apiKey, model, tokenType };
+  return { apiUrl: effectiveApiUrl, apiKey, model, tokenType, refreshToken, expiresAt };
 }
 
 /**
