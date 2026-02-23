@@ -87,7 +87,9 @@ export async function pushProvidersToServer(): Promise<boolean> {
           credentials: {
             api_key: p.api_key ?? undefined,
             access_token: oauth?.access_token ?? undefined,
+            refresh_token: oauth?.refresh_token ?? undefined,
             token_type: oauth?.token_type ?? undefined,
+            expires_at: oauth?.expires_at ?? undefined,
           },
         };
       })

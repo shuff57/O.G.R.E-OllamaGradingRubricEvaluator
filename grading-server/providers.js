@@ -104,27 +104,43 @@ export function buildOpenAIRequest(config, messages) {
  * @returns {Object} Request object with url, headers, and body
  */
 export function buildAnthropicRequest(config, messages) {
-  const authHeader = config.tokenType === 'Bearer'
+  const isBearer = config.tokenType === 'Bearer';
+  const authHeader = isBearer
     ? { 'Authorization': `Bearer ${config.apiKey}` }
     : { 'x-api-key': config.apiKey };
   const headers = {
     'Content-Type': 'application/json',
     ...authHeader,
     'anthropic-version': '2023-06-01',
+    ...(isBearer && { 'anthropic-beta': 'oauth-2025-04-20' }),
   };
 
-  // Anthropic requires system message to be separate from messages array
+  // Anthropic requires system message to be separate from messages array.
+  // Also convert OpenAI-style image_url content blocks to Anthropic image+source format.
   let systemMessage;
   const userMessages = [];
-
   for (const msg of messages) {
     if (msg.role === 'system') {
       systemMessage = msg.content;
+    } else if (Array.isArray(msg.content)) {
+      const anthropicContent = msg.content.map(part => {
+        if (part.type === 'text') {
+          return { type: 'text', text: part.text };
+        } else if (part.type === 'image_url') {
+          const dataUrl = part.image_url?.url || '';
+          const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+          if (match) {
+            return { type: 'image', source: { type: 'base64', media_type: match[1], data: match[2] } };
+          }
+          return { type: 'image', source: { type: 'url', url: dataUrl } };
+        }
+        return part;
+      });
+      userMessages.push({ role: msg.role, content: anthropicContent });
     } else {
       userMessages.push(msg);
     }
   }
-
   const body = {
     model: config.model,
     max_tokens: 4096,
@@ -218,10 +234,16 @@ export function buildGoogleGeminiRequest(config, messages) {
  * @throws {Error} If response format is invalid
  */
 export function parseOllamaResponse(data) {
-  if (!data.message || !data.message.content) {
+  if (!data.message || typeof data.message.content !== 'string') {
+    // Some reasoning models return content in a 'thinking' field instead
+    const thinking = data.message?.thinking;
+    if (thinking && typeof thinking === 'string') {
+      return thinking;
+    }
     throw new Error('Invalid Ollama response: missing message.content');
   }
-  return data.message.content;
+  // Reasoning models (deepseek-r1, qwq) may return empty content; fall back to thinking field
+  return data.message.content || data.message.thinking || '';
 }
 
 /**
