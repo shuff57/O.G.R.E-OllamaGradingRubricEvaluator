@@ -22,6 +22,7 @@ import type {
   ActionParams,
   AgentApiResponse,
   AgentActionResponse,
+  AgentMessage,
 } from './agent-types';
 import { DEFAULT_AGENT_CONFIG } from './agent-types';
 
@@ -94,8 +95,8 @@ export function createAgentController(): AgentController {
     const loopConfig: AgentConfig = { ...DEFAULT_AGENT_CONFIG, ...config.config };
     const signal = config.signal ?? internalAbort.signal;
 
-    // Conversation history — uses `role: string` to allow 'system' alongside AgentMessage roles
-    const conversationHistory: Array<{ role: string; content: string }> = [
+    // Conversation history — includes system role and optional screenshot field
+    const conversationHistory: AgentMessage[] = [
       { role: 'system', content: AGENT_SYSTEM_PROMPT },
       { role: 'user', content: config.initialMessage },
     ];
@@ -148,7 +149,7 @@ export function createAgentController(): AgentController {
       let response: AgentApiResponse;
       try {
         response = await sendAgentRequest({
-          messages: conversationHistory as any,
+          messages: conversationHistory,
           dom: dom || undefined,
           screenshot,
           provider: config.provider || undefined,
@@ -255,7 +256,7 @@ export function createAgentController(): AgentController {
           conversationHistory.push({
             role: 'user',
             content: 'The selector failed. Here is a screenshot of the current page. Please analyze and suggest a better selector.',
-            ...(retryScreenshot ? { screenshot: retryScreenshot } as any : {}),
+            ...(retryScreenshot ? { screenshot: retryScreenshot } : {}),
           });
         } catch {
           conversationHistory.push({

@@ -56,10 +56,11 @@ export interface ActionResult {
 
 /** A message in the agent conversation. */
 export interface AgentMessage {
-  role: 'user' | 'assistant' | 'action' | 'result';
+  role: 'user' | 'assistant' | 'action' | 'result' | 'system';
   content: string;
   action?: ActionParams;
   result?: ActionResult;
+  screenshot?: string;
 }
 
 // ============================================================================

@@ -308,7 +308,7 @@ export async function executeAction(params: ActionParams): Promise<ActionResult>
       case 'done':
         return doneAction(p.success, p.message);
       default:
-        return { success: false, error: `Unknown action: ${(p as any).action}` };
+        return { success: false, error: `Unknown action: ${params.action}` };
     }
   }
 
