@@ -4,7 +4,7 @@
   import ProviderSelector from '../components/grading/ProviderSelector.svelte';
   import RubricCard from '../components/grading/RubricCard.svelte';
   import StudentWorkCard from '../components/grading/StudentWorkCard.svelte';
-  import SolverChat from '../components/grading/SolverChat.svelte';
+  import AgentChat from '../components/grading/AgentChat.svelte';
   import BatchPanel from '../components/grading/BatchPanel.svelte';
   import DiscoveryPanel from '../components/grading/DiscoveryPanel.svelte';
   import { captureWebviewScreenshot, hideWebview, showWebview } from '../lib/browser';
@@ -24,7 +24,7 @@
     pageLoadedUrl?: string;
   } = $props();
 
-  let activeMode = $state('grader'); // 'grader' | 'solver' | 'discovery'
+  let activeMode = $state('grader'); // 'grader' | 'agent' | 'discovery'
   let graderSubMode = $state('single'); // 'single' | 'batch'
   let showScreenshotOverlay = $state(false);
   let batchRunning = $state(false);
@@ -87,7 +87,7 @@
 
   const MODES = [
     { id: 'grader', label: 'Grader', icon: '📝' },
-    { id: 'solver', label: 'Solver', icon: '💡' },
+    { id: 'agent', label: 'Agent', icon: '🤖' },
     { id: 'discovery', label: 'Discover', icon: '🔍' },
   ];
 
@@ -403,8 +403,8 @@
           />
         {/if}
       {/if}
-      {#if activeMode === 'solver'}
-        <SolverChat />
+      {#if activeMode === 'agent'}
+        <AgentChat />
       {/if}
       {#if activeMode === 'discovery'}
         <ProviderSelector bind:provider={activeProvider} bind:model={activeModel} />
