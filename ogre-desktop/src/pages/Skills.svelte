@@ -1,4 +1,5 @@
 <script lang="ts">
+  import SkillSearch from '../components/skills/SkillSearch.svelte';
   let currentView = $state<'my-skills' | 'find-skills' | 'create-skill'>('my-skills');
 </script>
 
@@ -33,9 +34,7 @@
         <p>No skills yet — upload a .md file or find one in the marketplace.</p>
       </div>
     {:else if currentView === 'find-skills'}
-      <div class="empty-state">
-        <p>Marketplace search coming soon.</p>
-      </div>
+      <SkillSearch />
     {:else if currentView === 'create-skill'}
       <div class="empty-state">
         <p>AI skill creator coming soon.</p>

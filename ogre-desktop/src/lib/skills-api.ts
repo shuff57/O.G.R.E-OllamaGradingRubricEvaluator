@@ -55,3 +55,119 @@ export function buildSkillContentUrl(source: string, skillId: string): string {
   // Pattern: https://raw.githubusercontent.com/{source}/main/skills/{normalizedSkillId}/SKILL.md
   return `https://raw.githubusercontent.com/${source}/main/skills/${normalizedSkillId}/SKILL.md`;
 }
+
+// ── API Functions ───────────────────────────────────────────────────────
+
+/**
+ * Search skills.sh marketplace for skills matching a query.
+ * Returns empty array on network failure (never throws).
+ *
+ * @param query - Search query string
+ * @param limit - Maximum number of results (default: 20)
+ */
+export async function searchSkills(query: string, limit = 20): Promise<SkillSearchResult[]> {
+  try {
+    const response = await tauriFetch(
+      `${SKILLS_SH_SEARCH_URL}?q=${encodeURIComponent(query)}&limit=${limit}`
+    );
+    const data = typeof response.data === 'string' ? JSON.parse(response.data) : response.data;
+    return data.skills ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Fetch trending skills from skills.sh.
+ * Returns empty array on network failure (never throws).
+ */
+export async function fetchTrendingSkills(): Promise<SkillSearchResult[]> {
+  try {
+    const response = await tauriFetch('https://skills.sh/api/skills/trending/0');
+    const data = typeof response.data === 'string' ? JSON.parse(response.data) : response.data;
+    return data.skills ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Fetch the raw markdown content of a skill from GitHub.
+ *
+ * @param source - The GitHub source repo (e.g., "vercel-labs/agent-skills")
+ * @param skillId - The skill ID from the skills.sh API
+ * @returns Raw markdown content string
+ */
+export async function fetchSkillContent(source: string, skillId: string): Promise<string> {
+  const url = buildSkillContentUrl(source, skillId);
+  const response = await tauriFetch(url);
+  return typeof response.data === 'string' ? response.data : String(response.data);
+}
+
+// ── Install Logic ───────────────────────────────────────────────────────
+
+import { getSkillBySource, saveSkill, getActiveSkills } from './db';
+
+export interface InstallSkillParams {
+  skillId: string;
+  name: string;
+  source: string;
+  description: string;
+  content: string;
+}
+
+export interface InstallResult {
+  installed: boolean;
+  id: string;
+}
+
+/**
+ * Install a skill from the marketplace into the local database.
+ * Checks for duplicates by source + source_id before saving.
+ *
+ * @returns { installed: true, id } if newly saved, { installed: false, id } if already exists
+ */
+export async function installSkill(params: InstallSkillParams): Promise<InstallResult> {
+  const existing = await getSkillBySource(params.source, params.skillId);
+
+  if (existing) {
+    return { installed: false, id: existing.id };
+  }
+
+  const id = await saveSkill({
+    name: params.name,
+    description: params.description,
+    content: params.content,
+    source: params.source,
+    source_id: params.skillId,
+    is_active: 0,
+  });
+
+  return { installed: true, id };
+}
+
+// ── Skill Injection ─────────────────────────────────────────────────────
+
+/**
+ * Build a combined injection string from all active skills.
+ * Used as systemPrompt (solver chat) or customInstructions (batch grading).
+ *
+ * @returns Formatted skill injection string, or empty string if no skills active
+ */
+export async function buildSkillInjection(): Promise<string> {
+  const skills = await getActiveSkills();
+  if (skills.length === 0) return '';
+  return skills
+    .map(s => `\n\n--- SKILL: ${s.name} ---\n${s.content}\n--- END SKILL ---\n\n`)
+    .join('');
+}
+
+/**
+ * Get the size metrics for the current skill injection.
+ * Useful for showing context usage warnings in the UI.
+ */
+export async function getSkillInjectionSize(): Promise<{ charCount: number; skillCount: number }> {
+  const injection = await buildSkillInjection();
+  const skills = await getActiveSkills();
+  return { charCount: injection.length, skillCount: skills.length };
+}
