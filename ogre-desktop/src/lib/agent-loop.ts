@@ -185,7 +185,7 @@ export function createAgentController(): AgentController {
       yield { type: 'propose', action, params, reasoning };
 
       // runJS always requires approval, even in auto mode
-      const requiresApproval = config.mode === 'review' || action === 'runJS';
+      const requiresApproval = (config.mode === 'review' && action !== 'done') || action === 'runJS';
 
       if (requiresApproval) {
         const decision = await new Promise<'approve' | 'skip'>((resolve) => {
