@@ -1,0 +1,3 @@
+Task 3: Assets Removed - lib/ directory deleted via git rm -r
+Deleted: lib/fonts/ (20 font files), lib/marked.min.js, lib/mathlive.min.js, lib/mathlive-static.css
+Deleted: favicon.png, logo.png

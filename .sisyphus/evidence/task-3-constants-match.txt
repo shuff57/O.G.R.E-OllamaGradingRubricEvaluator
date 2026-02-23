@@ -1,0 +1,24 @@
+TASK 3 QA: Constants Match Verification
+========================================
+
+Files Compared:
+1. grading-constants.js (extension root)
+2. grading-server/grading-constants.js (server)
+
+Test: Cross-Runtime Constant Equality
+Command: node -e "Promise.all([import('./grading-constants.js'), import('./grading-server/grading-constants.js')]).then(([a,b]) => console.log('Constants match:', a.GRADING_PHILOSOPHY === b.GRADING_PHILOSOPHY))"
+Result: PASS ✓
+Output: Constants match: true
+
+Verification Details:
+- Both files export GRADING_PHILOSOPHY constant
+- Both constants are identical (character-for-character match)
+- Both are valid ES modules
+- Both contain the same 7-bullet grading philosophy text
+
+Source Verification:
+- Extension source: prompts.js lines 124-132
+- Server source: grading-server/grading.js lines 659-666
+- Both sources had identical text before extraction
+
+Status: VERIFIED - Constants are synchronized

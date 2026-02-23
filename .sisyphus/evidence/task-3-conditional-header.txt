@@ -1,0 +1,8 @@
+31:    headers['Authorization'] = `Bearer ${config.apiKey}`;
+82:    'Authorization': `Bearer ${config.apiKey}`,
+107:  const authHeader = config.tokenType === 'Bearer'
+108:    ? { 'Authorization': `Bearer ${config.apiKey}` }
+109:    : { 'x-api-key': config.apiKey };
+112:    ...authHeader,
+277: * @returns {Promise<string>} Copilot session token (Bearer-ready)
+323:    'Authorization': `Bearer ${config.apiKey}`,

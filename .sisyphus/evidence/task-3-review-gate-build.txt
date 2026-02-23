@@ -1,0 +1,21 @@
+89:  let pendingReview = $state<ReviewData | null>(null);
+90:  let reviewResolve: ((decision: { action: 'approve' | 'skip' }) => void) | null = null;
+479:      const decision = await requestStudentReview(result, studentName, maxScore, chunkIndex, chunkTotal);
+600:    if (reviewResolve) {
+601:      reviewResolve({ action: 'skip' });
+602:      pendingReview = null;
+603:      reviewResolve = null;
+645:  function requestStudentReview(
+653:      pendingReview = { ...result, studentName, maxScore, chunkIndex: index, chunkTotal: total };
+654:      reviewResolve = resolve;
+658:  function handleApprove() {
+659:    if (reviewResolve) {
+660:      reviewResolve({ action: 'approve' });
+661:      pendingReview = null;
+662:      reviewResolve = null;
+666:  function handleSkip() {
+667:    if (reviewResolve) {
+668:      reviewResolve({ action: 'skip' });
+669:      pendingReview = null;
+670:      reviewResolve = null;
+---

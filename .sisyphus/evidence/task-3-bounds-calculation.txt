@@ -1,0 +1,43 @@
+TASK 3: Remove Grading Panel from Webview Bounds Calculation
+==============================================================
+
+FILE MODIFIED: ogre-desktop/src/pages/Browser.svelte
+
+CHANGES APPLIED:
+================
+
+1. REMOVED (lines 84-88):
+   - let gradingPanelCurrentWidth = 0;
+   - if (showGradingPanel) {
+   -   gradingPanelCurrentWidth = gradingPanelCollapsed ? 60 : gradingPanelWidth;
+   - }
+
+2. UPDATED (line 86):
+   OLD: const width = window.innerWidth - sidebarWidth - gradingPanelCurrentWidth;
+   NEW: const width = window.innerWidth - sidebarWidth;
+
+VERIFICATION CHECKLIST:
+=======================
+
+✓ Lines 84-88 (gradingPanelCurrentWidth calculation) removed
+✓ Line 86 updated to: const width = window.innerWidth - sidebarWidth;
+✓ showGradingPanel is NOT used in bounds calculation
+✓ sidebarWidth calculation unchanged (line 74)
+✓ navBarHeight calculation unchanged (line 78)
+✓ presetsPanelHeight calculation unchanged (line 82)
+✓ showGradingPanel state variable still exists (used in reactive statement at line 99)
+
+IMPACT:
+=======
+- Webview now occupies full width minus sidebar only
+- Grading panel is a fixed overlay (z-index: 20) that does NOT affect webview bounds
+- Webview bounds remain constant regardless of grading panel open/closed state
+- Reactive statement still triggers on showGradingPanel changes (line 99) but doesn't affect bounds
+
+DEPENDENCIES SATISFIED:
+=======================
+✓ Task 1: Floating button exists
+✓ Task 2: GradingPanel is fixed overlay with z-index: 20
+✓ Task 3: Grading panel removed from bounds calculation
+
+STATUS: COMPLETE

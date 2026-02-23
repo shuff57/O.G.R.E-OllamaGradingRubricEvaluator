@@ -1,0 +1,5 @@
+256:const ANTHROPIC_REDIRECT_URI = "https://console.anthropic.com/oauth/code/callback";
+257:const ANTHROPIC_SCOPE = "org:create_api_key user:profile user:inference";
+269:  authUrl.searchParams.set("state", code_verifier);
+270:  authUrl.searchParams.set("code", "true");
+295:            state: pastedState || code_verifier,

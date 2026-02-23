@@ -1,0 +1,12 @@
+GREP VERIFICATION - Task 3: Removals Confirmed
+===============================================
+
+Check 1: ProfileManager Import
+Command: grep -n "ProfileManager" ogre-desktop/src/pages/Settings.svelte
+Result: ✓ REMOVED - No ProfileManager import found
+
+Check 2: Site Profiles Section
+Command: grep -n "Site Profiles" ogre-desktop/src/pages/Settings.svelte
+Result: ✓ REMOVED - No Site Profiles section found
+
+CONCLUSION: Both ProfileManager import and Site Profiles section successfully removed.

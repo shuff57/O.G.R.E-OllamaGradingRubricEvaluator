@@ -1,0 +1,2 @@
+Task 3: Docs Deleted - 10 extension-only MD docs removed via git rm
+Deleted: AUTH_UX_DESIGN.md, GITHUB_SETUP.md, INFO_ICON_IMPLEMENTATION.md, OAUTH_APP_SETUP.md, OAUTH_RESEARCH.md, TESTING_GUIDE.md, UX_IMPROVEMENTS.md, VERIFICATION_REPORT.md, test-providers.md, old grading server.md
