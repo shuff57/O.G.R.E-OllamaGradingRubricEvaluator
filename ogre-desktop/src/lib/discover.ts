@@ -918,8 +918,8 @@ export async function runDiscovery(
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
 
-        // HTTP errors: don't retry, propagate immediately
-        if (message.includes("HTTP")) throw err;
+        // Don't retry on HTTP errors or provider API client errors (4xx — auth failures, bad requests)
+        if (message.includes("HTTP") || /API error 4\d\d/.test(message)) throw err;
 
         attemptErrors.push(`Attempt ${attempt}: ${message}`);
 
@@ -1038,28 +1038,26 @@ Do not include markdown formatting, code fences, or explanations outside the JSO
  * @returns Formatted prompt string for the AI
  */
 export function RUBRIC_GENERATION_PROMPT(content: string, maxScore: number): string {
-  return `You are an experienced teacher creating a grading rubric for high school seniors.
-Given the following assignment content, create clear grading criteria for FREE RESPONSE / ESSAY questions ONLY.
-Ignore multiple choice, true/false, matching, fill-in-the-blank, and other auto-graded question types.
-The criteria point values must total ${maxScore}.
+  return `You are a grading assistant. Create a JSON scoring rubric from the assignment text provided.
 
-If there are multiple questions, tag each criterion with its question number.
-For single-question assignments, use "question": 1 for all criteria.
+OUTPUT FORMAT — Your entire response must be a single valid JSON object. Begin with \`{\` and end with \`}\`. No markdown, no code fences, no explanation text before or after.
 
-Keep descriptions concise (1 sentence each). Use this format for each description:
-"Full: [what earns full credit] | Partial: [what earns partial] | None: [what earns zero]"
-
-CRITICAL INSTRUCTIONS:
-- Return ONLY valid JSON. No markdown code fences. No explanation text. No extra commentary.
-- If the content is empty or too short to generate meaningful criteria, return exactly: {"rubric": []}
-
-Return ONLY a valid JSON object with this structure:
 {
+  "suggestedName": "Short rubric title (5 words max)",
   "rubric": [
-    { "criteria": "Short Criteria Name", "description": "Full: ... | Partial: ... | None: ...", "points": 5, "question": 1 }
+    { "criteria": "Short criterion name", "description": "Full: what earns full credit | Partial: what earns partial credit | None: what earns zero", "points": 5, "question": 1 }
   ]
 }
 
+RULES:
+1. Include ONLY free-response/essay criteria. Skip multiple choice, true/false, fill-in-the-blank, and any auto-graded question types.
+2. Criteria point values must sum to EXACTLY ${maxScore}. Use whole numbers only.
+3. If multiple questions are present, set "question" to that question's number (1, 2, 3…). For a single question, always use 1.
+4. Each "description" is a single line in exactly this format: "Full: … | Partial: … | None: …" — no line breaks inside the description.
+5. If the text contains no gradable free-response content, return: {"suggestedName": "", "rubric": []}
+
+EXAMPLE (10-point assignment):
+{"suggestedName": "Essay Analysis", "rubric": [{"criteria": "Thesis Statement", "description": "Full: clear, arguable thesis stated | Partial: thesis present but vague or broad | None: no thesis or completely off-topic", "points": 4, "question": 1}, {"criteria": "Supporting Evidence", "description": "Full: 2+ specific examples with explanation | Partial: evidence cited but underdeveloped | None: no supporting evidence", "points": 6, "question": 1}]}
 Assignment (max ${maxScore} points):
 ${content}`;
 }
