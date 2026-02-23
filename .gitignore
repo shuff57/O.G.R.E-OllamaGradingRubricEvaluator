@@ -11,7 +11,19 @@ test-output.txt
 build-output.txt
 nul
 
-# Invalid/temp paths
+# Invalid/temp paths (stray Windows env var dirs)
+$APPDATA/
+%APPDATA%/
+
+# Grading server build artifacts
+grading-server/bundle.js
+grading-server/grading-server-pkg.exe
+grading-server/sidecar-server.exe
+grading-server/test-sidecar.exe
+grading-server/sidecar-launcher/target/
+
+# Dist build output
+dist/
 
 
 # Test results
