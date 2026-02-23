@@ -131,7 +131,7 @@ describe('agent-loop: auto mode - done action', () => {
     mockExecute.mockResolvedValue({ success: true, data: { message: 'Done!' } });
 
     const controller = createAgentController();
-    const gen = controller.start({ mode: 'auto', initialMessage: 'Do a task', config: { actionDelayMs: 0, maxSteps: 10, maxTimeMs: 30000, maxSameAction: 3 } });
+    const gen = controller.start({ mode: 'auto', initialMessage: 'Do a task', compact: false, config: { actionDelayMs: 0, maxSteps: 10, maxTimeMs: 30000, maxSameAction: 3 } });
     const events = await collectEvents(gen);
 
     const types = events.map((e) => e.type);
