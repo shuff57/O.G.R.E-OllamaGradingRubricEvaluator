@@ -7,6 +7,7 @@
   import AgentChat from '../components/grading/AgentChat.svelte';
   import BatchPanel from '../components/grading/BatchPanel.svelte';
   import DiscoveryPanel from '../components/grading/DiscoveryPanel.svelte';
+  import SkillPicker from '../components/skills/SkillPicker.svelte';
   import { captureWebviewScreenshot, hideWebview, showWebview } from '../lib/browser';
   import type { SavedRubric } from '../lib/rubric-api';
   import type { GradeRubric } from '../lib/grading-api';
@@ -362,6 +363,7 @@
           </label>
         </div>
         <ProviderSelector bind:provider={activeProvider} bind:model={activeModel} />
+        <SkillPicker />
         <RubricCard
           bind:selectedRubric
           bind:rubricText

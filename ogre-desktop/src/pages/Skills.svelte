@@ -4,7 +4,7 @@
   import SkillCreator from '../components/skills/SkillCreator.svelte';
   import SkillCard from '../components/skills/SkillCard.svelte';
   import { getSkills, saveSkill, deleteSkill, updateSkillActive, type Skill } from '../lib/db';
-  import { parseSkill } from '../lib/skill-parser';
+  import { parseSkillMarkdown } from '../lib/skill-parser';
 
   let currentView = $state<'my-skills' | 'find-skills' | 'create-skill'>('my-skills');
   let skills = $state<Skill[]>([]);
@@ -34,11 +34,11 @@
     reader.onload = async (event) => {
       try {
         const content = event.target?.result as string;
-        const parsed = parseSkill(content);
+        const parsed = parseSkillMarkdown(content);
         
         await saveSkill({
-          name: parsed.metadata.name || file.name.replace(/\.md$/, ''),
-          description: parsed.metadata.description || '',
+          name: parsed.name || file.name.replace(/\.md$/, ''),
+          description: parsed.description || '',
           content: content,
           source: 'local',
           is_active: 1
