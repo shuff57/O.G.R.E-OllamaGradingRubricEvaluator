@@ -15,6 +15,7 @@
 /** All possible agent actions. */
 export type AgentAction =
   | 'click'
+  | 'triple_click'
   | 'type'
   | 'scroll'
   | 'readText'
@@ -30,6 +31,7 @@ export type AgentAction =
  */
 export type ActionParams =
   | { action: 'click'; selector: string }
+  | { action: 'triple_click'; selector: string }
   | { action: 'type'; selector: string; text: string; clear?: boolean }
   | { action: 'scroll'; direction: 'up' | 'down' | 'left' | 'right'; amount: number }
   | { action: 'readText'; selector?: string }

@@ -20,12 +20,17 @@ export interface ToolDefinition {
   params: Record<string, string>; // param name → description
 }
 
-/** All 9 tools the browser agent can invoke. */
+/** All 10 tools the browser agent can invoke. */
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: 'click',
     description: 'Click an element on the page',
     params: { selector: 'CSS selector of the element to click' }
+  },
+  {
+    name: 'triple_click',
+    description: 'Triple-click an element to select all its text (useful before overwriting)',
+    params: { selector: 'CSS selector of the element to triple-click' }
   },
   {
     name: 'type',
@@ -99,6 +104,10 @@ AVAILABLE ACTIONS AND PARAMETERS:
 
 1. click — Click an element
    {"action": "click", "params": {"selector": "CSS selector"}, "reasoning": "..."}
+
+1.5. triple_click — Triple-click an element to select all its text (useful before overwriting)
+   {"action": "triple_click", "params": {"selector": "CSS selector"}, "reasoning": "..."}
+   Use this instead of type with clear:true when the element is a contenteditable div or textarea.
 
 2. type — Type text into an input field
    {"action": "type", "params": {"selector": "CSS selector", "text": "text to type", "clear": true}, "reasoning": "..."}

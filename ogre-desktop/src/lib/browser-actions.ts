@@ -34,6 +34,47 @@ function escapeSelector(s: string): string {
     .replace(/\r/g, '\\r');
 }
 
+/**
+ * Inject a brief ripple dot into the WebView at the centre of the target element.
+ * Shows the user exactly where the agent is clicking or typing.
+ * Purely decorative — all errors are silently swallowed.
+ */
+async function showCursorDot(selector: string, color = '#3b82f6'): Promise<void> {
+  try {
+    const esc = escapeSelector(selector);
+    const c = escapeSelector(color);
+    await evalScript(`(function(){
+  var el=document.querySelector('${esc}');
+  if(!el)return;
+  var r=el.getBoundingClientRect();
+  var d=document.createElement('div');
+  d.setAttribute('data-ogre-cursor','1');
+  d.style.cssText=[
+    'position:fixed',
+    'left:'+(r.left+r.width/2)+'px',
+    'top:'+(r.top+r.height/2)+'px',
+    'width:22px','height:22px',
+    'border-radius:50%',
+    'background:${c}',
+    'opacity:0.9',
+    'border:2.5px solid rgba(255,255,255,0.9)',
+    'transform:translate(-50%,-50%) scale(0)',
+    'transition:transform 0.13s cubic-bezier(0.34,1.56,0.64,1),opacity 0.45s ease 0.18s',
+    'pointer-events:none',
+    'z-index:2147483647',
+    'box-shadow:0 2px 10px rgba(0,0,0,0.22),0 0 0 5px ${c}33'
+  ].join(';');
+  document.body.appendChild(d);
+  requestAnimationFrame(function(){
+    d.style.transform='translate(-50%,-50%) scale(1)';
+    setTimeout(function(){d.style.opacity='0';setTimeout(function(){if(d.parentNode)d.remove();},500);},380);
+  });
+})()`);
+  } catch {
+    /* decorative — never throw */
+  }
+}
+
 // ============================================================================
 // Action Implementations
 // ============================================================================
@@ -63,8 +104,9 @@ async function clickAction(selector: string): Promise<ActionResult> {
 }
 
 /**
- * Type text into an input element matching the CSS selector.
- * Uses native property setter for React/Angular compatibility.
+ * Type text into an element matching the CSS selector.
+ * Handles <input>, <textarea>, and contenteditable elements correctly.
+ * Uses the element-appropriate native property setter for React/Angular compatibility.
  */
 async function typeAction(
   selector: string,
@@ -80,28 +122,75 @@ async function typeAction(
   try {
     var el = document.querySelector('${escaped}');
     if (!el) return { success: false, error: 'Element not found: ' + '${escaped}' };
-    if (${clearFlag}) {
-      var clearSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
-      if (clearSetter && clearSetter.set) {
-        clearSetter.set.call(el, '');
-      } else {
-        el.value = '';
-      }
-    }
-    var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
-    if (nativeSetter && nativeSetter.set) {
-      nativeSetter.set.call(el, '${safeText}');
+    var isContentEditable = el.hasAttribute('contenteditable');
+    if (isContentEditable) {
+      // contenteditable div (rich-text editors, TinyMCE inline, feedback boxes)
+      el.focus();
+      if (${clearFlag}) { el.innerHTML = ''; }
+      document.execCommand('insertText', false, '${safeText}');
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
     } else {
-      el.value = '${safeText}';
+      // <input> or <textarea> — pick the right prototype to avoid "Illegal invocation"
+      var proto = el.tagName === 'TEXTAREA'
+        ? window.HTMLTextAreaElement.prototype
+        : window.HTMLInputElement.prototype;
+      if (${clearFlag}) {
+        var clearSetter = Object.getOwnPropertyDescriptor(proto, 'value');
+        if (clearSetter && clearSetter.set) {
+          clearSetter.set.call(el, '');
+        } else {
+          el.value = '';
+        }
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      var nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value');
+      if (nativeSetter && nativeSetter.set) {
+        nativeSetter.set.call(el, '${safeText}');
+      } else {
+        el.value = '${safeText}';
+      }
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
     }
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
     return { success: true };
   } catch(e) {
     return { success: false, error: e.message };
   }
-})()
-    `);
+})()`);
+    return result;
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Triple-click an element to select all its text.
+ * Useful for selecting text before overwriting, or activating fields that require a click.
+ */
+async function tripleClickAction(selector: string): Promise<ActionResult> {
+  try {
+    const escaped = escapeSelector(selector);
+    const result = await evalScriptJSON<ActionResult>(`
+(function() {
+  try {
+    var el = document.querySelector('${escaped}');
+    if (!el) return { success: false, error: 'Element not found: ' + '${escaped}' };
+    el.focus();
+    if (typeof el.select === 'function') {
+      el.select();
+    } else {
+      var range = document.createRange();
+      range.selectNodeContents(el);
+      var sel = window.getSelection();
+      if (sel) { sel.removeAllRanges(); sel.addRange(range); }
+    }
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 3 }));
+    return { success: true, data: { selected: true } };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+})()`);
     return result;
   } catch (err: unknown) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
@@ -291,6 +380,8 @@ export async function executeAction(params: ActionParams): Promise<ActionResult>
     switch (p.action) {
       case 'click':
         return clickAction(p.selector);
+      case 'triple_click':
+        return tripleClickAction(p.selector);
       case 'type':
         return typeAction(p.selector, p.text, p.clear);
       case 'scroll':
@@ -316,6 +407,7 @@ export async function executeAction(params: ActionParams): Promise<ActionResult>
   let originalSelector: string | undefined;
   switch (params.action) {
     case 'click':
+    case 'triple_click':
     case 'type':
     case 'waitFor':
       originalSelector = params.selector;
@@ -323,6 +415,13 @@ export async function executeAction(params: ActionParams): Promise<ActionResult>
     case 'readText':
       originalSelector = params.selector;
       break;
+  }
+
+  // Show cursor ripple for interactive actions (decorative, fire-and-forget)
+  if (params.action === 'click' || params.action === 'triple_click') {
+    void showCursorDot(params.selector);
+  } else if (params.action === 'type') {
+    void showCursorDot(params.selector, '#22c55e');
   }
 
   const result = await dispatch(params);
