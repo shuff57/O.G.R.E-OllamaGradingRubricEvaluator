@@ -24,7 +24,8 @@ vi.mock('./agent-prompt', () => ({
 import { sendAgentRequest } from './agent-api';
 import { executeAction } from './browser-actions';
 import { captureWebviewScreenshot } from './browser';
-import { createAgentController } from './agent-loop';
+import { createAgentController, pruneHistory } from './agent-loop';
+import type { AgentMessage } from './agent-types';
 
 const mockSend = sendAgentRequest as ReturnType<typeof vi.fn>;
 const mockExecute = executeAction as ReturnType<typeof vi.fn>;
@@ -154,5 +155,66 @@ describe('Agent loop: screenshot retry on selector failure', () => {
     const screenshotMock = captureWebviewScreenshot as ReturnType<typeof vi.fn>;
     // Should be bounded (not more than 2x maxSteps or so)
     expect(screenshotMock.mock.calls.length).toBeLessThan(30);
+  });
+});
+
+
+describe('pruneHistory', () => {
+  const sys: AgentMessage = { role: 'system', content: 'SYSTEM' };
+  const init: AgentMessage = { role: 'user', content: 'Initial request' };
+  const makeMsg = (i: number): AgentMessage => ({ role: 'user', content: `msg-${i}` });
+  const makeScreenshotMsg = (i: number): AgentMessage => ({
+    role: 'user',
+    content: `retry-${i}`,
+    screenshot: `data:image/png;base64,HUGE_BLOB_${i}`,
+  });
+
+  test('empty history returns empty array', () => {
+    expect(pruneHistory([])).toEqual([]);
+  });
+
+  test('preserves system + initial messages as anchors', () => {
+    const history = [sys, init, makeMsg(1), makeMsg(2)];
+    const result = pruneHistory(history, 16);
+    expect(result[0]).toEqual(sys);
+    expect(result[1]).toEqual(init);
+  });
+
+  test('strips screenshot field from all messages', () => {
+    const history = [
+      sys,
+      init,
+      makeScreenshotMsg(1),
+      makeScreenshotMsg(2),
+    ];
+    const result = pruneHistory(history, 16);
+    for (const msg of result) {
+      expect((msg as any).screenshot).toBeUndefined();
+    }
+  });
+
+  test('windows to last N messages beyond anchors', () => {
+    const history = [sys, init, ...Array.from({ length: 20 }, (_, i) => makeMsg(i))];
+    const result = pruneHistory(history, 10);
+    // 2 anchors + 10 windowed = 12 total
+    expect(result).toHaveLength(12);
+    // Last message should be msg-19
+    expect(result[result.length - 1].content).toBe('msg-19');
+    // First non-anchor should be msg-10 (last 10 of 0..19)
+    expect(result[2].content).toBe('msg-10');
+  });
+
+  test('does not window when history is within limit', () => {
+    const history = [sys, init, makeMsg(0), makeMsg(1)];
+    const result = pruneHistory(history, 16);
+    expect(result).toHaveLength(4);
+  });
+
+  test('does not mutate original history', () => {
+    const msg = makeScreenshotMsg(1);
+    const history = [sys, init, msg];
+    pruneHistory(history, 16);
+    // Original message still has screenshot
+    expect(msg.screenshot).toBeDefined();
   });
 });

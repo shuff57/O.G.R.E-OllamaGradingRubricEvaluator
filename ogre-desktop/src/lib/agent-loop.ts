@@ -27,6 +27,75 @@ import type {
 import { DEFAULT_AGENT_CONFIG } from './agent-types';
 
 // ============================================================================
+// History Management
+// ============================================================================
+
+/**
+ * Prune conversation history before sending to the AI API.
+ *
+ * Two operations:
+ * 1. Strip `screenshot` from ALL history messages — old screenshots are stale and
+ *    enormous (base64 PNG ≈ 50K–200K tokens each). The CURRENT screenshot is already
+ *    passed as a separate top-level param to sendAgentRequest.
+ * 2. Window to last `keepRecentMessages` non-anchor messages so the history cannot
+ *    grow without bound across 30-step sessions.
+ *
+ * Anchors always kept: system message (index 0) + initial user message (index 1).
+ */
+export function pruneHistory(
+  history: AgentMessage[],
+  keepRecentMessages: number = 16,
+): AgentMessage[] {
+  if (history.length === 0) return [];
+
+  // Anchors: system prompt + initial user request — always included
+  const anchors = history.slice(0, 2);
+  const rest = history.slice(2);
+
+  // Keep only the most recent N messages beyond the anchors
+  const windowed = rest.length > keepRecentMessages ? rest.slice(-keepRecentMessages) : rest;
+
+  // Strip screenshot field from every message — they are huge base64 blobs
+  // and only the *current* screenshot matters (passed separately to the API).
+  return [...anchors, ...windowed].map(({ screenshot: _sc, ...msg }) => msg as AgentMessage);
+}
+
+/**
+ * Maximum context window used for percentage calculations.
+ * Anthropic Claude supports 200K; other providers vary but we use this as the baseline.
+ */
+export const MAX_CONTEXT_TOKENS = 200_000;
+
+/** How many characters roughly equal one token (industry approximation). */
+const CHARS_PER_TOKEN = 4;
+
+/**
+ * How many recent non-anchor messages pruneHistory keeps.
+ * Must match the default in pruneHistory() so compaction detection is accurate.
+ */
+const PRUNE_WINDOW = 16;
+
+/**
+ * Estimate the token count of a set of messages plus optional DOM/screenshot.
+ *
+ * Approximation: 1 token ≈ 4 characters (text). Screenshots are estimated at
+ * 5,000 tokens each (typical WebView2 capture at modest resolution).
+ */
+export function estimateTokens(
+  messages: AgentMessage[],
+  dom?: string,
+  screenshot?: string,
+): number {
+  let tokens = 0;
+  for (const msg of messages) {
+    tokens += Math.ceil(msg.content.length / CHARS_PER_TOKEN);
+  }
+  if (dom) tokens += Math.ceil(dom.length / CHARS_PER_TOKEN);
+  if (screenshot) tokens += 5_000;
+  return tokens;
+}
+
+// ============================================================================
 // Event Types
 // ============================================================================
 
@@ -38,7 +107,11 @@ export type AgentEvent =
   | { type: 'result'; action: AgentAction; result: ActionResult }
   | { type: 'text'; content: string }
   | { type: 'done'; message: string }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string }
+  /** Emitted every iteration with the estimated token usage for the current API call. */
+  | { type: 'context'; usedTokens: number; maxTokens: number; percent: number }
+  /** Emitted once when history windowing first drops old messages. */
+  | { type: 'compacted'; droppedMessages: number };
 
 // ============================================================================
 // Configuration
@@ -109,6 +182,8 @@ export function createAgentController(): AgentController {
     const isCompact = config.compact ?? true;
     /** Tracks the action key of the last selector failure that triggered a screenshot retry */
     let lastFailedAction: string | null = null;
+    /** Tracks how many messages were dropped by windowing last iteration (for compaction events). */
+    let lastDroppedMessages = 0;
     while (true) {
       // ── Safety checks ──
       if (signal.aborted) {
@@ -145,11 +220,23 @@ export function createAgentController(): AgentController {
         /* vision not available — dom-only mode */
       }
 
-      // ── Step 2: Call AI ──
+      // ── Step 2: Context tracking + Call AI ──
+      const pruned = pruneHistory(conversationHistory);
+      const usedTokens = estimateTokens(pruned, dom, screenshot);
+      const percent = Math.min(100, Math.round((usedTokens / MAX_CONTEXT_TOKENS) * 100));
+      yield { type: 'context', usedTokens, maxTokens: MAX_CONTEXT_TOKENS, percent };
+
+      // Emit compacted event first time windowing drops old messages
+      const historyRestLen = Math.max(0, conversationHistory.length - 2);
+      const droppedMessages = Math.max(0, historyRestLen - PRUNE_WINDOW);
+      if (droppedMessages > 0 && lastDroppedMessages === 0) {
+        yield { type: 'compacted', droppedMessages };
+      }
+      lastDroppedMessages = droppedMessages;
       let response: AgentApiResponse;
       try {
         response = await sendAgentRequest({
-          messages: conversationHistory,
+          messages: pruned,
           dom: dom || undefined,
           screenshot,
           provider: config.provider || undefined,
