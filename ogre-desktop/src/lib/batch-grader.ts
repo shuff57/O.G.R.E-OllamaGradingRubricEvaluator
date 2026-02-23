@@ -12,6 +12,7 @@
  */
 
 import { evalScript, evalScriptJSON } from './browser';
+import { ensureTurndownLoaded } from './markdown-extract';
 
 // ============================================================================
 // TypeScript Interfaces
@@ -238,6 +239,7 @@ function delay(ms: number): Promise<void> {
  * @throws Error if extraction fails or no students found
  */
 export async function extractStudents(selectors: SiteSelectors): Promise<Student[]> {
+  await ensureTurndownLoaded();
   const result = await evalScriptJSON<Student[] | null>(`(function() {
     var sel = ${JSON.stringify(selectors)};
     if (!sel.studentSection) return null;
@@ -253,7 +255,7 @@ export async function extractStudents(selectors: SiteSelectors): Promise<Student
         name: (s.querySelector(sel.studentName) ? s.querySelector(sel.studentName).textContent.trim() : '') || ('Student ' + (i + 1)),
         currentScore: s.querySelector(sel.scoreInput) ? s.querySelector(sel.scoreInput).value : '',
         hasFeedback: (fbBox ? fbBox.textContent.trim().length : 0) > 0,
-        response: responseDiv ? responseDiv.textContent.trim() : ''
+        response: responseDiv ? (function() { try { return window.__turndownService.turndown(responseDiv.innerHTML); } catch(e) { return responseDiv.textContent.trim(); } })() : ''
       };
     });
   })()`);
@@ -275,6 +277,7 @@ export async function extractStudents(selectors: SiteSelectors): Promise<Student
  * @throws Error if rubric extraction fails
  */
 export async function extractRubric(selectors: SiteSelectors): Promise<Rubric> {
+  await ensureTurndownLoaded();
   const result = await evalScriptJSON<Rubric | null>(`(function() {
     var sel = ${JSON.stringify(selectors)};
     if (!sel.studentSection) return null;
