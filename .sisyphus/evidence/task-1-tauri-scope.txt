@@ -1,0 +1,37 @@
+# Tauri HTTP Scope Configuration
+
+## Finding
+
+The Tauri configuration at `ogre-desktop/src-tauri/tauri.conf.json` has:
+
+```json
+{
+  "app": {
+    "security": {
+      "csp": null
+    }
+  }
+}
+```
+
+## Analysis
+
+- **CSP is `null`**: This means the Content Security Policy is null/permissive
+- **No domain restrictions**: There are no CSP domain restrictions on HTTP requests
+- **Implication**: The `@tauri-apps/plugin-http` fetch can make requests to ANY domain without CSP blocking
+
+## HTTP Plugin Scope
+
+Since CSP is null, the `fetch` from `@tauri-apps/plugin-http` can:
+- Make requests to any HTTP/HTTPS URL
+- No need to configure `scope` in tauri.conf.json for the http plugin
+- Works out of the box for skills.sh API and GitHub raw content
+
+## Reference
+
+The fetch pattern used in the codebase (from `grading-api.ts`):
+```typescript
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+```
+
+This works without any additional configuration due to the permissive CSP setting.
