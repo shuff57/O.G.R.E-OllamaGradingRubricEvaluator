@@ -43,6 +43,16 @@ vi.mock("./sse-parser", () => ({
   parseSSEText: mockParseSSEText,
 }));
 
+
+// ── Mock skills-api (for startBatchGrading / sendSolverMessage) ─────────
+const { mockBuildSkillInjection } = vi.hoisted(() => ({
+  mockBuildSkillInjection: vi.fn().mockResolvedValue(""),
+}));
+
+vi.mock("./skills-api", () => ({
+  buildSkillInjection: mockBuildSkillInjection,
+}));
+
 // Import AFTER mocks are set up
 import {
   parseSSEEvents,
@@ -657,6 +667,8 @@ describe("startBatchGrading", () => {
     mockParseSSEText.mockReset();
     mockGetHandshakeToken.mockReturnValue("test-token-123");
     mockParseSSEStream.mockResolvedValue(undefined);
+    mockBuildSkillInjection.mockReset();
+    mockBuildSkillInjection.mockResolvedValue("");
   });
 
   it("returns handle with cancel function", () => {

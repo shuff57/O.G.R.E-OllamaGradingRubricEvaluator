@@ -11,6 +11,7 @@ import { getHandshakeToken } from "./provider-sync";
 import { fetchAvailableModels } from "./oauth";
 import { parseSSEStream, parseSSEText } from "./sse-parser";
 import { withRetry } from "./ai-retry";
+import { buildSkillInjection } from "./skills-api";
 import type {
   BatchGradingCallbacks,
   CancellationToken,
@@ -84,6 +85,8 @@ export interface SolverMessageOptions {
   message: string;
   model?: string;
   provider?: string;
+  /** System prompt for skill injection (prepended to AI context) */
+  systemPrompt?: string;
   /** Callback fired before each retry attempt */
   onRetry?: (attempt: number, error: Error) => void;
 }
@@ -262,6 +265,7 @@ export async function sendSolverMessage(
   };
   if (options.model) body.model = options.model;
   if (options.provider) body.provider = options.provider;
+  if (options.systemPrompt) body.systemPrompt = options.systemPrompt;
 
   const response = await withRetry(
     async () => {
@@ -610,6 +614,13 @@ export function startBatchGrading(
   // Fire async — callers use callbacks, not await
   (async () => {
     try {
+      // Inject active skills into customInstructions
+      const skillInjection = await buildSkillInjection();
+      if (skillInjection) {
+        body.customInstructions = body.customInstructions
+          ? `${body.customInstructions}\n\n${skillInjection}`
+          : skillInjection;
+      }
       const response = await tauriFetch(`${SERVER_BASE}/api/grade`, {
         method: "POST",
         headers: authHeaders(),

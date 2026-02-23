@@ -5,6 +5,7 @@
    * Maintains conversation history client-side and formats it as context for the AI.
    */
   import { sendSolverMessage } from "../../lib/grading-api";
+  import { buildSkillInjection } from "../../lib/skills-api";
 
   interface ChatMessage {
     role: "user" | "assistant";
@@ -61,9 +62,9 @@
 
     try {
       const prompt = buildContextualPrompt(text);
-
+      const skillInjection = await buildSkillInjection();
       await sendSolverMessage(
-        { message: prompt },
+        { message: prompt, ...(skillInjection ? { systemPrompt: skillInjection } : {}) },
         {
           onStatus: () => {
             // AI is thinking — already shown via isLoading
