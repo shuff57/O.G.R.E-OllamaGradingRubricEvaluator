@@ -359,6 +359,456 @@ Max Concurrent: 2 per wave
   - Message: `feat(agent): dynamic CDP port allocation with get_cdp_port command`
   - Files: `ogre-desktop/src-tauri/src/lib.rs`
   - Pre-commit: `cd ogre-desktop/src-tauri && cargo check`
+
+### Wave 2 — Core Module + Tests (After Wave 1)
+
+- [ ] 3. Build `cdp-actions.ts` — CDP Action Implementations
+
+  **What to do**:
+  - Create `ogre-desktop/src/lib/cdp-actions.ts`
+  - Import the thin CDP client from `./cdp-client` (Task 1)
+  - Import `ActionResult` and `DANGEROUS_JS_PATTERNS` from `./agent-types`
+  - Import `invoke` from `@tauri-apps/api/core` (for `get_cdp_port` Tauri command)
+  - Implement these exported functions with EXACT same signatures as `playwright-executor.ts`:
+    1. `connectCDP(port?: number): Promise<boolean>` — If no port given, call `invoke('get_cdp_port')` to get the dynamic port from Rust. Then call `cdp.connect(port)`. After connecting, send `Page.enable` to receive navigation events. Returns `true`/`false`, never throws.
+    2. `disconnectCDP(): Promise<void>` — Call `cdp.disconnect()`. Safe when not connected.
+    3. `isConnected(): boolean` — Return `cdp.isConnected()`.
+    4. `pwClick(selector: string): Promise<ActionResult>` — CDP click flow:
+       - `Runtime.evaluate` with expression `document.querySelector('${selector}')` using `returnByValue: false` to get `objectId`
+       - `DOM.scrollIntoViewIfNeeded({ objectId })`
+       - `DOM.getBoxModel({ objectId })` → extract `content` quad → compute center x = (quad[0]+quad[4])/2, y = (quad[1]+quad[5])/2
+       - `Input.dispatchMouseEvent({ type: 'mousePressed', x, y, button: 'left', clickCount: 1 })`
+       - `Input.dispatchMouseEvent({ type: 'mouseReleased', x, y, button: 'left', clickCount: 1 })`
+       - Return `{ success: true }` on success, `{ success: false, error }` on failure
+    5. `pwType(selector: string, text: string, clear?: boolean): Promise<ActionResult>` — CDP type flow:
+       - Focus the element: `Runtime.evaluate` with `document.querySelector('${selector}')?.focus()`
+       - If `clear`: `Runtime.evaluate` → `el.value = ''; el.dispatchEvent(new Event('input', {bubbles:true}))`
+       - Insert text: `Input.insertText({ text })` (sends whole string at once, simplest approach)
+       - Return `{ success: true }` on success
+    6. `pwReadText(selector?: string): Promise<ActionResult>` — CDP read flow:
+       - If selector: `Runtime.evaluate` with `document.querySelector('${selector}')?.textContent ?? ''`
+       - If no selector: `Runtime.evaluate` with `(document.body.innerText || '').substring(0, 5000)`
+       - Check `DANGEROUS_JS_PATTERNS` on expressions containing dynamic content before `Runtime.evaluate`
+       - Return `{ success: true, data: text }`
+    7. `pwWaitFor(selector: string, timeoutMs?: number): Promise<ActionResult>` — Polling wait:
+       - Cap timeout at `Math.min(timeoutMs ?? 5000, 10000)`
+       - Poll every 200ms: `Runtime.evaluate` with `!!document.querySelector('${selector}')`
+       - If found within timeout: return `{ success: true }`
+       - If timeout: return `{ success: false, error: 'Timeout waiting for ...' }`
+    8. `pwScroll(direction: string, amount: number): Promise<ActionResult>` — CDP scroll:
+       - Map direction to (x,y): up=`(0,-amount)`, down=`(0,amount)`, left=`(-amount,0)`, right=`(amount,0)`
+       - `Runtime.evaluate` with `window.scrollBy(x, y); ({scrollX: window.scrollX, scrollY: window.scrollY})`
+       - Return `{ success: true, data: { scrollX, scrollY } }` (match existing behavior from `playwright-executor.ts:315-323`)
+    9. `cdpScreenshot(): Promise<string>` — NEW function (not in playwright-executor):
+       - `Page.captureScreenshot({ format: 'jpeg', quality: 80 })`
+       - Return `'data:image/jpeg;base64,' + result.data`
+  - Safety: Create a local `checkDangerousPatterns(code: string): string | null` helper (copy pattern from `playwright-executor.ts:51-58`). Call before ANY `Runtime.evaluate` that includes user-provided content (selectors are safe — they're CSS, not JS — but `readText` body-text expressions need checking).
+  - All functions catch internally and return `ActionResult` — NEVER throw.
+  - The selector-escaping for `querySelector` calls: use the `escapeSelector` pattern or simple single-quote escaping to prevent CSS injection.
+
+  **Must NOT do**:
+  - Do NOT add new action types beyond the existing 5 + screenshot
+  - Do NOT import from `playwright-core` or `playwright-executor`
+  - Do NOT implement auto-reconnect logic
+  - Do NOT modify `agent-types.ts` or add new action params
+  - Do NOT skip `DANGEROUS_JS_PATTERNS` check on `Runtime.evaluate` calls
+  - Do NOT use `Runtime.evaluate` with `.click()` for clicking — use DOM/Input domains for real input events
+
+  **Recommended Agent Profile**:
+  - **Category**: `deep`
+    - Reason: Core module with complex CDP protocol interactions, careful error handling, and exact API surface matching
+  - **Skills**: []
+
+  **Parallelization**:
+  - **Can Run In Parallel**: NO (needs Task 1 complete)
+  - **Parallel Group**: Wave 2
+  - **Blocks**: Task 4, Task 5, Task 6
+  - **Blocked By**: Task 1 (cdp-client.ts), Task 2 (get_cdp_port command)
+
+  **References**:
+
+  **Pattern References**:
+  - `ogre-desktop/src/lib/playwright-executor.ts` — FULL FILE. This is the module being replaced. Copy exact function signatures: `connectCDP` (line 101), `disconnectCDP` (line 165), `isConnected` (line 181), `pwClick` (line 192), `pwType` (line 212), `pwReadText` (line 239), `pwWaitFor` (line 266), `pwScroll` (line 289). Copy `MAIN_APP_PATTERNS` from lines 28-32. Copy `checkDangerousPatterns` from lines 51-58.
+  - `ogre-desktop/src/lib/browser-actions.ts:20` — Import line: `import { isConnected, pwClick, pwType, pwReadText, pwWaitFor, pwScroll } from './playwright-executor'`. cdp-actions.ts MUST export these exact names.
+  - `ogre-desktop/src/lib/browser-actions.ts:362-376` — The `isConnected()` check and 5 case arms. These are the EXACT function calls this module must satisfy.
+  - `ogre-desktop/src/lib/agent-types.ts:49-53` — `ActionResult` interface: `{ success: boolean; error?: string; data?: unknown }`.
+  - `ogre-desktop/src/lib/agent-types.ts:171-182` — `DANGEROUS_JS_PATTERNS` array.
+  - `ogre-desktop/src/lib/cdp-client.ts` — The thin CDP client from Task 1. Use its `connect()`, `disconnect()`, `isConnected()`, `send()` API.
+
+  **External References**:
+  - Stagehand click flow: `DOM.scrollIntoViewIfNeeded → DOM.getBoxModel → Input.dispatchMouseEvent`
+  - CDP Input domain: https://chromedevtools.github.io/devtools-protocol/tot/Input/
+  - CDP DOM domain: https://chromedevtools.github.io/devtools-protocol/tot/DOM/
+  - CDP Runtime domain: https://chromedevtools.github.io/devtools-protocol/tot/Runtime/
+  - CDP Page domain: https://chromedevtools.github.io/devtools-protocol/tot/Page/
+
+  **WHY Each Reference Matters**:
+  - `playwright-executor.ts`: Exact API contract to replicate — same function names, param types, return types, error handling
+  - `browser-actions.ts:362-376`: The integration point calling these functions — signatures MUST match exactly
+  - `agent-types.ts:49-53`: Return type contract — must return ActionResult, not raw CDP responses
+  - Stagehand click flow: Proven production pattern for coordinate-based clicks through CDP
+
+  **Acceptance Criteria**:
+  - [ ] File `ogre-desktop/src/lib/cdp-actions.ts` exists
+  - [ ] Exports exactly: `connectCDP`, `disconnectCDP`, `isConnected`, `pwClick`, `pwType`, `pwReadText`, `pwWaitFor`, `pwScroll`, `cdpScreenshot`
+  - [ ] All `pw*` functions return `Promise<ActionResult>` and NEVER throw
+  - [ ] `cdpScreenshot` returns `Promise<string>` (data URL)
+  - [ ] `connectCDP` calls `invoke('get_cdp_port')` when no port argument given
+  - [ ] `pwClick` uses `DOM.scrollIntoViewIfNeeded` + `DOM.getBoxModel` + `Input.dispatchMouseEvent`
+  - [ ] `DANGEROUS_JS_PATTERNS` check exists before `Runtime.evaluate` calls
+  - [ ] TypeScript compiles: `npx tsc --noEmit`
+  - [ ] Zero npm dependencies beyond `./cdp-client`, `./agent-types`, `@tauri-apps/api/core`
+
+  **QA Scenarios:**
+
+  ```
+  Scenario: All action functions return ActionResult when not connected
+    Tool: Bash (vitest)
+    Preconditions: cdp-actions.ts exists, cdp-client mocked as disconnected
+    Steps:
+      1. Mock cdp-client: isConnected() returns false
+      2. Call each: pwClick('#btn'), pwType('#input', 'text'), pwReadText('#el'), pwWaitFor('#el'), pwScroll('down', 300)
+      3. Assert each returns { success: false, error: <descriptive string> }
+    Expected Result: All 5 functions return failure ActionResult, none throw
+    Failure Indicators: Any function throws, or returns success:true when disconnected
+    Evidence: .sisyphus/evidence/task-3-actions-disconnected.txt
+
+  Scenario: connectCDP calls Tauri invoke for port discovery
+    Tool: Bash (vitest)
+    Preconditions: Mock @tauri-apps/api/core invoke, mock cdp-client connect
+    Steps:
+      1. vi.mock @tauri-apps/api/core: invoke('get_cdp_port') returns 9222
+      2. vi.mock ./cdp-client: connect(9222) returns true, send() resolves
+      3. Call connectCDP() (no port argument)
+      4. Assert invoke was called with 'get_cdp_port'
+      5. Assert cdp.connect was called with 9222
+    Expected Result: connectCDP orchestrates port discovery through Tauri
+    Failure Indicators: invoke not called, wrong port, cdp.connect not called
+    Evidence: .sisyphus/evidence/task-3-connect-invoke.txt
+
+  Scenario: cdpScreenshot returns valid JPEG data URL
+    Tool: Bash (vitest)
+    Preconditions: Mock cdp.send('Page.captureScreenshot') to return { data: 'base64data' }
+    Steps:
+      1. Mock cdp as connected, send resolves { data: 'base64data' }
+      2. Call cdpScreenshot()
+      3. Assert result === 'data:image/jpeg;base64,base64data'
+    Expected Result: Returns properly formatted data URL
+    Failure Indicators: Missing prefix, wrong format, undefined result
+    Evidence: .sisyphus/evidence/task-3-screenshot.txt
+  ```
+
+  **Evidence to Capture:**
+  - [ ] task-3-actions-disconnected.txt — disconnected action test output
+  - [ ] task-3-connect-invoke.txt — Tauri invoke integration test
+  - [ ] task-3-screenshot.txt — screenshot function test
+
+  **Commit**: YES (grouped with Wave 2)
+  - Message: `feat(agent): CDP action implementations replacing playwright-executor`
+  - Files: `ogre-desktop/src/lib/cdp-actions.ts`
+  - Pre-commit: `cd ogre-desktop && npx tsc --noEmit`
+
+- [ ] 4. Tests for `cdp-client.ts` + `cdp-actions.ts`
+
+  **What to do**:
+  - Create `ogre-desktop/src/lib/cdp-client.test.ts` — unit tests for the thin CDP client
+  - Create `ogre-desktop/src/lib/cdp-actions.test.ts` — unit tests for all CDP actions
+  - Follow the exact mock structure from `playwright-executor.test.ts` (lines 1-17)
+  - **cdp-client.test.ts** must test:
+    - `isConnected()` returns `false` initially
+    - `connect(99999)` returns `false` when no CDP server (no throw)
+    - `isConnected()` returns `false` after failed connection
+    - `disconnect()` does not throw when not connected
+    - `send()` rejects when not connected
+  - **cdp-actions.test.ts** must test:
+    - All 5 `pw*` functions return `{ success: false, error: string }` when not connected (never throw)
+    - `connectCDP()` without port argument calls `invoke('get_cdp_port')`
+    - `cdpScreenshot()` returns data URL format when mocked connected
+    - `pwClick`, `pwType`, `pwReadText`, `pwWaitFor`, `pwScroll` all return `ActionResult`
+  - Mock strategy:
+    - `vi.mock('@tauri-apps/api/core')` for invoke
+    - `vi.mock('./cdp-client')` for the CDP client singleton
+    - Use `beforeEach` to clear mocks and disconnect
+  - Test naming: follow existing `describe('module: category')` + `test('descriptive name')` pattern from `playwright-executor.test.ts`
+
+  **Must NOT do**:
+  - Do NOT test against a real CDP server — all tests use mocks
+  - Do NOT import `playwright-core` in any test file
+  - Do NOT modify existing test files (only create new ones)
+
+  **Recommended Agent Profile**:
+  - **Category**: `unspecified-high`
+    - Reason: Test writing with careful mocking of WebSocket, Tauri invoke, and CDP protocol — needs precision but not deep architecture
+  - **Skills**: []
+
+  **Parallelization**:
+  - **Can Run In Parallel**: YES (with Task 3, after Task 1)
+  - **Parallel Group**: Wave 2
+  - **Blocks**: Task 5 (tests must pass before integration swap)
+  - **Blocked By**: Task 1 (cdp-client.ts), Task 3 (cdp-actions.ts)
+
+  **References**:
+
+  **Pattern References**:
+  - `ogre-desktop/src/lib/playwright-executor.test.ts` — FULL FILE (80 lines). Copy this exact testing structure: mock setup at top, `beforeEach` with `vi.clearAllMocks()`, `describe` groups for connection state + actions when not connected. Mirror every test for the new CDP modules.
+  - `ogre-desktop/src/lib/agent-loop.test.ts:3-22` — Mock pattern for browser module. Shows how to mock Tauri IPC (`vi.mock('./browser')`) and validate mock calls.
+  - `ogre-desktop/src/lib/browser-actions.test.ts:1-20` — Mock setup for browser-actions tests. Shows the pattern for mocking multiple modules and setting up mock return values.
+
+  **WHY Each Reference Matters**:
+  - `playwright-executor.test.ts`: This is the test file being REPLACED. New tests must cover the same scenarios with same rigor.
+  - `agent-loop.test.ts:3-22`: Shows the project's standard mock pattern for Tauri API calls.
+  - `browser-actions.test.ts:1-20`: Shows how multiple module mocks are combined in this project.
+
+  **Acceptance Criteria**:
+  - [ ] File `ogre-desktop/src/lib/cdp-client.test.ts` exists
+  - [ ] File `ogre-desktop/src/lib/cdp-actions.test.ts` exists
+  - [ ] `npx vitest run src/lib/cdp-client.test.ts` — all tests pass
+  - [ ] `npx vitest run src/lib/cdp-actions.test.ts` — all tests pass
+  - [ ] cdp-client tests cover: connect-fail, disconnect-safe, isConnected-initial, send-when-disconnected
+  - [ ] cdp-actions tests cover: all 5 pw* functions when disconnected, connectCDP invoke call, cdpScreenshot format
+  - [ ] Tests use `vi.mock` (not real network calls)
+
+  **QA Scenarios:**
+
+  ```
+  Scenario: All new tests pass
+    Tool: Bash
+    Preconditions: cdp-client.test.ts and cdp-actions.test.ts exist
+    Steps:
+      1. Run `npx vitest run src/lib/cdp-client.test.ts` in ogre-desktop/
+      2. Run `npx vitest run src/lib/cdp-actions.test.ts` in ogre-desktop/
+      3. Assert both exit with code 0 and show all tests passing
+    Expected Result: Both test suites pass with 0 failures
+    Failure Indicators: Non-zero exit code, test failures, import errors
+    Evidence: .sisyphus/evidence/task-4-tests-pass.txt
+
+  Scenario: Full test suite still passes (no regressions)
+    Tool: Bash
+    Preconditions: All new test files exist
+    Steps:
+      1. Run `npm run test` in ogre-desktop/
+      2. Assert exit code 0
+      3. Verify no existing tests broke
+    Expected Result: All tests pass including new ones
+    Failure Indicators: Any test failure in existing suites
+    Evidence: .sisyphus/evidence/task-4-full-suite.txt
+  ```
+
+  **Evidence to Capture:**
+  - [ ] task-4-tests-pass.txt — individual test suite output
+  - [ ] task-4-full-suite.txt — full npm test output
+
+  **Commit**: YES (grouped with Wave 2)
+  - Message: `test(agent): add unit tests for CDP client and actions`
+  - Files: `ogre-desktop/src/lib/cdp-client.test.ts`, `ogre-desktop/src/lib/cdp-actions.test.ts`
+  - Pre-commit: `cd ogre-desktop && npm run test`
+
+### Wave 3 — Integration + Cleanup (After Wave 2)
+
+- [ ] 5. Swap Integration — Replace Playwright with CDP in `browser-actions.ts`
+
+  **What to do**:
+  - Modify `ogre-desktop/src/lib/browser-actions.ts` line 20:
+    - Change: `import { isConnected, pwClick, pwType, pwReadText, pwWaitFor, pwScroll } from './playwright-executor'`
+    - To: `import { isConnected, pwClick, pwType, pwReadText, pwWaitFor, pwScroll } from './cdp-actions'`
+    - This is the ONLY change needed in browser-actions.ts — the function signatures are identical
+  - Modify `ogre-desktop/src/lib/browser-actions.test.ts`:
+    - Update any `vi.mock('./playwright-executor')` to `vi.mock('./cdp-actions')`
+    - Update any import references from `playwright-executor` to `cdp-actions`
+  - Remove `playwright-core` from `ogre-desktop/package.json`:
+    - Delete the `playwright-core` entry from `devDependencies`
+    - Run `npm install` to update `package-lock.json`
+  - Remove playwright-core exclusion from `ogre-desktop/vite.config.js`:
+    - Delete the `optimizeDeps: { exclude: ['playwright-core'] }` block
+    - Resulting config: just `plugins: [svelte()]`
+  - Delete old Playwright files:
+    - Delete `ogre-desktop/src/lib/playwright-executor.ts`
+    - Delete `ogre-desktop/src/lib/playwright-executor.test.ts`
+  - Verify: `grep -r 'playwright-executor' ogre-desktop/src/lib/` returns zero matches
+  - Verify: `grep 'playwright-core' ogre-desktop/package.json` returns zero matches
+
+  **Must NOT do**:
+  - Do NOT change ANY function signatures in browser-actions.ts
+  - Do NOT modify the `executeAction` dispatcher logic — only the import path changes
+  - Do NOT modify `agent-types.ts`
+  - Do NOT touch batch grading code
+  - Do NOT remove html2canvas or ensureHtml2CanvasLoaded
+
+  **Recommended Agent Profile**:
+  - **Category**: `quick`
+    - Reason: Import path swap + file deletion + config cleanup. No logic changes. Purely mechanical.
+  - **Skills**: []
+
+  **Parallelization**:
+  - **Can Run In Parallel**: NO (needs Tasks 3, 4 complete)
+  - **Parallel Group**: Wave 3 (with Task 6)
+  - **Blocks**: F1-F4 (final verification)
+  - **Blocked By**: Task 3 (cdp-actions.ts), Task 4 (tests pass)
+
+  **References**:
+
+  **Pattern References**:
+  - `ogre-desktop/src/lib/browser-actions.ts:20` — The import line to change. ONLY this line changes in browser-actions.ts.
+  - `ogre-desktop/src/lib/browser-actions.ts:362-376` — The dispatch logic. Read it to confirm it only calls: `isConnected()`, `pwClick()`, `pwType()`, `pwReadText()`, `pwWaitFor()`, `pwScroll()`. These are the exact exports from cdp-actions.ts.
+  - `ogre-desktop/src/lib/browser-actions.test.ts:1-20` — Mock references to update from playwright-executor to cdp-actions.
+  - `ogre-desktop/vite.config.js` — Full file (9 lines). Remove the `optimizeDeps` block.
+  - `ogre-desktop/package.json` — Find `playwright-core` in devDependencies. Remove it.
+
+  **WHY Each Reference Matters**:
+  - `browser-actions.ts:20`: This is THE integration point. One import line change swaps the entire executor.
+  - `browser-actions.test.ts`: Test mocks reference playwright-executor — must update to cdp-actions.
+  - `vite.config.js`: The exclude was only needed because playwright-core can't be bundled. No longer needed.
+
+  **Acceptance Criteria**:
+  - [ ] `browser-actions.ts` line 20 imports from `./cdp-actions` (not `./playwright-executor`)
+  - [ ] `playwright-executor.ts` and `playwright-executor.test.ts` are DELETED
+  - [ ] `grep -r 'playwright-executor' ogre-desktop/src/lib/` returns zero matches
+  - [ ] `grep 'playwright-core' ogre-desktop/package.json` returns zero matches
+  - [ ] `vite.config.js` has no `optimizeDeps.exclude` for playwright-core
+  - [ ] `npm run test` passes in ogre-desktop/ (all tests still green)
+  - [ ] `npm run build` succeeds in ogre-desktop/ (no bundling errors)
+
+  **QA Scenarios:**
+
+  ```
+  Scenario: Build succeeds without playwright-core
+    Tool: Bash
+    Preconditions: All changes applied
+    Steps:
+      1. Run `npm run build` in ogre-desktop/
+      2. Assert exit code 0
+      3. Verify no 'playwright' in build output warnings/errors
+    Expected Result: Clean build with no playwright references
+    Failure Indicators: Build error mentioning playwright, missing module
+    Evidence: .sisyphus/evidence/task-5-build.txt
+
+  Scenario: Zero playwright references remain
+    Tool: Bash
+    Preconditions: Files deleted, imports swapped
+    Steps:
+      1. Run `grep -r 'playwright-executor' ogre-desktop/src/lib/`
+      2. Run `grep -r 'playwright-core' ogre-desktop/src/lib/`
+      3. Run `grep 'playwright-core' ogre-desktop/package.json`
+      4. Assert all return zero matches
+    Expected Result: No trace of playwright in source or config
+    Failure Indicators: Any grep returning matches
+    Evidence: .sisyphus/evidence/task-5-no-playwright.txt
+
+  Scenario: All tests still pass after swap
+    Tool: Bash
+    Preconditions: Import swapped, old files deleted
+    Steps:
+      1. Run `npm run test` in ogre-desktop/
+      2. Assert exit code 0
+    Expected Result: All tests pass (existing + new CDP tests)
+    Failure Indicators: Test failures, import errors
+    Evidence: .sisyphus/evidence/task-5-tests.txt
+  ```
+
+  **Evidence to Capture:**
+  - [ ] task-5-build.txt — build output
+  - [ ] task-5-no-playwright.txt — grep verification
+  - [ ] task-5-tests.txt — test output
+
+  **Commit**: YES (Wave 3)
+  - Message: `refactor(agent): swap browser-actions to CDP client, remove playwright dependency`
+  - Files: `ogre-desktop/src/lib/browser-actions.ts`, `ogre-desktop/src/lib/browser-actions.test.ts`, `ogre-desktop/vite.config.js`, `ogre-desktop/package.json`, deleted `playwright-executor.ts`, deleted `playwright-executor.test.ts`
+  - Pre-commit: `cd ogre-desktop && npm run test && npm run build`
+
+- [ ] 6. CDP Screenshot Path in `browser.ts`
+
+  **What to do**:
+  - Modify `ogre-desktop/src/lib/browser.ts` function `captureWebviewScreenshot()` (line 254):
+    - Import `isConnected` and `cdpScreenshot` from `./cdp-actions` at the top of the file
+    - Add a CDP-first path at the beginning of `captureWebviewScreenshot()`:
+      ```
+      // Try CDP screenshot first (native, no CDN dependency)
+      if (isConnected()) {
+        try {
+          return await cdpScreenshot();
+        } catch {
+          // Fall through to html2canvas
+        }
+      }
+      ```
+    - The existing html2canvas path below remains UNTOUCHED as fallback
+    - This means: when CDP is connected, screenshots are native (no CDN needed). When not connected, html2canvas works as before.
+  - This is a small, surgical change: ~8 lines added at the top of one function, plus 1 import line.
+
+  **Must NOT do**:
+  - Do NOT remove `ensureHtml2CanvasLoaded()` or the html2canvas fallback path
+  - Do NOT modify `captureWebviewArea()` or `cropImageData()`
+  - Do NOT replace `evalScript`/`evalScriptJSON` with CDP calls
+  - Do NOT modify any other function in browser.ts
+  - Do NOT change the return type — still returns `Promise<string>` (data URL)
+
+  **Recommended Agent Profile**:
+  - **Category**: `quick`
+    - Reason: 8 lines of code added to one function + 1 import. Purely additive. No logic changes to existing code.
+  - **Skills**: []
+
+  **Parallelization**:
+  - **Can Run In Parallel**: YES (with Task 5, after Task 3)
+  - **Parallel Group**: Wave 3
+  - **Blocks**: F1-F4 (final verification)
+  - **Blocked By**: Task 3 (cdp-actions.ts — needs `cdpScreenshot` export), Task 5 (must complete first since it removes playwright-executor which browser.ts doesn't depend on, but cleanup order matters)
+
+  **References**:
+
+  **Pattern References**:
+  - `ogre-desktop/src/lib/browser.ts:254-280` — `captureWebviewScreenshot()` function. The CDP try-catch block goes at lines 255-261 (before `ensureHtml2CanvasLoaded()`). Do NOT modify lines 256-280 (the html2canvas path).
+  - `ogre-desktop/src/lib/cdp-actions.ts` — Task 3 output. Import `cdpScreenshot` and `isConnected` from here.
+  - `ogre-desktop/src/lib/browser.ts:223-238` — `ensureHtml2CanvasLoaded()`. Must be PRESERVED. The CDP path is an optimization, not a replacement.
+
+  **WHY Each Reference Matters**:
+  - `browser.ts:254-280`: This is the exact function to modify. Adding CDP at the top preserves the entire fallback chain.
+  - `cdp-actions.ts`: Source of `cdpScreenshot()` — returns same format (`data:image/jpeg;base64,...`).
+
+  **Acceptance Criteria**:
+  - [ ] `captureWebviewScreenshot()` tries CDP screenshot first when `isConnected()` is true
+  - [ ] Falls back to html2canvas when CDP is not connected
+  - [ ] Falls back to html2canvas when CDP screenshot throws
+  - [ ] `ensureHtml2CanvasLoaded()` is NOT removed
+  - [ ] Return type unchanged: `Promise<string>`
+  - [ ] TypeScript compiles: `npx tsc --noEmit`
+  - [ ] `npm run test` passes
+
+  **QA Scenarios:**
+
+  ```
+  Scenario: html2canvas fallback preserved when CDP unavailable
+    Tool: Bash (vitest)
+    Preconditions: browser.ts modified, cdp-actions mocked as disconnected
+    Steps:
+      1. Mock isConnected() to return false
+      2. Mock evalScript/evalScriptJSON for html2canvas path
+      3. Call captureWebviewScreenshot()
+      4. Assert html2canvas path was used (evalScript called)
+      5. Assert cdpScreenshot was NOT called
+    Expected Result: Falls back to html2canvas when CDP unavailable
+    Failure Indicators: cdpScreenshot called when not connected, or function throws
+    Evidence: .sisyphus/evidence/task-6-fallback.txt
+
+  Scenario: TypeScript compiles with browser.ts changes
+    Tool: Bash
+    Preconditions: browser.ts modified
+    Steps:
+      1. Run `npx tsc --noEmit` in ogre-desktop/
+      2. Assert exit code 0
+    Expected Result: No type errors
+    Failure Indicators: Type errors in browser.ts
+    Evidence: .sisyphus/evidence/task-6-typecheck.txt
+  ```
+
+  **Evidence to Capture:**
+  - [ ] task-6-fallback.txt — fallback test output
+  - [ ] task-6-typecheck.txt — TypeScript compilation output
+
+  **Commit**: YES (grouped with Wave 3)
+  - Message: `feat(agent): CDP screenshot path with html2canvas fallback`
+  - Files: `ogre-desktop/src/lib/browser.ts`
+  - Pre-commit: `cd ogre-desktop && npx tsc --noEmit`
+
 ---
 
 ## Final Verification Wave (MANDATORY — after ALL implementation tasks)
