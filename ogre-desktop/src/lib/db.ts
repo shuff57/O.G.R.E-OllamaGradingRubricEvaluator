@@ -63,6 +63,18 @@ export interface BatchSession {
   timestamp: string;
 }
 
+
+export interface Skill {
+  id: string;
+  name: string;
+  description: string;
+  content: string;
+  source: string | null;
+  source_id: string | null;
+  is_active: number;
+  created_at: string;
+  updated_at: string;
+}
 // ── Database Singleton ───────────────────────────────────────────────────
 
 let db: Database | null = null;
@@ -514,4 +526,95 @@ export async function saveBatchSession(url: string, lastStudentName: string): Pr
 export async function clearBatchSession(url: string): Promise<void> {
   const database = await initDB();
   await database.execute("DELETE FROM batch_session WHERE url = $1", [url]);
+}
+
+
+// ── Skills ──────────────────────────────────────────────────────────────
+
+/**
+ * Get all skills, ordered by name.
+ */
+export async function getSkills(): Promise<Skill[]> {
+  const database = await initDB();
+  return await database.select<Skill[]>("SELECT * FROM skills ORDER BY name");
+}
+
+/**
+ * Get only active skills (is_active = 1), ordered by name.
+ */
+export async function getActiveSkills(): Promise<Skill[]> {
+  const database = await initDB();
+  return await database.select<Skill[]>("SELECT * FROM skills WHERE is_active = 1 ORDER BY name");
+}
+
+/**
+ * Get a single skill by id. Returns null if not found.
+ */
+export async function getSkill(id: string): Promise<Skill | null> {
+  const database = await initDB();
+  const rows = await database.select<Skill[]>("SELECT * FROM skills WHERE id = $1", [id]);
+  return rows.length > 0 ? rows[0] : null;
+}
+
+/**
+ * Save (upsert) a skill.
+ * If id is provided and exists, updates the skill.
+ * Otherwise, inserts a new skill with a generated UUID.
+ */
+export async function saveSkill(skill: {
+  id?: string;
+  name: string;
+  description?: string;
+  content?: string;
+  source?: string | null;
+  source_id?: string | null;
+  is_active?: number;
+}): Promise<string> {
+  const database = await initDB();
+  const id = skill.id || crypto.randomUUID();
+  if (skill.id) {
+    await database.execute(
+      `UPDATE skills SET name = $1, description = $2, content = $3, source = $4, source_id = $5, is_active = $6, updated_at = datetime('now') WHERE id = $7`,
+      [skill.name, skill.description ?? '', skill.content ?? '', skill.source ?? null, skill.source_id ?? null, skill.is_active ?? 0, skill.id]
+    );
+    return skill.id;
+  } else {
+    await database.execute(
+      `INSERT INTO skills (id, name, description, content, source, source_id, is_active) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [id, skill.name, skill.description ?? '', skill.content ?? '', skill.source ?? null, skill.source_id ?? null, skill.is_active ?? 0]
+    );
+    return id;
+  }
+}
+
+/**
+ * Toggle a skill's active state.
+ */
+export async function updateSkillActive(id: string, isActive: number): Promise<void> {
+  const database = await initDB();
+  await database.execute(
+    "UPDATE skills SET is_active = $1, updated_at = datetime('now') WHERE id = $2",
+    [isActive, id]
+  );
+}
+
+/**
+ * Delete a skill by id.
+ */
+export async function deleteSkill(id: string): Promise<void> {
+  const database = await initDB();
+  await database.execute("DELETE FROM skills WHERE id = $1", [id]);
+}
+
+/**
+ * Find a skill by its source and source_id.
+ * Useful for checking if a skill from a particular source already exists.
+ */
+export async function getSkillBySource(source: string, sourceId: string): Promise<Skill | null> {
+  const database = await initDB();
+  const rows = await database.select<Skill[]>(
+    "SELECT * FROM skills WHERE source = $1 AND source_id = $2",
+    [source, sourceId]
+  );
+  return rows.length > 0 ? rows[0] : null;
 }

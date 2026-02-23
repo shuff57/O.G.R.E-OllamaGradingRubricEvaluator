@@ -30,8 +30,16 @@ import {
   getBatchSession,
   saveBatchSession,
   clearBatchSession,
+  getSkills,
+  getActiveSkills,
+  getSkill,
+  saveSkill,
+  updateSkillActive,
+  deleteSkill,
+  getSkillBySource,
   type SiteCredential,
   type BatchSession,
+  type Skill,
 } from './db';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -308,5 +316,168 @@ describe('db.ts — Batch Session CRUD', () => {
     mockSelect.mockResolvedValueOnce([session2]);
     const result2 = await getBatchSession('https://site-b.com/grade');
     expect(result2?.last_student_name).toBe('Bob');
+  });
+});
+
+
+// ── Tests: Skills CRUD ─────────────────────────────────────────────────
+
+function makeSkill(overrides: Partial<Skill> = {}): Skill {
+  return {
+    id: 'skill-uuid-1',
+    name: 'Test Skill',
+    description: 'A test skill',
+    content: 'skill content here',
+    source: null,
+    source_id: null,
+    is_active: 0,
+    created_at: '2025-01-01T00:00:00',
+    updated_at: '2025-01-01T00:00:00',
+    ...overrides,
+  };
+}
+
+describe('db.ts — Skills CRUD', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // ── getSkills ──────────────────────────────────────────────────────
+
+  it('getSkills returns array ordered by name', async () => {
+    const skills = [
+      makeSkill({ id: 'a', name: 'Alpha' }),
+      makeSkill({ id: 'b', name: 'Beta' }),
+    ];
+    mockSelect.mockResolvedValueOnce(skills);
+
+    const result = await getSkills();
+    expect(result).toEqual(skills);
+    expect(result).toHaveLength(2);
+    expect(mockSelect).toHaveBeenCalledWith(
+      'SELECT * FROM skills ORDER BY name',
+    );
+  });
+
+  it('getSkills returns empty array when no skills exist', async () => {
+    mockSelect.mockResolvedValueOnce([]);
+
+    const result = await getSkills();
+    expect(result).toEqual([]);
+    expect(result).toHaveLength(0);
+  });
+
+  // ── getActiveSkills ────────────────────────────────────────────────
+
+  it('getActiveSkills returns only skills where is_active=1', async () => {
+    const active = [makeSkill({ id: 'a', name: 'Active', is_active: 1 })];
+    mockSelect.mockResolvedValueOnce(active);
+
+    const result = await getActiveSkills();
+    expect(result).toEqual(active);
+    expect(mockSelect).toHaveBeenCalledWith(
+      'SELECT * FROM skills WHERE is_active = 1 ORDER BY name',
+    );
+  });
+
+  // ── getSkill ───────────────────────────────────────────────────────
+
+  it('getSkill returns skill when found', async () => {
+    const skill = makeSkill();
+    mockSelect.mockResolvedValueOnce([skill]);
+
+    const result = await getSkill('skill-uuid-1');
+    expect(result).toEqual(skill);
+    expect(mockSelect).toHaveBeenCalledWith(
+      'SELECT * FROM skills WHERE id = $1',
+      ['skill-uuid-1'],
+    );
+  });
+
+  it('getSkill returns null when not found', async () => {
+    mockSelect.mockResolvedValueOnce([]);
+
+    const result = await getSkill('nonexistent');
+    expect(result).toBeNull();
+  });
+
+  // ── saveSkill ──────────────────────────────────────────────────────
+
+  it('saveSkill inserts new skill (no id) and returns UUID string', async () => {
+    mockExecute.mockResolvedValueOnce({});
+
+    const id = await saveSkill({ name: 'New Skill' });
+    expect(typeof id).toBe('string');
+    expect(id.length).toBeGreaterThan(0);
+    expect(mockExecute).toHaveBeenCalledTimes(1);
+
+    const sql = mockExecute.mock.calls[0][0] as string;
+    expect(sql).toContain('INSERT INTO skills');
+  });
+
+  it('saveSkill updates existing skill (with id) and returns same id', async () => {
+    mockExecute.mockResolvedValueOnce({});
+
+    const id = await saveSkill({ id: 'existing-id', name: 'Updated Skill' });
+    expect(id).toBe('existing-id');
+    expect(mockExecute).toHaveBeenCalledTimes(1);
+
+    const sql = mockExecute.mock.calls[0][0] as string;
+    expect(sql).toContain('UPDATE skills');
+  });
+
+  // ── updateSkillActive ──────────────────────────────────────────────
+
+  it('updateSkillActive(id, 1) calls execute with correct SQL', async () => {
+    mockExecute.mockResolvedValueOnce({});
+
+    await updateSkillActive('skill-1', 1);
+    expect(mockExecute).toHaveBeenCalledWith(
+      "UPDATE skills SET is_active = $1, updated_at = datetime('now') WHERE id = $2",
+      [1, 'skill-1'],
+    );
+  });
+
+  it('updateSkillActive(id, 0) calls execute with correct SQL', async () => {
+    mockExecute.mockResolvedValueOnce({});
+
+    await updateSkillActive('skill-1', 0);
+    expect(mockExecute).toHaveBeenCalledWith(
+      "UPDATE skills SET is_active = $1, updated_at = datetime('now') WHERE id = $2",
+      [0, 'skill-1'],
+    );
+  });
+
+  // ── deleteSkill ────────────────────────────────────────────────────
+
+  it('deleteSkill calls DELETE with correct id', async () => {
+    mockExecute.mockResolvedValueOnce({});
+
+    await deleteSkill('skill-to-delete');
+    expect(mockExecute).toHaveBeenCalledWith(
+      'DELETE FROM skills WHERE id = $1',
+      ['skill-to-delete'],
+    );
+  });
+
+  // ── getSkillBySource ───────────────────────────────────────────────
+
+  it('getSkillBySource returns skill when found', async () => {
+    const skill = makeSkill({ source: 'github', source_id: 'repo-123' });
+    mockSelect.mockResolvedValueOnce([skill]);
+
+    const result = await getSkillBySource('github', 'repo-123');
+    expect(result).toEqual(skill);
+    expect(mockSelect).toHaveBeenCalledWith(
+      'SELECT * FROM skills WHERE source = $1 AND source_id = $2',
+      ['github', 'repo-123'],
+    );
+  });
+
+  it('getSkillBySource returns null when not found', async () => {
+    mockSelect.mockResolvedValueOnce([]);
+
+    const result = await getSkillBySource('github', 'nonexistent');
+    expect(result).toBeNull();
   });
 });

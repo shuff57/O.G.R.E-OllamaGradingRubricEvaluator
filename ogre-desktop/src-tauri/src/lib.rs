@@ -740,6 +740,24 @@ INSERT OR IGNORE INTO app_settings (key, value) VALUES ('history_visible_columns
 CREATE UNIQUE INDEX IF NOT EXISTS idx_batch_session_url ON batch_session(url);",
             kind: MigrationKind::Up,
         },
+        // Migration 8: skills table for Skills system
+        Migration {
+            version: 8,
+            description: "create_skills",
+            sql: "CREATE TABLE IF NOT EXISTS skills (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    content TEXT NOT NULL DEFAULT '',
+    source TEXT,
+    source_id TEXT,
+    is_active INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_skills_source ON skills(source, source_id) WHERE source IS NOT NULL;",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
