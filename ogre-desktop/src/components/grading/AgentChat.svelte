@@ -49,6 +49,7 @@
   let agentState: AgentState = $state('idle');
   let activeProvider: string = $state('');
   let activeModel: string = $state('');
+  let compactMode: boolean = $state(true);
   let messages: DisplayMessage[] = $state([
     { type: 'text', role: 'assistant', content: 'Hello! I can control the browser for you. Describe what you want me to do.' }
   ]);
@@ -57,6 +58,40 @@
   let pendingAction: PendingAction | null = $state(null);
   let chatContainer: HTMLElement | undefined = $state(undefined);
   let controller: AgentController = $state(createAgentController());
+
+  // ============================================================================
+  // Helpers
+  // ============================================================================
+
+  /** Extract a short target label from action params for compact badge display. */
+  function getBadgeTarget(action: string, params: Record<string, unknown>): string {
+    if (typeof params.selector === 'string' && params.selector) return params.selector;
+    if (typeof params.url === 'string' && params.url) {
+      // Trim long URLs
+      const url = params.url as string;
+      return url.length > 40 ? url.slice(0, 37) + '…' : url;
+    }
+    if (typeof params.text === 'string' && params.text) {
+      const t = params.text as string;
+      return t.length > 30 ? t.slice(0, 27) + '…' : t;
+    }
+    return '';
+  }
+
+  /** Build the one-line compact badge label for an action message. */
+  function getBadgeLabel(msg: ActionMessage): string {
+    const target = getBadgeTarget(msg.action, msg.params);
+    const base = target ? `[${msg.action}] ${target}` : `[${msg.action}]`;
+    if (msg.status === 'done') {
+      return msg.result?.success
+        ? `${base} → ✓`
+        : `${base} → ✗ ${msg.result?.error ?? 'failed'}`;
+    }
+    if (msg.status === 'executing') return `${base} → …`;
+    if (msg.status === 'skipped') return `${base} → skipped`;
+    // proposing
+    return base;
+  }
 
   // ============================================================================
   // Event Handlers
@@ -144,7 +179,7 @@
     agentState = 'thinking';
     scrollToBottom();
 
-    const gen = controller.start({ mode, initialMessage: text, provider: activeProvider, model: activeModel });
+    const gen = controller.start({ mode, initialMessage: text, provider: activeProvider, model: activeModel, compact: compactMode });
 
     for await (const event of gen) {
       handleEvent(event);
@@ -232,6 +267,14 @@
           Auto
         </button>
       </div>
+      <!-- Compact mode toggle -->
+      <button
+        class="mode-btn compact-toggle {compactMode ? 'active' : ''}"
+        onclick={() => compactMode = !compactMode}
+        title={compactMode ? 'Switch to verbose mode' : 'Switch to compact mode'}
+      >
+        {compactMode ? 'Compact' : 'Verbose'}
+      </button>
       <button
         class="btn-ghost small danger"
         onclick={handleStop}
@@ -260,26 +303,40 @@
             <div class="message-content">{msg.content}</div>
           </div>
         {:else if msg.type === 'action'}
-          <div class="message action {msg.status}">
-            <div class="message-label">Action: {msg.action}</div>
-            <div class="message-content">
-              <div class="action-reasoning">{msg.reasoning}</div>
+          {#if compactMode}
+            <!-- Compact badge: single-line action status -->
+            <div class="compact-badge {msg.status === 'done' ? (msg.result?.success ? 'badge-success' : 'badge-failure') : msg.status === 'executing' ? 'badge-executing' : msg.status === 'proposing' ? 'badge-proposing' : 'badge-skipped'}">
+              <span class="badge-text">{getBadgeLabel(msg)}</span>
               {#if msg.status === 'proposing' && pendingAction}
                 <div class="action-buttons">
                   <button class="btn-approve" onclick={handleApprove}>✓ Approve</button>
                   <button class="btn-skip" onclick={handleSkip}>✗ Skip</button>
                 </div>
-              {:else if msg.status === 'executing'}
-                <div class="action-status executing">Executing...</div>
-              {:else if msg.status === 'done'}
-                <div class="action-status {msg.result?.success ? 'success' : 'failed'}">
-                  {msg.result?.success ? '✓ Done' : '✗ Failed: ' + (msg.result?.error ?? '')}
-                </div>
-              {:else if msg.status === 'skipped'}
-                <div class="action-status skipped">Skipped</div>
               {/if}
             </div>
-          </div>
+          {:else}
+            <!-- Verbose mode: full action card -->
+            <div class="message action {msg.status}">
+              <div class="message-label">Action: {msg.action}</div>
+              <div class="message-content">
+                <div class="action-reasoning">{msg.reasoning}</div>
+                {#if msg.status === 'proposing' && pendingAction}
+                  <div class="action-buttons">
+                    <button class="btn-approve" onclick={handleApprove}>✓ Approve</button>
+                    <button class="btn-skip" onclick={handleSkip}>✗ Skip</button>
+                  </div>
+                {:else if msg.status === 'executing'}
+                  <div class="action-status executing">Executing...</div>
+                {:else if msg.status === 'done'}
+                  <div class="action-status {msg.result?.success ? 'success' : 'failed'}">
+                    {msg.result?.success ? '✓ Done' : '✗ Failed: ' + (msg.result?.error ?? '')}
+                  </div>
+                {:else if msg.status === 'skipped'}
+                  <div class="action-status skipped">Skipped</div>
+                {/if}
+              </div>
+            </div>
+          {/if}
         {:else if msg.type === 'system'}
           <div class="message system {msg.variant}">
             <div class="message-content">{msg.content}</div>
@@ -287,7 +344,7 @@
         {/if}
       {/each}
 
-      {#if agentState === 'thinking'}
+      {#if agentState === 'thinking' && !compactMode}
         <div class="message assistant loading">
           <div class="message-label">Agent</div>
           <div class="message-content">
@@ -570,7 +627,68 @@
     cursor: not-allowed;
   }
 
-  /* Action messages */
+  /* Compact mode toggle button */
+  .compact-toggle {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: 3px 10px;
+    font-size: 0.78rem;
+    background: none;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .compact-toggle.active {
+    background: var(--color-primary, #3b82f6);
+    color: #fff;
+    border-color: var(--color-primary, #3b82f6);
+  }
+
+  /* ── Compact action badges ── */
+  .compact-badge {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-1);
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    border-left: 3px solid var(--color-border);
+    background-color: var(--color-bg-sidebar);
+    font-size: 0.82rem;
+    font-family: var(--font-mono, monospace);
+    align-self: stretch;
+  }
+
+  .compact-badge .badge-text {
+    color: var(--color-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .compact-badge.badge-proposing {
+    border-left-color: #f59e0b;
+  }
+
+  .compact-badge.badge-executing {
+    border-left-color: var(--color-primary, #3b82f6);
+    opacity: 0.8;
+  }
+
+  .compact-badge.badge-success {
+    border-left-color: #22c55e;
+  }
+
+  .compact-badge.badge-failure {
+    border-left-color: var(--color-error, #e74c3c);
+  }
+
+  .compact-badge.badge-skipped {
+    border-left-color: var(--color-text-secondary);
+    opacity: 0.6;
+  }
+
+  /* Action messages (verbose mode) */
   .message.action {
     align-self: stretch;
     background-color: var(--color-bg-sidebar);

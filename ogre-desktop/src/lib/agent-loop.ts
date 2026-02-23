@@ -53,6 +53,8 @@ export interface AgentLoopConfig {
   provider?: string;
   /** Model to use for AI calls */
   model?: string;
+  /** When true (default), skip emitting 'thinking' events in auto mode for compact output */
+  compact?: boolean;
 }
 
 // ============================================================================
@@ -103,6 +105,9 @@ export function createAgentController(): AgentController {
     let lastActionKey = '';
     let lastActionRepeatCount = 0;
 
+    const isCompact = config.compact ?? true;
+    /** Tracks the action key of the last selector failure that triggered a screenshot retry */
+    let lastFailedAction: string | null = null;
     while (true) {
       // ── Safety checks ──
       if (signal.aborted) {
@@ -119,7 +124,9 @@ export function createAgentController(): AgentController {
       }
 
       // ── Step 1: Capture page state ──
-      yield { type: 'thinking' };
+      if (!(isCompact && config.mode === 'auto')) {
+        yield { type: 'thinking' };
+      }
 
       let dom = '';
       let screenshot: string | undefined;
@@ -229,13 +236,47 @@ export function createAgentController(): AgentController {
         content: `Action result: ${JSON.stringify(result)}`,
       });
 
+      // ── Step 6b: Screenshot retry on selector failure ──
+      // If a selector-based action failed with "not found", capture a screenshot
+      // and ask AI to suggest a better selector. Capped at 1 retry per action.
+      const selectorFailed =
+        !result.success &&
+        action !== 'done' &&
+        typeof params.selector === 'string' &&
+        result.error &&
+        /not found|element not found/i.test(result.error);
+
+      const currentActionKey = JSON.stringify({ action, params });
+      if (selectorFailed && lastFailedAction !== currentActionKey) {
+        lastFailedAction = currentActionKey;
+        // Take screenshot of current page state
+        try {
+          const retryScreenshot = await captureWebviewScreenshot();
+          conversationHistory.push({
+            role: 'user',
+            content: 'The selector failed. Here is a screenshot of the current page. Please analyze and suggest a better selector.',
+            ...(retryScreenshot ? { screenshot: retryScreenshot } as any : {}),
+          });
+        } catch {
+          conversationHistory.push({
+            role: 'user',
+            content: 'The selector failed. Screenshot capture was unavailable. Please analyze the DOM and suggest a better selector.',
+          });
+        }
+        // Do NOT increment stepCount — this is a free retry
+        continue;
+      }
+
+      // Clear retry tracker on successful action or different failure
+      if (result.success) {
+        lastFailedAction = null;
+      }
       // ── Step 7: Check for done action ──
       if (action === 'done') {
         const message = (params as { message?: string }).message ?? 'Task completed';
         yield { type: 'done', message };
         return;
       }
-
       stepCount++;
 
       // ── Step 8: Delay between actions ──
