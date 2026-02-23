@@ -156,7 +156,12 @@ IMPORTANT RULES:
 5. Call done() when the user's goal is accomplished or if you cannot proceed
 6. runJS ALWAYS requires user approval — the system will pause and ask
 7. If you are unsure what to do, use readText or screenshot to get more context
-8. Prefer specific selectors (id, name, aria-label) over fragile ones (class, nth-child)`;
+8. Prefer specific selectors (id, name, aria-label) over fragile ones (class, nth-child)
+9. If your CSS selector fails, the system will attempt to find a similar element automatically.
+   When a fuzzy match is used, you'll see "Fuzzy matched via..." in the action result.
+   Use this feedback to correct your selectors in subsequent actions.
+10. Prefer using exact element text content or aria-labels in selectors, as these
+    are more robust for fuzzy matching when IDs/classes don't match.`;
 
 // ============================================================================
 // Response Parser

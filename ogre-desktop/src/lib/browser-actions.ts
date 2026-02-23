@@ -15,6 +15,9 @@ import {
   captureWebviewScreenshot,
   navigateEmbedded,
 } from './browser';
+import { findFuzzyMatch, fuzzyMatchReason } from './agent-dom-fuzzy';
+import { captureInteractiveDom } from './agent-dom';
+import { isConnected, pwClick, pwType, pwReadText, pwWaitFor, pwScroll } from './playwright-executor';
 
 // ============================================================================
 // Helpers
@@ -265,26 +268,93 @@ function doneAction(success: boolean, message: string): ActionResult {
  * @returns ActionResult — always resolves, never throws
  */
 export async function executeAction(params: ActionParams): Promise<ActionResult> {
+  // ---- inner dispatch: CDP → evalScript, no retry ----
+  async function dispatch(p: ActionParams): Promise<ActionResult> {
+    // CDP path: use Playwright when connected
+    if (isConnected()) {
+      switch (p.action) {
+        case 'click':
+          return pwClick(p.selector);
+        case 'type':
+          return pwType(p.selector, p.text, p.clear);
+        case 'readText':
+          return pwReadText(p.selector);
+        case 'waitFor':
+          return pwWaitFor(p.selector, p.timeoutMs);
+        case 'scroll':
+          return pwScroll(p.direction, p.amount);
+        // All other actions fall through to evalScript below
+      }
+    }
+
+    // evalScript path
+    switch (p.action) {
+      case 'click':
+        return clickAction(p.selector);
+      case 'type':
+        return typeAction(p.selector, p.text, p.clear);
+      case 'scroll':
+        return scrollAction(p.direction, p.amount);
+      case 'readText':
+        return readTextAction(p.selector);
+      case 'screenshot':
+        return screenshotAction();
+      case 'waitFor':
+        return waitForAction(p.selector, p.timeoutMs);
+      case 'navigate':
+        return navigateAction(p.url);
+      case 'runJS':
+        return runJSAction(p.code);
+      case 'done':
+        return doneAction(p.success, p.message);
+      default:
+        return { success: false, error: `Unknown action: ${(p as any).action}` };
+    }
+  }
+
+  // Extract selector for potential fuzzy retry (only selector-based actions)
+  let originalSelector: string | undefined;
   switch (params.action) {
     case 'click':
-      return clickAction(params.selector);
     case 'type':
-      return typeAction(params.selector, params.text, params.clear);
-    case 'scroll':
-      return scrollAction(params.direction, params.amount);
-    case 'readText':
-      return readTextAction(params.selector);
-    case 'screenshot':
-      return screenshotAction();
     case 'waitFor':
-      return waitForAction(params.selector, params.timeoutMs);
-    case 'navigate':
-      return navigateAction(params.url);
-    case 'runJS':
-      return runJSAction(params.code);
-    case 'done':
-      return doneAction(params.success, params.message);
-    default:
-      return { success: false, error: `Unknown action: ${(params as any).action}` };
+      originalSelector = params.selector;
+      break;
+    case 'readText':
+      originalSelector = params.selector;
+      break;
   }
+
+  const result = await dispatch(params);
+
+  // ---- Fuzzy DOM retry: selector-based failures only, max 1 retry ----
+  if (
+    originalSelector &&
+    !result.success &&
+    result.error &&
+    /not found|element not found/i.test(result.error)
+  ) {
+    try {
+      const elements = await captureInteractiveDom();
+      const match = findFuzzyMatch(originalSelector, elements);
+      if (match) {
+        const retryParams = { ...params, selector: match.selector } as ActionParams;
+        const retryResult = await dispatch(retryParams);
+        if (retryResult.success) {
+          return {
+            ...retryResult,
+            data: {
+              ...((retryResult.data as object) || {}),
+              fuzzyMatch: fuzzyMatchReason(originalSelector, match, 0),
+            },
+          };
+        }
+        return retryResult;
+      }
+    } catch {
+      // captureInteractiveDom failed — return original failure
+    }
+  }
+
+  return result;
 }

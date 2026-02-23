@@ -28,6 +28,17 @@ type EvalRegistry = Arc<Mutex<HashMap<String, oneshot::Sender<String>>>>;
 /// Maximum number of automatic restart attempts after a crash.
 const MAX_RESTART_ATTEMPTS: u32 = 3;
 
+#[derive(serde::Serialize)]
+struct OAuthCallbackResult {
+    code: String,
+    state: String,
+    port: u16,
+}
+
+struct OAuthCallbackState {
+    cancel_tx: Option<oneshot::Sender<()>>,
+}
+
 /// Spawn the grading-server sidecar, wire up log forwarding and crash recovery.
 fn spawn_sidecar(app_handle: &tauri::AppHandle, restart_count: Arc<Mutex<u32>>) {
     let handle = app_handle.clone();
@@ -355,7 +366,7 @@ async fn inject_autofill(app: tauri::AppHandle, script: String) -> Result<(), St
 /// Execute JavaScript in the embedded browser and return the result.
 /// 
 /// Uses message passing: injects wrapper script that executes code and calls back with result.
-/// Timeout: 10 seconds. Returns JSON-serialized result.
+/// Timeout: 120 seconds. Returns JSON-serialized result.
 #[tauri::command]
 async fn eval_webview_script(
     app: tauri::AppHandle,
@@ -400,9 +411,9 @@ async fn eval_webview_script(
     wv.eval(&wrapper)
         .map_err(|e| format!("Failed to inject eval script: {}", e))?;
     
-    // Wait for callback with 10s timeout
+    // Wait for callback with 120s timeout
     match tokio::time::timeout(
-        tokio::time::Duration::from_secs(10),
+        tokio::time::Duration::from_secs(120),
         rx
     ).await {
         Ok(Ok(result)) => Ok(result),
@@ -416,7 +427,7 @@ async fn eval_webview_script(
             // Cleanup on timeout
             let mut guard = registry.lock().unwrap();
             guard.remove(&eval_id);
-            Err("Timeout waiting for eval result (10s)".to_string())
+            Err("Timeout waiting for eval result (120s)".to_string())
         },
     }
 }
@@ -450,8 +461,174 @@ async fn _eval_callback(
     Ok(())
 }
 
+// ── OAuth Callback Server Commands ───────────────────────────────────────
+
+/// Process an incoming TCP connection for OAuth callback.
+async fn process_oauth_connection(
+    stream: &mut tokio::net::TcpStream,
+    actual_port: u16,
+) -> Result<OAuthCallbackResult, String> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    // Read HTTP request until \r\n\r\n
+    let mut buf = vec![0u8; 4096];
+    let mut total = 0usize;
+    loop {
+        let n = stream.read(&mut buf[total..]).await
+            .map_err(|e| format!("Read failed: {}", e))?;
+        if n == 0 { break; }
+        total += n;
+        if buf[..total].windows(4).any(|w| w == b"\r\n\r\n") {
+            break;
+        }
+        if total >= buf.len() { break; }
+    }
+
+    let request = String::from_utf8_lossy(&buf[..total]).to_string();
+    let first_line = request.lines().next().unwrap_or("");
+    let path = first_line.split_whitespace().nth(1).unwrap_or("");
+    let query_string = path.split('?').nth(1).unwrap_or("");
+
+    let params: HashMap<String, String> =
+        url::form_urlencoded::parse(query_string.as_bytes())
+            .into_owned()
+            .collect();
+
+    // Check for OAuth error response
+    if let Some(error) = params.get("error") {
+        let desc = params.get("error_description").cloned().unwrap_or_default();
+        let body = format!(
+            "<html><body><h1>Authentication Failed</h1><p>{}: {}</p></body></html>",
+            error, desc
+        );
+        let response = format!(
+            "HTTP/1.1 400 Bad Request\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(), body
+        );
+        let _ = stream.write_all(response.as_bytes()).await;
+        let _ = stream.shutdown().await;
+        return Err(format!("OAuth error: {}: {}", error, desc));
+    }
+
+    let code = params.get("code")
+        .ok_or("Missing 'code' parameter in OAuth callback")?
+        .clone();
+    let state_val = params.get("state")
+        .ok_or("Missing 'state' parameter in OAuth callback")?
+        .clone();
+
+    // Send success response to browser
+    let body = "<html><body><h1>Authentication successful!</h1><p>You can close this tab.</p></body></html>";
+    let response = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        body.len(), body
+    );
+    let _ = stream.write_all(response.as_bytes()).await;
+    let _ = stream.shutdown().await;
+
+    Ok(OAuthCallbackResult { code, state: state_val, port: actual_port })
+}
+
+#[tauri::command]
+async fn start_oauth_callback_server(
+    app: tauri::AppHandle,
+    port: u16,
+) -> Result<OAuthCallbackResult, String> {
+    // Try binding to requested port, fall back to port+1 through port+19
+    let listener = {
+        let mut bound = None;
+        for offset in 0u16..20 {
+            let try_port = port.checked_add(offset).ok_or("Port overflow")?;
+            match tokio::net::TcpListener::bind(format!("0.0.0.0:{}", try_port)).await {
+                Ok(l) => { bound = Some(l); break; }
+                Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => continue,
+                Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => continue,
+                Err(e) => return Err(format!("Failed to bind port {}: {}", try_port, e)),
+            }
+        }
+        bound.ok_or_else(|| format!("All ports {}-{} are in use or reserved", port, port + 19))?
+    };
+
+    let actual_port = listener.local_addr()
+        .map_err(|e| format!("Failed to get local addr: {}", e))?
+        .port();
+
+    // Set up cancellation channel
+    let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
+    {
+        let state = app.state::<Mutex<OAuthCallbackState>>();
+        let mut guard = state.lock().unwrap();
+        guard.cancel_tx = Some(cancel_tx);
+    }
+
+    let result = tokio::select! {
+        accept_result = listener.accept() => {
+            match accept_result {
+                Ok((mut stream, _)) => process_oauth_connection(&mut stream, actual_port).await,
+                Err(e) => Err(format!("Accept failed: {}", e)),
+            }
+        }
+        _ = cancel_rx => {
+            Err("OAuth cancelled".to_string())
+        }
+        _ = tokio::time::sleep(std::time::Duration::from_secs(300)) => {
+            Err("OAuth timeout (5 minutes)".to_string())
+        }
+    };
+
+    // Clean up: remove cancel_tx from state
+    {
+        let state = app.state::<Mutex<OAuthCallbackState>>();
+        let mut guard = state.lock().unwrap();
+        guard.cancel_tx = None;
+    }
+
+    result
+}
+
+#[tauri::command]
+async fn stop_oauth_callback_server(
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let state = app.state::<Mutex<OAuthCallbackState>>();
+    let cancel_tx = {
+        let mut guard = state.lock().unwrap();
+        guard.cancel_tx.take()
+    };
+
+    if let Some(tx) = cancel_tx {
+        let _ = tx.send(());
+    }
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // === CDP: Enable Chrome DevTools Protocol for embedded browser automation ===
+    // MUST be set before WebView2 creates its browser process (before .build()).
+    // In debug builds, always enable CDP on port 9222 for agent mode development.
+    // In production, only enable when OGRE_CDP_PORT env var is set.
+    #[cfg(debug_assertions)]
+    {
+        if std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").is_err() {
+            std::env::set_var(
+                "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+                "--remote-debugging-port=9222",
+            );
+            eprintln!("[ogre] CDP enabled on port 9222 (debug build)");
+        }
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        if let Ok(port) = std::env::var("OGRE_CDP_PORT") {
+            std::env::set_var(
+                "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+                format!("--remote-debugging-port={}", port),
+            );
+            eprintln!("[ogre] CDP enabled on port {} (production)", port);
+        }
+    }
     let migrations = vec![
         // Migration 1: provider_configs table + WAL mode
         Migration {
@@ -580,6 +757,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_batch_session_url ON batch_session(url);",
             inject_autofill,
             eval_webview_script,
             _eval_callback,
+            start_oauth_callback_server,
+            stop_oauth_callback_server,
         ])
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_http::init())
@@ -601,6 +780,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_batch_session_url ON batch_session(url);",
         .manage(Mutex::new(SidecarState { child: None, status_item: None }))
         .manage(Mutex::new(WebviewState { label: None }))
         .manage(EvalRegistry::new(Mutex::new(HashMap::new())))
+        .manage(Mutex::new(OAuthCallbackState { cancel_tx: None }))
         .setup(|app| {
             let handle = app.handle().clone();
 
