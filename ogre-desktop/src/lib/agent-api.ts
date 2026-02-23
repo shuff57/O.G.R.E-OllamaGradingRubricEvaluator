@@ -71,6 +71,11 @@ export async function sendAgentRequest(request: AgentApiRequest): Promise<AgentA
     return parseAgentResponse(data.content);
   }
   
+  if (data.response && typeof data.response === 'string') {
+    // Server's /api/agent endpoint wraps raw AI text in { response: string }
+    return parseAgentResponse(data.response);
+  }
+  
   // If it's a raw string, parse it
   if (typeof data === 'string') {
     return parseAgentResponse(data);
