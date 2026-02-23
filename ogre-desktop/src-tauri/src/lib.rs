@@ -39,6 +39,10 @@ struct OAuthCallbackState {
     cancel_tx: Option<oneshot::Sender<()>>,
 }
 
+struct CdpPortState {
+    port: Option<u16>,
+}
+
 /// Spawn the grading-server sidecar, wire up log forwarding and crash recovery.
 fn spawn_sidecar(app_handle: &tauri::AppHandle, restart_count: Arc<Mutex<u32>>) {
     let handle = app_handle.clone();
@@ -603,31 +607,38 @@ async fn stop_oauth_callback_server(
     Ok(())
 }
 
+
+#[tauri::command]
+fn get_cdp_port(state: tauri::State<CdpPortState>) -> Result<Option<u16>, String> {
+    Ok(state.port)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // === CDP: Enable Chrome DevTools Protocol for embedded browser automation ===
-    // MUST be set before WebView2 creates its browser process (before .build()).
-    // In debug builds, always enable CDP on port 9222 for agent mode development.
-    // In production, only enable when OGRE_CDP_PORT env var is set.
-    #[cfg(debug_assertions)]
-    {
-        if std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").is_err() {
-            std::env::set_var(
-                "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
-                "--remote-debugging-port=9222",
-            );
-            eprintln!("[ogre] CDP enabled on port 9222 (debug build)");
+    // === CDP: Dynamic port allocation for embedded browser automation ===
+    // Try ports 9222-9242 sequentially. MUST be set before WebView2 creates its browser process.
+    let cdp_port: Option<u16> = {
+        let mut found = None;
+        for port in 9222u16..=9242 {
+            match std::net::TcpListener::bind(format!("127.0.0.1:{}", port)) {
+                Ok(_listener) => {
+                    // Port is available — use it (listener drops here, releasing the port)
+                    found = Some(port);
+                    break;
+                }
+                Err(_) => continue,
+            }
         }
-    }
-    #[cfg(not(debug_assertions))]
-    {
-        if let Ok(port) = std::env::var("OGRE_CDP_PORT") {
-            std::env::set_var(
-                "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
-                format!("--remote-debugging-port={}", port),
-            );
-            eprintln!("[ogre] CDP enabled on port {} (production)", port);
-        }
+        found
+    };
+    if let Some(port) = cdp_port {
+        std::env::set_var(
+            "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+            format!("--remote-debugging-port={}", port),
+        );
+        eprintln!("[ogre] CDP enabled on port {} (dynamic allocation)", port);
+    } else {
+        eprintln!("[ogre] CDP unavailable: all ports 9222-9242 are in use");
     }
     let migrations = vec![
         // Migration 1: provider_configs table + WAL mode
@@ -777,6 +788,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_skills_source ON skills(source, source_id)
             _eval_callback,
             start_oauth_callback_server,
             stop_oauth_callback_server,
+            get_cdp_port,
         ])
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_http::init())
@@ -799,6 +811,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_skills_source ON skills(source, source_id)
         .manage(Mutex::new(WebviewState { label: None }))
         .manage(EvalRegistry::new(Mutex::new(HashMap::new())))
         .manage(Mutex::new(OAuthCallbackState { cancel_tx: None }))
+        .manage(CdpPortState { port: cdp_port })
         .setup(|app| {
             let handle = app.handle().clone();
 
