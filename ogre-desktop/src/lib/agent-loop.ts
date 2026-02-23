@@ -49,6 +49,10 @@ export interface AgentLoopConfig {
   initialMessage: string;
   config?: Partial<AgentConfig>;
   signal?: AbortSignal;
+  /** Provider to use for AI calls (overrides server active provider) */
+  provider?: string;
+  /** Model to use for AI calls */
+  model?: string;
 }
 
 // ============================================================================
@@ -140,6 +144,8 @@ export function createAgentController(): AgentController {
           messages: conversationHistory as any,
           dom: dom || undefined,
           screenshot,
+          provider: config.provider || undefined,
+          model: config.model || undefined,
         });
       } catch (err: unknown) {
         yield { type: 'error', message: err instanceof Error ? err.message : 'AI request failed' };

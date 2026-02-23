@@ -139,6 +139,10 @@ export interface AgentApiRequest {
   dom?: string;
   /** Optional screenshot (base64) */
   screenshot?: string;
+  /** Override active provider (e.g. 'ollama', 'openai') */
+  provider?: string;
+  /** Override active model */
+  model?: string;
 }
 
 /** Response indicating an action to execute. */

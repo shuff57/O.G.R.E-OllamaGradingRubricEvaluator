@@ -6,6 +6,7 @@
   import { createAgentController } from '../../lib/agent-loop';
   import type { AgentEvent, AgentController } from '../../lib/agent-loop';
   import type { AgentMode, AgentState } from '../../lib/agent-types';
+  import ProviderSelector from './ProviderSelector.svelte';
 
   // ============================================================================
   // Message Types
@@ -46,6 +47,8 @@
 
   let mode: AgentMode = $state('review');
   let agentState: AgentState = $state('idle');
+  let activeProvider: string = $state('');
+  let activeModel: string = $state('');
   let messages: DisplayMessage[] = $state([
     { type: 'text', role: 'assistant', content: 'Hello! I can control the browser for you. Describe what you want me to do.' }
   ]);
@@ -141,7 +144,7 @@
     agentState = 'thinking';
     scrollToBottom();
 
-    const gen = controller.start({ mode, initialMessage: text });
+    const gen = controller.start({ mode, initialMessage: text, provider: activeProvider, model: activeModel });
 
     for await (const event of gen) {
       handleEvent(event);
@@ -203,6 +206,12 @@
 </script>
 
 <section class="agent-chat">
+  <ProviderSelector
+    bind:provider={activeProvider}
+    bind:model={activeModel}
+    disabled={agentState !== 'idle'}
+  />
+
   <div class="chat-header">
     <span class="chat-title">Agent</span>
     <div class="chat-actions">

@@ -137,13 +137,13 @@ export function parseAgentResponse(rawText: string): AgentApiResponse {
       
       // Validate: is it an action response?
       if (parsed.action && typeof parsed.action === 'string') {
-        // Build params object excluding the action field
-        const { action, ...params } = parsed;
-        return {
-          action,
-          params,
-          reasoning: parsed.reasoning,
-        } as AgentActionResponse;
+        // System prompt instructs AI to use { action, params: {...}, reasoning } format.
+        // Use parsed.params if it's a plain object; fall back to spreading flat fields.
+        const { action, params: nestedParams, reasoning, ...flatParams } = parsed;
+        const params = (nestedParams && typeof nestedParams === 'object' && !Array.isArray(nestedParams))
+          ? nestedParams
+          : flatParams;
+        return { action, params, reasoning } as AgentActionResponse;
       }
       
       // Is it a text response?
