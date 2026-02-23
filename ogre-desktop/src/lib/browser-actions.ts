@@ -17,7 +17,7 @@ import {
 } from './browser';
 import { findFuzzyMatch, fuzzyMatchReason } from './agent-dom-fuzzy';
 import { captureInteractiveDom } from './agent-dom';
-import { isConnected, pwClick, pwType, pwReadText, pwWaitFor, pwScroll } from './playwright-executor';
+import { isConnected, pwClick, pwType, pwReadText, pwWaitFor, pwScroll } from './cdp-actions';
 
 // ============================================================================
 // Helpers

@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { generateAutoFillScript } from './autofill';
+import { isConnected, cdpScreenshot } from './cdp-actions';
 
 // --- Embedded Browser Functions ---
 
@@ -252,6 +253,15 @@ async function ensureHtml2CanvasLoaded(): Promise<void> {
  * // screenshot is "data:image/jpeg;base64,/9j/4AAQ..."
  */
 export async function captureWebviewScreenshot(): Promise<string> {
+  // Try CDP screenshot first (native, no CDN dependency)
+  if (isConnected()) {
+    try {
+      return await cdpScreenshot();
+    } catch {
+      // Fall through to html2canvas
+    }
+  }
+
   // Step 1: Load html2canvas (cached after first call)
   await ensureHtml2CanvasLoaded();
 

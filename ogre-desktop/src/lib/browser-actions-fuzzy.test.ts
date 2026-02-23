@@ -17,7 +17,7 @@ vi.mock('./agent-dom-fuzzy', () => ({
   fuzzyMatchReason: vi.fn().mockReturnValue('Fuzzy matched via text: Submit → #submit-btn'),
 }));
 
-vi.mock('./playwright-executor', () => ({
+vi.mock('./cdp-actions', () => ({
   isConnected: vi.fn().mockReturnValue(false),
   pwClick: vi.fn(),
   pwType: vi.fn(),
