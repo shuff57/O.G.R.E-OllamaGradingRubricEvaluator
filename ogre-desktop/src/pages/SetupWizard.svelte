@@ -5,10 +5,10 @@
     fetchAvailableModels,
     startGitHubDeviceFlow,
     startChatGPTDeviceFlow,
-    startClaudeCodePasteFlow,
+    startClaudeOAuthFlow,
     startGoogleDeviceFlow
   } from '../lib/oauth';
-  import type { DeviceFlowResult, CodePasteFlowResult } from '../lib/oauth';
+  import type { DeviceFlowResult } from '../lib/oauth';
   import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 
   const dispatch = createEventDispatcher();
@@ -25,8 +25,6 @@
 
   // Device flow state
   let deviceFlows: Record<string, DeviceFlowResult> = {};
-  let claudeFlow: CodePasteFlowResult | null = null;
-  let claudeCodeInput = '';
   let authLoading: Record<string, boolean> = {};
   let authErrors: Record<string, string> = {};
 
@@ -129,9 +127,8 @@
         const flow = await startGoogleDeviceFlow();
         handleDeviceFlow(providerId, flow);
       } else if (providerId === 'anthropic') {
-        const flow = await startClaudeCodePasteFlow();
-        claudeFlow = flow;
-        claudeCodeInput = '';
+        const flow = await startClaudeOAuthFlow();
+        handleDeviceFlow(providerId, flow);
       }
     } catch (err: any) {
       console.error('Auth start failed:', err);
@@ -174,40 +171,9 @@
     }
   }
 
-  async function submitClaudeCode() {
-    if (!claudeFlow || !claudeCodeInput) return;
-
-    authLoading['anthropic'] = true;
-    authErrors['anthropic'] = '';
-    authLoading = { ...authLoading };
-    authErrors = { ...authErrors };
-
-    try {
-      const result = await claudeFlow.exchangeCode(claudeCodeInput);
-      if (result.success) {
-        oauthSignedIn['anthropic'] = true;
-        oauthSignedIn = { ...oauthSignedIn };
-        fetchModels('anthropic');
-        claudeFlow = null;
-        claudeCodeInput = '';
-      } else {
-        authErrors['anthropic'] = result.error || 'Code exchange failed';
-        authErrors = { ...authErrors };
-      }
-    } catch (err: any) {
-      authErrors['anthropic'] = err instanceof Error ? err.message : String(err);
-      authErrors = { ...authErrors };
-    } finally {
-      authLoading['anthropic'] = false;
-      authLoading = { ...authLoading };
-    }
-  }
 
   function cancelAuth(providerId: string) {
-    if (providerId === 'anthropic' && claudeFlow) {
-      claudeFlow.cancel();
-      claudeFlow = null;
-    } else if (deviceFlows[providerId]) {
+    if (deviceFlows[providerId]) {
       deviceFlows[providerId].cancel();
       delete deviceFlows[providerId];
       deviceFlows = { ...deviceFlows };
@@ -471,19 +437,6 @@
                                <p class="instructions">2. Authorize access in the browser, then wait...</p>
                                <div class="polling-indicator">
                                   <span class="spinner-icon">&#8987;</span> Waiting for authorization...
-                               </div>
-                               <button class="link-btn" on:click={() => cancelAuth(provider.id)}>Cancel</button>
-                             </div>
-                          {:else if provider.id === 'anthropic' && claudeFlow}
-                             <!-- Claude code paste flow -->
-                             <div class="device-flow-box">
-                               <p class="instructions">Authorization page opened in browser.</p>
-                               <p class="instructions">Copy the code from Claude and paste it here:</p>
-                               <div class="code-input-row">
-                                  <input type="text" bind:value={claudeCodeInput} placeholder="Paste code here...">
-                                  <button class="btn-primary small" disabled={!claudeCodeInput || authLoading['anthropic']} on:click={submitClaudeCode}>
-                                    {#if authLoading['anthropic']}...{:else}Submit{/if}
-                                  </button>
                                </div>
                                <button class="link-btn" on:click={() => cancelAuth(provider.id)}>Cancel</button>
                              </div>
@@ -1028,21 +981,4 @@
     display: inline-block;
   }
 
-  .code-input-row {
-    display: flex;
-    gap: 0.5rem;
-  }
-
-  .code-input-row input {
-    flex: 1;
-    padding: 0.5rem;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 0.9rem;
-  }
-
-  .btn-primary.small {
-    padding: 0.4rem 0.8rem;
-    font-size: 0.85rem;
-  }
 </style>
