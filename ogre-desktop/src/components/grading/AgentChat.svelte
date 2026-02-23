@@ -30,7 +30,7 @@
   interface SystemMessage {
     type: 'system';
     content: string;
-    variant: 'info' | 'error' | 'done';
+    variant: 'info' | 'error' | 'done' | 'compact';
   }
 
   type DisplayMessage = TextMessage | ActionMessage | SystemMessage;
@@ -50,6 +50,10 @@
   let activeProvider: string = $state('');
   let activeModel: string = $state('');
   let compactMode: boolean = $state(true);
+  /** Estimated context usage percentage (0–100). Updated each agent loop iteration. */
+  let contextPercent: number = $state(0);
+  /** Estimated tokens used in the last API call. */
+  let contextUsed: number = $state(0);
   let messages: DisplayMessage[] = $state([
     { type: 'text', role: 'assistant', content: 'Hello! I can control the browser for you. Describe what you want me to do.' }
   ]);
@@ -156,6 +160,19 @@
         errorText = event.message;
         pendingAction = null;
         break;
+
+      case 'context':
+        contextPercent = event.percent;
+        contextUsed = event.usedTokens;
+        break;
+
+      case 'compacted':
+        messages = [...messages, {
+          type: 'system',
+          content: `🗜 Context freed · trimmed ${event.droppedMessages} old turn${event.droppedMessages !== 1 ? 's' : ''}`,
+          variant: 'compact',
+        }];
+        break;
     }
   }
 
@@ -248,8 +265,25 @@
   />
 
   <div class="chat-header">
-    <span class="chat-title">Agent</span>
+    <div class="chat-title-row">
+      <span class="chat-title">Agent</span>
+      {#if agentState !== 'idle'}
+        <span class="activity-dot" title="Agent active"></span>
+      {/if}
+    </div>
     <div class="chat-actions">
+      <!-- Context usage pill -->
+      {#if contextPercent > 0}
+        <div
+          class="ctx-pill"
+          class:ctx-mid={contextPercent > 50}
+          class:ctx-high={contextPercent > 75}
+          class:ctx-crit={contextPercent > 90}
+          title="~{contextUsed.toLocaleString()} / 200K tokens used"
+        >
+          ctx {contextPercent}%
+        </div>
+      {/if}
       <!-- Mode toggle -->
       <div class="mode-toggle">
         <button
@@ -395,12 +429,67 @@
     padding: 0 var(--spacing-1);
   }
 
+  .chat-title-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
   .chat-title {
     font-size: 0.85rem;
     font-weight: 600;
     color: var(--color-text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.04em;
+  }
+
+  /* Pulsing activity dot — visible while agent is running */
+  .activity-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--color-primary, #3b82f6);
+    animation: pulse-dot 1.1s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.35; transform: scale(0.65); }
+  }
+
+  /* Context usage pill */
+  .ctx-pill {
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-size: 0.72rem;
+    font-family: var(--font-mono, monospace);
+    background: rgba(34, 197, 94, 0.1);
+    color: #22c55e;
+    border: 1px solid rgba(34, 197, 94, 0.25);
+    transition: background 0.3s, color 0.3s, border-color 0.3s;
+    white-space: nowrap;
+  }
+  .ctx-pill.ctx-mid {
+    background: rgba(245, 158, 11, 0.1);
+    color: #f59e0b;
+    border-color: rgba(245, 158, 11, 0.25);
+  }
+  .ctx-pill.ctx-high {
+    background: rgba(249, 115, 22, 0.1);
+    color: #f97316;
+    border-color: rgba(249, 115, 22, 0.25);
+  }
+  .ctx-pill.ctx-crit {
+    background: rgba(239, 68, 68, 0.12);
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.3);
+    animation: ctx-warn 0.8s ease-in-out infinite alternate;
+  }
+  @keyframes ctx-warn {
+    from { opacity: 1; }
+    to   { opacity: 0.65; }
   }
 
   .chat-actions {
@@ -808,5 +897,15 @@
     background: rgba(231, 76, 60, 0.08);
     border-color: var(--color-error, #e74c3c);
     color: var(--color-error, #e74c3c);
+  }
+
+  /* Compaction notice — purple/violet, smaller than standard system messages */
+  .message.system.compact {
+    background: rgba(139, 92, 246, 0.06);
+    border-color: rgba(139, 92, 246, 0.4);
+    color: #8b5cf6;
+    font-size: 0.76rem;
+    padding: 4px 10px;
+    font-family: var(--font-mono, monospace);
   }
 </style>
