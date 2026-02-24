@@ -9,7 +9,7 @@
    * Rubric state (rubricText, rubricMaxScore, extractedRubric, sourceRubricId,
    * batchPhase, essayPrompt) is owned by GradingPanel; RubricCard renders the UI.
    */
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, untrack } from 'svelte';
   import {
     BatchGrader,
     DEFAULT_MYOPENMATH_PROFILE,
@@ -271,30 +271,34 @@
   $effect(() => {
     const url = pageLoadedUrl;
     if (!url) return; // ignore empty initial value
-
-    // Auto-stop if batch is active
-    if (batchPhase !== 'idle' || isBatchRunning) {
-      isAutoStopped = true;
-      stopActiveBatch(batchHandle, batchGrader, pausedResultBuffer);
-      const reset = buildBatchResetState();
-      batchPhase = reset.batchPhase;
-      batchProgress = reset.batchProgress;
-      batchLog = reset.batchLog;
-      extractedRubric = reset.extractedRubric;
-      rubricText = reset.rubricText;
-      phaseMessage = reset.phaseMessage;
-      batchError = reset.batchError;
-      batchGrader = reset.batchGrader;
-      batchHandle = reset.batchHandle;
-      isBatchRunning = reset.isBatchRunning;
-      isBatchPaused = reset.isBatchPaused;
-      currentStudentName = reset.currentStudentName;
-      resumeAfter = reset.resumeAfter;
-      stopTimer();
-    }
-
-    // Re-detect profile and session for new URL
-    doRefreshPageData();
+    // Use untrack() so batchPhase and isBatchRunning are NOT tracked as
+    // dependencies of this effect. Without it, changing batchPhase to
+    // 'extracting' (on batch start) would re-run the effect with the same
+    // URL and immediately trigger the auto-stop.
+    untrack(() => {
+      // Auto-stop if batch is active
+      if (batchPhase !== 'idle' || isBatchRunning) {
+        isAutoStopped = true;
+        stopActiveBatch(batchHandle, batchGrader, pausedResultBuffer);
+        const reset = buildBatchResetState();
+        batchPhase = reset.batchPhase;
+        batchProgress = reset.batchProgress;
+        batchLog = reset.batchLog;
+        extractedRubric = reset.extractedRubric;
+        rubricText = reset.rubricText;
+        phaseMessage = reset.phaseMessage;
+        batchError = reset.batchError;
+        batchGrader = reset.batchGrader;
+        batchHandle = reset.batchHandle;
+        isBatchRunning = reset.isBatchRunning;
+        isBatchPaused = reset.isBatchPaused;
+        currentStudentName = reset.currentStudentName;
+        resumeAfter = reset.resumeAfter;
+        stopTimer();
+      }
+      // Re-detect profile and session for new URL
+      doRefreshPageData();
+    });
   });
 
   // ── Manual refresh trigger ──────────────────────────────────────────

@@ -240,30 +240,50 @@ function delay(ms: number): Promise<void> {
  */
 export async function extractStudents(selectors: SiteSelectors): Promise<Student[]> {
   await ensureTurndownLoaded();
-  const result = await evalScriptJSON<Student[] | null>(`(function() {
-    var sel = ${JSON.stringify(selectors)};
-    if (!sel.studentSection) return null;
-    var students = Array.from(document.querySelectorAll(sel.studentSection));
-    return students.map(function(s, i) {
+  if (!selectors.studentSection) {
+    throw new Error('Failed to extract students. Check that the site profile selectors are correct.');
+  }
+
+  // Get total student count
+  const count = await evalScriptJSON<number>(
+    `document.querySelectorAll(${JSON.stringify(selectors.studentSection)}).length`
+  );
+  if (!count) {
+    throw new Error('Failed to extract students. Check that the site profile selectors are correct.');
+  }
+
+  const students: Student[] = [];
+  const selJson = JSON.stringify(selectors);
+
+  for (let i = 0; i < count; i++) {
+    const student = await evalScriptJSON<Student | null>(`(function() {
+      var sel = ${selJson};
+      var s = document.querySelectorAll(sel.studentSection)[${i}];
+      if (!s) return null;
+
+      // Jump to this student so the extraction is visible
+      s.scrollIntoView({ block: 'start' });
       var region = sel.questionRegion ? s.querySelector(sel.questionRegion) : null;
       var responseDiv = (region && region.children[1] && region.children[1].children[1])
         ? region.children[1].children[1]
         : null;
       var fbBox = sel.feedbackBox ? s.querySelector(sel.feedbackBox) : null;
       return {
-        index: i,
-        name: (s.querySelector(sel.studentName) ? s.querySelector(sel.studentName).textContent.trim() : '') || ('Student ' + (i + 1)),
+        index: ${i},
+        name: (s.querySelector(sel.studentName) ? s.querySelector(sel.studentName).textContent.trim() : '') || ('Student ' + (${i} + 1)),
         currentScore: s.querySelector(sel.scoreInput) ? s.querySelector(sel.scoreInput).value : '',
         hasFeedback: (fbBox ? fbBox.textContent.trim().length : 0) > 0,
         response: responseDiv ? (function() { try { return window.__turndownService.turndown(responseDiv.innerHTML); } catch(e) { return responseDiv.textContent.trim(); } })() : ''
       };
-    });
   })()`);
+    if (student) students.push(student);
+    await delay(50); // brief pause so each student is visible before jumping to the next
+  }
 
-  if (!result || !Array.isArray(result)) {
+  if (students.length === 0) {
     throw new Error('Failed to extract students. Check that the site profile selectors are correct.');
   }
-  return result;
+  return students;
 }
 
 /**

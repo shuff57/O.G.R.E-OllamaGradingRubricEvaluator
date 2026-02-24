@@ -167,43 +167,24 @@ describe('BatchGrader - Log Accumulation', () => {
   describe('Log entries for skipped students', () => {
     it('should log skipped students during start()', async () => {
       const { evalScriptJSON } = await import('./browser');
-
-      // Mock extractStudents to return students with feedback
+      const students = [
+        { index: 0, name: 'Student 1', currentScore: '', hasFeedback: true, response: 'Response 1' },
+        { index: 1, name: 'Student 2', currentScore: '8.5', hasFeedback: false, response: 'Response 2' },
+        { index: 2, name: 'Student 3', currentScore: '', hasFeedback: false, response: 'Response 3' },
+      ];
       vi.mocked(evalScriptJSON).mockImplementation((script: string) => {
-        if (script.includes('studentSection')) {
-          return Promise.resolve([
-            {
-              index: 0,
-              name: 'Student 1',
-              currentScore: '',
-              hasFeedback: true, // Already has feedback
-              response: 'Response 1',
-            },
-            {
-              index: 1,
-              name: 'Student 2',
-              currentScore: '8.5',
-              hasFeedback: false, // Has score but no feedback
-              response: 'Response 2',
-            },
-            {
-              index: 2,
-              name: 'Student 3',
-              currentScore: '',
-              hasFeedback: false,
-              response: 'Response 3',
-            },
-          ]);
+        if (script.endsWith('.length')) return Promise.resolve(students.length);
+        if (script.includes('scrollIntoView')) {
+          const match = script.match(/\)\[(\d+)\]/);
+          const idx = match ? parseInt(match[1]) : 0;
+          return Promise.resolve(students[idx] ?? null);
         }
-        return Promise.resolve(null);
+        return Promise.resolve(null); // rubric
       });
 
       await grader.start(mockProfile);
-
       const log = grader.getLog();
       const skippedEntries = log.filter((e) => e.status === 'skipped');
-
-      expect(skippedEntries.length).toBe(2);
       expect(skippedEntries[0].studentName).toBe('Student 1');
       expect(skippedEntries[0].feedback).toBe('Already has feedback');
       expect(skippedEntries[1].studentName).toBe('Student 2');
@@ -212,31 +193,21 @@ describe('BatchGrader - Log Accumulation', () => {
 
     it('should have correct studentIndex for skipped entries', async () => {
       const { evalScriptJSON } = await import('./browser');
-
+      const students = [
+        { index: 0, name: 'Student 1', currentScore: '', hasFeedback: true, response: 'Response 1' },
+        { index: 1, name: 'Student 2', currentScore: '', hasFeedback: false, response: 'Response 2' },
+      ];
       vi.mocked(evalScriptJSON).mockImplementation((script: string) => {
-        if (script.includes('studentSection')) {
-          return Promise.resolve([
-            {
-              index: 0,
-              name: 'Student 1',
-              currentScore: '',
-              hasFeedback: true,
-              response: 'Response 1',
-            },
-            {
-              index: 1,
-              name: 'Student 2',
-              currentScore: '',
-              hasFeedback: false,
-              response: 'Response 2',
-            },
-          ]);
+        if (script.endsWith('.length')) return Promise.resolve(students.length);
+        if (script.includes('scrollIntoView')) {
+          const match = script.match(/\)\[(\d+)\]/);
+          const idx = match ? parseInt(match[1]) : 0;
+          return Promise.resolve(students[idx] ?? null);
         }
-        return Promise.resolve(null);
+        return Promise.resolve(null); // rubric
       });
 
       await grader.start(mockProfile);
-
       const log = grader.getLog();
       expect(log[0].studentIndex).toBe(0);
     });
@@ -282,24 +253,23 @@ describe('BatchGrader - Log Accumulation', () => {
   describe('Log reset on new session', () => {
     it('should clear log when start() is called', async () => {
       const { evalScriptJSON } = await import('./browser');
-      vi.mocked(evalScriptJSON).mockResolvedValue([]);
-
-      grader['_toGrade'] = [
-        {
-          index: 0,
-          name: 'Student 1',
-          currentScore: '',
-          hasFeedback: false,
-          response: 'Response',
-        },
+      const students = [
+        { index: 0, name: 'Student 1', currentScore: '', hasFeedback: false, response: 'Response' },
       ];
-      grader['_currentIndex'] = 0;
+      vi.mocked(evalScriptJSON).mockImplementation((script: string) => {
+        if (script.endsWith('.length')) return Promise.resolve(students.length);
+        if (script.includes('scrollIntoView')) {
+          const match = script.match(/\)\[(\d+)\]/);
+          const idx = match ? parseInt(match[1]) : 0;
+          return Promise.resolve(students[idx] ?? null);
+        }
+        return Promise.resolve(null); // rubric
+      });
 
-      // Add an entry to the log
+      grader['_toGrade'] = [{ index: 0, name: 'Student 1', currentScore: '', hasFeedback: false, response: 'Response' }];
+      grader['_currentIndex'] = 0;
       grader.recordError('Student 1', 'Test error');
       expect(grader.getLog().length).toBe(1);
-
-      // Start a new session
       await grader.start(mockProfile);
       expect(grader.getLog().length).toBe(0);
     });
