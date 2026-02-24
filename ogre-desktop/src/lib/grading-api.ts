@@ -97,6 +97,7 @@ export interface ProviderConfig {
   api_url: string;
   model: string;
   is_active: boolean;
+  needs_reauth?: boolean;
   credentials?: {
     api_key?: string;
     access_token?: string;
@@ -684,4 +685,74 @@ export function startBatchGrading(
       token.cancelled = true;
     },
   };
+}
+
+
+// ── Anchor Generation API ─────────────────────────────────────────
+
+/** One calibration tier returned by /api/generate-anchors. */
+export interface AnchorResponse {
+  label: string;
+  score: number;
+  maxScore: number;
+  response: string;
+}
+
+/** Request body for POST /api/generate-anchors. */
+export interface GenerateAnchorsRequest {
+  provider?: string;
+  model?: string;
+  rubric: {
+    essayPrompt?: string;
+    checklistItems?: Array<{ category: string; items: string[] }>;
+    rubricItems?: Array<{ category: string; items: string[] }>;
+    modelText?: string | null;
+    maxScore?: string;
+  };
+}
+
+/**
+ * Ask the server to generate example student responses at 4 score tiers
+ * for the given rubric. Returns an array of { label, score, maxScore, response }.
+ * Throws on network error or non-200 response.
+ */
+export async function generateAnchors(
+  request: GenerateAnchorsRequest,
+): Promise<AnchorResponse[]> {
+  const token = getHandshakeToken();
+  if (!token) {
+    throw new GradingApiError(
+      "Not connected to grading server \u2014 no handshake token",
+      "NO_TOKEN",
+    );
+  }
+
+  let res: Response;
+  try {
+    res = await tauriFetch(`${SERVER_BASE}/api/generate-anchors`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        provider: request.provider,
+        model: request.model,
+        rubric: request.rubric,
+      }),
+    });
+  } catch {
+    throw new GradingApiError("Cannot reach grading server", "OFFLINE");
+  }
+
+  if (!res.ok) {
+    let msg = `Anchor generation failed (HTTP ${res.status})`;
+    try {
+      const err = (await res.json()) as { error?: string };
+      msg = err.error ?? msg;
+    } catch {
+      /* use status-based message */
+    }
+    throw new Error(msg);
+  }
+
+  const data = (await res.json()) as { anchors?: AnchorResponse[] };
+  return data.anchors ?? [];
 }

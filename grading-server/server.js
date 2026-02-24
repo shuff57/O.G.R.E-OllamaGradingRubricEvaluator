@@ -93,6 +93,14 @@ async function ensureValidAnthropicToken(config) {
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');
+    // Flag provider as needing re-auth if refresh token is invalid
+    if (text.includes('invalid_grant')) {
+      const p = providerConfigs.find(pc => pc.id === 'anthropic');
+      if (p) {
+        p.needsReauth = true;
+        console.warn('[anthropic] Refresh token invalid — marking provider as needing re-auth');
+      }
+    }
     throw new Error(`Anthropic token refresh failed (${response.status}): ${text.slice(0, 200)}`);
   }
 
@@ -1162,6 +1170,126 @@ function resolveProviderConfig(providerId, model) {
 
   return { apiUrl: effectiveApiUrl, apiKey, model, tokenType, refreshToken, expiresAt };
 }
+
+// ── Anchor Generation Helpers ─────────────────────────────────────────
+
+/**
+ * Build a prompt asking the AI to write example student responses at 4 calibration levels.
+ */
+function buildAnchorGenerationPrompt(rubric, anchors) {
+  const maxScore = parseFloat(rubric.maxScore) || 10;
+  const parts = [];
+
+  parts.push('You are a grading calibration assistant.');
+  parts.push('For the assignment below, write FOUR brief example student responses at different quality levels.');
+  parts.push('These examples will be shown to an AI grader so it understands what each score level looks like for THIS specific question.\n');
+
+  if (rubric.essayPrompt) {
+    parts.push(`ASSIGNMENT:\n${rubric.essayPrompt}\n`);
+  }
+
+  const rubricLines = [];
+  if (rubric.checklistItems?.length > 0) {
+    for (const item of rubric.checklistItems) {
+      if (item.category) rubricLines.push(`[${item.category}]`);
+      for (const sub of item.items) rubricLines.push(`  - ${sub}`);
+    }
+  }
+  if (rubric.rubricItems?.length > 0) {
+    for (const item of rubric.rubricItems) {
+      if (item.category) rubricLines.push(`[${item.category}]`);
+      for (const sub of item.items) rubricLines.push(`  - ${sub}`);
+    }
+  }
+  if (rubricLines.length > 0) {
+    parts.push(`RUBRIC:\n${rubricLines.join('\n')}\n`);
+  }
+  if (rubric.modelText) {
+    parts.push(`MODEL ANSWER:\n${rubric.modelText}\n`);
+  }
+  parts.push(`MAX SCORE: ${maxScore}\n`);
+
+  parts.push('Write one realistic example student response per level. Match the length and style a student would actually write for this assignment.\n');
+  parts.push(`EXCELLENT (${anchors.excellent.score}/${maxScore}):\n[write example]\n`);
+  parts.push(`ADEQUATE (${anchors.adequate.score}/${maxScore}):\n[write example]\n`);
+  parts.push(`BELOW AVERAGE (${anchors.belowAverage.score}/${maxScore}):\n[write example]\n`);
+  parts.push(`MINIMAL (${anchors.minimal.score}/${maxScore}):\n[write example]`);
+
+  return parts.join('\n');
+}
+
+/**
+ * Parse the AI’s 4-section response into an array of { label, score, maxScore, response }.
+ */
+function parseAnchorResponses(text, anchors, maxScore) {
+  const tiers = [
+    { label: 'Excellent',     score: anchors.excellent.score },
+    { label: 'Adequate',      score: anchors.adequate.score },
+    { label: 'Below Average', score: anchors.belowAverage.score },
+    { label: 'Minimal',       score: anchors.minimal.score },
+  ];
+
+  const result = [];
+  for (let i = 0; i < tiers.length; i++) {
+    const { label, score } = tiers[i];
+    const headerRe = new RegExp(`${label.replace(' ', '\\s+')}\\s*\\(${score}\\/${maxScore}\\)\\s*:?`, 'i');
+    const headerMatch = text.match(headerRe);
+    if (!headerMatch) {
+      result.push({ label, score, maxScore, response: '' });
+      continue;
+    }
+    const start = text.indexOf(headerMatch[0]) + headerMatch[0].length;
+    let end = text.length;
+    for (let j = i + 1; j < tiers.length; j++) {
+      const nextRe = new RegExp(`${tiers[j].label.replace(' ', '\\s+')}\\s*\\(${tiers[j].score}\\/${maxScore}\\)`, 'i');
+      const nextMatch = text.slice(start).match(nextRe);
+      if (nextMatch) {
+        end = start + text.slice(start).indexOf(nextMatch[0]);
+        break;
+      }
+    }
+    result.push({ label, score, maxScore, response: text.slice(start, end).trim() });
+  }
+  return result;
+}
+
+/**
+ * POST /api/generate-anchors
+ * Body: { provider, model, rubric }
+ * Response: { anchors: [{ label, score, maxScore, response }] }
+ */
+app.post('/api/generate-anchors', async (c) => {
+  let body;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+
+  const { provider, model, rubric } = body;
+  if (!provider) return c.json({ error: 'Missing required field: provider' }, 400);
+  if (!model)    return c.json({ error: 'Missing required field: model' }, 400);
+  if (!rubric)   return c.json({ error: 'Missing required field: rubric' }, 400);
+
+  const maxScore = parseFloat(rubric.maxScore) || 10;
+  const timestamp = () => new Date().toLocaleTimeString();
+
+  try {
+    const providerConfig = resolveProviderConfig(provider, model);
+    const anchors = generateScoringAnchors(rubric);
+    console.log(`[${timestamp()}] [anchors] Generating | provider=${provider} model=${model}`);
+    const prompt = buildAnchorGenerationPrompt(rubric, anchors);
+    const aiText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: prompt }], timestamp());
+    const anchorData = parseAnchorResponses(aiText, anchors, maxScore);
+    console.log(`[${timestamp()}] [anchors] Done (${anchorData.length} tiers)`);
+    return c.json({ anchors: anchorData });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[${timestamp()}] [anchors] Error: ${message}`);
+    return c.json({ error: message }, 500);
+  }
+});
+
 
 /**
  * SSE Batch Grading Endpoint

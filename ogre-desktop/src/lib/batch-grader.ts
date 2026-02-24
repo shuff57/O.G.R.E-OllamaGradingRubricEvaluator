@@ -1041,6 +1041,9 @@ export class BatchGrader {
   /** Names of skipped students */
   private _skipped: string[] = [];
 
+  /** Students with no response (eligible for auto-zero). */
+  private _noResponse: Student[] = [];
+
   /** Active site profile */
   private _profile: SiteProfile | null = null;
 
@@ -1062,6 +1065,10 @@ export class BatchGrader {
   /** Get the filtered list of students that need grading. */
   get studentsToGrade(): Student[] {
     return this._toGrade;
+  }
+  /** Students that submitted no response (filtered from _students). */
+  get noResponseStudents(): Student[] {
+    return this._noResponse;
   }
 
   /** Whether the grading session is running. */
@@ -1093,6 +1100,7 @@ export class BatchGrader {
     this._results = [];
     this._errors = [];
     this._skipped = [];
+    this._noResponse = [];
     this._log = [];
     this._currentIndex = 0;
 
@@ -1141,6 +1149,18 @@ export class BatchGrader {
           timestamp: new Date().toISOString(),
           status: 'skipped',
         });
+      } else if (!student.response.trim()) {
+        this._noResponse.push(student);
+        // No response — skip rather than waste a token on a blank submission
+        this._skipped.push(student.name);
+        this._log.push({
+          studentName: student.name,
+          studentIndex: student.index,
+          score: null,
+          feedback: 'No response submitted',
+          timestamp: new Date().toISOString(),
+          status: 'skipped',
+        });
       } else {
         const existingScore = parseFloat(student.currentScore);
         if (!isNaN(existingScore) && existingScore > 0) {
@@ -1169,6 +1189,17 @@ export class BatchGrader {
     if (!this._isRunning || this._paused) return null;
     if (this._currentIndex >= this._toGrade.length) return null;
     return this._toGrade[this._currentIndex];
+  }
+
+  /**
+   * Apply a score of 0 to all students with no response.
+   * Called when the "Zero No Response" preset is active.
+   */
+  async applyZeroToNoResponseStudents(): Promise<void> {
+    if (!this._profile) throw new Error('BatchGrader not started');
+    for (const student of this._noResponse) {
+      await fillGrade(student.index, 0, '', this._profile.selectors, this._profile.feedback);
+    }
   }
 
   /**

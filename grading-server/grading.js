@@ -13,11 +13,14 @@ import { GRADING_PHILOSOPHY } from './grading-constants.js';
 export function generateScoringAnchors(rubric) {
   const maxScore = parseFloat(rubric.maxScore) || 10;
 
+  // Round to 1 decimal place for small max scores (< 6) so anchors stay
+  // proportionate rather than collapsing to the same integer value.
+  const roundScore = (s) => maxScore < 6 ? Math.round(s * 10) / 10 : Math.round(s);
   // Generate scores for each anchor level
-  const excellentScore = Math.round(maxScore * 0.9); // 90% - near perfect
-  const adequateScore = Math.round(maxScore * 0.65); // 65% - solid understanding
-  const belowAverageScore = Math.round(maxScore * 0.5); // 50% - partial understanding
-  const minimalScore = Math.round(maxScore * 0.3); // 30% - bare minimum
+  const excellentScore = roundScore(maxScore * 0.9); // 90% - near perfect
+  const adequateScore = roundScore(maxScore * 0.65); // 65% - solid understanding
+  const belowAverageScore = roundScore(maxScore * 0.5); // 50% - partial understanding
+  const minimalScore = roundScore(maxScore * 0.3); // 30% - bare minimum
 
   // Build descriptions based on rubric criteria
   let excellentDesc = 'Demonstrates comprehensive understanding with all key concepts addressed clearly.';

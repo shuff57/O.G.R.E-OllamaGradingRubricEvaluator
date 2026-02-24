@@ -44,6 +44,8 @@
   let serverOffline = $state(false);
   /** Human-readable error message (null = no error). */
   let error: string | null = $state(null);
+  /** Labels of providers that need re-authentication. */
+  let reauthProviders: string[] = $state([]);
 
   // ── Fallback for offline mode ─────────────────────────────────────
 
@@ -97,16 +99,17 @@
 
     try {
       const list = await fetchProviders();
-      providers = list;
+      // Detect providers needing re-auth
+      reauthProviders = list.filter(p => p.needs_reauth).map(p => labelFor(p.id));
+      // Filter them from the usable list
+      providers = list.filter(p => !p.needs_reauth);
       serverOffline = false;
-
-      // Set initial selection to the active provider (if any)
-      const active = list.find((p) => p.is_active);
+      const active = providers.find((p) => p.is_active) ?? providers[0];
       if (active) {
         provider = active.id;
         model = active.model || '';
-      } else if (list.length > 0 && !provider) {
-        provider = list[0].id;
+      } else if (providers.length > 0 && !provider) {
+        provider = providers[0].id;
       }
     } catch (err) {
       if (isServerOffline(err)) {
@@ -183,6 +186,11 @@
   {/if}
   {#if error}
     <div class="status-badge error">{error}</div>
+  {/if}
+  {#if reauthProviders.length > 0}
+    <div class="status-badge reauth">
+      {reauthProviders.join(', ')} sign-in expired — re-authenticate in Settings
+    </div>
   {/if}
 
   <div class="selector-row">
@@ -276,4 +284,10 @@
     color: var(--color-error-text, #721c24);
     border: 1px solid var(--color-error-border, #f5c6cb);
   }
+  .status-badge.reauth {
+    background: var(--color-warning-bg, #fef3cd);
+    color: var(--color-warning-text, #856404);
+    border: 1px solid var(--color-warning-border, #ffc107);
+  }
+
 </style>

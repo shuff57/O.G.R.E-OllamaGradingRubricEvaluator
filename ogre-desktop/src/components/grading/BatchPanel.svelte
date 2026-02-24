@@ -22,7 +22,7 @@
   } from '../../lib/batch-grader';
   import type { BatchProgress, Rubric, SiteProfile } from '../../lib/batch-grader';
   import { ProfileStorageImpl } from '../../lib/site-profiles';
-  import { startBatchGrading } from '../../lib/grading-api';
+  import { startBatchGrading, generateAnchors } from '../../lib/grading-api';
   import type {
     BatchGradingHandle,
     BatchChunkEvent,
@@ -81,6 +81,7 @@
     nonZero: 'IMPORTANT: Only provide feedback for students who earn a non-zero score. If a student\'s score is 0, set feedback to an empty string "". Do NOT write feedback for zero-score students.',
     lenient: 'Grade very leniently. Give partial credit for any attempt that is vaguely correct.',
     strict: 'Grade strictly according to the rubric. Deduct points for minor errors.',
+    skipNoResponse: 'Students who did not submit a response will be skipped and receive no grade.',
   };
   
   let customInstructions = $state('');
@@ -90,8 +91,9 @@
   let isNonZeroActive = $derived(customInstructions.includes(PRESETS.nonZero));
   let isLenientActive = $derived(customInstructions.includes(PRESETS.lenient));
   let isStrictActive = $derived(customInstructions.includes(PRESETS.strict));
+  let isSkipNoResponseActive = $derived(customInstructions.includes(PRESETS.skipNoResponse));
 
-  function togglePreset(key: 'nonZero' | 'lenient' | 'strict') {
+  function togglePreset(key: 'nonZero' | 'lenient' | 'strict' | 'skipNoResponse') {
     const text = PRESETS[key];
     if (customInstructions.includes(text)) {
       customInstructions = customInstructions.replace(text, '').replace(/\n{3,}/g, '\n\n').trim();
@@ -422,6 +424,8 @@
 
     isAutoStopped = false;
     batchError = '';
+
+
     const studentsToGrade = batchGrader.studentsToGrade;
 
     if (studentsToGrade.length === 0) {
@@ -475,6 +479,7 @@
 
     // Build combined instructions (preset texts are now included in customInstructions via toggle buttons)
     const instructionsParts = [];
+    if (anchorText.trim()) instructionsParts.push(`SCORING CALIBRATION:\n${anchorText.trim()}`);
     if (customInstructions.trim()) instructionsParts.push(customInstructions.trim());
 
     try {
@@ -757,6 +762,98 @@
     }
   }
 
+  // ── Scoring Anchors ─────────────────────────────────────────────────
+  type AnchorItem = {
+    label: string;
+    score: number;
+    description: string;
+    colorClass: string;
+  };
+
+  function computeScoringAnchors(
+    maxScore: number,
+    checklistItems?: Array<{ category: string; items: string[] }>
+  ): AnchorItem[] {
+    const excellent    = Math.round(maxScore * 0.9);
+    const adequate     = Math.round(maxScore * 0.65);
+    const belowAverage = Math.round(maxScore * 0.5);
+    const minimal      = Math.round(maxScore * 0.3);
+
+    let excellentDesc    = 'Demonstrates comprehensive understanding with all key concepts addressed clearly.';
+    let adequateDesc     = 'Shows solid grasp of main concepts with minor gaps or unclear explanations.';
+    let belowAverageDesc = 'Shows partial understanding but missing key concepts, formulas, or depth.';
+    let minimalDesc      = 'Addresses some basic concepts but lacks depth or contains significant errors.';
+
+    if (checklistItems && checklistItems.length > 0) {
+      const categories = checklistItems.map(item => item.category).filter(Boolean);
+      if (categories.length > 0) {
+        excellentDesc    += ` Covers: ${categories.join(', ')}.`;
+        adequateDesc     += ` Partially covers: ${categories.slice(0, 2).join(', ')}.`;
+        belowAverageDesc += ` Weak coverage of: ${categories[0]}.`;
+        minimalDesc      += ` Minimal coverage of: ${categories[0] || 'key concepts'}.`;
+      }
+    }
+
+    return [
+      { label: 'Excellent',     score: excellent,    description: excellentDesc,    colorClass: 'anchor-success' },
+      { label: 'Adequate',      score: adequate,     description: adequateDesc,     colorClass: 'anchor-primary' },
+      { label: 'Below Average', score: belowAverage, description: belowAverageDesc, colorClass: 'anchor-warning' },
+      { label: 'Minimal',       score: minimal,      description: minimalDesc,      colorClass: 'anchor-error'   },
+    ];
+  }
+
+  let scoringAnchors = $derived.by(() => {
+    const parsed = textToCriteria(rubricText);
+    const items: Array<{ category: string; items: string[] }> =
+      parsed.length > 0
+        ? parsed.map(c => ({ category: c.criteria, items: c.description ? [c.description] : [] }))
+        : (extractedRubric?.checklistItems ?? []);
+    return computeScoringAnchors(parseFloat(rubricMaxScore) || 10, items);
+  });
+  let anchorText = $state('');
+  let anchorGenerating = $state(false);
+
+
+  // When entering review phase, call the AI to generate example student responses.
+  // Falls back to computed descriptions if the call fails.
+  $effect(() => {
+    const phase = batchPhase; // track phase only
+    if (phase === 'review') {
+      const currentProvider = untrack(() => provider);
+      const currentModel    = untrack(() => model);
+      const currentRubric   = untrack(() => extractedRubric);
+      const anchors         = untrack(() => scoringAnchors);
+      const maxScore = untrack(() => rubricMaxScore);
+      anchorText = '';
+      anchorGenerating = true;
+
+
+      generateAnchors({
+        provider: currentProvider || undefined,
+        model: currentModel || undefined,
+        rubric: {
+          essayPrompt:    currentRubric?.essayPrompt,
+          checklistItems: currentRubric?.checklistItems,
+          rubricItems:    currentRubric?.rubricItems,
+          modelText:      currentRubric?.modelText,
+          maxScore:       currentRubric?.maxScore || maxScore,
+        },
+      }).then(anchorData => {
+        anchorText = anchorData
+          .map(a => `${a.label} (${a.score}/${a.maxScore}):\n${a.response}`)
+          .join('\n\n');
+        anchorGenerating = false;
+      }).catch(err => {
+        // Fallback to computed descriptions
+        anchorText = anchors
+          .map(a => `${a.label} (${a.score}/${maxScore}): ${a.description}`)
+          .join('\n');
+        anchorGenerating = false;
+        console.warn('[anchors] generation failed, using computed fallback:', err);
+      });
+    }
+  });
+
   onDestroy(() => {
     if (batchHandle) { batchHandle.cancel(); batchHandle = null; }
     if (batchGrader) { batchGrader.stop(); batchGrader = null; }
@@ -822,6 +919,10 @@
           onclick={() => togglePreset('strict')} disabled={isBatchRunning}>
           Strict
         </button>
+        <button class="btn-preset" class:active={isSkipNoResponseActive}
+          onclick={() => togglePreset('skipNoResponse')} disabled={isBatchRunning}>
+          Skip No Response
+        </button>
       </div>
       <textarea
         class="instructions-textarea"
@@ -834,6 +935,30 @@
   </details>
 
 
+
+  {#if batchPhase === 'review'}
+  <div class="anchors-card">
+    <div class="anchors-header">
+      <span class="anchors-title">Scoring Anchors</span>
+      {#if anchorGenerating}
+        <span class="anchors-generating">
+          <span class="spinner" aria-hidden="true"></span>
+          Generating examples...
+        </span>
+      {:else}
+        <span class="anchors-hint">Edit to adjust how scores are calibrated before grading starts.</span>
+      {/if}
+    </div>
+
+    <textarea
+      class="instructions-textarea anchors-textarea"
+      rows="5"
+      placeholder={anchorGenerating ? 'Generating calibration examples from your rubric…' : ''}
+      bind:value={anchorText}
+      disabled={anchorGenerating}
+    ></textarea>
+  </div>
+{/if}
 
   {#if batchPhase === 'review'}
   <div class="continue-grading-row">
@@ -1780,4 +1905,47 @@
   .continue-grading-row .btn-primary {
     flex-shrink: 0;
   }
+  /* ── Scoring Anchors card ── */
+  .anchors-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+    padding: var(--spacing-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-main);
+  }
+  .anchors-header {
+    display: flex;
+    align-items: baseline;
+    gap: var(--spacing-2);
+  }
+  .anchors-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    white-space: nowrap;
+  }
+  .anchors-hint {
+    font-size: 0.78rem;
+    color: var(--color-text-secondary);
+  }
+  .anchors-textarea {
+    resize: vertical;
+    min-height: 90px;
+  }
+
+  .anchors-generating {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-1);
+    font-size: 0.78rem;
+    color: var(--color-text-secondary);
+  }
+  .anchor-gen-error {
+    font-size: 0.78rem;
+    color: var(--color-error, #ef4444);
+    margin: 0 0 var(--spacing-1) 0;
+  }
+
 </style>
