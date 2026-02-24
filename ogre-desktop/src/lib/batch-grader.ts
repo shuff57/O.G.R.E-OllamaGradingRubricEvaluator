@@ -239,7 +239,9 @@ function delay(ms: number): Promise<void> {
  * @throws Error if extraction fails or no students found
  */
 export async function extractStudents(selectors: SiteSelectors): Promise<Student[]> {
+  console.log('[batch] extractStudents: starting, waiting for Turndown...');
   await ensureTurndownLoaded();
+  console.log('[batch] extractStudents: Turndown ready, querying student count...');
   if (!selectors.studentSection) {
     throw new Error('Failed to extract students. Check that the site profile selectors are correct.');
   }
@@ -248,6 +250,7 @@ export async function extractStudents(selectors: SiteSelectors): Promise<Student
   const count = await evalScriptJSON<number>(
     `document.querySelectorAll(${JSON.stringify(selectors.studentSection)}).length`
   );
+  console.log('[batch] extractStudents: found', count, 'students, extracting one-by-one...');
   if (!count) {
     throw new Error('Failed to extract students. Check that the site profile selectors are correct.');
   }
@@ -297,7 +300,9 @@ export async function extractStudents(selectors: SiteSelectors): Promise<Student
  * @throws Error if rubric extraction fails
  */
 export async function extractRubric(selectors: SiteSelectors): Promise<Rubric> {
+  console.log('[batch] extractRubric: starting, waiting for Turndown...');
   await ensureTurndownLoaded();
+  console.log('[batch] extractRubric: Turndown ready, extracting rubric...');
   const result = await evalScriptJSON<Rubric | null>(`(function() {
     var sel = ${JSON.stringify(selectors)};
     if (!sel.studentSection) return null;
@@ -1081,6 +1086,7 @@ export class BatchGrader {
    * @param resumeAfter - Student name to resume after (skip up to and including)
    */
   async start(profile: SiteProfile, resumeAfter?: string | null): Promise<void> {
+    console.log('[batch] BatchGrader.start() called');
     this._profile = profile;
     this._isRunning = true;
     this._paused = false;
@@ -1091,13 +1097,16 @@ export class BatchGrader {
     this._currentIndex = 0;
 
     // Extract rubric
+    console.log('[batch] start: extracting rubric...');
     try {
       this._rubric = await extractRubric(profile.selectors);
     } catch {
       this._rubric = null;
     }
+    console.log('[batch] start: rubric extraction done, rubric =', !!this._rubric);
 
     // Extract students
+    console.log('[batch] start: extracting students...');
     this._students = await extractStudents(profile.selectors);
 
     // Filter to ungraded students

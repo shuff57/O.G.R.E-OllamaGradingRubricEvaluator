@@ -8,47 +8,65 @@
 import TurndownService from 'turndown';
 import { gfm } from 'turndown-plugin-gfm';
 import { TURNDOWN_IIFE } from './turndown-bundle';
-import { evalScript, evalScriptJSON } from './browser';
+import { evalScriptJSON, injectScript } from './browser';
 
 // ---------------------------------------------------------------------------
 // Export 1: ensureTurndownLoaded — injects Turndown into the webview
 // ---------------------------------------------------------------------------
 
+// Module-level promise so the injection only happens once per session.
+// If it fails, _injectionFailed is set and future calls return immediately.
+let _loadedPromise: Promise<void> | null = null;
+let _injectionFailed = false;
+
 /**
  * Inject the pre-bundled Turndown + GFM IIFE into the embedded browser webview
  * and configure a reusable `window.__turndownService` instance.
  *
- * Safe to call multiple times — uses an idempotency guard so the service is
- * only created once per page load.
+ * Safe to call multiple times — memoized after first call so the 31KB bundle
+ * is only injected once per session. Uses injectScript (direct wv.eval) instead
+ * of evalScript because the IIFE contains top-level var declarations which cannot
+ * be wrapped in `return (...)` without a SyntaxError.
  */
-export async function ensureTurndownLoaded(): Promise<void> {
-  try {
-    // Step 1: Inject the Turndown + GFM IIFE bundle into the webview.
-    // After this, `TurndownService` and `turndownPluginGfm` are globals.
-    await evalScript(TURNDOWN_IIFE);
-
-    // Step 2: Create and configure the shared service instance (ES5!).
-    await evalScript(`(function() {
-      if (window.__turndownService) return;
-      var service = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced" });
-      service.use(turndownPluginGfm.gfm);
-      service.keep(["math", "annotation"]);
-      service.addRule("mathClass", {
-        filter: function(node) {
-          return node.className && (
-            node.className.indexOf("katex") !== -1 ||
-            node.className.indexOf("MathJax") !== -1
-          );
-        },
-        replacement: function(content, node) {
-          return node.outerHTML;
-        }
-      });
-      window.__turndownService = service;
-    })()`);
-  } catch (err) {
-    console.warn('[markdown-extract] Failed to inject Turndown into webview:', err);
+export function ensureTurndownLoaded(): Promise<void> {
+  if (_injectionFailed) {
+    console.log('[batch] ensureTurndownLoaded: skipping (previously failed)');
+    return Promise.resolve();
   }
+  if (_loadedPromise !== null) {
+    console.log('[batch] ensureTurndownLoaded: reusing cached promise');
+    return _loadedPromise;
+  }
+
+  console.log('[batch] ensureTurndownLoaded: injecting Turndown IIFE...');
+  // Combine IIFE + service setup into one atomic script so both run in the same
+  // execution context. wv.eval() may return before the script completes, so a
+  // split approach could race on TurndownService being defined.
+  const serviceSetup =
+    `;(function() {` +
+    `\n  if (window.__turndownService) return;` +
+    `\n  var service = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });` +
+    `\n  service.use(turndownPluginGfm.gfm);` +
+    `\n  service.keep(['math', 'annotation']);` +
+    `\n  service.addRule('mathClass', {` +
+    `\n    filter: function(node) {` +
+    `\n      return node.className && (` +
+    `\n        node.className.indexOf('katex') !== -1 ||` +
+    `\n        node.className.indexOf('MathJax') !== -1` +
+    `\n      );` +
+    `\n    },` +
+    `\n    replacement: function(content, node) { return node.outerHTML; }` +
+    `\n  });` +
+    `\n  window.__turndownService = service;` +
+    `\n})();`;
+  _loadedPromise = injectScript(TURNDOWN_IIFE + serviceSetup).then(() => {
+    console.log('[batch] ensureTurndownLoaded: injection complete');
+  }).catch((err) => {
+    _injectionFailed = true;
+    _loadedPromise = null;
+    console.warn('[batch] ensureTurndownLoaded: FAILED:', err);
+  });
+  return _loadedPromise;
 }
 
 // ---------------------------------------------------------------------------

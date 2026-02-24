@@ -15,6 +15,24 @@ vi.mock('@tauri-apps/api/event', () => ({
   listen: (...args: unknown[]) => mockListen(...args),
 }));
 
+
+// Mock CDP client (evalScript now uses CDP instead of Tauri invoke)
+const mockCdpSend = vi.fn();
+const mockCdpIsConnected = vi.fn().mockReturnValue(true);
+vi.mock('./cdp-client', () => ({
+  cdp: {
+    send: (...args: unknown[]) => mockCdpSend(...args),
+    isConnected: () => mockCdpIsConnected(),
+  },
+}));
+
+// Mock cdp-actions so connectCDP/isConnected are no-ops
+vi.mock('./cdp-actions', () => ({
+  isConnected: () => mockCdpIsConnected(),
+  connectCDP: vi.fn().mockResolvedValue(true),
+  cdpScreenshot: vi.fn().mockRejectedValue(new Error('fallback')),
+}));
+
 // Mock autofill since browser.ts imports it
 vi.mock('./autofill', () => ({
   generateAutoFillScript: vi.fn().mockReturnValue('/* mock script */'),
@@ -40,6 +58,7 @@ import {
   captureWebviewArea,
   cropImageData,
 } from './browser';
+import { connectCDP } from './cdp-actions';
 
 // ── Tests ────────────────────────────────────────────────────────────────
 
@@ -230,86 +249,93 @@ describe('browser.ts — Screenshot capture exports', () => {
 });
 
 describe('browser.ts — captureWebviewScreenshot', () => {
+  // Helper to build a CDP Runtime.evaluate result
+  function cdpResult(value: unknown) {
+    return { result: { type: typeof value, value } };
+  }
+  function cdpException(msg: string) {
+    return { result: { type: 'undefined' }, exceptionDetails: { text: msg, exception: { description: msg } } };
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: CDP is connected, cdpScreenshot falls through to html2canvas path
+    mockCdpIsConnected.mockReturnValue(true);
   });
-
   it('loads html2canvas when not already present, then captures', async () => {
-    // 1st invoke: evalScriptJSON checks typeof html2canvas → "false" (not loaded)
-    mockInvoke.mockResolvedValueOnce('false');
-    // 2nd invoke: evalScriptJSON loads html2canvas CDN → '"loaded"'
-    mockInvoke.mockResolvedValueOnce('"loaded"');
-    // 3rd invoke: evalScriptJSON captures screenshot → data URL
-    mockInvoke.mockResolvedValueOnce('"data:image/jpeg;base64,abc123"');
+    // 1st CDP call: typeof html2canvas → false (not loaded)
+    mockCdpSend.mockResolvedValueOnce(cdpResult(false));
+    // 2nd CDP call: load html2canvas CDN → 'loaded'
+    mockCdpSend.mockResolvedValueOnce(cdpResult('loaded'));
+    // 3rd CDP call: capture screenshot → data URL
+    mockCdpSend.mockResolvedValueOnce(cdpResult('data:image/jpeg;base64,abc123'));
 
     const result = await captureWebviewScreenshot();
     expect(result).toBe('data:image/jpeg;base64,abc123');
-    expect(mockInvoke).toHaveBeenCalledTimes(3);
+    expect(mockCdpSend).toHaveBeenCalledTimes(3);
 
-    // All three calls go through eval_webview_script
+    // All three calls go through Runtime.evaluate
     for (let i = 0; i < 3; i++) {
-      expect(mockInvoke.mock.calls[i][0]).toBe('eval_webview_script');
+      expect(mockCdpSend.mock.calls[i][0]).toBe('Runtime.evaluate');
     }
   });
-
   it('skips CDN load when html2canvas is already present', async () => {
-    // 1st invoke: html2canvas already loaded → "true"
-    mockInvoke.mockResolvedValueOnce('true');
-    // 2nd invoke: capture screenshot
-    mockInvoke.mockResolvedValueOnce('"data:image/jpeg;base64,xyz789"');
+    // 1st CDP call: html2canvas already loaded → true
+    mockCdpSend.mockResolvedValueOnce(cdpResult(true));
+    // 2nd CDP call: capture screenshot
+    mockCdpSend.mockResolvedValueOnce(cdpResult('data:image/jpeg;base64,xyz789'));
 
     const result = await captureWebviewScreenshot();
     expect(result).toBe('data:image/jpeg;base64,xyz789');
     // Only 2 calls: check + capture (no CDN load)
-    expect(mockInvoke).toHaveBeenCalledTimes(2);
+    expect(mockCdpSend).toHaveBeenCalledTimes(2);
   });
-
   it('throws when capture returns invalid data', async () => {
-    mockInvoke.mockResolvedValueOnce('true');    // html2canvas present
-    mockInvoke.mockResolvedValueOnce('""');       // empty string from capture
+    mockCdpSend.mockResolvedValueOnce(cdpResult(true));    // html2canvas present
+    mockCdpSend.mockResolvedValueOnce(cdpResult(''));        // empty string from capture
 
     await expect(captureWebviewScreenshot()).rejects.toThrow('invalid image data');
   });
-
   it('throws when capture returns null', async () => {
-    mockInvoke.mockResolvedValueOnce('true');    // html2canvas present
-    mockInvoke.mockResolvedValueOnce('null');     // null from capture
+    mockCdpSend.mockResolvedValueOnce(cdpResult(true));    // html2canvas present
+    mockCdpSend.mockResolvedValueOnce(cdpResult(null));     // null from capture
 
     await expect(captureWebviewScreenshot()).rejects.toThrow('invalid image data');
   });
-
   it('propagates CDN load errors', async () => {
-    mockInvoke.mockResolvedValueOnce('false');   // not loaded
-    mockInvoke.mockRejectedValueOnce(new Error('CDN unreachable'));
-
+    mockCdpSend.mockResolvedValueOnce(cdpResult(false));   // not loaded
+    mockCdpSend.mockResolvedValueOnce(cdpException('CDN unreachable'));
     await expect(captureWebviewScreenshot()).rejects.toThrow('CDN unreachable');
   });
 
-  it('propagates webview eval errors (e.g. webview not open)', async () => {
-    mockInvoke.mockRejectedValueOnce(new Error('Embedded browser not open'));
-
-    await expect(captureWebviewScreenshot()).rejects.toThrow('Embedded browser not open');
+  it('propagates eval errors when CDP not connected', async () => {
+    mockCdpIsConnected.mockReturnValue(false);
+    vi.mocked(connectCDP).mockResolvedValueOnce(false);
+    await expect(captureWebviewScreenshot()).rejects.toThrow('CDP not connected');
   });
 });
 
 describe('browser.ts — captureWebviewArea', () => {
+  function cdpResult(value: unknown) {
+    return { result: { type: typeof value, value } };
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
+    mockCdpIsConnected.mockReturnValue(true);
   });
 
-  it('calls captureWebviewScreenshot internally (verifies invoke chain)', async () => {
+  it('calls captureWebviewScreenshot internally (verifies CDP chain)', async () => {
     // Mock the full chain: check + capture
-    mockInvoke.mockResolvedValueOnce('true');
-    mockInvoke.mockResolvedValueOnce('"data:image/jpeg;base64,fullpage"');
-
+    mockCdpSend.mockResolvedValueOnce(cdpResult(true));
+    mockCdpSend.mockResolvedValueOnce(cdpResult('data:image/jpeg;base64,fullpage'));
     // captureWebviewArea calls captureWebviewScreenshot then cropImageData.
     // cropImageData uses new Image() / canvas which don't exist in node env.
     // So we expect it to reject at the crop step.
     await expect(captureWebviewArea(10, 20, 100, 80)).rejects.toThrow();
-
-    // But it should have called the webview eval first
-    expect(mockInvoke).toHaveBeenCalledTimes(2);
-    expect(mockInvoke.mock.calls[0][0]).toBe('eval_webview_script');
+    // But it should have called CDP eval first
+    expect(mockCdpSend).toHaveBeenCalledTimes(2);
+    expect(mockCdpSend.mock.calls[0][0]).toBe('Runtime.evaluate');
   });
 });
 
@@ -321,3 +347,4 @@ describe('browser.ts — cropImageData', () => {
     ).rejects.toThrow();
   });
 });
+

@@ -1,7 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { generateAutoFillScript } from './autofill';
-import { isConnected, cdpScreenshot } from './cdp-actions';
+import { isConnected, connectCDP, cdpScreenshot } from './cdp-actions';
+import { cdp } from './cdp-client';
 
 // --- Embedded Browser Functions ---
 
@@ -148,35 +149,69 @@ export async function injectAutofill(username: string, password: string): Promis
  * `);
  */
 export async function evalScript(script: string): Promise<string> {
-  return await invoke<string>('eval_webview_script', { script });
+  // Ensure CDP is connected (auto-connects if needed)
+  if (!cdp.isConnected()) {
+    const ok = await connectCDP();
+    if (!ok) throw new Error('Cannot evaluate script: CDP not connected');
+  }
+
+  // Use CDP Runtime.evaluate which works reliably on the embedded browser.
+  // The old Tauri IPC callback mechanism does not work because external-URL
+  // webviews do not have window.__TAURI_INTERNALS__.
+  const result = await cdp.send('Runtime.evaluate', {
+    expression: script,
+    returnByValue: true,
+    awaitPromise: true,
+  }) as {
+    result: { type: string; value?: unknown; description?: string };
+    exceptionDetails?: { text: string; exception?: { description?: string } };
+  };
+
+  if (result.exceptionDetails) {
+    const desc = result.exceptionDetails.exception?.description || result.exceptionDetails.text;
+    throw new Error(`Script error: ${desc}`);
+  }
+
+  // Runtime.evaluate returns { type, value } when returnByValue=true.
+  // JSON.stringify the value to match the old evalScript contract (returns a string).
+  const val = result.result.value;
+  return val === undefined ? 'undefined' : JSON.stringify(val);
+}
+
+/**
+ * Inject JavaScript into the embedded browser without needing a return value.
+ *
+ * Unlike evalScript(), this does NOT wrap the code in a return(...) expression,
+ * so top-level var declarations become window globals — required for library
+ * IIFEs like Turndown that define vars at module scope.
+ *
+ * @param script - JavaScript to inject (no return value expected)
+ */
+export async function injectScript(script: string): Promise<void> {
+  await invoke<void>('inject_webview_script', { script });
 }
 
 /**
  * Execute JavaScript and automatically parse JSON result.
  * Convenience wrapper around evalScript() that handles JSON parsing.
- * 
+ *
  * @param script - JavaScript expression to evaluate
  * @returns Promise resolving to the parsed JavaScript value
- * 
- * @example
- * // Extract student data as typed object
- * interface Student {
- *   id: string;
- *   name: string;
- *   score?: number;
- * }
- * 
- * const students = await evalScriptJSON<Student[]>(`
- *   [...document.querySelectorAll('.student-row')].map(row => ({
- *     id: row.dataset.studentId,
- *     name: row.querySelector('.name')?.textContent,
- *     score: parseFloat(row.querySelector('.score')?.value || '0')
- *   }))
- * `);
  */
 export async function evalScriptJSON<T = any>(script: string): Promise<T> {
-  const result = await evalScript(script);
-  return JSON.parse(result);
+  // evalScript now returns JSON.stringify(value) via CDP.
+  // For scripts that already return JSON strings (legacy pattern), we need
+  // to handle double-stringify: the script returns a JSON string,
+  // evalScript wraps it in JSON.stringify again, so we parse twice.
+  const raw = await evalScript(script);
+  const parsed = JSON.parse(raw);
+
+  // If the script returned a string that is itself JSON (legacy pattern
+  // where scripts do `return JSON.stringify({...})`), parse again.
+  if (typeof parsed === 'string') {
+    try { return JSON.parse(parsed); } catch { return parsed as T; }
+  }
+  return parsed;
 }
 
 // --- Text Extraction ---

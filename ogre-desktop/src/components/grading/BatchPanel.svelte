@@ -361,6 +361,7 @@
 
   // ── Phase 1: Extract ─────────────────────────────────────────────────
   async function handleExtract() {
+    console.log('[batch] handleExtract() called');
     isAutoStopped = false;
     extractionCancelled = false;
     batchError = '';
@@ -371,7 +372,9 @@
 
     try {
       batchGrader = new BatchGrader();
+    console.log('[batch] handleExtract: calling batchGrader.start()...');
       await batchGrader.start(activeProfile, resumeAfter || null);
+    console.log('[batch] handleExtract: start() returned successfully');
       if (extractionCancelled) {
         batchGrader.stop();
         batchGrader = null;

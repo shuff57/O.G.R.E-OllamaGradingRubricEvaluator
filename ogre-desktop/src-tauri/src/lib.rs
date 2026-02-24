@@ -408,11 +408,16 @@ async fn eval_webview_script(
     let wrapper = format!(r#"
         (async () => {{
             try {{
-                const __result = await (async () => {{ return ({}) }})();
+                // Indirect eval: executes at global scope so var declarations land on window.*
+                // Also handles both statements (var x = ...) and expressions (() => value)
+                let __result = (0, eval)(`{}`);
+                if (__result instanceof Promise) {{
+                    __result = await __result;
+                }}
                 await window.__TAURI_INTERNALS__.invoke('_eval_callback', {{
                     id: '{}',
                     success: true,
-                    result: JSON.stringify(__result)
+                    result: JSON.stringify(__result !== undefined ? __result : null)
                 }});
             }} catch (__error) {{
                 await window.__TAURI_INTERNALS__.invoke('_eval_callback', {{
@@ -693,7 +698,7 @@ pub fn run() {
     if let Some(port) = cdp_port {
         std::env::set_var(
             "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
-            format!("--remote-debugging-port={}", port),
+            format!("--remote-debugging-port={} --remote-allow-origins=*", port),
         );
         eprintln!("[ogre] CDP enabled on port {} (dynamic allocation)", port);
     } else {

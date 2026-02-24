@@ -9,7 +9,18 @@ import {
 vi.mock('./browser', () => ({
   evalScript: vi.fn(),
   evalScriptJSON: vi.fn(),
+  injectScript: vi.fn().mockResolvedValue(undefined),
 }));
+
+// Mock markdown-extract so ensureTurndownLoaded is a no-op in tests
+// (avoids the module-level promise memoization bleeding across test files)
+vi.mock('./markdown-extract', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./markdown-extract')>();
+  return {
+    ...actual,
+    ensureTurndownLoaded: vi.fn().mockResolvedValue(undefined),
+  };
+});
 
 describe('BatchGrader - Log Accumulation', () => {
   let grader: BatchGrader;
