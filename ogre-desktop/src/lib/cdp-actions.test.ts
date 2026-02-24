@@ -8,6 +8,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 vi.mock('./cdp-client', () => ({
   cdp: {
     connect: vi.fn().mockResolvedValue(false),
+    connectToUrl: vi.fn().mockResolvedValue(false),
     disconnect: vi.fn().mockResolvedValue(undefined),
     isConnected: vi.fn().mockReturnValue(false),
     send: vi.fn().mockResolvedValue({}),
@@ -27,6 +28,7 @@ import {
 const mockInvoke = invoke as ReturnType<typeof vi.fn>;
 const mockCdp = cdp as {
   connect: ReturnType<typeof vi.fn>;
+  connectToUrl: ReturnType<typeof vi.fn>;
   disconnect: ReturnType<typeof vi.fn>;
   isConnected: ReturnType<typeof vi.fn>;
   send: ReturnType<typeof vi.fn>;
@@ -38,18 +40,31 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockCdp.isConnected.mockReturnValue(false);
   mockCdp.connect.mockResolvedValue(false);
+  mockCdp.connectToUrl.mockResolvedValue(false);
   mockCdp.send.mockResolvedValue({});
 });
 
 describe('cdp-actions: connection', () => {
-  test('connectCDP without port calls invoke("get_cdp_port")', async () => {
+  test('connectCDP without port calls invoke("get_cdp_port") then discover_cdp_target', async () => {
+    mockInvoke.mockResolvedValueOnce(9222).mockResolvedValueOnce('ws://127.0.0.1:9222/devtools/page/ABC');
+    mockCdp.connectToUrl.mockResolvedValueOnce(true);
     await connectCDP();
     expect(mockInvoke).toHaveBeenCalledWith('get_cdp_port');
+    expect(mockInvoke).toHaveBeenCalledWith('discover_cdp_target', { port: 9222 });
   });
 
-  test('connectCDP returns false when cdp.connect fails', async () => {
+  test('connectCDP returns false when discover_cdp_target returns null', async () => {
+    mockInvoke.mockResolvedValueOnce(null);
     const result = await connectCDP(9222);
     expect(result).toBe(false);
+  });
+
+  test('connectCDP returns true when discovery and connectToUrl succeed', async () => {
+    mockInvoke.mockResolvedValueOnce('ws://127.0.0.1:9222/devtools/page/ABC');
+    mockCdp.connectToUrl.mockResolvedValueOnce(true);
+    const result = await connectCDP(9222);
+    expect(result).toBe(true);
+    expect(mockCdp.connectToUrl).toHaveBeenCalledWith('ws://127.0.0.1:9222/devtools/page/ABC');
   });
 
   test('isConnected delegates to cdp.isConnected', () => {

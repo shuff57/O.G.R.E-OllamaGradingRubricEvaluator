@@ -43,6 +43,18 @@ struct CdpPortState {
     port: Option<u16>,
 }
 
+#[derive(serde::Deserialize)]
+#[allow(dead_code)]
+struct CdpTarget {
+    id: String,
+    #[serde(rename = "type")]
+    target_type: String,
+    title: String,
+    url: String,
+    #[serde(rename = "webSocketDebuggerUrl")]
+    ws_debugger_url: Option<String>,
+}
+
 /// Spawn the grading-server sidecar, wire up log forwarding and crash recovery.
 fn spawn_sidecar(app_handle: &tauri::AppHandle, restart_count: Arc<Mutex<u32>>) {
     let handle = app_handle.clone();
@@ -436,6 +448,22 @@ async fn eval_webview_script(
     }
 }
 
+/// Inject JavaScript into the embedded browser without waiting for a return value.
+///
+/// Unlike eval_webview_script, this does NOT wrap the script in the callback
+/// mechanism. Use this for scripts that set global variables (e.g. library IIFEs).
+/// Top-level var declarations become window properties because wv.eval() runs in
+/// the global execution context.
+#[tauri::command]
+async fn inject_webview_script(
+    app: tauri::AppHandle,
+    script: String,
+) -> Result<(), String> {
+    let wv = app.get_webview("embedded-browser")
+        .ok_or("Embedded browser not open")?;
+    wv.eval(&script).map_err(|e| format!("Failed to inject script: {}", e))
+}
+
 /// Internal callback handler for eval results.
 /// Called by injected JavaScript wrapper via invoke().
 #[tauri::command]
@@ -613,6 +641,37 @@ fn get_cdp_port(state: tauri::State<CdpPortState>) -> Result<Option<u16>, String
     Ok(state.port)
 }
 
+#[tauri::command]
+async fn discover_cdp_target(port: u16) -> Result<Option<String>, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    let url = format!("http://127.0.0.1:{}/json", port);
+    let targets: Vec<CdpTarget> = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch CDP targets: {}", e))?
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse CDP targets: {}", e))?;
+
+    // Filter targets with exact parity to TypeScript logic in cdp-client.ts:53-59
+    let target = targets.iter().find(|t| {
+        t.target_type == "page"
+            && t.url != "about:blank"
+            && !t.url.is_empty()
+            && !t.url.starts_with("tauri://localhost")
+            && !t.url.starts_with("https://tauri.localhost")
+            && !t.url.starts_with("http://localhost:1420")
+            && !t.url.starts_with("http://localhost:5173")
+    });
+
+    Ok(target.and_then(|t| t.ws_debugger_url.clone()))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // === CDP: Dynamic port allocation for embedded browser automation ===
@@ -786,9 +845,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_skills_source ON skills(source, source_id)
             inject_autofill,
             eval_webview_script,
             _eval_callback,
+            inject_webview_script,
             start_oauth_callback_server,
             stop_oauth_callback_server,
             get_cdp_port,
+            discover_cdp_target,
         ])
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_http::init())

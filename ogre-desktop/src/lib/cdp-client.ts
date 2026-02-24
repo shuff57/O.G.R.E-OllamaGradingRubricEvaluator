@@ -65,6 +65,23 @@ export class CDPClient {
     }
   }
 
+  /**
+   * Connect to a CDP target using a known WebSocket URL.
+   * Skips HTTP discovery — use when the wsUrl was resolved externally (e.g. via Rust proxy).
+   * @returns true on success, false on any failure (NEVER throws)
+   */
+  async connectToUrl(wsUrl: string): Promise<boolean> {
+    try {
+      if (this.ws) await this.disconnect();
+      const ok = await this.openWebSocket(wsUrl);
+      if (!ok) return false;
+      await this.send('Page.enable');
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   /** Disconnect from CDP and clean up all state. Safe to call when not connected. */
   async disconnect(): Promise<void> {
     this.connected = false;

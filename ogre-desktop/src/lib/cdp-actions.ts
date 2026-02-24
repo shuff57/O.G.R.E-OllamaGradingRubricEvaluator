@@ -57,12 +57,11 @@ export async function connectCDP(port?: number): Promise<boolean> {
       resolvedPort = tauriPort;
     }
 
-    const ok = await cdp.connect(resolvedPort);
-    if (!ok) return false;
+    // Discover the embedded browser target via Rust (bypasses CORS)
+    const wsUrl = await invoke<string | null>('discover_cdp_target', { port: resolvedPort });
+    if (!wsUrl) return false;
 
-    // Enable Page domain to receive navigation events
-    await cdp.send('Page.enable');
-    return true;
+    return await cdp.connectToUrl(wsUrl);
   } catch {
     return false;
   }
