@@ -7,6 +7,13 @@
   import { parseSkillMarkdown } from '../lib/skill-parser';
 
   let currentView = $state<'my-skills' | 'find-skills' | 'create-skill'>('my-skills');
+  let skillCreatorKey = $state(0);
+
+  function goToCreateSkill() {
+    skillCreatorKey++;
+    currentView = 'create-skill';
+  }
+
   let skills = $state<Skill[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
@@ -99,7 +106,7 @@
       </button>
       <button 
         class:active={currentView === 'create-skill'} 
-        onclick={() => currentView = 'create-skill'}
+        onclick={goToCreateSkill}
       >
         Create Skill
       </button>
@@ -145,7 +152,9 @@
     {:else if currentView === 'find-skills'}
       <SkillSearch />
     {:else if currentView === 'create-skill'}
-      <SkillCreator />
+      {#key skillCreatorKey}
+        <SkillCreator />
+      {/key}
     {/if}
   </div>
 </div>

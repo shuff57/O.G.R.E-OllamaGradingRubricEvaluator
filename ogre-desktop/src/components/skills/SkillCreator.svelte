@@ -14,13 +14,7 @@
     content: string;
   }
 
-  let messages: ChatMessage[] = $state([
-    {
-      role: "assistant",
-      content:
-        'I\'ll help you create a custom grading skill for O.G.R.E. Let\'s start with a few questions.\n\nWhat subject or course is this skill for? (e.g., "AP Calculus", "5th Grade Writing", "Intro to Python")',
-    },
-  ]);
+  let messages: ChatMessage[] = $state([]);
   let inputValue = $state("");
   let isLoading = $state(false);
   let errorText = $state("");
@@ -179,13 +173,7 @@
 
   /** Reset the conversation to start creating a new skill. */
   function resetChat() {
-    messages = [
-      {
-        role: "assistant",
-        content:
-          "Let's create another skill! What subject or course is this for?",
-      },
-    ];
+    messages = [];
     lastAssistantHasMarkdown = false;
     saveSuccess = "";
     inputValue = "";
@@ -222,7 +210,7 @@
       {#each messages as msg}
         <div class="message {msg.role}">
           <div class="message-label">
-            {msg.role === "user" ? "You" : "AI"}
+            {msg.role === "user" ? "You" : "SHREK"}
           </div>
           <div class="message-content">{msg.content}</div>
         </div>
@@ -230,7 +218,7 @@
 
       {#if isLoading}
         <div class="message assistant loading">
-          <div class="message-label">AI</div>
+          <div class="message-label">SHREK</div>
           <div class="message-content">
             <span class="thinking-dots">
               <span></span><span></span><span></span>
