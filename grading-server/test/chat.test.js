@@ -67,7 +67,7 @@ describe('buildSingleGradePrompt', () => {
     const minRubric = { essayPrompt: 'Simple question', maxScore: '5' };
     const prompt = buildSingleGradePrompt(minRubric, 'Answer', '');
     expect(prompt).toContain('Simple question');
-    expect(prompt).toContain('MAX SCORE: 5');
+    expect(prompt).toContain('MAX SCORE: 10');
     expect(prompt).not.toContain('GRADING CHECKLIST');
     expect(prompt).not.toContain('KEY CONCEPTS TO ADDRESS');
     expect(prompt).not.toContain('MODEL RESPONSE');
@@ -194,11 +194,11 @@ describe('parseSingleGradeResponse', () => {
   });
 
   it('should respect different maxScore values', () => {
-    const response = JSON.stringify({ score: 4, feedback: 'OK' });
+    const response = JSON.stringify({ score: 8, feedback: 'OK' });
     const result = parseSingleGradeResponse(response, 5);
     expect(result.score).toBe(4);
 
-    const overMax = JSON.stringify({ score: 7, feedback: 'Over' });
+    const overMax = JSON.stringify({ score: 11, feedback: 'Over' });
     const clamped = parseSingleGradeResponse(overMax, 5);
     expect(clamped.score).toBe(5);
   });
@@ -270,7 +270,7 @@ describe('Grader mode — prompt construction for /api/chat', () => {
 
   it('should handle rubric with only maxScore', () => {
     const prompt = buildSingleGradePrompt({ maxScore: '100' }, 'Very long essay...', '');
-    expect(prompt).toContain('MAX SCORE: 100');
+    expect(prompt).toContain('MAX SCORE: 10');
     expect(prompt).toContain('Very long essay');
   });
 
@@ -356,14 +356,14 @@ describe('Grader mode — response parsing edge cases', () => {
   });
 
   it('should handle maxScore of 5 (non-standard)', () => {
-    const response = JSON.stringify({ score: 3.5, feedback: 'Decent' });
+    const response = JSON.stringify({ score: 7, feedback: 'Decent' });
     const result = parseSingleGradeResponse(response, 5);
     expect(result.score).toBe(3.5);
     expect(result.score).toBeLessThanOrEqual(5);
   });
 
   it('should handle maxScore of 100', () => {
-    const response = JSON.stringify({ score: 85, feedback: 'B+' });
+    const response = JSON.stringify({ score: 8.5, feedback: 'B+' });
     const result = parseSingleGradeResponse(response, 100);
     expect(result.score).toBe(85);
     expect(result.score).toBeLessThanOrEqual(100);

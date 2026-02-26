@@ -199,6 +199,22 @@ export interface BatchSummary {
   errors: Array<{ name: string; error: string }>;
 }
 
+/** A group of students sharing the same question version. */
+export interface VersionGroup {
+  /** Version identifier (1-based) */
+  versionNumber: number;
+  /** Normalized prompt text fingerprint used for grouping */
+  fingerprint: string;
+  /** Page index of the representative student for this version */
+  representativeIndex: number;
+  /** All students with this version */
+  students: Student[];
+  /** Version-specific essay/question prompt text */
+  essayPrompt: string;
+  /** Version-specific model response text */
+  modelText: string | null;
+}
+
 /** Log entry for a single grading action. */
 export interface BatchLogEntry {
   /** Student name */
@@ -299,14 +315,14 @@ export async function extractStudents(selectors: SiteSelectors): Promise<Student
  * @returns Rubric data from the page
  * @throws Error if rubric extraction fails
  */
-export async function extractRubric(selectors: SiteSelectors): Promise<Rubric> {
+export async function extractRubric(selectors: SiteSelectors, studentIndex: number = 0): Promise<Rubric> {
   console.log('[batch] extractRubric: starting, waiting for Turndown...');
   await ensureTurndownLoaded();
-  console.log('[batch] extractRubric: Turndown ready, extracting rubric...');
+  console.log('[batch] extractRubric: Turndown ready, extracting rubric from student', studentIndex, '...');
   const result = await evalScriptJSON<Rubric | null>(`(function() {
     var sel = ${JSON.stringify(selectors)};
     if (!sel.studentSection) return null;
-    var first = document.querySelector(sel.studentSection);
+    var first = document.querySelectorAll(sel.studentSection)[${studentIndex}];
     if (!first) return null;
 
     var region = sel.questionRegion ? first.querySelector(sel.questionRegion) : null;
@@ -397,6 +413,145 @@ export async function extractRubric(selectors: SiteSelectors): Promise<Rubric> {
 
   if (!result) {
     throw new Error('Failed to extract rubric. Could not find student sections on this page.');
+  }
+  return result;
+}
+
+/**
+ * Extract a prompt text fingerprint from every student's question region.
+ *
+ * Returns a mapping of student page-index → normalized prompt text (first 500 chars).
+ * Students with identical fingerprints share the same question version.
+ * Runs as a single evalScriptJSON call for efficiency.
+ *
+ * @param selectors - CSS selectors from the active site profile
+ * @returns Record mapping student index to their normalized prompt fingerprint
+ */
+export async function extractPromptFingerprints(selectors: SiteSelectors): Promise<Record<number, string>> {
+  const result = await evalScriptJSON<Record<number, string>>(`(function() {
+    var sel = ${JSON.stringify(selectors)};
+    if (!sel.studentSection) return {};
+    var sections = document.querySelectorAll(sel.studentSection);
+    var fingerprints = {};
+    for (var i = 0; i < sections.length; i++) {
+      var region = sel.questionRegion ? sections[i].querySelector(sel.questionRegion) : null;
+      if (!region) { fingerprints[i] = ''; continue; }
+      var part1Div = region.children[1];
+      var promptDiv = part1Div ? part1Div.children[0] : null;
+      var text = promptDiv ? promptDiv.textContent.replace(/\\s+/g, ' ').trim().substring(0, 500) : '';
+      fingerprints[i] = text;
+    }
+    return fingerprints;
+  })()`);
+  return result || {};
+}
+
+/**
+ * Extract the version-specific essayPrompt and modelText from a specific student.
+ *
+ * Uses the same DOM traversal as extractRubric but only returns the prompt and
+ * model response text — the parts that differ between question versions.
+ *
+ * @param selectors - CSS selectors from the active site profile
+ * @param studentIndex - Zero-based index of the student on the page
+ * @returns Object with essayPrompt and modelText for this student's version
+ */
+export async function extractVersionPromptData(
+  selectors: SiteSelectors,
+  studentIndex: number,
+): Promise<{ essayPrompt: string; modelText: string | null }> {
+  await ensureTurndownLoaded();
+  const result = await evalScriptJSON<{ essayPrompt: string; modelText: string | null } | null>(`(function() {
+    var sel = ${JSON.stringify(selectors)};
+    if (!sel.studentSection) return null;
+    var student = document.querySelectorAll(sel.studentSection)[${studentIndex}];
+    if (!student) return null;
+
+    var region = sel.questionRegion ? student.querySelector(sel.questionRegion) : null;
+    if (!region) return { essayPrompt: '', modelText: null };
+
+    var essayPrompt = '';
+    var modelText = null;
+
+    // Extract essay prompt from Part 1 promptDiv
+    var part1Div = region.children[1];
+    var promptDiv = part1Div ? part1Div.children[0] : null;
+    if (promptDiv) {
+      var promptPs = promptDiv.querySelectorAll(':scope > p, :scope > div > p, :scope > ul, :scope > ol');
+      essayPrompt = Array.from(promptPs)
+        .map(function(p) {
+          // Skip elements inside <details> (checklist/rubric)
+          if (p.closest('details')) return '';
+          try { return window.__turndownService.turndown(p.outerHTML); } catch(e) { return p.textContent.trim(); }
+        })
+        .filter(function(t) { return t.length > 0; })
+        .join(' ')
+        .substring(0, 500);
+
+      // Fallback: scan all <p> in region excluding <details>
+      if (!essayPrompt || essayPrompt.length < 30) {
+        var fallbackPs = Array.from(region.querySelectorAll('p')).filter(function(p) {
+          return !p.closest('details');
+        });
+        var fallbackText = fallbackPs
+          .map(function(p) { return p.textContent.trim(); })
+          .filter(function(t) { return t.length > 5; })
+          .join(' ')
+          .substring(0, 500);
+        if (fallbackText.length > essayPrompt.length) { essayPrompt = fallbackText; }
+      }
+    }
+
+    // Extract model text from Part 2 rubric details
+    var part2Div = region.children[3];
+    var rubDetails = part2Div ? part2Div.querySelector('details') : null;
+    var rubDiv = rubDetails ? rubDetails.querySelector('div') : null;
+    if (rubDiv) {
+      var modelDiv = rubDiv.querySelector('div');
+      modelText = modelDiv ? (function() {
+        try { return window.__turndownService.turndown(modelDiv.innerHTML); } catch(e) { return modelDiv.textContent.trim(); }
+      })() : null;
+      if (modelText === '') modelText = null;
+    }
+
+    return { essayPrompt: essayPrompt, modelText: modelText };
+  })()`);
+  return result || { essayPrompt: '', modelText: null };
+}
+
+/**
+ * Group students by their prompt fingerprint into version groups.
+ *
+ * Students with identical fingerprints are placed in the same version group.
+ * If all students share one fingerprint, a single group is returned (no-op case).
+ *
+ * @param students - Array of extracted students
+ * @param fingerprints - Mapping of student index → prompt fingerprint
+ * @returns Array of version groups, one per distinct fingerprint
+ */
+export function groupStudentsByVersion(
+  students: Student[],
+  fingerprints: Record<number, string>,
+): VersionGroup[] {
+  const groups = new Map<string, Student[]>();
+
+  for (const student of students) {
+    const fp = fingerprints[student.index] || '';
+    if (!groups.has(fp)) groups.set(fp, []);
+    groups.get(fp)!.push(student);
+  }
+
+  let versionNumber = 1;
+  const result: VersionGroup[] = [];
+  for (const [fingerprint, groupStudents] of groups) {
+    result.push({
+      versionNumber: versionNumber++,
+      fingerprint,
+      representativeIndex: groupStudents[0].index,
+      students: groupStudents,
+      essayPrompt: '',
+      modelText: null,
+    });
   }
   return result;
 }
@@ -604,28 +759,50 @@ export async function fillGrade(
   feedback: string,
   selectors: SiteSelectors,
   feedbackConfig: FeedbackConfig | null = null,
+  studentName: string | null = null,
 ): Promise<void> {
   const fbConfig = feedbackConfig || { type: 'tinymce-inline' as const, requiresHiddenSync: true, htmlWrap: true };
 
   const result = await evalScriptJSON<FillResult>(`(function() {
     var sel = ${JSON.stringify(selectors)};
     var idx = ${JSON.stringify(studentIndex)};
+    var expectedName = ${JSON.stringify(studentName || '')};
     var scoreVal = ${JSON.stringify(String(score))};
     var feedbackText = ${JSON.stringify(feedback)};
     var fbCfg = ${JSON.stringify(fbConfig)};
 
     if (!sel.studentSection) return { success: false, error: 'No studentSection selector' };
     var students = document.querySelectorAll(sel.studentSection);
-    var student = students[idx];
-    if (!student) return { success: false, error: 'Student at index ' + idx + ' not found' };
+
+    // Find student by name first (stable across scroll/reorder), fall back to index
+    var student = null;
+    if (expectedName && sel.studentName) {
+      for (var i = 0; i < students.length; i++) {
+        var nameEl = students[i].querySelector(sel.studentName);
+        if (nameEl && nameEl.textContent.trim() === expectedName) {
+          student = students[i];
+          break;
+        }
+      }
+    }
+    if (!student) student = students[idx];
+    if (!student) return { success: false, error: 'Student "' + expectedName + '" (index ' + idx + ') not found' };
 
     student.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
     var scoreInput = sel.scoreInput ? student.querySelector(sel.scoreInput) : null;
     if (scoreInput) {
-      scoreInput.value = scoreVal;
+      // Focus + clear + set to reliably overwrite existing scores.
+      // Some LMS pages (MyOpenMath) only persist the value on blur/focusout,
+      // or track internal state that .value= alone doesn't update.
+      scoreInput.focus();
+      scoreInput.select();
+      // Use the native HTMLInputElement value setter to bypass any framework wrappers
+      var nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      nativeSetter.call(scoreInput, scoreVal);
       scoreInput.dispatchEvent(new Event('input', { bubbles: true }));
       scoreInput.dispatchEvent(new Event('change', { bubbles: true }));
+      scoreInput.dispatchEvent(new Event('blur', { bubbles: true }));
     }
 
     var fbBox = sel.feedbackBox ? student.querySelector(sel.feedbackBox) : null;
@@ -1050,6 +1227,12 @@ export class BatchGrader {
   /** Chronological log of all grading actions */
   private _log: BatchLogEntry[] = [];
 
+  /** Version groups detected on the page */
+  private _versionGroups: VersionGroup[] = [];
+
+  /** Index of the version group currently being graded */
+  private _currentVersionIndex: number = 0;
+
   // -- Public Accessors --
 
   /** Get the extracted rubric. */
@@ -1081,6 +1264,70 @@ export class BatchGrader {
     return this._paused;
   }
 
+  /** Get all detected version groups. */
+  get versionGroups(): VersionGroup[] {
+    return this._versionGroups;
+  }
+
+  /** Get the current version group index being graded. */
+  get currentVersionIndex(): number {
+    return this._currentVersionIndex;
+  }
+
+  /** Get the total number of detected versions. */
+  get versionCount(): number {
+    return this._versionGroups.length;
+  }
+
+  /** Whether multiple question versions were detected. */
+  get hasMultipleVersions(): boolean {
+    return this._versionGroups.length > 1;
+  }
+
+  /**
+   * Get the filtered (to-grade) students for a specific version group.
+   *
+   * @param versionIndex - Zero-based version group index
+   * @returns Students needing grading that belong to this version
+   */
+  getStudentsForVersion(versionIndex: number): Student[] {
+    if (versionIndex >= this._versionGroups.length) return [];
+    const versionStudentIndices = new Set(
+      this._versionGroups[versionIndex].students.map(s => s.index),
+    );
+    return this._toGrade.filter(s => versionStudentIndices.has(s.index));
+  }
+
+  /**
+   * Get a merged rubric for a specific version: shared structure + version-specific prompt/model.
+   *
+   * @param versionIndex - Zero-based version group index
+   * @returns Rubric with version-specific essayPrompt and modelText, or null
+   */
+  getRubricForVersion(versionIndex: number): Rubric | null {
+    if (!this._rubric) return null;
+    const group = this._versionGroups[versionIndex];
+    if (!group) return null;
+    return {
+      ...this._rubric,
+      essayPrompt: group.essayPrompt,
+      modelText: group.modelText,
+    };
+  }
+
+  /**
+   * Advance to the next version group.
+   *
+   * @returns true if there are more versions, false if all versions are done
+   */
+  advanceVersion(): boolean {
+    if (this._currentVersionIndex < this._versionGroups.length - 1) {
+      this._currentVersionIndex++;
+      return true;
+    }
+    return false;
+  }
+
   // -- Lifecycle Methods --
 
   /**
@@ -1092,7 +1339,7 @@ export class BatchGrader {
    * @param profile - Site profile describing the grading page
    * @param resumeAfter - Student name to resume after (skip up to and including)
    */
-  async start(profile: SiteProfile, resumeAfter?: string | null): Promise<void> {
+  async start(profile: SiteProfile, resumeAfter?: string | null, forceRegrade = false): Promise<void> {
     console.log('[batch] BatchGrader.start() called');
     this._profile = profile;
     this._isRunning = true;
@@ -1103,6 +1350,8 @@ export class BatchGrader {
     this._noResponse = [];
     this._log = [];
     this._currentIndex = 0;
+    this._versionGroups = [];
+    this._currentVersionIndex = 0;
 
     // Extract rubric
     console.log('[batch] start: extracting rubric...');
@@ -1116,6 +1365,27 @@ export class BatchGrader {
     // Extract students
     console.log('[batch] start: extracting students...');
     this._students = await extractStudents(profile.selectors);
+
+    // Detect question versions (batch mode only — sequential mode has no studentSection)
+    if (profile.navigation.mode === 'batch' && profile.selectors.studentSection) {
+      console.log('[batch] start: detecting question versions...');
+      const fingerprints = await extractPromptFingerprints(profile.selectors);
+      this._versionGroups = groupStudentsByVersion(this._students, fingerprints);
+      console.log('[batch] start: detected', this._versionGroups.length, 'version(s)');
+
+      // Extract version-specific prompt/model data from each version's representative student
+      for (const group of this._versionGroups) {
+        try {
+          const data = await extractVersionPromptData(profile.selectors, group.representativeIndex);
+          group.essayPrompt = data.essayPrompt;
+          group.modelText = data.modelText;
+        } catch {
+          // Fallback: use the shared rubric's prompt data
+          group.essayPrompt = this._rubric?.essayPrompt || '';
+          group.modelText = this._rubric?.modelText || null;
+        }
+      }
+    }
 
     // Filter to ungraded students
     let startIndex = 0;
@@ -1139,17 +1409,7 @@ export class BatchGrader {
     this._toGrade = [];
     for (let i = startIndex; i < this._students.length; i++) {
       const student = this._students[i];
-      if (student.hasFeedback) {
-        this._skipped.push(student.name);
-        this._log.push({
-          studentName: student.name,
-          studentIndex: student.index,
-          score: null,
-          feedback: 'Already has feedback',
-          timestamp: new Date().toISOString(),
-          status: 'skipped',
-        });
-      } else if (!student.response.trim()) {
+      if (!student.response.trim()) {
         this._noResponse.push(student);
         // No response — skip rather than waste a token on a blank submission
         this._skipped.push(student.name);
@@ -1161,9 +1421,19 @@ export class BatchGrader {
           timestamp: new Date().toISOString(),
           status: 'skipped',
         });
+      } else if (!forceRegrade && student.hasFeedback) {
+        this._skipped.push(student.name);
+        this._log.push({
+          studentName: student.name,
+          studentIndex: student.index,
+          score: null,
+          feedback: 'Already has feedback',
+          timestamp: new Date().toISOString(),
+          status: 'skipped',
+        });
       } else {
         const existingScore = parseFloat(student.currentScore);
-        if (!isNaN(existingScore) && existingScore > 0) {
+        if (!forceRegrade && !isNaN(existingScore) && existingScore > 0) {
           this._skipped.push(student.name);
           this._log.push({
             studentName: student.name,
@@ -1215,26 +1485,29 @@ export class BatchGrader {
   async applyGrade(studentIndex: number, score: number, feedback: string): Promise<void> {
     if (!this._profile) throw new Error('BatchGrader not started');
 
+    const student = this._toGrade[this._currentIndex];
+    const studentName = student?.name || null;
+
     await fillGrade(
       studentIndex,
       score,
       feedback,
       this._profile.selectors,
       this._profile.feedback,
+      studentName,
     );
 
-    const student = this._toGrade[this._currentIndex];
-    const studentName = student?.name || `Student ${studentIndex}`;
+    const displayName = studentName || `Student ${studentIndex}`;
     
     this._results.push({
-      name: studentName,
+      name: displayName,
       index: studentIndex,
       score,
       feedback,
     });
 
     this._log.push({
-      studentName,
+      studentName: displayName,
       studentIndex,
       score,
       feedback,

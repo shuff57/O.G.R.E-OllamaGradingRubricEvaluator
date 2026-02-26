@@ -69,6 +69,8 @@ export function generateScoringAnchors(rubric) {
  */
 export function buildBatchPrompt(rubric, students, anchors, bridgeResponses = null) {
   const maxScore = rubric.maxScore || '10';
+  const { virtualMax, factor: scoreFactor } = getScaleInfo(maxScore);
+  const _scoreHint = 'integer 0-10 (see SCORING SCALE below)';
 
   // Separate custom instructions from essayPrompt if they were appended
   let essayPrompt = rubric.essayPrompt || '(No prompt provided)';
@@ -86,7 +88,7 @@ export function buildBatchPrompt(rubric, students, anchors, bridgeResponses = nu
 GRADING PHILOSOPHY:
 ${GRADING_PHILOSOPHY}
 
-MAX SCORE: ${maxScore}
+MAX SCORE: ${virtualMax}
 
 QUESTION/PROMPT:
 ${essayPrompt}
@@ -126,12 +128,27 @@ ${essayPrompt}
   // Add scoring anchors for calibration
   prompt += `
 SCORING ANCHORS (use these as calibration references):
-- Excellent (${anchors.excellent.score}/${maxScore}): ${anchors.excellent.description}
-- Adequate (${anchors.adequate.score}/${maxScore}): ${anchors.adequate.description}
-- Below Average (${anchors.belowAverage.score}/${maxScore}): ${anchors.belowAverage.description}
-- Minimal (${anchors.minimal.score}/${maxScore}): ${anchors.minimal.description}
+- Excellent (${Math.round(anchors.excellent.score * scoreFactor * 10) / 10}/${virtualMax}): ${anchors.excellent.description}
+- Adequate (${Math.round(anchors.adequate.score * scoreFactor * 10) / 10}/${virtualMax}): ${anchors.adequate.description}
+- Below Average (${Math.round(anchors.belowAverage.score * scoreFactor * 10) / 10}/${virtualMax}): ${anchors.belowAverage.description}
+- Minimal (${Math.round(anchors.minimal.score * scoreFactor * 10) / 10}/${virtualMax}): ${anchors.minimal.description}
 
 Compare each student response to these anchors to ensure consistency.
+
+SCORING SCALE (use integers 0-10 — server converts to actual points):
+0  – No attempt, blank, or completely off-topic
+1  – Minimal: barely related to the question, almost no understanding shown
+2  – Very weak: major misconceptions, very few correct elements
+3  – Weak: some relevant ideas but mostly incomplete or incorrect
+4  – Below average: partially correct, significant gaps or errors
+5  – Half credit: meets some requirements but misses key points
+6  – Adequate: meets basic requirements with noticeable gaps
+7  – Good: solid understanding, minor errors or omissions
+8  – Very good: strong understanding, only small gaps
+9  – Excellent: comprehensive, accurate, near-perfect
+10 – Perfect: complete, thorough, and accurate
+
+Be precise — 7 and 8 represent meaningfully different quality levels.
 `;
 
   // Add bridge responses from previous chunk for cross-chunk consistency
@@ -151,7 +168,7 @@ CALIBRATION EXAMPLES (from previously graded batch — you MUST match this scori
     for (const [tier, examples] of Object.entries(tiers)) {
       prompt += `\n${tierLabels[tier] || tier.toUpperCase()}:\n`;
       for (const br of examples) {
-        prompt += `  - "${br.name || 'Student ' + br.studentIndex}" = ${br.score}/${maxScore}: ${(br.feedback || '').substring(0, 300)}\n`;
+        prompt += `  - "${br.name || 'Student ' + br.studentIndex}" = ${Math.round(br.score * scoreFactor * 10) / 10}/${virtualMax}: ${(br.feedback || '').substring(0, 300)}\n`;
       }
     }
 
@@ -182,12 +199,12 @@ Return one object per student using the EXACT studentIndex shown above each resp
 [
   {
     "studentIndex": ${firstIdx},
-    "score": <number 0 to ${maxScore}, half-points allowed e.g. 7.5>,
-    "feedback": "<constructive feedback string, use \\\\( ... \\\\) for LaTeX math>"
+    "score": <${_scoreHint}>
+    "feedback": "<constructive feedback string, wrap math in backticks for MathJax e.g. \`\\\\sigma / \\\\sqrt{n}\`>"
   },
   {
     "studentIndex": ${secondIdx},
-    "score": <number, half-points allowed>,
+    "score": <${_scoreHint}>
     "feedback": "<feedback>"
   }
   // ... continue for all ${students.length} students
@@ -310,9 +327,30 @@ export function parseBatchResponse(aiText, students, maxScore) {
   }));
 }
 
+// Snap score to granularity proportional to maxScore so low-point questions
+// (e.g. maxScore=1) get fine-grained precision instead of only {0, 0.5, 1}.
+function snapScore(score, maxScore) {
+  if (maxScore >= 5) return Math.round(score * 2) / 2;  // 0.5 increments
+  if (maxScore >= 2) return Math.round(score * 4) / 4;  // 0.25 increments
+  return Math.round(score * 10) / 10;                    // 0.1 increments
+}
+
+// All prompts grade out of 10. Server converts to actual maxScore on output.
+function scoreFormatHint(_maxScore) {
+  return 'integer 0-10 (see SCORING SCALE below)';
+}
+
+// All prompts grade out of 10 regardless of actual maxScore.
+// Server converts back to real score via: realScore = aiScore / 10 * maxScore.
+function getScaleInfo(maxScore) {
+  const max = parseFloat(maxScore) || 10;
+  return { virtualMax: 10, factor: 10 / max };
+}
+
 function validateBatchResults(parsed, students, maxScore) {
   // Build expected index set for validation
   const expectedIndices = new Set(students.map(s => s.index));
+  const { factor: _parseFactor } = getScaleInfo(maxScore);
 
   // Always use POSITIONAL mapping: Nth AI result → Nth student in chunk.
   // AI often ignores studentIndex instructions (returns 0-based for every chunk).
@@ -320,9 +358,12 @@ function validateBatchResults(parsed, students, maxScore) {
   const results = parsed.map((item, idx) => {
     let score = parseFloat(item.score);
     if (isNaN(score) || score < 0) score = 0;
+    // Descale: AI was prompted with virtualMax, convert back to real maxScore
+    score = score / _parseFactor;  // always descale from virtual-10 to real maxScore
     if (score > maxScore) score = maxScore;
-    // Snap to nearest 0.5
-    score = Math.round(score * 2) / 2;
+    // Snap to appropriate granularity
+    score = snapScore(score, maxScore);
+    console.log('[grade] batch ai_raw=' + item.score + ' factor=' + _parseFactor.toFixed(2) + ' final=' + score + ' (max=' + maxScore + ')');
     const feedback = (item.feedback || '').trim() || 'Graded by AI.';
 
     // Use the actual student index from the chunk, not the AI's studentIndex
@@ -492,8 +533,8 @@ You MUST respond with a valid JSON array ONLY. No markdown, no code fences, no e
 [
   {
     "studentIndex": <original student index>,
-    "score": <number 0 to ${maxScore}, half-points allowed e.g. 7.5>,
-    "feedback": "<updated feedback, use \\\\( ... \\\\) for LaTeX math>",
+    "score": <${scoreFormatHint(maxScore)}>
+    "feedback": "<updated feedback, wrap math in backticks for MathJax e.g. \`\\\\sigma / \\\\sqrt{n}\`>",
     "adjusted": <true if score changed, false if kept same>
   }
 ]
@@ -642,6 +683,8 @@ CRITICAL: Only flag genuine inconsistencies. Do NOT adjust scores just to create
  */
 export function buildSingleGradePrompt(rubric, studentWork, instructions) {
   const maxScore = rubric.maxScore || '10';
+  const { virtualMax } = getScaleInfo(maxScore);
+  const _sScoreHint = scoreFormatHint(virtualMax);
   const essayPrompt = rubric.essayPrompt || '(No prompt provided)';
 
   let prompt = `You are an expert grading assistant. Grade this student's work against the provided rubric.
@@ -649,7 +692,7 @@ export function buildSingleGradePrompt(rubric, studentWork, instructions) {
 GRADING PHILOSOPHY:
 ${GRADING_PHILOSOPHY}
 
-MAX SCORE: ${maxScore}
+MAX SCORE: ${virtualMax}
 
 QUESTION/PROMPT:
 ${essayPrompt}
@@ -699,15 +742,27 @@ ${instructions}
   }
 
   prompt += `
-SCORING GUIDANCE:
-Half-point scores are allowed (e.g., 7.5).
+SCORING SCALE (use integers 0-10 — server converts to actual points):
+0  – No attempt, blank, or completely off-topic
+1  – Minimal: barely related to the question, almost no understanding shown
+2  – Very weak: major misconceptions, very few correct elements
+3  – Weak: some relevant ideas but mostly incomplete or incorrect
+4  – Below average: partially correct, significant gaps or errors
+5  – Half credit: meets some requirements but misses key points
+6  – Adequate: meets basic requirements with noticeable gaps
+7  – Good: solid understanding, minor errors or omissions
+8  – Very good: strong understanding, only small gaps
+9  – Excellent: comprehensive, accurate, near-perfect
+10 – Perfect: complete, thorough, and accurate
+
+Be precise — 7 and 8 represent meaningfully different quality levels.
 
 RESPONSE FORMAT:
 Return ONLY valid JSON. No markdown code fences. No explanation text.
 
 {
-  "score": <number 0 to ${maxScore}, half-points allowed e.g. 7.5>,
-  "feedback": "<constructive feedback string, use \\\\( ... \\\\) for LaTeX math>"
+  "score": <${_sScoreHint}>
+  "feedback": "<constructive feedback string, wrap math in backticks for MathJax e.g. \`\\\\sigma / \\\\sqrt{n}\`>"
 }`;
 
   return prompt;
@@ -772,8 +827,12 @@ export function parseSingleGradeResponse(aiText, maxScore) {
 function clampSingleResult(parsed, maxScore) {
   let score = parseFloat(parsed.score);
   if (isNaN(score) || score < 0) score = 0;
+  // Descale: AI was prompted with virtualMax, convert back to real maxScore
+  const { factor: _cf } = getScaleInfo(maxScore);
+  score = score / _cf;  // always descale from virtual-10 to real maxScore
   if (score > maxScore) score = maxScore;
-  score = Math.round(score * 2) / 2; // snap to nearest 0.5
+  score = snapScore(score, maxScore);
+  console.log('[grade] single ai_raw=' + parsed.score + ' factor=' + _cf.toFixed(2) + ' final=' + score + ' (max=' + maxScore + ')');
   const feedback = (parsed.feedback || '').trim() || 'Graded by AI.';
   return { score, feedback };
 }
