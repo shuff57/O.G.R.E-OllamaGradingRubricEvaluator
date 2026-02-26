@@ -25,7 +25,7 @@ No environment-specific detection needed. Just Playwriter.
 - Award substantial partial credit for correct reasoning with minor errors
 - Focus on mathematical thinking and effort, not perfect execution
 - Distinguish conceptual misunderstandings (serious) from minor mistakes (not serious)
-- Any substantive attempt that engages with the prompt earns at least 40% of max score
+- Any substantive attempt that engages with the prompt earns at least 60% of max score
 
 ## Key Principles
 

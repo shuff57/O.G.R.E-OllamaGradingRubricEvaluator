@@ -827,6 +827,8 @@ export async function fillGrade(
       }
     }
 
+    // Trigger MathJax to re-render any newly inserted LaTeX
+    try { if (window.MathJax && window.MathJax.typeset) window.MathJax.typeset(); } catch(e) {}
     return { success: true };
   })()`);
 

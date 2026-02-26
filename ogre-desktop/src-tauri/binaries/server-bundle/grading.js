@@ -3,6 +3,8 @@
  * Handles batch grading with scoring anchors, chunking, and outlier detection
  */
 
+import { GRADING_PHILOSOPHY } from './grading-constants.js';
+
 /**
  * Generate scoring anchors (Excellent, Adequate, Below Average, Minimal) for calibration
  * @param {Object} rubric - Rubric with essayPrompt, checklistItems, rubricItems, maxScore
@@ -11,17 +13,20 @@
 export function generateScoringAnchors(rubric) {
   const maxScore = parseFloat(rubric.maxScore) || 10;
 
+  // Round to 1 decimal place for small max scores (< 6) so anchors stay
+  // proportionate rather than collapsing to the same integer value.
+  const roundScore = (s) => maxScore < 6 ? Math.round(s * 10) / 10 : Math.round(s);
   // Generate scores for each anchor level
-  const excellentScore = Math.round(maxScore * 0.9); // 90% - near perfect
-  const adequateScore = Math.round(maxScore * 0.65); // 65% - solid understanding
-  const belowAverageScore = Math.round(maxScore * 0.5); // 50% - partial understanding
-  const minimalScore = Math.round(maxScore * 0.3); // 30% - bare minimum
+  const excellentScore = roundScore(maxScore * 0.95); // 95% - near perfect
+  const adequateScore = roundScore(maxScore * 0.80); // 80% - solid understanding
+  const belowAverageScore = roundScore(maxScore * 0.65); // 65% - partial understanding
+  const minimalScore = roundScore(maxScore * 0.45); // 45% - bare minimum
 
   // Build descriptions based on rubric criteria
-  let excellentDesc = 'Demonstrates comprehensive understanding with all key concepts addressed clearly.';
-  let adequateDesc = 'Shows solid grasp of main concepts with minor gaps or unclear explanations.';
-  let belowAverageDesc = 'Shows partial understanding but missing key concepts, formulas, or depth.';
-  let minimalDesc = 'Addresses some basic concepts but lacks depth or contains significant errors.';
+  let excellentDesc = 'Demonstrates clear understanding with most key concepts addressed.';
+  let adequateDesc = 'Addresses the topic and shows awareness of key concepts, even with gaps or imprecision.';
+  let belowAverageDesc = 'Makes a genuine attempt that engages with the prompt, showing limited but real understanding.';
+  let minimalDesc = 'Shows some effort and awareness related to the topic, even if mostly incomplete.';
 
   // Enhance descriptions with rubric-specific criteria if available
   if (rubric.checklistItems && rubric.checklistItems.length > 0) {
@@ -64,6 +69,8 @@ export function generateScoringAnchors(rubric) {
  */
 export function buildBatchPrompt(rubric, students, anchors, bridgeResponses = null) {
   const maxScore = rubric.maxScore || '10';
+  const { virtualMax, factor: scoreFactor } = getScaleInfo(maxScore);
+  const _scoreHint = 'integer 0-10 (see SCORING SCALE below)';
 
   // Separate custom instructions from essayPrompt if they were appended
   let essayPrompt = rubric.essayPrompt || '(No prompt provided)';
@@ -76,19 +83,12 @@ export function buildBatchPrompt(rubric, students, anchors, bridgeResponses = nu
     essayPrompt = essayPrompt.replace(/\n\nADDITIONAL GRADING INSTRUCTIONS:\n[\s\S]+$/, '').trim();
   }
 
-  let prompt = `You are an expert grading assistant. Grade ALL students in this batch against the provided rubric.
+   let prompt = `You are an expert grading assistant. Grade ALL students in this batch against the provided rubric.
 
 GRADING PHILOSOPHY:
-These are high school seniors, not college students or experts. Grade generously:
-- Give full credit for demonstrating understanding, even if the explanation lacks polish
-- Award substantial partial credit for correct reasoning with minor errors
-- Focus on mathematical thinking and effort, not perfect execution
-- Distinguish conceptual misunderstandings (serious) from minor mistakes (not serious)
-- Wrong terminology with correct concept = most of the points
-- Minor errors or omissions lose at most 1 point per category
-- Any substantive attempt that engages with the prompt earns at least 40% of max score
+${GRADING_PHILOSOPHY}
 
-MAX SCORE: ${maxScore}
+MAX SCORE: ${virtualMax}
 
 QUESTION/PROMPT:
 ${essayPrompt}
@@ -128,12 +128,27 @@ ${essayPrompt}
   // Add scoring anchors for calibration
   prompt += `
 SCORING ANCHORS (use these as calibration references):
-- Excellent (${anchors.excellent.score}/${maxScore}): ${anchors.excellent.description}
-- Adequate (${anchors.adequate.score}/${maxScore}): ${anchors.adequate.description}
-- Below Average (${anchors.belowAverage.score}/${maxScore}): ${anchors.belowAverage.description}
-- Minimal (${anchors.minimal.score}/${maxScore}): ${anchors.minimal.description}
+- Excellent (${Math.round(anchors.excellent.score * scoreFactor * 10) / 10}/${virtualMax}): ${anchors.excellent.description}
+- Adequate (${Math.round(anchors.adequate.score * scoreFactor * 10) / 10}/${virtualMax}): ${anchors.adequate.description}
+- Below Average (${Math.round(anchors.belowAverage.score * scoreFactor * 10) / 10}/${virtualMax}): ${anchors.belowAverage.description}
+- Minimal (${Math.round(anchors.minimal.score * scoreFactor * 10) / 10}/${virtualMax}): ${anchors.minimal.description}
 
 Compare each student response to these anchors to ensure consistency.
+
+SCORING SCALE (use integers 0-10 — server converts to actual points):
+0  – No submission or completely blank
+1  – Off-topic: response does not address the question at all
+2  – Minimal effort: mentions the topic but shows almost no understanding
+3  – Very limited: some awareness of concepts but largely incomplete
+4  – Partial: shows basic familiarity but misses most key criteria
+5  – Developing: demonstrates partial understanding, covers some key points
+6  – Approaching: addresses main ideas but with notable gaps or errors
+7  – Satisfactory: shows reasonable understanding of core concepts
+8  – Good: solid understanding with only minor gaps or imprecision
+9  – Very good: thorough and accurate, demonstrates strong command
+10 – Excellent: comprehensive, precise, and clearly communicated
+
+When in doubt between two scores, choose the HIGHER one.
 `;
 
   // Add bridge responses from previous chunk for cross-chunk consistency
@@ -153,7 +168,7 @@ CALIBRATION EXAMPLES (from previously graded batch — you MUST match this scori
     for (const [tier, examples] of Object.entries(tiers)) {
       prompt += `\n${tierLabels[tier] || tier.toUpperCase()}:\n`;
       for (const br of examples) {
-        prompt += `  - "${br.name || 'Student ' + br.studentIndex}" = ${br.score}/${maxScore}: ${(br.feedback || '').substring(0, 300)}\n`;
+        prompt += `  - "${br.name || 'Student ' + br.studentIndex}" = ${Math.round(br.score * scoreFactor * 10) / 10}/${virtualMax}: ${(br.feedback || '').substring(0, 300)}\n`;
       }
     }
 
@@ -184,12 +199,12 @@ Return one object per student using the EXACT studentIndex shown above each resp
 [
   {
     "studentIndex": ${firstIdx},
-    "score": <number 0 to ${maxScore}, half-points allowed e.g. 7.5>,
-    "feedback": "<constructive feedback string, use \\\\( ... \\\\) for LaTeX math>"
+    "score": <${_scoreHint}>
+    "feedback": "<constructive feedback, use \\( ... \\) for inline math e.g. \\(\\sigma / \\sqrt{n}\\)>"
   },
   {
     "studentIndex": ${secondIdx},
-    "score": <number, half-points allowed>,
+    "score": <${_scoreHint}>
     "feedback": "<feedback>"
   }
   // ... continue for all ${students.length} students
@@ -312,9 +327,30 @@ export function parseBatchResponse(aiText, students, maxScore) {
   }));
 }
 
+// Snap score to granularity proportional to maxScore so low-point questions
+// (e.g. maxScore=1) get fine-grained precision instead of only {0, 0.5, 1}.
+function snapScore(score, maxScore) {
+  if (maxScore >= 5) return Math.round(score * 2) / 2;  // 0.5 increments
+  if (maxScore >= 2) return Math.round(score * 4) / 4;  // 0.25 increments
+  return Math.round(score * 10) / 10;                    // 0.1 increments
+}
+
+// All prompts grade out of 10. Server converts to actual maxScore on output.
+function scoreFormatHint(_maxScore) {
+  return 'integer 0-10 (see SCORING SCALE below)';
+}
+
+// All prompts grade out of 10 regardless of actual maxScore.
+// Server converts back to real score via: realScore = aiScore / 10 * maxScore.
+function getScaleInfo(maxScore) {
+  const max = parseFloat(maxScore) || 10;
+  return { virtualMax: 10, factor: 10 / max };
+}
+
 function validateBatchResults(parsed, students, maxScore) {
   // Build expected index set for validation
   const expectedIndices = new Set(students.map(s => s.index));
+  const { factor: _parseFactor } = getScaleInfo(maxScore);
 
   // Always use POSITIONAL mapping: Nth AI result → Nth student in chunk.
   // AI often ignores studentIndex instructions (returns 0-based for every chunk).
@@ -322,9 +358,12 @@ function validateBatchResults(parsed, students, maxScore) {
   const results = parsed.map((item, idx) => {
     let score = parseFloat(item.score);
     if (isNaN(score) || score < 0) score = 0;
+    // Descale: AI was prompted with virtualMax, convert back to real maxScore
+    score = score / _parseFactor;  // always descale from virtual-10 to real maxScore
     if (score > maxScore) score = maxScore;
-    // Snap to nearest 0.5
-    score = Math.round(score * 2) / 2;
+    // Snap to appropriate granularity
+    score = snapScore(score, maxScore);
+    console.log('[grade] batch ai_raw=' + item.score + ' factor=' + _parseFactor.toFixed(2) + ' final=' + score + ' (max=' + maxScore + ')');
     const feedback = (item.feedback || '').trim() || 'Graded by AI.';
 
     // Use the actual student index from the chunk, not the AI's studentIndex
@@ -423,14 +462,7 @@ BATCH CONTEXT:
 - Total students in batch: ${stats.totalStudents}
 
 GRADING PHILOSOPHY:
-These are high school seniors, not college students or experts. Grade generously:
-- Give full credit for demonstrating understanding, even if the explanation lacks polish
-- Award substantial partial credit for correct reasoning with minor errors
-- Focus on mathematical thinking and effort, not perfect execution
-- Distinguish conceptual misunderstandings (serious) from minor mistakes (not serious)
-- Wrong terminology with correct concept = most of the points
-- Minor errors or omissions lose at most 1 point per category
-- Any substantive attempt that engages with the prompt earns at least 40% of max score
+${GRADING_PHILOSOPHY}
 
 MAX SCORE: ${maxScore}
 
@@ -501,8 +533,8 @@ You MUST respond with a valid JSON array ONLY. No markdown, no code fences, no e
 [
   {
     "studentIndex": <original student index>,
-    "score": <number 0 to ${maxScore}, half-points allowed e.g. 7.5>,
-    "feedback": "<updated feedback, use \\\\( ... \\\\) for LaTeX math>",
+    "score": <${scoreFormatHint(maxScore)}>
+    "feedback": "<updated feedback, use \\( ... \\) for inline math e.g. \\(\\sigma / \\sqrt{n}\\)>",
     "adjusted": <true if score changed, false if kept same>
   }
 ]
@@ -641,6 +673,170 @@ CRITICAL: Only flag genuine inconsistencies. Do NOT adjust scores just to create
  * @param {number} maxScore - Maximum possible score
  * @returns {Array} - Array of { band, prompt, studentIndices } objects (only bands with cross-chunk students)
  */
+/**
+ * Build a grading prompt for a single student (used by /api/chat grader mode).
+ * Simplified version of buildBatchPrompt for one student at a time.
+ * @param {Object} rubric - Rubric object with essayPrompt, checklistItems, rubricItems, modelText, maxScore
+ * @param {string} studentWork - The student's response text
+ * @param {string} instructions - Additional grading instructions or message from the user
+ * @returns {string} - Complete prompt for AI grading
+ */
+export function buildSingleGradePrompt(rubric, studentWork, instructions) {
+  const maxScore = rubric.maxScore || '10';
+  const { virtualMax } = getScaleInfo(maxScore);
+  const _sScoreHint = scoreFormatHint(virtualMax);
+  const essayPrompt = rubric.essayPrompt || '(No prompt provided)';
+
+  let prompt = `You are an expert grading assistant. Grade this student's work against the provided rubric.
+
+GRADING PHILOSOPHY:
+${GRADING_PHILOSOPHY}
+
+MAX SCORE: ${virtualMax}
+
+QUESTION/PROMPT:
+${essayPrompt}
+`;
+
+  // Add checklist items if present
+  if (rubric.checklistItems && rubric.checklistItems.length > 0) {
+    prompt += '\nGRADING CHECKLIST:\n';
+    for (const item of rubric.checklistItems) {
+      if (item.category) prompt += `- ${item.category} (${item.points} points)\n`;
+      if (item.items) {
+        for (const sub of item.items) {
+          prompt += `  - ${sub}\n`;
+        }
+      }
+    }
+  }
+
+  // Add rubric targets if present
+  if (rubric.rubricItems && rubric.rubricItems.length > 0) {
+    prompt += '\nKEY CONCEPTS TO ADDRESS:\n';
+    for (const item of rubric.rubricItems) {
+      if (item.category) prompt += `${item.category}:\n`;
+      if (item.items) {
+        for (const sub of item.items) {
+          prompt += `  - ${sub}\n`;
+        }
+      }
+    }
+  }
+
+  // Add model response if present
+  if (rubric.modelText) {
+    prompt += `\nMODEL RESPONSE (for reference):\n${rubric.modelText}\n`;
+  }
+
+  prompt += `
+STUDENT WORK:
+${studentWork || '(No response submitted)'}
+`;
+
+  if (instructions) {
+    prompt += `
+ADDITIONAL INSTRUCTIONS:
+${instructions}
+`;
+  }
+
+  prompt += `
+SCORING SCALE (use integers 0-10 — server converts to actual points):
+0  – No submission or completely blank
+1  – Off-topic: response does not address the question at all
+2  – Minimal effort: mentions the topic but shows almost no understanding
+3  – Very limited: some awareness of concepts but largely incomplete
+4  – Partial: shows basic familiarity but misses most key criteria
+5  – Developing: demonstrates partial understanding, covers some key points
+6  – Approaching: addresses main ideas but with notable gaps or errors
+7  – Satisfactory: shows reasonable understanding of core concepts
+8  – Good: solid understanding with only minor gaps or imprecision
+9  – Very good: thorough and accurate, demonstrates strong command
+10 – Excellent: comprehensive, precise, and clearly communicated
+
+When in doubt between two scores, choose the HIGHER one.
+
+RESPONSE FORMAT:
+Return ONLY valid JSON. No markdown code fences. No explanation text.
+
+{
+  "score": <${_sScoreHint}>
+  "feedback": "<constructive feedback, use \\( ... \\) for inline math e.g. \\(\\sigma / \\sqrt{n}\\)>"
+}`;
+
+  return prompt;
+}
+
+/**
+ * Parse a single grade AI response into { score, feedback }.
+ * Handles JSON extraction, code fences, thinking blocks, and score clamping.
+ * @param {string} aiText - Raw AI response text
+ * @param {number} maxScore - Maximum possible score
+ * @returns {{ score: number, feedback: string }}
+ */
+export function parseSingleGradeResponse(aiText, maxScore) {
+  let text = aiText.trim();
+
+  // Strip <think>...</think> reasoning blocks
+  text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+
+  // Strip markdown code fences if present
+  const fenceMatch = text.match(/```json\s*([\s\S]*?)\s*```/) ||
+                     text.match(/```\s*([\s\S]*?)\s*```/);
+  if (fenceMatch) {
+    text = fenceMatch[1].trim();
+  }
+
+  // Attempt 1: Direct JSON parse
+  try {
+    const parsed = JSON.parse(text);
+    return clampSingleResult(parsed, maxScore);
+  } catch { /* continue */ }
+
+  // Attempt 2: Fix LaTeX backslashes then parse
+  try {
+    const fixed = text.replace(/\\(?!["\\/bfnrtu])/g, '\\\\');
+    const parsed = JSON.parse(fixed);
+    return clampSingleResult(parsed, maxScore);
+  } catch { /* continue */ }
+
+  // Attempt 3: Extract JSON object from surrounding text
+  const objMatch = text.match(/\{[\s\S]*\}/);
+  if (objMatch) {
+    try {
+      const parsed = JSON.parse(objMatch[0]);
+      return clampSingleResult(parsed, maxScore);
+    } catch { /* continue */ }
+    try {
+      const fixed = objMatch[0].replace(/\\(?!["\\/bfnrtu])/g, '\\\\');
+      const parsed = JSON.parse(fixed);
+      return clampSingleResult(parsed, maxScore);
+    } catch { /* continue */ }
+  }
+
+  // Attempt 4: Regex extraction
+  const regexMatch = text.match(/"score"\s*:\s*(\d+\.?\d*)\s*,\s*"feedback"\s*:\s*"([^"]*)"/);
+  if (regexMatch) {
+    return clampSingleResult({ score: parseFloat(regexMatch[1]), feedback: regexMatch[2] }, maxScore);
+  }
+
+  return { score: 0, feedback: 'Error parsing AI response. Please try again.' };
+}
+
+function clampSingleResult(parsed, maxScore) {
+  let score = parseFloat(parsed.score);
+  if (isNaN(score) || score < 0) score = 0;
+  // Descale: AI was prompted with virtualMax, convert back to real maxScore
+  const { factor: _cf } = getScaleInfo(maxScore);
+  score = score / _cf;  // always descale from virtual-10 to real maxScore
+  if (score > maxScore) score = maxScore;
+  score = snapScore(score, maxScore);
+  console.log('[grade] single ai_raw=' + parsed.score + ' factor=' + _cf.toFixed(2) + ' final=' + score + ' (max=' + maxScore + ')');
+  const feedback = (parsed.feedback || '').trim() || 'Graded by AI.';
+  return { score, feedback };
+}
+
 export function buildPairwiseSweepPrompts(results, students, anchors, chunkMap, maxScore) {
   // Define score bands based on anchors
   const bands = [

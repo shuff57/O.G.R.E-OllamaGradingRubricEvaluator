@@ -17,16 +17,16 @@ export function generateScoringAnchors(rubric) {
   // proportionate rather than collapsing to the same integer value.
   const roundScore = (s) => maxScore < 6 ? Math.round(s * 10) / 10 : Math.round(s);
   // Generate scores for each anchor level
-  const excellentScore = roundScore(maxScore * 0.9); // 90% - near perfect
-  const adequateScore = roundScore(maxScore * 0.65); // 65% - solid understanding
-  const belowAverageScore = roundScore(maxScore * 0.5); // 50% - partial understanding
-  const minimalScore = roundScore(maxScore * 0.3); // 30% - bare minimum
+  const excellentScore = roundScore(maxScore * 0.95); // 95% - near perfect
+  const adequateScore = roundScore(maxScore * 0.80); // 80% - solid understanding
+  const belowAverageScore = roundScore(maxScore * 0.65); // 65% - partial understanding
+  const minimalScore = roundScore(maxScore * 0.45); // 45% - bare minimum
 
   // Build descriptions based on rubric criteria
-  let excellentDesc = 'Demonstrates comprehensive understanding with all key concepts addressed clearly.';
-  let adequateDesc = 'Shows solid grasp of main concepts with minor gaps or unclear explanations.';
-  let belowAverageDesc = 'Shows partial understanding but missing key concepts, formulas, or depth.';
-  let minimalDesc = 'Addresses some basic concepts but lacks depth or contains significant errors.';
+  let excellentDesc = 'Demonstrates clear understanding with most key concepts addressed.';
+  let adequateDesc = 'Addresses the topic and shows awareness of key concepts, even with gaps or imprecision.';
+  let belowAverageDesc = 'Makes a genuine attempt that engages with the prompt, showing limited but real understanding.';
+  let minimalDesc = 'Shows some effort and awareness related to the topic, even if mostly incomplete.';
 
   // Enhance descriptions with rubric-specific criteria if available
   if (rubric.checklistItems && rubric.checklistItems.length > 0) {
@@ -136,19 +136,19 @@ SCORING ANCHORS (use these as calibration references):
 Compare each student response to these anchors to ensure consistency.
 
 SCORING SCALE (use integers 0-10 — server converts to actual points):
-0  – No attempt, blank, or completely off-topic
-1  – Minimal: barely related to the question, almost no understanding shown
-2  – Very weak: major misconceptions, very few correct elements
-3  – Weak: some relevant ideas but mostly incomplete or incorrect
-4  – Below average: partially correct, significant gaps or errors
-5  – Half credit: meets some requirements but misses key points
-6  – Adequate: meets basic requirements with noticeable gaps
-7  – Good: solid understanding, minor errors or omissions
-8  – Very good: strong understanding, only small gaps
-9  – Excellent: comprehensive, accurate, near-perfect
-10 – Perfect: complete, thorough, and accurate
+0  – No submission or completely blank
+1  – Off-topic: response does not address the question at all
+2  – Minimal effort: mentions the topic but shows almost no understanding
+3  – Very limited: some awareness of concepts but largely incomplete
+4  – Partial: shows basic familiarity but misses most key criteria
+5  – Developing: demonstrates partial understanding, covers some key points
+6  – Approaching: addresses main ideas but with notable gaps or errors
+7  – Satisfactory: shows reasonable understanding of core concepts
+8  – Good: solid understanding with only minor gaps or imprecision
+9  – Very good: thorough and accurate, demonstrates strong command
+10 – Excellent: comprehensive, precise, and clearly communicated
 
-Be precise — 7 and 8 represent meaningfully different quality levels.
+When in doubt between two scores, choose the HIGHER one.
 `;
 
   // Add bridge responses from previous chunk for cross-chunk consistency
@@ -200,7 +200,7 @@ Return one object per student using the EXACT studentIndex shown above each resp
   {
     "studentIndex": ${firstIdx},
     "score": <${_scoreHint}>
-    "feedback": "<constructive feedback string, wrap math in backticks for MathJax e.g. \`\\\\sigma / \\\\sqrt{n}\`>"
+    "feedback": "<constructive feedback, use \\( ... \\) for inline math e.g. \\(\\sigma / \\sqrt{n}\\)>"
   },
   {
     "studentIndex": ${secondIdx},
@@ -534,7 +534,7 @@ You MUST respond with a valid JSON array ONLY. No markdown, no code fences, no e
   {
     "studentIndex": <original student index>,
     "score": <${scoreFormatHint(maxScore)}>
-    "feedback": "<updated feedback, wrap math in backticks for MathJax e.g. \`\\\\sigma / \\\\sqrt{n}\`>",
+    "feedback": "<updated feedback, use \\( ... \\) for inline math e.g. \\(\\sigma / \\sqrt{n}\\)>",
     "adjusted": <true if score changed, false if kept same>
   }
 ]
@@ -743,26 +743,26 @@ ${instructions}
 
   prompt += `
 SCORING SCALE (use integers 0-10 — server converts to actual points):
-0  – No attempt, blank, or completely off-topic
-1  – Minimal: barely related to the question, almost no understanding shown
-2  – Very weak: major misconceptions, very few correct elements
-3  – Weak: some relevant ideas but mostly incomplete or incorrect
-4  – Below average: partially correct, significant gaps or errors
-5  – Half credit: meets some requirements but misses key points
-6  – Adequate: meets basic requirements with noticeable gaps
-7  – Good: solid understanding, minor errors or omissions
-8  – Very good: strong understanding, only small gaps
-9  – Excellent: comprehensive, accurate, near-perfect
-10 – Perfect: complete, thorough, and accurate
+0  – No submission or completely blank
+1  – Off-topic: response does not address the question at all
+2  – Minimal effort: mentions the topic but shows almost no understanding
+3  – Very limited: some awareness of concepts but largely incomplete
+4  – Partial: shows basic familiarity but misses most key criteria
+5  – Developing: demonstrates partial understanding, covers some key points
+6  – Approaching: addresses main ideas but with notable gaps or errors
+7  – Satisfactory: shows reasonable understanding of core concepts
+8  – Good: solid understanding with only minor gaps or imprecision
+9  – Very good: thorough and accurate, demonstrates strong command
+10 – Excellent: comprehensive, precise, and clearly communicated
 
-Be precise — 7 and 8 represent meaningfully different quality levels.
+When in doubt between two scores, choose the HIGHER one.
 
 RESPONSE FORMAT:
 Return ONLY valid JSON. No markdown code fences. No explanation text.
 
 {
   "score": <${_sScoreHint}>
-  "feedback": "<constructive feedback string, wrap math in backticks for MathJax e.g. \`\\\\sigma / \\\\sqrt{n}\`>"
+  "feedback": "<constructive feedback, use \\( ... \\) for inline math e.g. \\(\\sigma / \\sqrt{n}\\)>"
 }`;
 
   return prompt;

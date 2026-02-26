@@ -144,7 +144,7 @@ The skill grades with this philosophy (configurable in `grade.md`):
 - **Generous with high school students** — focus on understanding, not polish
 - **Substantial partial credit** — correct reasoning with minor errors still earns most points
 - **Conceptual vs. minor errors** — distinguish serious misunderstandings from typos
-- **Minimum 40% for substantive attempts** — any real engagement with the prompt earns credit
+- **Minimum 60% for substantive attempts** — any real engagement with the prompt earns credit
 
 You can customize this in `.claude/commands/grade.md` under "Grading Philosophy".
 
