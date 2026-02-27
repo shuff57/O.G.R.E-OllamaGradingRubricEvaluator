@@ -23,7 +23,7 @@ const MAIN_APP_PATTERNS = [
   /^http:\/\/localhost:(1420|5173)/, // Vite dev server
 ];
 
-const SEND_TIMEOUT_MS = 30_000;
+const SEND_TIMEOUT_MS = 90_000;
 
 export class CDPClient {
   private ws: WebSocket | null = null;

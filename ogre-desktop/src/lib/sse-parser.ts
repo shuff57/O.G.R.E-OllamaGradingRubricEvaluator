@@ -88,17 +88,17 @@ export interface BatchErrorEvent {
 /** Typed callbacks for batch grading SSE events. */
 export interface BatchGradingCallbacks {
   /** Phase updates: extracting, grading, calibration, outlier-review, etc. */
-  onProgress?: (data: BatchProgressEvent) => void;
+  onProgress?: (data: BatchProgressEvent) => void | Promise<void>;
   /** Results for a chunk of students. */
-  onChunk?: (data: BatchChunkEvent) => void;
+  onChunk?: (data: BatchChunkEvent) => void | Promise<void>;
   /** Cross-chunk consistency sweep adjustments. */
-  onSweep?: (data: BatchSweepEvent) => void;
+  onSweep?: (data: BatchSweepEvent) => void | Promise<void>;
   /** Outlier review adjustments. */
-  onOutlier?: (data: BatchOutlierEvent) => void;
+  onOutlier?: (data: BatchOutlierEvent) => void | Promise<void>;
   /** Batch grading completed successfully. */
-  onDone?: (data: BatchDoneEvent) => void;
+  onDone?: (data: BatchDoneEvent) => void | Promise<void>;
   /** Server-side error. */
-  onError?: (data: BatchErrorEvent) => void;
+  onError?: (data: BatchErrorEvent) => void | Promise<void>;
 }
 
 /** Cancellation token checked during stream reading. */
@@ -142,38 +142,37 @@ function parseOneEvent(block: string): { event: string; data: string } | null {
  * @param rawData - JSON string payload
  * @param callbacks - Event handlers
  */
-function dispatchBatchEvent(
+async function dispatchBatchEvent(
   event: string,
   rawData: string,
   callbacks: BatchGradingCallbacks,
-): void {
+): Promise<void> {
   try {
     const data = rawData ? JSON.parse(rawData) : {};
     switch (event) {
       case 'progress':
-        callbacks.onProgress?.(data as BatchProgressEvent);
+        await callbacks.onProgress?.(data as BatchProgressEvent);
         break;
       case 'chunk':
-        callbacks.onChunk?.(data as BatchChunkEvent);
+        await callbacks.onChunk?.(data as BatchChunkEvent);
         break;
       case 'sweep':
-        callbacks.onSweep?.(data as BatchSweepEvent);
+        await callbacks.onSweep?.(data as BatchSweepEvent);
         break;
       case 'outlier':
-        callbacks.onOutlier?.(data as BatchOutlierEvent);
+        await callbacks.onOutlier?.(data as BatchOutlierEvent);
         break;
       case 'done':
-        callbacks.onDone?.(data as BatchDoneEvent);
+        await callbacks.onDone?.(data as BatchDoneEvent);
         break;
       case 'error':
-        callbacks.onError?.(data as BatchErrorEvent);
+        await callbacks.onError?.(data as BatchErrorEvent);
         break;
       default:
         // Unknown event type — silently ignore
         break;
     }
   } catch {
-    console.warn('[sse-parser] Failed to parse SSE event data:', event, rawData);
   }
 }
 
@@ -220,7 +219,7 @@ export async function parseSSEStream(
 
         const evt = parseOneEvent(trimmed);
         if (evt) {
-          dispatchBatchEvent(evt.event, evt.data, callbacks);
+          await dispatchBatchEvent(evt.event, evt.data, callbacks);
         }
       }
     }
@@ -229,7 +228,7 @@ export async function parseSSEStream(
     if (!token?.cancelled && buffer.trim()) {
       const evt = parseOneEvent(buffer.trim());
       if (evt) {
-        dispatchBatchEvent(evt.event, evt.data, callbacks);
+      await dispatchBatchEvent(evt.event, evt.data, callbacks);
       }
     }
   } finally {
@@ -246,10 +245,10 @@ export async function parseSSEStream(
  * @param text - Complete SSE text response
  * @param callbacks - Event handlers for batch grading events
  */
-export function parseSSEText(
+export async function parseSSEText(
   text: string,
   callbacks: BatchGradingCallbacks,
-): void {
+): Promise<void> {
   const blocks = text.split('\n\n');
   for (const block of blocks) {
     const trimmed = block.trim();
@@ -257,7 +256,7 @@ export function parseSSEText(
 
     const evt = parseOneEvent(trimmed);
     if (evt) {
-      dispatchBatchEvent(evt.event, evt.data, callbacks);
+      await dispatchBatchEvent(evt.event, evt.data, callbacks);
     }
   }
 }

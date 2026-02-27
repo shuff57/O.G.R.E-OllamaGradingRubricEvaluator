@@ -6,6 +6,49 @@
 import { GRADING_PHILOSOPHY } from './grading-constants.js';
 
 /**
+ * Inject custom instructions into a prompt, separating scoring calibration examples
+ * (reference-only) from teacher override instructions (mandatory).
+ *
+ * @param {string} prompt - Current prompt string
+ * @param {string} customInstructions - Combined instructions from client
+ * @returns {string} - Prompt with instructions injected appropriately
+ */
+function injectCustomInstructions(prompt, customInstructions) {
+  if (!customInstructions) return prompt;
+
+  if (!customInstructions.startsWith('SCORING CALIBRATION:')) {
+    return prompt + `\n\nIMPORTANT \u2014 INSTRUCTOR OVERRIDE INSTRUCTIONS (you MUST follow these):\n${customInstructions}`;
+  }
+
+  const withoutHeader = customInstructions.slice('SCORING CALIBRATION:\n'.length);
+  const ANCHOR_LABELS = ['Excellent', 'Adequate', 'Below Average', 'Minimal'];
+  let splitPos = -1;
+  let searchFrom = 0;
+  while (searchFrom < withoutHeader.length) {
+    const idx = withoutHeader.indexOf('\n\n', searchFrom);
+    if (idx === -1) break;
+    const afterBreak = withoutHeader.slice(idx + 2).trimStart();
+    if (afterBreak.length > 0 && !ANCHOR_LABELS.some(l => afterBreak.startsWith(l))) {
+      splitPos = idx;
+      break;
+    }
+    searchFrom = idx + 2;
+  }
+
+  const calibPart    = (splitPos === -1 ? withoutHeader : withoutHeader.slice(0, splitPos)).trim();
+  const overridePart = (splitPos === -1 ? '' : withoutHeader.slice(splitPos)).trim();
+
+  if (calibPart) {
+    prompt += `\n\nSCORING CALIBRATION EXAMPLES (use to calibrate score levels only \u2014 grade against rubric criteria and SCORING SCALE above, not these examples):\n${calibPart}`;
+  }
+  if (overridePart) {
+    prompt += `\n\nIMPORTANT \u2014 INSTRUCTOR OVERRIDE INSTRUCTIONS (you MUST follow these):\n${overridePart}`;
+  }
+  return prompt;
+}
+
+
+/**
  * Generate scoring anchors (Excellent, Adequate, Below Average, Minimal) for calibration
  * @param {Object} rubric - Rubric with essayPrompt, checklistItems, rubricItems, maxScore
  * @returns {Object} - { excellent, adequate, belowAverage, minimal } with score and description
@@ -22,23 +65,11 @@ export function generateScoringAnchors(rubric) {
   const belowAverageScore = roundScore(maxScore * 0.65); // 65% - partial understanding
   const minimalScore = roundScore(maxScore * 0.45); // 45% - bare minimum
 
-  // Build descriptions based on rubric criteria
-  let excellentDesc = 'Demonstrates clear understanding with most key concepts addressed.';
-  let adequateDesc = 'Addresses the topic and shows awareness of key concepts, even with gaps or imprecision.';
-  let belowAverageDesc = 'Makes a genuine attempt that engages with the prompt, showing limited but real understanding.';
-  let minimalDesc = 'Shows some effort and awareness related to the topic, even if mostly incomplete.';
-
-  // Enhance descriptions with rubric-specific criteria if available
-  if (rubric.checklistItems && rubric.checklistItems.length > 0) {
-    const categories = rubric.checklistItems.map(item => item.category).filter(Boolean);
-    if (categories.length > 0) {
-      excellentDesc += ` Covers: ${categories.join(', ')}.`;
-      adequateDesc += ` Partially covers: ${categories.slice(0, 2).join(', ')}.`;
-      belowAverageDesc += ` Weak coverage of: ${categories.slice(0, 1).join(', ')}.`;
-      minimalDesc += ` Minimal coverage of: ${categories[0] || 'key concepts'}.`;
-    }
-  }
-
+  // Descriptions are intentionally generic — anchors calibrate score levels, not question content
+  const excellentDesc = 'Demonstrates clear understanding with most key concepts addressed.';
+  const adequateDesc = 'Addresses the topic and shows awareness of key concepts, even with gaps or imprecision.';
+  const belowAverageDesc = 'Makes a genuine attempt that engages with the prompt, showing limited but real understanding.';
+  const minimalDesc = 'Shows some effort and awareness related to the topic, even if mostly incomplete.';
   return {
     excellent: {
       score: excellentScore,
@@ -143,14 +174,16 @@ SCORING SCALE (use integers 0-10 — server converts to actual points):
 4  – Partial: shows basic familiarity but misses most key criteria
 5  – Developing: demonstrates partial understanding, covers some key points
 6  – Approaching: addresses main ideas but with notable gaps or errors
-7  – Satisfactory: shows reasonable understanding of core concepts
-8  – Good: solid understanding with only minor gaps or imprecision
-9  – Very good: thorough and accurate, demonstrates strong command
-10 – Excellent: comprehensive, precise, and clearly communicated
+7  – Competent: correctly addresses SOME but not all rubric criteria
+8  – Proficient: correctly addresses ALL rubric criteria, even if briefly or concisely
+9  – Strong: correctly addresses ALL rubric criteria with clear, accurate explanation
+10 – Excellent: addresses all criteria thoroughly with precision and depth
 
+CRITICAL: A response that correctly hits every rubric criterion earns 8-9, REGARDLESS of length.
+A short, accurate answer scores higher than a long, partially-wrong one.
+Only drop below 8 if a rubric criterion is genuinely missing or incorrect — NOT merely brief.
 When in doubt between two scores, choose the HIGHER one.
 `;
-
   // Add bridge responses from previous chunk for cross-chunk consistency
   if (bridgeResponses && bridgeResponses.length > 0) {
     prompt += `
@@ -200,7 +233,7 @@ Return one object per student using the EXACT studentIndex shown above each resp
   {
     "studentIndex": ${firstIdx},
     "score": <${_scoreHint}>
-    "feedback": "<constructive feedback, use \\( ... \\) for inline math e.g. \\(\\sigma / \\sqrt{n}\\)>"
+    "feedback": "<Use the student's first name from their header. Write one bullet point per rubric category. Use \\n between each bullet so they appear on separate lines. For each bullet: say what they did well, then say what was missing and what they would need to write to earn full credit. Write like a high school math teacher talking directly to the student. No em dashes. Short and clear.>"
   },
   {
     "studentIndex": ${secondIdx},
@@ -212,13 +245,8 @@ Return one object per student using the EXACT studentIndex shown above each resp
 
 CRITICAL: Return results for ALL ${students.length} students. Use the studentIndex from each "--- Student N:" header.`;
 
-  // Add custom instructions as a prominent override section at the end
-  if (customInstructions) {
-    prompt += `
-
-IMPORTANT — INSTRUCTOR OVERRIDE INSTRUCTIONS (you MUST follow these):
-${customInstructions}`;
-  }
+  // Inject custom instructions: calibration examples as reference, overrides as mandatory
+  prompt = injectCustomInstructions(prompt, customInstructions);
 
   return prompt;
 }
@@ -385,11 +413,18 @@ function validateBatchResults(parsed, students, maxScore) {
     console.warn(`AI indices [${aiIndices.join(',')}] remapped to chunk indices [${results.map(r => r.studentIndex).join(',')}]`);
   }
 
+  // Truncate to exactly the expected count — extra AI results have unreliable
+  // studentIndex values that can create phantom entries in the batch log.
+  if (results.length > students.length) {
+    console.warn(`Truncating ${results.length - students.length} extra result(s) beyond ${students.length} students`);
+    return results.slice(0, students.length);
+  }
+
   return results;
 }
 
 /**
- * Detect outliers using 2σ (2 standard deviations) threshold
+ * Detect outliers using 1σ (1 standard deviation) threshold
  * @param {Array} results - Array of grading results with score
  * @returns {Object} - { mean, stdDev, outliers: [{ studentIndex, score, deviation }] }
  */
@@ -407,8 +442,8 @@ export function detectOutliers(results) {
   const variance = squaredDiffs.reduce((sum, sq) => sum + sq, 0) / scores.length;
   const stdDev = Math.sqrt(variance);
 
-  // Find outliers beyond 2σ
-  const threshold = 2 * stdDev;
+  // Find outliers beyond 1σ — flags ~32% of students in a normal distribution
+  const threshold = stdDev;
   const outlierResults = results
     .map((result, idx) => {
       const deviation = Math.abs(result.score - mean);
@@ -420,8 +455,7 @@ export function detectOutliers(results) {
       };
     })
     .filter(r => r.isOutlier)
-    .sort((a, b) => b.deviation - a.deviation) // Sort by most extreme first
-    .slice(0, 5); // Limit to max 5 outliers
+    .sort((a, b) => b.deviation - a.deviation); // Sort by most extreme first — no cap, review all
 
   return {
     mean: parseFloat(mean.toFixed(2)),
@@ -436,25 +470,29 @@ export function detectOutliers(results) {
 
 /**
  * Build a focused re-grading prompt for outlier students
- * Includes batch statistics and original feedback so the AI can recalibrate
+ * Includes batch statistics, peer comparison examples, and original feedback so the AI can recalibrate.
  * @param {Object} rubric - Rubric object
  * @param {Array} outlierStudents - Array of { index, name, response, originalScore, originalFeedback }
  * @param {Object} anchors - Scoring anchors from generateScoringAnchors()
  * @param {Object} stats - { mean, stdDev } from the batch
  * @param {Number} maxScore - Maximum possible score
+ * @param {Number} maxScore - Maximum possible score
+ * @param {Array} allResults - Full batch results for peer comparison (optional)
  * @returns {String} - Complete prompt for outlier re-grading
  */
-export function buildOutlierReviewPrompt(rubric, outlierStudents, anchors, stats, maxScore) {
+export function buildOutlierReviewPrompt(rubric, outlierStudents, anchors, stats, maxScore, allResults = []) {
   // Separate custom instructions from essayPrompt if they were appended
   let essayPrompt = rubric.essayPrompt || '(No prompt provided)';
+  let customInstructions = rubric.customInstructions || '';
   const instrMatch = essayPrompt.match(/\n\nADDITIONAL GRADING INSTRUCTIONS:\n([\s\S]+)$/);
   if (instrMatch) {
+    if (!customInstructions) customInstructions = instrMatch[1].trim();
     essayPrompt = essayPrompt.replace(/\n\nADDITIONAL GRADING INSTRUCTIONS:\n[\s\S]+$/, '').trim();
   }
 
   let prompt = `You are an expert grading assistant performing a SECOND-PASS REVIEW of flagged student responses.
 
-These students received scores that were statistical outliers (more than 2 standard deviations from the batch mean). Your job is to re-evaluate each one carefully and determine if the original score was correct or should be adjusted.
+These students received scores that deviated more than 1 standard deviation from the batch mean. Your job is to re-evaluate each one carefully by comparing against the rubric AND against similarly-scored peers to ensure the score is accurate and consistent.
 
 BATCH CONTEXT:
 - Batch mean score: ${stats.mean}/${maxScore}
@@ -510,13 +548,30 @@ SCORING ANCHORS:
 - Minimal (${anchors.minimal.score}/${maxScore}): ${anchors.minimal.description}
 `;
 
-  // Add each outlier student with their original score for context
+  // Add each outlier student with peer comparison context
   prompt += '\nSTUDENTS TO RE-EVALUATE:\n\n';
   for (const student of outlierStudents) {
     prompt += `--- Student ${student.index}: ${student.name} ---\n`;
     prompt += `ORIGINAL SCORE: ${student.originalScore}/${maxScore}\n`;
     prompt += `ORIGINAL FEEDBACK: ${student.originalFeedback}\n`;
-    prompt += `RESPONSE:\n${student.response || '(No response submitted)'}\n\n`;
+    prompt += `RESPONSE:\n${student.response || '(No response submitted)'}\n`;
+
+    // Find 2 peers with similar scores for comparison (exclude this student)
+    if (allResults.length > 0) {
+      const peers = allResults
+        .filter(r => r.studentIndex !== student.index && Math.abs(r.score - student.originalScore) <= 1)
+        .sort((a, b) => Math.abs(a.score - student.originalScore) - Math.abs(b.score - student.originalScore))
+        .slice(0, 2);
+      if (peers.length > 0) {
+        prompt += `\nPEER COMPARISON (students who scored similarly — verify consistency):\n`;
+        for (const peer of peers) {
+          const preview = (peer.response || '(no response)').slice(0, 300);
+          const ellipsis = (peer.response?.length || 0) > 300 ? '...' : '';
+          prompt += `  [Score ${peer.score}/${maxScore}]: ${preview}${ellipsis}\n`;
+        }
+      }
+    }
+    prompt += '\n';
   }
 
   prompt += `
@@ -534,12 +589,15 @@ You MUST respond with a valid JSON array ONLY. No markdown, no code fences, no e
   {
     "studentIndex": <original student index>,
     "score": <${scoreFormatHint(maxScore)}>
-    "feedback": "<updated feedback, use \\( ... \\) for inline math e.g. \\(\\sigma / \\sqrt{n}\\)>",
+    "feedback": "<Use the student's first name from their header. Write one bullet point per rubric category. Use \\n between each bullet so they appear on separate lines. For each bullet: say what they did well, then say what was missing and what they would need to write to earn full credit. Write like a high school math teacher talking directly to the student. No em dashes. Short and clear.",
     "adjusted": <true if score changed, false if kept same>
   }
 ]
 
 CRITICAL: Return results for ALL ${outlierStudents.length} student(s) in the array.`;
+
+  // Inject custom instructions: calibration examples as reference, overrides as mandatory
+  if (customInstructions) prompt = injectCustomInstructions(prompt, customInstructions);
 
   return prompt;
 }
@@ -735,11 +793,13 @@ ${studentWork || '(No response submitted)'}
 `;
 
   if (instructions) {
-    prompt += `
-ADDITIONAL INSTRUCTIONS:
-${instructions}
-`;
+    prompt += `\nADDITIONAL INSTRUCTIONS:\n${instructions}\n`;
   }
+
+  // Inject custom instructions: calibration examples as reference, overrides as mandatory
+  const customInstructions = rubric.customInstructions || '';
+  prompt = injectCustomInstructions(prompt, customInstructions);
+  prompt += '\n';
 
   prompt += `
 SCORING SCALE (use integers 0-10 — server converts to actual points):
@@ -762,7 +822,7 @@ Return ONLY valid JSON. No markdown code fences. No explanation text.
 
 {
   "score": <${_sScoreHint}>
-  "feedback": "<constructive feedback, use \\( ... \\) for inline math e.g. \\(\\sigma / \\sqrt{n}\\)>"
+    "feedback": "<Write directly to the student using 'you'. Write one bullet point per rubric category. Use \\n between each bullet so they appear on separate lines. For each bullet: say what they did well, then say what was missing and what they would need to write to earn full credit. Write like a high school math teacher talking directly to the student. No em dashes. Short and clear.>"
 }`;
 
   return prompt;

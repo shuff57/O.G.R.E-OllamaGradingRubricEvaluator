@@ -1,0 +1,127 @@
+[
+  {
+    "index": 0,
+    "name": "Alvarez, Emiliano",
+    "response": "[Context: Imagine you roll a standard six-sided die 60 times and get the following results: 8 ones, 9 twos, 11 threes, 10 fours, 12 fives, and 10 sixes.]\n\nThe distribution is fair because of the amount of dice rolls there is provided in the research. If the experiment was truly fair the frequency for each category would be 10. The observed data are very close to the expected values which suggests the dice roll is fair. A goodness of fit test measures a set of observed data and if it fits a specific expected distribution. The test uses observed and expected frequencies in order to calculate a single score that demonstrates how much the actual results deviate from the theoretical predictions."
+  },
+  {
+    "index": 1,
+    "name": "Cartwright, Juliet",
+    "response": "[Context: Imagine you roll a standard six-sided die 60 times and get the following results: 8 ones, 9 twos, 11 threes, 10 fours, 12 fives, and 10 sixes.]\n\nYes, I do believe this is fair because the same thing occurred 60 times. The expected frequencies for each outcome is 10 because it is divided by 6. The observation results are close to the expected value of 10. This supports by conclusion because it was a fair based on the similarly in all the numbers. The goodness of fit test measures how well the observed frequency distribution matches the theoretical distribution. The test compares the observed frequencies to the expected frequencies using the formula."
+  },
+  {
+    "index": 2,
+    "name": "Consoli, Ben",
+    "response": "[Context: Imagine you observe 120 cars arriving at an intersection where the city claims traffic splits evenly among three directions, and you count: 28 turning left, 65 going straight, and 27 turning right.]\n\nThe distribution is unfair as considerable more people continue straight than turn in either direction. If the distribution was fair and followed the expected frequencies then 40 people would go in each direction. 28, 27 and 65 are all values that are very different than 40 and show that significantly more people go straight. A chi-squared goodness of fit test would determine if the differences we see are due to random chance or if they are statistically significant. It calculates a test statistic by looking at the difference between the observed frequency and the expected frequency for each category."
+  },
+  {
+    "index": 3,
+    "name": "Cox, Jenna",
+    "response": "[Context: Imagine you roll a standard six-sided die 60 times and get the following results: 8 ones, 9 twos, 11 threes, 10 fours, 12 fives, and 10 sixes.]\n\nThis distribution is unfair due to the difference in results. I would expect to see numbers closer together, not ranging from 8 ones to 12 fives. The X2 goodness of fit test would take those variables and test them to see if the p-value is larger than or less than the significance level, which will determine whether or not the die is unfair. The X2 goodness of fit test measures observed and expected values to find the T-Statistic and the p-value. Because the observed is different enough from the expected, I believe that the die is unfair."
+  },
+  {
+    "index": 4,
+    "name": "Davis, Cecilia",
+    "response": "[Context: Imagine you grab a handful of 200 candies from a large bag that claims to contain equal proportions of five colors, and you count: 52 red, 41 blue, 38 green, 35 yellow, and 34 orange.]\n\nI believe the distributions fairness depends on the context. This one looks somewhat unfair. A chi-squared goodness of fit test would measure how well the observed data fits the expected data."
+  },
+  {
+    "index": 5,
+    "name": "Doris, Nicole",
+    "response": "[Context: Imagine you grab a handful of 200 candies from a large bag that claims to contain equal proportions of five colors, and you count: 52 red, 41 blue, 38 green, 35 yellow, and 34 orange.]\n\nI think the distribution is mostly fair because since the numbers are mostly close together and there isnt one color that is significantly more than the rest. A chi-square GOF test would measure how far the observed counts would differ from the expected numbers which would be even across all colors."
+  },
+  {
+    "index": 6,
+    "name": "Guichard, Sophia",
+    "response": "[Context: Imagine you observe 120 cars arriving at an intersection where the city claims traffic splits evenly among three directions, and you count: 28 turning left, 65 going straight, and 27 turning right.]\n\nNo, I do not think that this distribution is fair. If the distribution was to be fair I would expect that the amount of cars going left, right, and straight would all be an equal value. In this data if the distribution was to be equal the amount of cars turning right should be 40, the cars turning left should be 40, and the cars going straight should be 40. The data that is observed is not equal based on which direction the car is going. A chi-squared goodness of fit is a statistical hypothesis test used to determine if an observed frequency distribution of a categorical variable matches an expected theoretical distribution."
+  },
+  {
+    "index": 7,
+    "name": "Guzman Rangel, Jimena",
+    "response": "[Context: Imagine you grab a handful of 200 candies from a large bag that claims to contain equal proportions of five colors, and you count: 52 red, 41 blue, 38 green, 35 yellow, and 34 orange.]\n\nI believe the distribution is unfair, they claimed there to be an equal proportion of each color while in the test they discovered there were a larger amount of some values. For the distribution to be truly equal there would need to be 40 or each color because there are five colors in a sample size of 200. This supports my claim of the distribution not being equal because it shows that 52 red is higher than the estimated 40. The x2 goodness of fit test measures how well the estimated and observed sample distribution fit or match. It calculates the sum of (observed-expected)2 divided by the expected frequency."
+  },
+  {
+    "index": 8,
+    "name": "Herl, Chrey",
+    "response": "[Context: Imagine you roll a standard six-sided die 60 times and get the following results: 8 ones, 9 twos, 11 threes, 10 fours, 12 fives, and 10 sixes.]\n\nI believe this distribution is fair because dice rolls are random every time I roll them, and it is most likely not going to be perfectly uniformly distributed, which is why some numbers landed more than others. If the distribution were truly equal, each dice would have landed 10 times (60 / 6). The observed results are pretty similar, being only 2 away from 10 at the most, which is due to the random chance. A chi-squared goodness of fit test measures whether or not observed counts follow the same distribution as expected counts. The observed and expected frequencies are used in the null and alternative hypotheses. If they have the same distribution, you cannot reject the null, but if observed and expected counts do not follow the same distribution, you reject the null hypothesis."
+  },
+  {
+    "index": 9,
+    "name": "Jimmerson, Kwan",
+    "response": "[Context: Imagine you observe 120 cars arriving at an intersection where the city claims traffic splits evenly among three directions, and you count: 28 turning left, 65 going straight, and 27 turning right.]\n\nFair because the driver can choose any lane they want. It measures how far apart the expected and actual frequencies are."
+  },
+  {
+    "index": 10,
+    "name": "Johnson, Kenzie",
+    "response": "[Context: Imagine you grab a handful of 200 candies from a large bag that claims to contain equal proportions of five colors, and you count: 52 red, 41 blue, 38 green, 35 yellow, and 34 orange.]\n\nIf the bag truly has equal proportions of five colors then out of 200 candies we would expect 40 of each color (200/5=40). Then observed counts (52 red, 41 blue, 38 green, 35 yellow, 34 orange) are somewhat different from 40, but they are not extremely far off. Some colors are a little high and some are a little low, which is normal random variation in a sample of 200. Based on this, the distribution appears reasonably fair.\n\nA chi-square goodness of fit test would measure how far the observed counts differ from the expected counts (40 each). It calculates a statistic using the differences between observe and expected values. If those differences are large relative to what we would expect by chance, the test would conclude the distribution is not fair. If the differences are small, the test supports that the distribution is consistent with equal proportions."
+  },
+  {
+    "index": 11,
+    "name": "Laparan, Elle",
+    "response": "[Context: Imagine you roll a standard six-sided die 60 times and get the following results: 8 ones, 9 twos, 11 threes, 10 fours, 12 fives, and 10 sixes.]\n\nI believe that the distribution is fair because if it were fair, each number should roughly appear 10 times, and the shown results are close to 10. A goodness-of-fit test measures the observed frequencies and displays how different they are from the expected frequencies, and the formula sees if the differences are small enough to conclude if they're fair or large enough to see if the dice is biased."
+  },
+  {
+    "index": 12,
+    "name": "Martin, Makenzie",
+    "response": "[Context: Imagine you roll a standard six-sided die 60 times and get the following results: 8 ones, 9 twos, 11 threes, 10 fours, 12 fives, and 10 sixes.]\n\nI believe this distribution is fair, because the observed data values tend to be pretty close to the expected (10 times for each number). The small variations are expected in this sample size. The largest number (12) is only two way from the expected (10), and the lowest number (8) is also only two away. This suggests that the dice is likely equally balanced.\n\nThe x2 goodness of fit test measures the statistical significance of your data, checking if your observed data matches the expected data. It calculates a single number (chi square statistic) measure the total distance between the two."
+  },
+  {
+    "index": 13,
+    "name": "melton, myla",
+    "response": "[Context: Imagine you grab a handful of 200 candies from a large bag that claims to contain equal proportions of five colors, and you count: 52 red, 41 blue, 38 green, 35 yellow, and 34 orange.]\n\nThe counts are not overall equal, the x2 goodness of fit test measures the observed and expected frequencies. If the observed data closely matches the expected frequencies, this means it follows the expected distribution."
+  },
+  {
+    "index": 14,
+    "name": "Metroka, Layla",
+    "response": "[Context: Imagine you roll a standard six-sided die 60 times and get the following results: 8 ones, 9 twos, 11 threes, 10 fours, 12 fives, and 10 sixes.]\n\nThe distribution appears fair because the observed counts are extremely close to the expectation of 10 per category, with only minor fluctuations typical of random chance."
+  },
+  {
+    "index": 15,
+    "name": "Milton, Joshua",
+    "response": "[Context: Imagine you roll a standard six-sided die 60 times and get the following results: 8 ones, 9 twos, 11 threes, 10 fours, 12 fives, and 10 sixes.]\n\nWithout calculation, I would think this is not ubnormal and that the distribution is fair. The expected numbers would be that each of the dice are rolled an equal amount of rolls. Each should be rolled 10. In the distribution given, the numbers are not far off, so it ti does not seem unfair.No values are more than 3 off from expected value. A chi square goodness of fit determines how well a observed distribution follows expected distribution. The test subtracts the difference between observed and expected frequency to determine if the discrepancies are caused by random."
+  },
+  {
+    "index": 16,
+    "name": "Parker, Tyson",
+    "response": "[Context: Imagine you observe 120 cars arriving at an intersection where the city claims traffic splits evenly among three directions, and you count: 28 turning left, 65 going straight, and 27 turning right.]\n\nthe distribution seems unfair. If traffic were evenly split we would expect about 40 cars in each direction instead 65 went straight while only 28 and 27 turned which is uneven. A good x squared goodness of fit test compares the observed counts to the expected counts it measures wheather the difference are large enoug to conclude the distributions is not equal"
+  },
+  {
+    "index": 17,
+    "name": "Plummer, Justin",
+    "response": "[Context: Imagine you roll a standard six-sided die 60 times and get the following results: 8 ones, 9 twos, 11 threes, 10 fours, 12 fives, and 10 sixes.]\n\nthe data is fair. when we role a die 60 times we can expect to get around the same amount of rolls for each dice but we would not expect to get exactly the same amount of tries in this sample 8 is the lowest and 12 is the highest. this seems like a reasonable rage for the numbers to be in. this would be a goodness of fit test."
+  },
+  {
+    "index": 18,
+    "name": "Price, Lynn",
+    "response": "[Context: Imagine you roll a standard six-sided die 60 times and get the following results: 8 ones, 9 twos, 11 threes, 10 fours, 12 fives, and 10 sixes.]\n\nThe distribution is fair. A chi-square test would show how well the observed die result match the expected results for a fair die. If a die were fair each number would appear with equal frequency. A chie square test would compare observed from expected and if the results are close to the expected, it supports the conclusion. A goodness of fit test measures how well the observed data fits the expected and the test uses the observed frequencies from the die rolls and compares them to the expected frequencies to determine if the differences are significant."
+  },
+  {
+    "index": 19,
+    "name": "Simcox, Foster",
+    "response": "[Context: Imagine you grab a handful of 200 candies from a large bag that claims to contain equal proportions of five colors, and you count: 52 red, 41 blue, 38 green, 35 yellow, and 34 orange.]\n\nI believe the distribution is unfair because 52 red is more than what would be expected if the distribution were equal. If it were equal and the bag contained 200 candies, each color would have 40 candies. The chi-square goodness of fit test would measure how well the observed distribution matches the expected equal distribution. It would take the observed and expected frequencies for each color and compute a chi-square statistic to determine if the observed distribution significantly deviates from equal proportions."
+  },
+  {
+    "index": 20,
+    "name": "Sorenson, Jack",
+    "response": "[Context: Imagine you observe 120 cars arriving at an intersection where the city claims traffic splits evenly among three directions, and you count: 28 turning left, 65 going straight, and 27 turning right.]\n\nI believe that this distribution is unfair because it's not split evenly between the three different options. If they were actually equal, then the split would be 33.33% across the three directions. When we do a chi-squared test, we are testing how good of fit the sample we took is to the expected distribution. In this situation, 120/3 = 40 in a rough estimate of distribution is not what we collected in the sample. So in a rough estimate, this goodness of fit test proved that the sample observed data did not match the expected amount of outcomes."
+  },
+  {
+    "index": 21,
+    "name": "Stratton, Tessa",
+    "response": "[Context: Imagine you roll a standard six-sided die 60 times and get the following results: 8 ones, 9 twos, 11 threes, 10 fours, 12 fives, and 10 sixes.]\n\nIt looks fair because because if you roll a die 60 times, you would expect 10 of each number. A goodness of fit test compares the observed counts to the expected counts to see if the difference are big enough to compare"
+  },
+  {
+    "index": 22,
+    "name": "Teran, William",
+    "response": "[Context: Imagine you grab a handful of 200 candies from a large bag that claims to contain equal proportions of five colors, and you count: 52 red, 41 blue, 38 green, 35 yellow, and 34 orange.]\n\nThis is not a fair distribution because there is an uneven amount of candies in the bag. Using the Chi-squared equation can help show how it is uneven and that the expected frequencies will be different than the observed numbers."
+  },
+  {
+    "index": 23,
+    "name": "Xiong, William",
+    "response": "[Context: Imagine you grab a handful of 200 candies from a large bag that claims to contain equal proportions of five colors, and you count: 52 red, 41 blue, 38 green, 35 yellow, and 34 orange.]\n\nIt is unfair because the inconsistent claims to the equal proportion. while some samples are expected due to random sampling."
+  },
+  {
+    "index": 24,
+    "name": "Zimmerman, Caidyn",
+    "response": "[Context: Imagine you roll a standard six-sided die 60 times and get the following results: 8 ones, 9 twos, 11 threes, 10 fours, 12 fives, and 10 sixes.]\n\nI think the distribution looks mostly fair. I would expect each side of the die to come up equally likely since the die has six sides and there were 60 rolls. So the expected number of times for each side is 10. The results are mostly close to 10 with the highest at 12 and the lowest at 8. These variations seem like random chance to me since nothing is too far from 10. A chi-squared goodness of fit test measures how much the observed distribution differs from the expected distribution. It would use the observed frequencies (from the die rolls) and the expected frequencies (equal probability of 1/6 for each side) to calculate the chi-squared statistic."
+  }
+]

@@ -135,26 +135,21 @@ export function generateAutoFillScript(username: string, password: string): stri
   function main() {
     var lms = findMatchingLms();
     if (!lms) {
-      console.log('[OGRE Autofill] No matching LMS detected for', window.location.href);
       return;
     }
 
-    console.log('[OGRE Autofill] Detected LMS:', lms.name);
 
     var attempt = 0;
 
     function attemptFill() {
       if (tryFill(lms)) {
-        console.log('[OGRE Autofill] Successfully filled login form for', lms.name);
         return;
       }
 
       attempt++;
       if (attempt < MAX_RETRIES) {
-        console.log('[OGRE Autofill] Fields not found, retry', attempt, 'in', RETRY_DELAYS[attempt - 1], 'ms');
         setTimeout(attemptFill, RETRY_DELAYS[attempt - 1]);
       } else {
-        console.warn('[OGRE Autofill] Could not find login fields after', MAX_RETRIES, 'retries');
       }
     }
 

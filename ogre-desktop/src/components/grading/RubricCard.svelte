@@ -228,23 +228,23 @@
         <button class="text-btn" onclick={handleManageLibrary}>Create one</button>
       </div>
     {:else}
-      <select
-        class="rubric-select"
-        value={selectedRubric?.id ?? ''}
-        onchange={handleDropdownChange}
-        disabled={isDisabled}
-      >
-        <option value="">None (use page rubric / manual)</option>
-        {#each rubrics as rubric (rubric.id)}
-          <option value={rubric.id}>
-            {rubric.name} ({rubric.maxScore} pts)
-          </option>
-        {/each}
-      </select>
+      <div class="dropdown-row">
+        <select
+          class="rubric-select"
+          value={selectedRubric?.id ?? ''}
+          onchange={handleDropdownChange}
+          disabled={isDisabled}
+        >
+          <option value="">None (use page rubric / manual)</option>
+          {#each rubrics as rubric (rubric.id)}
+            <option value={rubric.id}>
+              {rubric.name} ({rubric.maxScore} pts)
+            </option>
+          {/each}
+        </select>
+        <button class="btn-secondary small manage-btn" onclick={(e) => { e.preventDefault(); e.stopPropagation(); handleManageLibrary(); }}>Manage Rubrics</button>
+      </div>
     {/if}
-
-    <!-- Manage Library link -->
-    <button class="text-btn manage-library-btn" onclick={(e) => { e.preventDefault(); e.stopPropagation(); handleManageLibrary(); }}>Manage Library</button>
     <!-- Rubric textarea — always visible -->
     <textarea
       class="rubric-textarea"
@@ -465,8 +465,15 @@
     text-decoration: underline;
   }
 
-  .manage-library-btn {
-    align-self: flex-start;
+  .dropdown-row {
+    display: flex;
+    gap: var(--spacing-2);
+    align-items: center;
+  }
+
+  .manage-btn {
+    white-space: nowrap;
+    flex-shrink: 0;
   }
 
   /* Textarea */

@@ -1,0 +1,25 @@
+{
+  "essayPrompt": "Without doing any calculations, do you think this distribution is fair (equal across categories) or unfair? Explain your reasoning. Then describe what a χ² (chi-square) goodness of fit test would measure in this situation.\n\nIn your explanation, be sure to cover:\n- Whether you believe the distribution is fair or unfair, including what you would expect to see and how the observed data compares.\n- What a χ² goodness of fit test measures and how it uses observed and expected frequencies.\n\nNOTE: Each student received a different version of the scenario (die rolls, car traffic, or candy colors). The [Context: ...] prefix in each student's response identifies their specific scenario. Grade based on how well they address the shared rubric criteria for their given context.",
+  "checklistItems": [
+    {
+      "category": "Fairness Judgment (5 pts)",
+      "points": 5,
+      "items": [
+        "States whether the distribution appears fair or unfair and takes a clear position",
+        "Identifies the expected frequency for each category if the distribution were equal (e.g., 10 per face for dice, 40 per direction for cars, 40 per color for candies)",
+        "Compares specific observed values to the expected values and uses that comparison to support their conclusion"
+      ]
+    },
+    {
+      "category": "Chi-Square Test Purpose (5 pts)",
+      "points": 5,
+      "items": [
+        "Describes what the χ² goodness of fit test measures — how well an observed frequency distribution matches an expected distribution",
+        "Explains how the test uses observed and expected frequencies, ideally mentioning the formula (observed - expected)² / expected summed across categories, and what a larger vs. smaller statistic means"
+      ]
+    }
+  ],
+  "rubricItems": [],
+  "modelText": "Looking at this data, the die appears roughly fair because the observed frequencies are all close to the expected value of 10, with only small deviations that look like normal random variation. If the distribution were truly equal, each face would come up about 10 times out of 60 rolls. The observed counts (8, 9, 11, 10, 12, 10) are all fairly close to 10, with the largest gap being only 2 away. A χ² goodness of fit test would formalize this intuitive comparison. Specifically, a χ² goodness of fit test measures how well an observed frequency distribution matches an expected distribution across multiple categories. It computes (observed - expected)² / expected for each category, then adds up all those values into one test statistic. A larger χ² value means the observed data deviates more from what was expected, while a small χ² means the data fits the expected pattern closely.",
+  "maxScore": "10"
+}

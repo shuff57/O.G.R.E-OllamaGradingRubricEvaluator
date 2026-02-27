@@ -1372,6 +1372,16 @@ app.post('/api/grade', async (c) => {
           const prompt = buildBatchPrompt(rubric, chunk.students, anchors, bridgeResponses);
           const aiText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: prompt }], timestamp());
           const chunkResults = parseBatchResponse(aiText, chunk.students, maxScore);
+          // Guard: if AI dropped trailing students (positional shortfall), retry them once
+          const _dropped = chunk.students.slice(chunkResults.length);
+          if (_dropped.length > 0) {
+            console.warn(`[${timestamp()}] [sse] ⚠ Chunk ${i + 1}: AI dropped ${_dropped.length}/${chunk.students.length} — retrying...`);
+            const _retryPrompt = buildBatchPrompt(rubric, _dropped, anchors, null);
+            const _retryText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: _retryPrompt }], timestamp());
+            const _retryResults = parseBatchResponse(_retryText, _dropped, maxScore);
+            chunkResults.push(..._retryResults);
+            console.log(`[${timestamp()}] [sse] ↺ Retry: recovered ${_retryResults.length}/${_dropped.length}`);
+          }
           allResults.push(chunkResults);
 
           for (const r of chunkResults) {
@@ -1453,6 +1463,16 @@ app.post('/api/grade', async (c) => {
             for (let j = 0; j < wave.length; j++) {
               const chunkIdx = waveStart + j;
               const chunkResults = parseBatchResponse(waveTexts[j], wave[j].students, maxScore);
+              // Guard: if AI dropped trailing students (positional shortfall), retry them once
+              const _dropped = wave[j].students.slice(chunkResults.length);
+              if (_dropped.length > 0) {
+                console.warn(`[${timestamp()}] [sse] ⚠ Parallel chunk ${chunkIdx + 1}: AI dropped ${_dropped.length}/${wave[j].students.length} — retrying...`);
+                const _retryPrompt = buildBatchPrompt(rubric, _dropped, anchors, bridgeResponses);
+                const _retryText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: _retryPrompt }], timestamp());
+                const _retryResults = parseBatchResponse(_retryText, _dropped, maxScore);
+                chunkResults.push(..._retryResults);
+                console.log(`[${timestamp()}] [sse] ↺ Retry: recovered ${_retryResults.length}/${_dropped.length}`);
+              }
               allResults.push(chunkResults);
 
               for (const r of chunkResults) {
@@ -1593,7 +1613,7 @@ app.post('/api/grade', async (c) => {
           mean: outlierAnalysis.mean,
           stdDev: outlierAnalysis.stdDev,
           totalStudents: students.length,
-        }, maxScore);
+        }, maxScore, results);
 
         try {
           const outlierText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: outlierPrompt }], timestamp());

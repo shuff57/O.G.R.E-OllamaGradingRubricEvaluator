@@ -30,15 +30,12 @@ let _injectionFailed = false;
  */
 export function ensureTurndownLoaded(): Promise<void> {
   if (_injectionFailed) {
-    console.log('[batch] ensureTurndownLoaded: skipping (previously failed)');
     return Promise.resolve();
   }
   if (_loadedPromise !== null) {
-    console.log('[batch] ensureTurndownLoaded: reusing cached promise');
     return _loadedPromise;
   }
 
-  console.log('[batch] ensureTurndownLoaded: injecting Turndown IIFE...');
   // Combine IIFE + service setup into one atomic script so both run in the same
   // execution context. wv.eval() may return before the script completes, so a
   // split approach could race on TurndownService being defined.
@@ -60,11 +57,9 @@ export function ensureTurndownLoaded(): Promise<void> {
     `\n  window.__turndownService = service;` +
     `\n})();`;
   _loadedPromise = injectScript(TURNDOWN_IIFE + serviceSetup).then(() => {
-    console.log('[batch] ensureTurndownLoaded: injection complete');
   }).catch((err) => {
     _injectionFailed = true;
     _loadedPromise = null;
-    console.warn('[batch] ensureTurndownLoaded: FAILED:', err);
   });
   return _loadedPromise;
 }

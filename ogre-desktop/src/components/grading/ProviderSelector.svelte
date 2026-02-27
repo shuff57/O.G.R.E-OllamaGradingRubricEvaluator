@@ -148,7 +148,6 @@
       }
     } catch (err) {
       // Model fetch failure is non-fatal — user can still type a model name
-      console.warn(`[ProviderSelector] Failed to fetch models for ${providerId}:`, err);
       models = [];
       // Keep any previously-selected model
       if (savedModel) model = savedModel;
@@ -174,7 +173,6 @@
     // Sync to server (fire-and-forget — don't block the UI)
     if (provider && value) {
       setActiveProvider(provider, value).catch((err) => {
-        console.warn('[ProviderSelector] Failed to sync active provider:', err);
       });
     }
   }

@@ -383,7 +383,6 @@ function dispatchSingleEvent(evt: SSEEvent, callbacks: SolverCallbacks): void {
     }
   } catch {
     // JSON parse failure — skip this event
-    console.warn("[grading-api] Failed to parse SSE event data:", evt);
   }
 }
 
@@ -645,22 +644,22 @@ export function startBatchGrading(
       // Wrap callbacks to check cancellation before dispatching
       const guardedCallbacks: BatchGradingCallbacks = {
         onProgress: (d) => {
-          if (!token.cancelled) callbacks.onProgress?.(d);
+          if (!token.cancelled) return callbacks.onProgress?.(d);
         },
         onChunk: (d) => {
-          if (!token.cancelled) callbacks.onChunk?.(d);
+          if (!token.cancelled) return callbacks.onChunk?.(d);
         },
         onSweep: (d) => {
-          if (!token.cancelled) callbacks.onSweep?.(d);
+          if (!token.cancelled) return callbacks.onSweep?.(d);
         },
         onOutlier: (d) => {
-          if (!token.cancelled) callbacks.onOutlier?.(d);
+          if (!token.cancelled) return callbacks.onOutlier?.(d);
         },
         onDone: (d) => {
-          if (!token.cancelled) callbacks.onDone?.(d);
+          if (!token.cancelled) return callbacks.onDone?.(d);
         },
         onError: (d) => {
-          if (!token.cancelled) callbacks.onError?.(d);
+          if (!token.cancelled) return callbacks.onError?.(d);
         },
       };
 
@@ -670,7 +669,7 @@ export function startBatchGrading(
       } else {
         const text = await response.text();
         if (!token.cancelled) {
-          parseSSEText(text, guardedCallbacks);
+          await parseSSEText(text, guardedCallbacks);
         }
       }
     } catch (err) {

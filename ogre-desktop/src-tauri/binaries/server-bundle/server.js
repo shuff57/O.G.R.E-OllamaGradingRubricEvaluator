@@ -10,10 +10,12 @@ import { streamSSE } from 'hono/streaming';
 import {
   generateScoringAnchors,
   buildBatchPrompt,
+  buildSingleGradePrompt,
   buildOutlierReviewPrompt,
   buildCompactSweepPrompt,
   buildPairwiseSweepPrompts,
   parseBatchResponse,
+  parseSingleGradeResponse,
   detectOutliers,
   chunkStudents,
   mergeResults,
@@ -38,6 +40,8 @@ import {
 } from './automation.js';
 import { loadConfig, saveConfig, watchConfig } from './config.js';
 import { loadRubrics, createRubric, updateRubric, deleteRubric } from './rubric-store.js';
+import { withRetry } from './ai-retry.js';
+import { handleAgentRequest } from './agent.js';
 
 const app = new Hono();
 const PORT = 3456;
@@ -53,15 +57,87 @@ console.log(`[config] Loaded ${providerConfigs.length} provider(s), token=${hand
  * Call an AI provider directly from the server (bypasses extension proxy).
  * Used for providers that don't require browser auth context (Ollama, OpenAI, etc.)
  */
+// Anthropic OAuth client ID (matches oauth.ts and opencode-anthropic-auth)
+const ANTHROPIC_CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e';
+const ANTHROPIC_TOKEN_URL = 'https://console.anthropic.com/v1/oauth/token';
+const TOKEN_REFRESH_BUFFER_MS = 60 * 1000; // 60-second buffer before expiry
+
+/**
+ * Ensure the Anthropic OAuth token is valid, refreshing it if expired.
+ * Mirrors opencode-anthropic-auth/index.mjs: checks expiry, POSTs refresh grant.
+ * Only applies to Bearer (OAuth) tokens — raw API keys are passed through unchanged.
+ */
+async function ensureValidAnthropicToken(config) {
+  // Only applies to Bearer (OAuth) tokens, not raw API keys
+  if (config.tokenType !== 'Bearer') return config;
+  if (!config.refreshToken) {
+    console.warn('[anthropic] Bearer token has no refresh_token — cannot refresh, proceeding as-is');
+    return config;
+  }
+
+  // Token still valid with buffer — no refresh needed
+  if (config.apiKey && config.expiresAt && config.expiresAt > Date.now() + TOKEN_REFRESH_BUFFER_MS) {
+    return config;
+  }
+
+  console.log('[anthropic] OAuth token expired or missing — refreshing...');
+  const response = await fetch(ANTHROPIC_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      grant_type: 'refresh_token',
+      refresh_token: config.refreshToken,
+      client_id: ANTHROPIC_CLIENT_ID,
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    // Flag provider as needing re-auth if refresh token is invalid
+    if (text.includes('invalid_grant')) {
+      const p = providerConfigs.find(pc => pc.id === 'anthropic');
+      if (p) {
+        p.needsReauth = true;
+        console.warn('[anthropic] Refresh token invalid — marking provider as needing re-auth');
+      }
+    }
+    throw new Error(`Anthropic token refresh failed (${response.status}): ${text.slice(0, 200)}`);
+  }
+
+  const json = await response.json();
+  const newExpiresAt = Date.now() + json.expires_in * 1000;
+
+  // Update in-memory provider config so the refreshed token persists across calls
+  const p = providerConfigs.find(pc => pc.id === 'anthropic');
+  if (p) {
+    p.credentials.access_token = json.access_token;
+    p.credentials.refresh_token = json.refresh_token;
+    p.credentials.expires_at = newExpiresAt;
+    saveConfig({ token: handshakeToken, providers: providerConfigs });
+    console.log('[anthropic] Token refreshed and persisted to config');
+  }
+
+  return {
+    ...config,
+    apiKey: json.access_token,
+    refreshToken: json.refresh_token,
+    expiresAt: newExpiresAt,
+  };
+}
+
 async function callProviderDirect(provider, config, messages, timestamp) {
   // Exchange GitHub OAuth token for Copilot session token
   if (provider.toLowerCase() === 'github-models') {
     config = { ...config, apiKey: await getCopilotSessionToken(config.apiKey) };
   }
+  // Refresh Anthropic OAuth token if expired (mirrors opencode-anthropic-auth/index.mjs)
+  if (provider.toLowerCase() === 'anthropic') {
+    config = await ensureValidAnthropicToken(config);
+  }
 
   let requestObj;
   switch (provider.toLowerCase()) {
-    case 'ollama': requestObj = buildOllamaRequest(config, messages); break;
+    case 'ollama': case 'ollama-local': case 'ollama-cloud': requestObj = buildOllamaRequest(config, messages); break;
     case 'openai': requestObj = buildOpenAIRequest(config, messages); break;
     case 'anthropic': requestObj = buildAnthropicRequest(config, messages); break;
     case 'google-gemini': requestObj = buildGoogleGeminiRequest(config, messages); break;
@@ -79,7 +155,9 @@ async function callProviderDirect(provider, config, messages, timestamp) {
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => '');
-    throw new Error(`${provider} API error ${response.status}: ${errorText.slice(0, 200)}`);
+    const err = new Error(`${provider} API error ${response.status}: ${errorText.slice(0, 200)}`);
+    err.status = response.status;
+    throw err;
   }
 
   const data = await response.json();
@@ -88,7 +166,7 @@ async function callProviderDirect(provider, config, messages, timestamp) {
 
   // Extract text based on provider format
   switch (provider.toLowerCase()) {
-    case 'ollama': return parseOllamaResponse(data);
+    case 'ollama': case 'ollama-local': case 'ollama-cloud': return parseOllamaResponse(data);
     case 'openai': return parseOpenAIResponse(data);
     case 'anthropic': return parseAnthropicResponse(data);
     case 'google-gemini': return parseGoogleGeminiResponse(data);
@@ -334,6 +412,156 @@ app.delete('/api/rubrics/:id', (c) => {
   const deleted = deleteRubric(id);
   if (!deleted) return c.json({ error: 'Rubric not found' }, 404);
   return c.json({ success: true });
+});
+
+// ── Single Grading & Solver Chat ─────────────────────────────────────────
+
+/**
+ * POST /api/chat
+ * Single grading and solver chat endpoint.
+ *
+ * Body: { message, rubric?, studentWork?, model?, provider? }
+ *
+ * Grader mode (rubric present): Returns JSON { score, feedback, provider, model }
+ * Solver mode (no rubric): Returns SSE stream
+ *   Events:
+ *     status  — { status: 'thinking', provider, model }
+ *     message — { content: string }
+ *     done    — { provider, model }
+ *     error   — { message: string }
+ */
+app.post('/api/chat', async (c) => {
+  const timestamp = () => new Date().toLocaleTimeString();
+
+  let body;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+
+  const { message, rubric, studentWork, model, provider, systemPrompt, images } = body;
+
+  if (!message || typeof message !== 'string') {
+    return c.json({ error: 'Missing required field: message' }, 400);
+  }
+
+  // Resolve provider: use specified or fall back to active provider
+  let providerId = provider;
+  let effectiveModel = model;
+
+  if (!providerId) {
+    const activeProvider = providerConfigs.find(p => p.is_active);
+    if (!activeProvider) {
+      return c.json({ error: 'No active provider configured. Set a provider or pass provider in request.' }, 400);
+    }
+    providerId = activeProvider.id;
+    if (!effectiveModel) effectiveModel = activeProvider.model;
+  }
+
+  if (!effectiveModel) {
+    const p = providerConfigs.find(pc => pc.id === providerId);
+    effectiveModel = p?.model;
+    if (!effectiveModel) {
+      return c.json({ error: 'No model specified and no default model for provider' }, 400);
+    }
+  }
+
+  // Determine mode: grader (rubric present) vs solver (no rubric)
+  const isGraderMode = !!rubric;
+
+  if (isGraderMode) {
+    // ── Grader mode: single student grading, JSON response ──
+    try {
+      const prompt = buildSingleGradePrompt(rubric, studentWork || '', message);
+      const providerConfig = resolveProviderConfig(providerId, effectiveModel);
+
+      console.log(`[${timestamp()}] [chat] Grader mode: provider=${providerId} model=${effectiveModel}`);
+      const aiText = await withRetry(
+        () => callProviderDirect(providerId, providerConfig, [{ role: 'user', content: prompt }], timestamp()),
+        { maxRetries: 3 }
+      );
+
+      const maxScore = parseFloat(rubric.maxScore) || 10;
+      const result = parseSingleGradeResponse(aiText, maxScore);
+
+      return c.json({
+        ...result,
+        provider: providerId,
+        model: effectiveModel,
+      });
+    } catch (error) {
+      console.error(`[${timestamp()}] [chat] Grader error:`, error.message);
+      return c.json({ error: error.message }, 500);
+    }
+  } else {
+    // ── Solver mode: general AI chat, SSE response ──
+    let sseId = 0;
+
+    return streamSSE(c, async (stream) => {
+      try {
+        await stream.writeSSE({
+          event: 'status',
+          data: JSON.stringify({ status: 'thinking', provider: providerId, model: effectiveModel }),
+          id: String(sseId++),
+        });
+
+        const providerConfig = resolveProviderConfig(providerId, effectiveModel);
+        console.log(`[${timestamp()}] [chat] Solver mode: provider=${providerId} model=${effectiveModel}`);
+
+        // Build messages array, honouring optional system prompt and images
+        const solverMessages = [];
+        if (systemPrompt) {
+          solverMessages.push({ role: 'system', content: systemPrompt });
+        }
+
+        // If images provided, build multimodal user content (OpenAI-compatible format)
+        let userContent;
+        if (images && images.length > 0) {
+          userContent = [
+            { type: 'text', text: message },
+            ...images.map(img => ({ type: 'image_url', image_url: { url: img } })),
+          ];
+        } else {
+          userContent = message;
+        }
+        solverMessages.push({ role: 'user', content: userContent });
+
+        const aiText = await callProviderDirect(providerId, providerConfig, solverMessages, timestamp());
+
+        await stream.writeSSE({
+          event: 'message',
+          data: JSON.stringify({ content: aiText }),
+          id: String(sseId++),
+        });
+
+        await stream.writeSSE({
+          event: 'done',
+          data: JSON.stringify({ provider: providerId, model: effectiveModel }),
+          id: String(sseId++),
+        });
+      } catch (error) {
+        console.error(`[${timestamp()}] [chat] Solver error:`, error.message);
+        await stream.writeSSE({
+          event: 'error',
+          data: JSON.stringify({ message: error.message }),
+          id: String(sseId++),
+        });
+      }
+    });
+  }
+});
+
+
+/**
+ * POST /api/agent
+ * Browser agent endpoint for natural language browser automation.
+ * 
+ * Body: { messages: [{role, content}], dom?: string, screenshot?: string }
+ * Response: { response: string } (raw AI text, client parses JSON action from it)
+ */
+app.post('/api/agent', async (c) => {
+  return handleAgentRequest(c, { callProviderDirect, resolveProviderConfig, providerConfigs });
 });
 
 /**
@@ -926,11 +1154,13 @@ function resolveProviderConfig(providerId, model) {
   const p = providerConfigs.find(pc => pc.id === providerId);
   const apiUrl = p?.api_url || '';
   const apiKey = p?.credentials?.api_key || p?.credentials?.access_token || '';
-
+  const tokenType = p?.credentials?.token_type || null;
+  const refreshToken = p?.credentials?.refresh_token || null;
+  const expiresAt = p?.credentials?.expires_at || null;
   let effectiveApiUrl = apiUrl;
   if (!effectiveApiUrl) {
     switch (providerId.toLowerCase()) {
-      case 'ollama': effectiveApiUrl = 'http://localhost:11434'; break;
+      case 'ollama': case 'ollama-local': case 'ollama-cloud': effectiveApiUrl = 'http://localhost:11434'; break;
       case 'openai': effectiveApiUrl = 'https://api.openai.com'; break;
       case 'anthropic': effectiveApiUrl = 'https://api.anthropic.com'; break;
       case 'google-gemini': effectiveApiUrl = 'https://generativelanguage.googleapis.com'; break;
@@ -938,8 +1168,128 @@ function resolveProviderConfig(providerId, model) {
     }
   }
 
-  return { apiUrl: effectiveApiUrl, apiKey, model };
+  return { apiUrl: effectiveApiUrl, apiKey, model, tokenType, refreshToken, expiresAt };
 }
+
+// ── Anchor Generation Helpers ─────────────────────────────────────────
+
+/**
+ * Build a prompt asking the AI to write example student responses at 4 calibration levels.
+ */
+function buildAnchorGenerationPrompt(rubric, anchors) {
+  const maxScore = parseFloat(rubric.maxScore) || 10;
+  const parts = [];
+
+  parts.push('You are a grading calibration assistant.');
+  parts.push('For the assignment below, write FOUR brief example student responses at different quality levels.');
+  parts.push('These examples will be shown to an AI grader so it understands what each score level looks like for THIS specific question.\n');
+
+  if (rubric.essayPrompt) {
+    parts.push(`ASSIGNMENT:\n${rubric.essayPrompt}\n`);
+  }
+
+  const rubricLines = [];
+  if (rubric.checklistItems?.length > 0) {
+    for (const item of rubric.checklistItems) {
+      if (item.category) rubricLines.push(`[${item.category}]`);
+      for (const sub of item.items) rubricLines.push(`  - ${sub}`);
+    }
+  }
+  if (rubric.rubricItems?.length > 0) {
+    for (const item of rubric.rubricItems) {
+      if (item.category) rubricLines.push(`[${item.category}]`);
+      for (const sub of item.items) rubricLines.push(`  - ${sub}`);
+    }
+  }
+  if (rubricLines.length > 0) {
+    parts.push(`RUBRIC:\n${rubricLines.join('\n')}\n`);
+  }
+  if (rubric.modelText) {
+    parts.push(`MODEL ANSWER:\n${rubric.modelText}\n`);
+  }
+  parts.push(`MAX SCORE: ${maxScore}\n`);
+
+  parts.push('Write one realistic example student response per level. Match the length and style a student would actually write for this assignment.\n');
+  parts.push(`EXCELLENT (${anchors.excellent.score}/${maxScore}):\n[write example]\n`);
+  parts.push(`ADEQUATE (${anchors.adequate.score}/${maxScore}):\n[write example]\n`);
+  parts.push(`BELOW AVERAGE (${anchors.belowAverage.score}/${maxScore}):\n[write example]\n`);
+  parts.push(`MINIMAL (${anchors.minimal.score}/${maxScore}):\n[write example]`);
+
+  return parts.join('\n');
+}
+
+/**
+ * Parse the AI’s 4-section response into an array of { label, score, maxScore, response }.
+ */
+function parseAnchorResponses(text, anchors, maxScore) {
+  const tiers = [
+    { label: 'Excellent',     score: anchors.excellent.score },
+    { label: 'Adequate',      score: anchors.adequate.score },
+    { label: 'Below Average', score: anchors.belowAverage.score },
+    { label: 'Minimal',       score: anchors.minimal.score },
+  ];
+
+  const result = [];
+  for (let i = 0; i < tiers.length; i++) {
+    const { label, score } = tiers[i];
+    const headerRe = new RegExp(`${label.replace(' ', '\\s+')}\\s*\\(${score}\\/${maxScore}\\)\\s*:?`, 'i');
+    const headerMatch = text.match(headerRe);
+    if (!headerMatch) {
+      result.push({ label, score, maxScore, response: '' });
+      continue;
+    }
+    const start = text.indexOf(headerMatch[0]) + headerMatch[0].length;
+    let end = text.length;
+    for (let j = i + 1; j < tiers.length; j++) {
+      const nextRe = new RegExp(`${tiers[j].label.replace(' ', '\\s+')}\\s*\\(${tiers[j].score}\\/${maxScore}\\)`, 'i');
+      const nextMatch = text.slice(start).match(nextRe);
+      if (nextMatch) {
+        end = start + text.slice(start).indexOf(nextMatch[0]);
+        break;
+      }
+    }
+    result.push({ label, score, maxScore, response: text.slice(start, end).trim() });
+  }
+  return result;
+}
+
+/**
+ * POST /api/generate-anchors
+ * Body: { provider, model, rubric }
+ * Response: { anchors: [{ label, score, maxScore, response }] }
+ */
+app.post('/api/generate-anchors', async (c) => {
+  let body;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+
+  const { provider, model, rubric } = body;
+  if (!provider) return c.json({ error: 'Missing required field: provider' }, 400);
+  if (!model)    return c.json({ error: 'Missing required field: model' }, 400);
+  if (!rubric)   return c.json({ error: 'Missing required field: rubric' }, 400);
+
+  const maxScore = parseFloat(rubric.maxScore) || 10;
+  const timestamp = () => new Date().toLocaleTimeString();
+
+  try {
+    const providerConfig = resolveProviderConfig(provider, model);
+    const anchors = generateScoringAnchors(rubric);
+    console.log(`[${timestamp()}] [anchors] Generating | provider=${provider} model=${model}`);
+    const prompt = buildAnchorGenerationPrompt(rubric, anchors);
+    const aiText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: prompt }], timestamp());
+    const anchorData = parseAnchorResponses(aiText, anchors, maxScore);
+    console.log(`[${timestamp()}] [anchors] Done (${anchorData.length} tiers)`);
+    return c.json({ anchors: anchorData });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[${timestamp()}] [anchors] Error: ${message}`);
+    return c.json({ error: message }, 500);
+  }
+});
+
 
 /**
  * SSE Batch Grading Endpoint
@@ -966,7 +1316,7 @@ app.post('/api/grade', async (c) => {
     return c.json({ error: 'Invalid JSON body' }, 400);
   }
 
-  const { provider, model, rubric, students, strategy, chunkSize: rawChunkSize, sweep } = body;
+  const { provider, model, rubric, students, strategy, chunkSize: rawChunkSize, sweep, customInstructions } = body;
   const useParallel = strategy === 'parallel'; // default: serial (more reliable)
   const chunkSize = Math.max(5, Math.min(50, parseInt(rawChunkSize) || 30));
   // sweep: 'none' (default for single chunk), 'compact', 'pairwise', 'auto' (compact if multi-chunk)
@@ -977,6 +1327,11 @@ app.post('/api/grade', async (c) => {
   if (!rubric) return c.json({ error: 'Missing required field: rubric' }, 400);
   if (!students || !Array.isArray(students) || students.length === 0) {
     return c.json({ error: 'Missing or invalid field: students (must be non-empty array)' }, 400);
+  }
+
+  // Inject custom instructions into rubric so buildBatchPrompt can use them
+  if (customInstructions) {
+    rubric.customInstructions = customInstructions;
   }
 
   const maxScore = parseFloat(rubric.maxScore) || 10;
@@ -1238,7 +1593,7 @@ app.post('/api/grade', async (c) => {
           mean: outlierAnalysis.mean,
           stdDev: outlierAnalysis.stdDev,
           totalStudents: students.length,
-        }, maxScore);
+        }, maxScore, results);
 
         try {
           const outlierText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: outlierPrompt }], timestamp());

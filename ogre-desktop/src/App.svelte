@@ -54,7 +54,6 @@
       const setting = await getSetting('setup_complete');
       setupComplete = setting === 'true';
     } catch (e) {
-      console.error('Failed to load setup status', e);
       setupComplete = false;
     } finally {
       loading = false;
@@ -77,9 +76,7 @@
           question_id: session.question_id,
           custom_instructions: session.custom_instructions,
         });
-        console.log(`Grading session recorded: ${session.student_count} students`);
       } catch (e) {
-        console.error('Failed to persist grading session:', e);
       }
       sessionVersion += 1;
     });
@@ -89,9 +86,7 @@
     unlistenProviderChange = await listenProviderChanged(async (data) => {
       try {
         await updateActiveProvider(data.provider_id, data.model);
-        console.log(`Active provider updated: ${data.provider_id} (${data.model})`);
       } catch (e) {
-        console.error('Failed to update active provider', e);
       }
     });
 

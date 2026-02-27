@@ -73,7 +73,13 @@
       "Bash(powershell -Command \"Get-Process ogre-desktop | Select-Object Id, MainWindowTitle\")",
       "mcp__MCPControl__press_key_combination",
       "mcp__claude_ai_Context7__resolve-library-id",
-      "mcp__claude_ai_Context7__query-docs"
+      "mcp__claude_ai_Context7__query-docs",
+      "Bash(npm run test)",
+      "Bash(for f in grading-constants.js config.js providers.js rubric-store.js automation.js)",
+      "Bash(do diff /c/Users/shuff/OneDrive/Documents/GitHub/O.G.R.E-OllamaGradingReviewEvaluator/grading-server/$f /c/Users/shuff/OneDrive/Documents/GitHub/O.G.R.E-OllamaGradingReviewEvaluator/ogre-desktop/src-tauri/binaries/server-bundle/$f)",
+      "Bash(echo \"$f: identical\")",
+      "Bash(echo \"$f: DIFFERS\")",
+      "Bash(cargo build --release)"
     ]
   }
 }

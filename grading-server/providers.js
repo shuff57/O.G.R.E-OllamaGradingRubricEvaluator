@@ -84,6 +84,7 @@ export function buildOpenAIRequest(config, messages) {
 
   const body = {
     model: config.model,
+    max_tokens: 16000,  // prevent silent truncation on large batches (gpt-4o supports 16384)
     messages: messages,
     stream: false,
   };
@@ -143,7 +144,7 @@ export function buildAnthropicRequest(config, messages) {
   }
   const body = {
     model: config.model,
-    max_tokens: 4096,
+    max_tokens: 16000,  // 30-student chunks need ~5-7k tokens; 4096 caused silent truncation
     messages: userMessages,
   };
 

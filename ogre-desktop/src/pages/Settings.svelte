@@ -91,7 +91,6 @@
   ];
 
   onMount(async () => {
-    console.log('[Settings] onMount: Component mounted, starting initialization');
     await loadProviders();
     await loadColumnVisibility();
     await loadTheme();
@@ -123,7 +122,6 @@
       await loadCredentials();
       resetCredentialForm();
     } catch (error) {
-      console.error('Failed to save credential:', error);
       alert('Failed to save credential: ' + error);
     }
   }
@@ -134,7 +132,6 @@
       await deleteSiteCredential(id);
       await loadCredentials();
     } catch (error) {
-      console.error('Failed to delete credential:', error);
       alert('Failed to delete credential: ' + error);
     }
   }
@@ -195,17 +192,13 @@
   }
 
   async function checkOAuthStatus() {
-    console.log('[Settings] checkOAuthStatus: Starting OAuth status check');
     for (const opt of PROVIDER_OPTIONS) {
       if (opt.canSignIn) {
         const providerKey = getProviderKey(opt.id);
-        console.log(`[Settings] Checking provider: ${opt.id}, mapped key: ${providerKey}`);
         if (!providerKey) continue;
         
         const token = await getOAuthToken(providerKey);
-        console.log(`[Settings] getOAuthToken('${providerKey}') returned:`, token ? 'TOKEN FOUND' : 'NULL');
         if (token) {
-          console.log(`[Settings] Token details - expires_at: ${token.expires_at}, created_at: ${token.created_at}`);
         }
         oauthStatus[opt.id] = !!token;
         if (token) {
@@ -215,7 +208,6 @@
       }
     }
     oauthStatus = { ...oauthStatus }; // Trigger reactivity after all checks
-    console.log('[Settings] checkOAuthStatus: Complete. Status:', oauthStatus);
   }
 
   async function startAuth(providerId: string) {
@@ -239,7 +231,6 @@
         handleDeviceFlow(providerId, flow);
       }
     } catch (error) {
-      console.error('Auth start failed:', error);
       authErrors[providerId] = error instanceof Error ? error.message : String(error);
       authErrors = { ...authErrors }; // Trigger reactivity
     } finally {
@@ -254,12 +245,9 @@
     // Start polling in background
     try {
       const result = await flow.poll();
-      console.log(`[Settings] Poll result for ${providerId}:`, result);
       if (result.success) {
-        console.log(`[Settings] Setting oauthStatus[${providerId}] = true`);
         oauthStatus[providerId] = true;
         oauthStatus = { ...oauthStatus }; // Trigger reactivity
-        console.log(`[Settings] oauthStatus after update:`, oauthStatus);
         fetchModels(providerId);
         pushProvidersToServer();
         // Clear flow state
@@ -272,7 +260,6 @@
         authErrors = { ...authErrors }; // Trigger reactivity
       }
     } catch (error) {
-      console.error(`[Settings] Poll error for ${providerId}:`, error);
       if (deviceFlows[providerId]) { // Only report if not cancelled
         authErrors[providerId] = error instanceof Error ? error.message : String(error);
       }
@@ -310,7 +297,6 @@
         pushProvidersToServer();
       }
     } catch (error) {
-       console.error('Sign out failed:', error);
        oauthStatus[providerId] = false;
        oauthStatus = { ...oauthStatus }; // Trigger reactivity
     }
@@ -336,7 +322,6 @@
         providers = [...providers]; // Trigger reactivity
       }
     } catch (error) {
-      console.error('Failed to fetch models:', error);
       modelFetchErrors[providerId] = error instanceof Error ? error.message : (typeof error === 'string' ? error : JSON.stringify(error) || 'Unknown error');
       modelFetchErrors = { ...modelFetchErrors }; // Trigger reactivity
     } finally {

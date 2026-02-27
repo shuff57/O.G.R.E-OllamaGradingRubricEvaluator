@@ -100,7 +100,6 @@
       aiResponse = formatGradeResponse(result, maxScore);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error occurred';
-      console.error('[StudentWorkCard] Grading failed:', message);
       errorMessage = message;
       // Auto-dismiss after 8 seconds
       setTimeout(() => { if (errorMessage === message) errorMessage = ''; }, 8000);
@@ -121,7 +120,6 @@
         setTimeout(() => { highlightStatus = ''; }, 3000);
       }
     } catch (err) {
-      console.error('Failed to extract text:', err);
       highlightStatus = 'Failed to extract text';
       setTimeout(() => { highlightStatus = ''; }, 3000);
     }

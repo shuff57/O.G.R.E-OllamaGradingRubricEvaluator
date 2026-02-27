@@ -39,9 +39,6 @@ export async function waitForServerHealth(
         method: "GET",
       });
       if (res.ok) {
-        console.log(
-          `[provider-sync] Server healthy (attempt ${attempt}/${maxRetries})`
-        );
         return true;
       }
     } catch {
@@ -51,9 +48,6 @@ export async function waitForServerHealth(
       await new Promise((r) => setTimeout(r, delayMs));
     }
   }
-  console.warn(
-    `[provider-sync] Server health check failed after ${maxRetries} attempts`
-  );
   return false;
 }
 
@@ -103,7 +97,6 @@ export async function pushProvidersToServer(): Promise<boolean> {
         if (hsRes.ok) {
           const hsData = await hsRes.json();
           handshakeToken = hsData.token;
-          console.log("[provider-sync] Reusing server's existing token");
         }
       } catch {
         // Server not reachable — will generate new token
@@ -125,19 +118,12 @@ export async function pushProvidersToServer(): Promise<boolean> {
 
     if (!res.ok) {
       const text = await res.text();
-      console.error(
-        `[provider-sync] Push failed (${res.status}): ${text}`
-      );
       return false;
     }
 
     const data = await res.json();
-    console.log(
-      `[provider-sync] Pushed ${data.count ?? enriched.length} provider(s) to server (config persisted to disk)`
-    );
     return true;
   } catch (err) {
-    console.error("[provider-sync] Push error:", err);
     return false;
   }
 }

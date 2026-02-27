@@ -223,7 +223,6 @@
       }
     } catch (err) {
       // User cancelled or error - ignore
-      console.log('Refinement cancelled or failed', err);
     }
   }
 
@@ -336,7 +335,6 @@
       try {
         currentUrl = await getEmbeddedUrl();
       } catch (e) {
-        console.warn('Could not get embedded URL, using placeholder', e);
         currentUrl = 'example.com';
       }
       

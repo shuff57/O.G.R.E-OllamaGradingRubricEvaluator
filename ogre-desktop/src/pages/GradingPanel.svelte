@@ -346,21 +346,22 @@
   {#if !isCollapsed}
     <div class="panel-content">
       {#if activeMode === 'grader'}
-        <div class="sub-mode-toggle">
-          <label class="sub-mode-option">
-            <input type="radio" name="graderSubMode" value="single"
-              checked={graderSubMode === 'single'}
-              onchange={() => { graderSubMode = 'single'; }}
-              disabled={batchRunning} />
-            <span>📝 Single</span>
-          </label>
-          <label class="sub-mode-option">
-            <input type="radio" name="graderSubMode" value="batch"
-              checked={graderSubMode === 'batch'}
-              onchange={() => { graderSubMode = 'batch'; }}
-              disabled={batchRunning} />
-            <span>⚡ Batch</span>
-          </label>
+        <div class="sub-mode-toggle" class:disabled={batchRunning}>
+          <div class="toggle-track">
+            <div class="toggle-slider" class:batch={graderSubMode === 'batch'}></div>
+            <button
+              class="toggle-option"
+              class:active={graderSubMode === 'single'}
+              onclick={() => { if (!batchRunning) graderSubMode = 'single'; }}
+              disabled={batchRunning}
+            >Single</button>
+            <button
+              class="toggle-option"
+              class:active={graderSubMode === 'batch'}
+              onclick={() => { if (!batchRunning) graderSubMode = 'batch'; }}
+              disabled={batchRunning}
+            >Batch</button>
+          </div>
         </div>
         <ProviderSelector bind:provider={activeProvider} bind:model={activeModel} />
         <SkillPicker />
@@ -538,33 +539,61 @@
   /* ── Sub-Mode Toggle (Single / Batch) ── */
   .sub-mode-toggle {
     display: flex;
-    gap: var(--spacing-2, 8px);
-    align-items: center;
   }
-  
-  .sub-mode-option {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 10px;
-    border-radius: 4px;
-    border: 1px solid var(--color-border, #444);
-    cursor: pointer;
-    font-size: 0.85em;
-    user-select: none;
-  }
-  
-  .sub-mode-option:has(input:checked) {
-    background: var(--color-bg-alt, #1a1a2e);
-    border-color: var(--color-primary, #6366f1);
-  }
-  
-  .sub-mode-option input[type="radio"] {
-    display: none;
-  }
-  
-  .sub-mode-option:has(input:disabled) {
+
+  .sub-mode-toggle.disabled {
     opacity: 0.4;
+    pointer-events: none;
+  }
+
+  .toggle-track {
+    position: relative;
+    display: flex;
+    width: 100%;
+    background: var(--color-bg-main, #1a1a2e);
+    border: 1px solid var(--color-border, #444);
+    border-radius: var(--radius-md, 8px);
+    padding: 3px;
+  }
+
+  .toggle-slider {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: calc(50% - 3px);
+    height: calc(100% - 6px);
+    background: var(--color-primary, #6366f1);
+    border-radius: calc(var(--radius-md, 8px) - 2px);
+    transition: transform 0.2s ease;
+    z-index: 0;
+  }
+
+  .toggle-slider.batch {
+    transform: translateX(100%);
+  }
+
+  .toggle-option {
+    position: relative;
+    z-index: 1;
+    flex: 1;
+    background: none;
+    border: none;
+    padding: 6px 0;
+    font-size: 0.85rem;
+    font-weight: 600;
+    font-family: var(--font-body);
+    color: var(--color-text-secondary, #999);
+    cursor: pointer;
+    user-select: none;
+    transition: color 0.2s ease;
+    text-align: center;
+  }
+
+  .toggle-option.active {
+    color: #fff;
+  }
+
+  .toggle-option:disabled {
     cursor: not-allowed;
   }
 </style>

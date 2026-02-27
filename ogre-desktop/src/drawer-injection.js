@@ -1,9 +1,7 @@
 (function() {
-  console.log('[O.G.R.E Drawer] Injection script running');
   
   // Singleton check - if drawer exists, just show it
   if (window.OgreDrawer) {
-    console.log('[O.G.R.E Drawer] Already exists, showing');
     const existingDrawer = document.getElementById('ogre-drawer-root');
     if (existingDrawer) {
       existingDrawer.style.display = 'flex';
@@ -13,7 +11,6 @@
 
   class OgreDrawer {
     constructor() {
-      console.log('[O.G.R.E Drawer] Initializing');
       this.state = {
         isCollapsed: false,
         width: 400,
@@ -50,7 +47,6 @@
       this.attachEventListeners();
       this.notifyDrawerChanged();
       window.OgreDrawer = this;
-      console.log('O.G.R.E Drawer injected successfully');
     }
 
     injectStyles() {
@@ -703,7 +699,6 @@
     }
 
     async handleScreenshot() {
-      console.log('Screenshot requested');
       
       // Set flag for polling system
       window.OgreDrawer._screenshotRequested = true;
@@ -726,10 +721,8 @@
           this.state.screenshots.push(event.detail.dataUrl);
           // this.updateUI(); // Method not defined in original, implicit re-render needed?
           // For now, assume state update triggers something or just log
-          console.log('Screenshot captured successfully');
         } else {
           this.state.captureError = event.detail.error || 'Screenshot capture failed';
-          console.error('Screenshot capture failed:', event.detail.error);
         }
         
         window.removeEventListener('ogre-screenshot-result', handleScreenshotResult);

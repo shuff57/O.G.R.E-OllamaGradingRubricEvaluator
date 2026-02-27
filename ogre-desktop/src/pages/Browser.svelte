@@ -64,7 +64,6 @@
         showToast(`Auto-filled credentials for ${match.site_name}`);
       }
     } catch (e) {
-      console.error('[Autofill] Failed:', e);
     }
   }
 
@@ -99,7 +98,6 @@
     
     if (bounds.width > 0 && bounds.height > 0) {
       setWebviewBounds(bounds.x, bounds.y, bounds.width, bounds.height).catch((e) => {
-        console.error('Failed to set webview bounds:', e);
       });
     }
   }
@@ -263,7 +261,6 @@
         await navigateEmbedded(urlInput);
       }
     } catch (e) {
-      console.error('Navigation failed:', e);
       isLoading = false;
     }
   }

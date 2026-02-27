@@ -1,0 +1,489 @@
+[
+  {
+    "versionNumber": 1,
+    "rubric": {
+      "essayPrompt": "A candy company claims that its bags of gummy bears contain equal proportions of five colors: red, orange, yellow, green, and white. A consumer opens a large bag of 200 gummy bears and counts 58 red, 47 orange, 28 yellow, 35 green, and 32 white. A chi-square goodness of fit test is performed and produces the following results: χ² = 12.55, p-value = 0.01, with a significance level of α = 0.05. Essay Prompt:\n  Write a final conclusion statement for this chi-square goodness of fit test. Be sure to ",
+      "checklistItems": [
+        {
+          "category": "Hypothesis Decision",
+          "items": [
+            "Compare the p-value to the significance level.",
+            "State whether you reject or fail to reject the null hypothesis."
+          ]
+        },
+        {
+          "category": "Conclusion in Context",
+          "items": [
+            "Use appropriate language about whether there is or is not sufficient evidence.",
+            "Connect the conclusion back to the specific scenario, explaining what the result suggests."
+          ]
+        },
+        {
+          "category": "Evidence Strength",
+          "items": [
+            "Address what the test result does or does not prove about the claim."
+          ]
+        }
+      ],
+      "rubricItems": [
+        {
+          "category": "Hypothesis Decision(4 pts)",
+          "items": [
+            "Compare the p-value to the significance level.\n                    Target: \"The p-value of 0.01 is less than α = 0.05.\"",
+            "State whether you reject or fail to reject the null hypothesis.\n                    Target: \"Since the p-value (0.01) is less than α = 0.05, we reject the null hypothesis.\""
+          ]
+        },
+        {
+          "category": "Conclusion in Context(4 pts)",
+          "items": [
+            "Use appropriate evidence language (sufficient or not sufficient).\n                    Target: \"There is sufficient evidence to conclude that the observed distribution differs from the expected distribution.\"",
+            "Connect the conclusion to the specific scenario.\n                    Target: \"There is sufficient evidence to conclude that the distribution of gummy bear colors does not match the claimed equal proportions. The observed counts suggest the colors are not evenly distributed, with red appearing notably more often than expected.\""
+          ]
+        },
+        {
+          "category": "Evidence Strength(2 pts)",
+          "items": [
+            "Address what the test result does or does not prove.\n                    Target: \"This result does not prove that the company deliberately misrepresented its color distribution. It only tells us the observed colors in this sample deviate enough from equal proportions that chance alone is an unlikely explanation.\""
+          ]
+        }
+      ],
+      "modelText": "Model Narrative Response:\n        Since the p-value (0.01) is less than α = 0.05, we reject the null hypothesis. Because the p-value is less than our significance level, we reject the null hypothesis. In context, this means there is sufficient evidence to conclude that the observed distribution differs from what was expected. There is sufficient evidence to conclude that the distribution of gummy bear colors does not match the claimed equal proportions. The observed counts suggest the colors are not evenly distributed, with red appearing notably more often than expected. It is important to note that This result does not prove that the company deliberately misrepresented its color distribution. It only tells us the observed colors in this sample deviate enough from equal proportions that chance alone is an unlikely explanation.",
+      "maxScore": "1"
+    },
+    "students": [
+      {
+        "index": 0,
+        "name": "Allison, Jace",
+        "response": "Since the p value is less than 0.05 you reject the null hypothesis, there is sufficient evidence to conclude that the gummy bear colors are not equally distributed which suggests the company claim of equal proportions is likely not true. However this does even prove that the claim isn't true. It only shows strong statistical evidence against equal color bases on the sample."
+      },
+      {
+        "index": 4,
+        "name": "Borello, Leah",
+        "response": "Hypothesis Decision\nThe p-value is less than the significance level. In this case, 0.01 and 0.05. In this case we fail to reject the null hypothesis because of the data given in the colors. \nConclusion\nThere is sufficient evidence surrounding the overall hypothesis of this Goodness Of Fit Statistic. In this scenario, it is accurate to conclude that there is sufficient data because we have all the resources we need to determine any other possible outcomes. \nEvidence\nThe test result proves the overall effect that the data has on the senario, on the colors. This claim is still accurate to the data. The hypothesis and ending conclusion from the researcher makes sense and proves the outcome of the data to be true."
+      },
+      {
+        "index": 6,
+        "name": "Chain, Caleb",
+        "response": "Because the p-value (0.01) is less than the significance (0.05), we would reject our null that the bags contain equal proportions of colors of gummy bears, using our sample that shows us very differing proportions of different colors. This would generally disprove the company claim that their bags of gummy bears contain equal proportions of each color."
+      },
+      {
+        "index": 7,
+        "name": "Chaplin, Tyler",
+        "response": "since the p-value (.01) is less than .05, we reject the null. thus there is sufficient evidence that the companies color distribution is not equal."
+      },
+      {
+        "index": 8,
+        "name": "Collins, Paxton",
+        "response": "The final conclusion of this chi squared  goodness of fit test the null hypothesis has to be rejected because of the fact that the p-value (0.01) is lower that the significance level (0.05) The results are that their is sufficient evidence to reject the company's claim. This result suggests that company's claim is false. The test results does not prove the claim."
+      },
+      {
+        "index": 9,
+        "name": "Consoli, Ben",
+        "response": "The p-value from the chi-square test was 0.01 which is less than the significance level of 0.05. The low p-value says that you should reject the null as something significant did happen shown by the p-value. This means that there is significant evidence to prove the null hypothesis was incorrect. These results show that the test was accurate and there was little to no error and that the gummy bear colors did vary from their expected amounts. The expected amounts are very different compared to the observed values proving that the consumer proved the companies claim incorrect."
+      },
+      {
+        "index": 13,
+        "name": "Doris, Nicole",
+        "response": "The p-value is 0.01 which is lower than the significance level at 0.05. Since it is lower than the a we reject the null hypothesis. there isn't enough evidence to fail to reject the null and in this case there isn't enough evidence to say that the bags aren't equally distributing all the colors. Meaning the bags are all equally distributing the colors because there isn't enough evidence to conclude they aren't."
+      },
+      {
+        "index": 14,
+        "name": "Dulbecco, Alia",
+        "response": "The p-value is 0.01 while the significance level is 0.05. This means that I am rejecting the null hypothesis. Based on this decision there is sufficient evidence to conclude that the amount of each color in each bag is not uniform. This means that the companies promise to the customer does not match what the customers are getting with their purchase. However it does not prove the claim is false with absolute certainty."
+      },
+      {
+        "index": 17,
+        "name": "Guichard, Sophia",
+        "response": "In this test the p-value (0.01) is less than the significance level (0.05). This means that significance happened and we reject the null. This test found that there is insufficient evidence to support the claim that the candy company's bag of gummy bears contain equal proportions. The test result proves against the candy company's claim."
+      },
+      {
+        "index": 18,
+        "name": "Gustafson, Ashley",
+        "response": "The p-value is lower than the significance level. This shows the evidence is significant and the null hypothesis is accepted. This is because the numbers are generally close to the guessed numbers of gummy bears in this situation. The test result proves whether or not the claim is accurate and could be used as valid evidence."
+      },
+      {
+        "index": 20,
+        "name": "Henry, Madeline",
+        "response": "The P- value is less than the Significance level so we reject the null. There is sufficient evidence to prove that the gummy bears are not equally distributed between the five colors."
+      },
+      {
+        "index": 23,
+        "name": "Laparan, Elle",
+        "response": "The p-value being 0.01 means that there is not enough evidence to support the claim, so we reject the null hypothesis. Likewise, the evidence given is sufficient to conclude that the gummy bear color is not equal. Therefore, the claim from the company is most likely incorrect; the observed differences are too large to be random chance. The result does not prove the exact distribution of the colors, but it provides strong evidence that the gummy bear color is not balanced."
+      },
+      {
+        "index": 25,
+        "name": "Le, Triet",
+        "response": "If the p value is less than a, the significance level would be different and the decision would to reject null hypothesis and how the results would be statistically significant or not."
+      },
+      {
+        "index": 36,
+        "name": "Milton, Joshua",
+        "response": "The p value is less than the significance level. The null hypothesis is rejected. The results are significant and there is sufficient evidence to reject the null hypothesis. The companies claim that the color distribution is proven to be inaccurate based on this sample. Instead, there is evidence to say that the color distribution is not accurate. The test proves that the claim is inaccurate."
+      },
+      {
+        "index": 39,
+        "name": "Morris, Ashlynn",
+        "response": "Since the p-value is less than the significance level, we must reject the null. This means there is sufficient evidence that the alternate hypothesis is correct. Therefore, this means there is enough evidence that the distribution of gummy bears is about even. This proves that the claim is somewhat correct, but does not say that the alternate claim is 100% correct, but there is just enough evidence to say that the null is wrong."
+      },
+      {
+        "index": 41,
+        "name": "Nevens, Luke",
+        "response": "We should reject the null hypothesis because the p value is 0.01 and is less than the significance level of 0.05. This means the gummy bear distribution is significantly different than what the company listed."
+      },
+      {
+        "index": 45,
+        "name": "Riccomini, Tess",
+        "response": "Hypothesis decision \n\nthe p value is less than the significance level \nthis means you reject the null hypothesis \n\nConclusion in context\n\nThere is sufficient evidence to prove this null hypothesis\nThis means that the idea that all gummy bears colors are equal is a incorrect statement and can be proven wrong with sufficant evidence\n\nEvidence in Strength\n\nThis does not prove the claim that there are equal colors of gummy bears"
+      },
+      {
+        "index": 47,
+        "name": "Rosales - Carranza, Diego",
+        "response": "the p value and the Alpha level is a reject"
+      },
+      {
+        "index": 53,
+        "name": "Smith, Delilah",
+        "response": "The p-value of 0.01 is less than the significance level of 0.05, so the null hypothesis will be rejected. There is enough evidence to reject the null hypothesis as demonstrated by comparing the p-value and significance level. The results suggest that the company's claim about equal color distribution (that its bags have equal proportions of five colors) is not supported due to the data demonstrating inconsistency, and ultimately resulting in the rejection of the null hypothesis."
+      },
+      {
+        "index": 55,
+        "name": "Sorenson, Jack",
+        "response": "They found that the p-value is 0.01 and the significance level was 0.05. This means that we reject the null because our p-values were lower than our significance level. There is sufficient evidence to conclude that our hypothesis was more or less acceptable. When we look at the actual distribution of the candy colors in the example, we see that it is not exactly fair and even. There should be a 40 color split between the 5 categories, but some of the colors range from that number."
+      },
+      {
+        "index": 56,
+        "name": "Teran, William",
+        "response": "The p-value is less than the significance level meaning you must reject the null hypothesis. There is enough evidence to support the idea that the sample is not even. These results mean that the bag does not contain equal proportionate's and needs to be adjusted. This proves that null needs to be rejected and the alternative is true."
+      },
+      {
+        "index": 60,
+        "name": "Van Nuys, Drew",
+        "response": "Based on the goodness of fit test, results and a significance level of a=0.05, we compare the p-value to a because the p-value is less than the significance level, which makes us reject the null."
+      }
+    ]
+  },
+  {
+    "versionNumber": 2,
+    "rubric": {
+      "essayPrompt": "A school nurse believes that student absences are evenly distributed across the five weekdays. Over a semester, the nurse records 200 total absences and finds: 45 on Monday, 38 on Tuesday, 36 on Wednesday, 39 on Thursday, and 42 on Friday. A chi-square goodness of fit test is performed and produces the following results: χ² = 1.15, p-value = 0.89, with a significance level of α = 0.05. Essay Prompt:\n  Write a final conclusion statement for this chi-square goodness of fit test. Be sure to state w",
+      "checklistItems": [
+        {
+          "category": "Hypothesis Decision",
+          "items": [
+            "Compare the p-value to the significance level.",
+            "State whether you reject or fail to reject the null hypothesis."
+          ]
+        },
+        {
+          "category": "Conclusion in Context",
+          "items": [
+            "Use appropriate language about whether there is or is not sufficient evidence.",
+            "Connect the conclusion back to the specific scenario, explaining what the result suggests."
+          ]
+        },
+        {
+          "category": "Evidence Strength",
+          "items": [
+            "Address what the test result does or does not prove about the claim."
+          ]
+        }
+      ],
+      "rubricItems": [
+        {
+          "category": "Hypothesis Decision(4 pts)",
+          "items": [
+            "Compare the p-value to the significance level.\n                    Target: \"The p-value of 0.89 is greater than α = 0.05.\"",
+            "State whether you reject or fail to reject the null hypothesis.\n                    Target: \"Since the p-value (0.89) is greater than α = 0.05, we fail to reject the null hypothesis.\""
+          ]
+        },
+        {
+          "category": "Conclusion in Context(4 pts)",
+          "items": [
+            "Use appropriate evidence language (sufficient or not sufficient).\n                    Target: \"There is not sufficient evidence to conclude that the observed distribution differs from the expected distribution.\"",
+            "Connect the conclusion to the specific scenario.\n                    Target: \"There is not sufficient evidence to conclude that student absences differ across the weekdays. The observed absence counts are very consistent with what we would expect if absences were evenly spread throughout the week.\""
+          ]
+        },
+        {
+          "category": "Evidence Strength(2 pts)",
+          "items": [
+            "Address what the test result does or does not prove.\n                    Target: \"This result does not prove that absences are perfectly equal every day. It only means the small differences observed are well within what we would expect from normal random variation.\""
+          ]
+        }
+      ],
+      "modelText": "Model Narrative Response:\n        Since the p-value (0.89) is greater than α = 0.05, we fail to reject the null hypothesis. Because the p-value is greater than our significance level, we fail to reject the null hypothesis. In context, this means there is not sufficient evidence to conclude that the observed distribution differs from what was expected. There is not sufficient evidence to conclude that student absences differ across the weekdays. The observed absence counts are very consistent with what we would expect if absences were evenly spread throughout the week. It is important to note that This result does not prove that absences are perfectly equal every day. It only means the small differences observed are well within what we would expect from normal random variation.",
+      "maxScore": "1"
+    },
+    "students": [
+      {
+        "index": 1,
+        "name": "Alvarez, Emiliano",
+        "response": "When comparing the p- value to the significance level it allows you to understand if you are supposed to fail to reject the null, accept, or fail to accept the null hypothesis. In this case of the problem it would fail to reject the null due to the fact that the p - value is higher than the confidence level. Since we tend to fail to reject the null there would be sufficient evidence against the null hypothesis indicating that the result is highly unlikely."
+      },
+      {
+        "index": 2,
+        "name": "Anderson, Gavin",
+        "response": "The p-value is greater than the significance level, so we can conclude that nothing significant happened. We fail to reject the null hypothesis. There is not significant evidence to prove that absences are evenly distributed throughout the weekdays. This result suggests that there is some days that students are absent more than others across the five weekdays. The test results does not prove the claim that student absences are evenly distributed across the weekdays is true."
+      },
+      {
+        "index": 5,
+        "name": "Cartwright, Juliet",
+        "response": "The p-value is 0.01 less than 0.05 since the p-value is less we reject the null. This is enough evidence that the claimed equal proportions doesn't match the colors. This does not prove that the company did this on purpose, it tells us its different enough that random sampling shows that the expected would not be true."
+      },
+      {
+        "index": 11,
+        "name": "Davis, Cecilia",
+        "response": "The p value is more than the significance level so you should fail to reject the null. This is not significant evidence and we should take the alternative because there will be more evidence. This suggest that we can't be certain absences are evenly spread out in the week. Rejecting the null suggests we need more evidence."
+      },
+      {
+        "index": 12,
+        "name": "DeMontigny, Ronen",
+        "response": "p values of .89 is greater than .05 fail to reject null, not sufficient evidence to conclude that student absences differ across weekdays, so the data is consistent with absences being evenly distributed, does not prove they are perfectly equal each day, indicates observed differences could reasonably occur by chance."
+      },
+      {
+        "index": 15,
+        "name": "Ecklund, Logan",
+        "response": "WIth the p-value being .89 and testing at a .05 significance level her findings failed to reject the null hypothesis. This test gives us ample evidence that the null hypothesis was true since the P-value was so high. Therefore the tests (while it doesn't prove it) suggest heavily that absences actually are evenly distributed.The test mostly proves the school nurse's null hypothesis to be true."
+      },
+      {
+        "index": 16,
+        "name": "Ernest, Olive",
+        "response": "The p value is greater than the significance level, so that means that you would fail to reject the null. There is sufficient amount of evidence to suggest the"
+      },
+      {
+        "index": 22,
+        "name": "Jimmerson, Kwan",
+        "response": "Since the p value is bigger than the significance level, we fail to reject the null. There is sufficient evidence to show that absences are distributed evenly across the 5 weekdays because the p value is greater than the significance level. The test result proves that the absences are distributed evenly among the 5 weekdays."
+      },
+      {
+        "index": 29,
+        "name": "Marinello, Kate",
+        "response": ""
+      },
+      {
+        "index": 31,
+        "name": "Martinez, Isabelle",
+        "response": ""
+      },
+      {
+        "index": 32,
+        "name": "Mathis, Sierra",
+        "response": "The p-value is greater than the significance level so we fail to reject the null hypothesis. There is no sufficient evidence because we are failing to reject the null. This is because there is a 89% likelihood that any difference happened by chance, which is a very high likelihood that everything happened by chance. the result shows  there is a high likelihood that student absences is evenly distributed across days of the week. The result doesn't prove anything however it strongly suggests that the nurses claim (student absences are evenly distributed across the week) is correct."
+      },
+      {
+        "index": 34,
+        "name": "Mendoza, Efrain",
+        "response": "The p-value would show us that we will fail to reject the null hypothesis due to the p-value being significantly larger than the alpha level of 0.05. This indicates there is not enough evidence to support the claim that student absences are unevenly distributed throughout 5 school days. These will support the nurse's claim that absences are spread out, suggesting that any differences between days are due to variation of students."
+      },
+      {
+        "index": 35,
+        "name": "Metroka, Layla",
+        "response": "The p value is greater than the significance level, so there is no significance and we fail to reject. Even though we can't fully accept the null, the study did not give up enough evidence to say it is wrong."
+      },
+      {
+        "index": 38,
+        "name": "Moore, Brody",
+        "response": "The P value is greater than the significance value meaning we fail to reject the null. There is not enough evidence to conclude that the absences are not evenly distributed across the weekdays. They do not provide evidence to disprove the original claim."
+      },
+      {
+        "index": 44,
+        "name": "Price, Lynn",
+        "response": "Since the p-value is higher than the significance level, we fail to reject the null, meaning it is likely to observe the data even if the null were true. There is not sufficient evidence to reject the null, therefore we \"accept\" it, or fail to reject it. The overall results suggest that absences in school are evenly distributed throughout weekdays, confirming the null to be true."
+      },
+      {
+        "index": 46,
+        "name": "Robinson, Kai",
+        "response": "In this test the p value is much higher than the significance level and due to the p value being high you would reject the null. There is sufficient evidence showing that it is not evenly distributed between all five days. It does not show what these absences are caused from and if they are excused or not."
+      },
+      {
+        "index": 48,
+        "name": "Sem, Sam",
+        "response": "The p-value of 0.89 is much larger than the significance level of 0.05, so we fail to reject the null hypothesis. This means there is not enough evidence to say that student absences are unevenly distributed across the weekdays. The results suggest that absences appear to be fairly evenly spread from Monday to Friday. However, this test does not prove that absences are perfectly equal, only that the observed differences could easily happen by chance."
+      },
+      {
+        "index": 50,
+        "name": "Simcox, Foster",
+        "response": "Since the p-value, which is 0.89, is larger than the significance level, which is 0.05, there is not significance and we can fail to reject the null hypothesis. There is not sufficient evidence to conclude that absences are not distributed evenly across all five weekdays. This suggests that absences are likely distrubuted somewhat evenly across the five weekdays."
+      },
+      {
+        "index": 52,
+        "name": "Smith, Baylor",
+        "response": "Why did the banker quit his job? Cause he lost Interest!\nI'm Done."
+      },
+      {
+        "index": 57,
+        "name": "Thao, Joden",
+        "response": "We should reject the null hypothesis because the p-value (0.89) is higher than the alpha level (0.05). There is sufficient evidence to determine that absences are not evenly distributed across the week. If they were, there would be 40 absences for everyday of the school week. The test results prove that the claim is incorrect."
+      },
+      {
+        "index": 61,
+        "name": "Wines, Michael",
+        "response": ""
+      },
+      {
+        "index": 62,
+        "name": "Wood, Alex",
+        "response": "The p-value is less larger than the significance level, meaning that it is more likely that everything happened by chance than the likelihood we would need to claim that significance happened. Because of this, we fail to reject the null hypothesis. There is not sufficient evidence to suggest that there is any significant difference between absence rates and days of the week. This result suggests that there is an even distribution of students being absent across the days of the week. This test does not prove anything about the students' absence rates, however it strongly suggests that the nurse's claim (that student absences are evenly distributed) is correct. It also shows that there is an 87% chance that any deviation from an even distribution happened by chance, which is strong evidence in favor of the nurse's theory."
+      },
+      {
+        "index": 63,
+        "name": "Xiong, William",
+        "response": ""
+      },
+      {
+        "index": 64,
+        "name": "Zimmerman, Caidyn",
+        "response": "the p value is .89 and the significance level is .05 so the p value is greater than the significance level which means we fail to reject the null hypothesis. there is enough evidence to prove that the absences do not spread evenly throughout the week."
+      }
+    ]
+  },
+  {
+    "versionNumber": 3,
+    "rubric": {
+      "essayPrompt": "A teacher suspects that students are not guessing randomly on a true/false quiz. On a 50-question quiz, if students were purely guessing, we would expect about 25 true answers and 25 false answers. Instead, the teacher observes 30 true answers and 20 false answers. A chi-square goodness of fit test is performed and produces the following results: χ² = 2.00, p-value = 0.16, with a significance level of α = 0.05. Essay Prompt:\n  Write a final conclusion statement for this chi-square goodness of fi",
+      "checklistItems": [
+        {
+          "category": "Hypothesis Decision",
+          "items": [
+            "Compare the p-value to the significance level.",
+            "State whether you reject or fail to reject the null hypothesis."
+          ]
+        },
+        {
+          "category": "Conclusion in Context",
+          "items": [
+            "Use appropriate language about whether there is or is not sufficient evidence.",
+            "Connect the conclusion back to the specific scenario, explaining what the result suggests."
+          ]
+        },
+        {
+          "category": "Evidence Strength",
+          "items": [
+            "Address what the test result does or does not prove about the claim."
+          ]
+        }
+      ],
+      "rubricItems": [
+        {
+          "category": "Hypothesis Decision(4 pts)",
+          "items": [
+            "Compare the p-value to the significance level.\n                    Target: \"The p-value of 0.16 is greater than α = 0.05.\"",
+            "State whether you reject or fail to reject the null hypothesis.\n                    Target: \"Since the p-value (0.16) is greater than α = 0.05, we fail to reject the null hypothesis.\""
+          ]
+        },
+        {
+          "category": "Conclusion in Context(4 pts)",
+          "items": [
+            "Use appropriate evidence language (sufficient or not sufficient).\n                    Target: \"There is not sufficient evidence to conclude that the observed distribution differs from the expected distribution.\"",
+            "Connect the conclusion to the specific scenario.\n                    Target: \"There is not sufficient evidence to conclude that students are guessing non-randomly on this quiz. The observed split of 30 true and 20 false answers is consistent with what could happen by chance alone if students were purely guessing.\""
+          ]
+        },
+        {
+          "category": "Evidence Strength(2 pts)",
+          "items": [
+            "Address what the test result does or does not prove.\n                    Target: \"This result does not prove that students are guessing randomly. It simply means the data did not provide strong enough evidence to rule out random guessing. The difference between 30 and 25 could easily be due to chance.\""
+          ]
+        }
+      ],
+      "modelText": "Model Narrative Response:\n        Since the p-value (0.16) is greater than α = 0.05, we fail to reject the null hypothesis. Because the p-value is greater than our significance level, we fail to reject the null hypothesis. In context, this means there is not sufficient evidence to conclude that the observed distribution differs from what was expected. There is not sufficient evidence to conclude that students are guessing non-randomly on this quiz. The observed split of 30 true and 20 false answers is consistent with what could happen by chance alone if students were purely guessing. It is important to note that This result does not prove that students are guessing randomly. It simply means the data did not provide strong enough evidence to rule out random guessing. The difference between 30 and 25 could easily be due to chance.",
+      "maxScore": "1"
+    },
+    "students": [
+      {
+        "index": 3,
+        "name": "Bizzle, Sina",
+        "response": "Since the P value is 0.16, which is greater that the significance level of 0.05 we will fail to reject the null hypothesis. There is not sufficient evidence to conclude that student guessing  is not random. The test does not prove that students are guessing randomly."
+      },
+      {
+        "index": 10,
+        "name": "Cox, Jenna",
+        "response": "Because the p-value is larger than the significance level, you fail to reject the null hypothesis. There is not sufficient evidence to determine that the test is unfair. The test result does not prove that the null is correct, which is why we fail to reject it, but it does not prove that the null is incorrect either."
+      },
+      {
+        "index": 19,
+        "name": "Hall, Eric",
+        "response": "Our p value of .16 is significantly higher than our significance level of .05 meaning their is not significant evidence to support the claim that the kids are more than guessing on their true or false questions. This means it is likely that the kids are just guessing."
+      },
+      {
+        "index": 21,
+        "name": "Herl, Chrey",
+        "response": "In this case, the p-value is 0.18, which is higher than the significance level of 0.05, so the teacher would fail to reject the null hypothesis. They did not find sufficient evidence to warrant the claim that students are purely guessing, so it is likely that the students are choosing what they believe is the right answer. In this data, there was not enough evidence to rule out random guessing, and the ratio of 30 to 20 instead of 25 to 25 could have been because of chance."
+      },
+      {
+        "index": 24,
+        "name": "Lawrence, Adam",
+        "response": "The p value is more then the significance level so we fail reject the null hypothesis. there is not sufficient evidence to prove that the kids are guessing on the multiple choice test. The test result does not prove that the kids are guessing on the test"
+      },
+      {
+        "index": 26,
+        "name": "Ledford, Pierce",
+        "response": "since the p value (0.16) is greater than the significance (0.05), we fail to to reject the null. there isn't enough evidence to suggest that the students are not guessing randomly. this means that the results 30 being true and 20 being false are not statistically different from what we from what we would expect if student were guessing randomly."
+      },
+      {
+        "index": 27,
+        "name": "Lohse, Ramielle",
+        "response": ""
+      },
+      {
+        "index": 28,
+        "name": "Lucey, Abby",
+        "response": "The p-value is greater than the significance level so we fail to reject the null. There is not sufficient evidence to conclude that the amount of true/false questions are being guessed randomly. The test result does not prove the claim because there isn't enough evidence."
+      },
+      {
+        "index": 30,
+        "name": "Martin, Makenzie",
+        "response": "SInce the p-value (0.16) is greater than the significance level (0.05), we fail to reject the null and significance did not occur. This means there is not suffient evidence to show that students are not randomly guessing. We have to stick with the null, which is that they are randomly guessing. The result suggests that what the teacher observed was due to random variation and chance, as it is not statistically significant."
+      },
+      {
+        "index": 33,
+        "name": "melton, myla",
+        "response": "Since 0.16 is greater than 0.05, we would fail to reject the null hypothesis so there is not enough evidence to say that students are not guessing randomly by the results do not show a significant difference from 25 true answers and 25 false answers. By this mean, it does not prove that the students were guessing randomly because there is not enough information."
+      },
+      {
+        "index": 37,
+        "name": "Montgomery, Benji",
+        "response": "Because the p-value is greater than the a value we can conclude that we fail to reject the null because there is not sufficient enough evidence to prove that the students are not guessing on the true/false quiz. This result suggests that the students are guessing on the quiz and the results are not significant to prove otherwise. The test results does not prove that students are not guessing randomly but instead purely guessing."
+      },
+      {
+        "index": 40,
+        "name": "Myers, Gavin",
+        "response": "Based on the chi-square goodness of fit test, with a p-value of 0.16 and a significance level of a=0.05, we Fail to reject the null hypothesis. Because the p-value is greater than the significance level, the observed data does not differ significantly from the expected distribution of random guessing. The test results doesn't prove that the students are guessing randomly; rather, it indicates that the evidence is insufficient to reject the \"random guessing\" hypothesis. The difference observed is not large enough to rule out random chance, meaning the data is consistent with random process."
+      },
+      {
+        "index": 42,
+        "name": "Parker, Tyson",
+        "response": "because the p value of 0.16 is greater than our alpha level of 0.05 we would fail to reject the null. this tells us that there is not sufficient evidence to say that the kids are not guessing randomly on a true/false quiz. With her test result it does not prove that they were not randomly guessing"
+      },
+      {
+        "index": 43,
+        "name": "Plummer, Justin",
+        "response": "in the given scenario we would fail to regect the claim. however the null cannot be accepted. when looking at the p value and test statistic and significance level there isn't enough evidence to reject the claim because of the test statistic of 2 a  p value of .16 and a significance level of .05"
+      },
+      {
+        "index": 49,
+        "name": "Sharma, Namisha",
+        "response": ""
+      },
+      {
+        "index": 51,
+        "name": "Sims, Amarianna",
+        "response": "The p value in this goodness of fit test is .16 and the signifance level is .05 which tells us that the p value is more than the significance level. Meaning that we would not reject the null because it is more.  Concluding that there is not significant evidence to suggest the students are not randomly guessing. So the claim does not prove that on the test the kids are randomly guessing."
+      },
+      {
+        "index": 54,
+        "name": "Smyser, Molly",
+        "response": "Since the p-value of 0.14 is larger than the significance level of 0.05 you fail to reject the null. This means that there is insufficient evidence to prove that students are not guessing randomly on this test. Though this does not mean that the null is correct it only means that as of now there is not strong enough evidence to prove otherwise."
+      },
+      {
+        "index": 58,
+        "name": "tinsley, lillian",
+        "response": "We would fail to reject the null.  Since the p is bigger than alpha we know no significance happened.  We are able to conclude that the students aren't guessing randomly."
+      },
+      {
+        "index": 59,
+        "name": "Tirado, Isaias",
+        "response": ""
+      }
+    ]
+  }
+]

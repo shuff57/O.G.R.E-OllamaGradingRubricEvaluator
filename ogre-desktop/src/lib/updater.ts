@@ -26,7 +26,6 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
     const update = await check();
 
     if (update) {
-      console.log(`[updater] Update available: v${update.version}`);
       return {
         available: true,
         version: update.version,
@@ -35,11 +34,9 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
       };
     }
 
-    console.log('[updater] Current version is the latest.');
     return { available: false };
   } catch (err) {
     // Network errors, rate limits, no releases yet — all acceptable
-    console.warn('[updater] Update check failed (non-fatal):', err);
     return { available: false };
   }
 }

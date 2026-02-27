@@ -81,6 +81,7 @@
     lenient: 'Grade very leniently. Give partial credit for any attempt that is vaguely correct.',
     strict: 'Grade strictly according to the rubric. Deduct points for minor errors.',
     skipNoResponse: 'Students who did not submit a response will be skipped and receive no grade.',
+    noFormulaPenalty: 'Do not deduct points for lack of explicit formula notation or symbolic notation of any kind. If a student demonstrates understanding of a concept through explanation alone — without writing out formulas or symbols — award full credit for that rubric item. Reward the concept, not the notation. Do NOT penalize brevity. A concise response that correctly addresses each rubric criterion deserves full marks. Only deduct when a rubric criterion is genuinely missing or wrong — not because the student could have written more.',
   };
   
   let customInstructions = $state('');
@@ -91,8 +92,9 @@
   let isLenientActive = $derived(customInstructions.includes(PRESETS.lenient));
   let isStrictActive = $derived(customInstructions.includes(PRESETS.strict));
   let isSkipNoResponseActive = $derived(customInstructions.includes(PRESETS.skipNoResponse));
+  let isNoFormulaPenaltyActive = $derived(customInstructions.includes(PRESETS.noFormulaPenalty));
 
-  function togglePreset(key: 'nonZero' | 'lenient' | 'strict' | 'skipNoResponse') {
+  function togglePreset(key: 'nonZero' | 'lenient' | 'strict' | 'skipNoResponse' | 'noFormulaPenalty') {
     const text = PRESETS[key];
     if (customInstructions.includes(text)) {
       customInstructions = customInstructions.replace(text, '').replace(/\n{3,}/g, '\n\n').trim();
@@ -388,7 +390,6 @@
 
   // ── Phase 1: Extract ─────────────────────────────────────────────────
   async function handleExtract() {
-    console.log('[batch] handleExtract() called');
     isAutoStopped = false;
     extractionCancelled = false;
     batchError = '';
@@ -399,9 +400,7 @@
 
     try {
       batchGrader = new BatchGrader();
-    console.log('[batch] handleExtract: calling batchGrader.start()...');
       await batchGrader.start(activeProfile, resumeAfter || null, forceRegrade);
-    console.log('[batch] handleExtract: start() returned successfully');
       if (extractionCancelled) {
         batchGrader.stop();
         batchGrader = null;
@@ -546,8 +545,9 @@
 
     // Build combined instructions (preset texts are now included in customInstructions via toggle buttons)
     const instructionsParts = [];
-    if (anchorText.trim()) instructionsParts.push(`SCORING CALIBRATION:\n${anchorText.trim()}`);
+    if (anchorText.trim()) instructionsParts.push(`SCORING CALIBRATION:\n${normalizeAnchorTextToVirtual10(anchorText.trim(), rubricMaxScore)}`);
     if (customInstructions.trim()) instructionsParts.push(customInstructions.trim());
+
 
     try {
       batchHandle = startBatchGrading(
@@ -721,30 +721,31 @@
               checklistItems: versionRubric.checklistItems,
               rubricItems: versionRubric.rubricItems,
               modelText: versionRubric.modelText,
-              maxScore: versionRubric.maxScore || rubricMaxScore,
+              maxScore: '10', // always generate on virtual 10-pt scale
             },
           });
 
           if (anchorResponses && anchorResponses.length > 0) {
             anchorText = anchorResponses
-              .map(a => `${a.label} (${a.score}/${a.maxScore}): ${a.response}`)
+              .map(a => {
+                const rMax = parseFloat(rubricMaxScore) || 10;
+                const displayScore = Math.round(a.score * rMax / 10 * 10) / 10;
+                return `${a.label} (${displayScore}/${rMax}): ${a.response}`;
+              })
               .join('\n\n');
           }
         } else {
           // Fallback to static anchors
           const anchors = untrack(() => scoringAnchors);
-          const maxScore = untrack(() => rubricMaxScore);
           anchorText = anchors
-            .map(a => `${a.label} (${a.score}/${maxScore}): ${a.description}`)
+            .map(a => `${a.label} (${a.score}/${parseFloat(rubricMaxScore) || 10}): ${a.description}`)
             .join('\n');
         }
       } catch (err) {
-        console.warn('[anchors] Version chain anchor regeneration failed, using static anchors:', err);
         // Fallback to static anchors
         const anchors = untrack(() => scoringAnchors);
-        const maxScore = untrack(() => rubricMaxScore);
         anchorText = anchors
-          .map(a => `${a.label} (${a.score}/${maxScore}): ${a.description}`)
+          .map(a => `${a.label} (${a.score}/${parseFloat(rubricMaxScore) || 10}): ${a.description}`)
           .join('\n');
       } finally {
         anchorGenerating = false;
@@ -758,7 +759,7 @@
     }
 
     // All versions done (or single version)
-    phaseMessage = `Complete — ${data.metadata.totalStudents} students in ${data.metadata.elapsedSeconds}s`;
+    phaseMessage = `Complete — ${batchGrader?.studentsToGrade.length ?? data.metadata.totalStudents} students in ${data.metadata.elapsedSeconds}s`;
     if (batchGrader) batchGrader.stop();
     // Clear session on completion — no need to resume
     if (currentPageUrl) {
@@ -921,6 +922,24 @@
     colorClass: string;
   };
 
+  // Converts anchor text from real-scale (e.g. /12) to virtual-10 scale before
+  // injecting into the grading prompt. The server always grades on virtualMax=10
+  // internally, so customInstructions anchors must match that scale.
+  function normalizeAnchorTextToVirtual10(text: string, realMaxScore: string): string {
+    const realMax = parseFloat(realMaxScore) || 10;
+    if (Math.abs(realMax - 10) < 0.001) return text; // already virtual-10 scale
+    // Match (score/max): patterns — the colon prevents matching scores inside response text
+    return text.replace(/\((\d+\.?\d*)\/(\d+\.?\d*)\):/g, (_m, sStr, mStr) => {
+      const s = parseFloat(sStr);
+      const m = parseFloat(mStr);
+      if (!isNaN(s) && !isNaN(m) && Math.abs(m - realMax) < 0.5) {
+        const v10 = Math.round(s * 10 / realMax * 10) / 10;
+        return `(${v10}/10):`;
+      }
+      return _m;
+    });
+  }
+
   function computeScoringAnchors(
     maxScore: number,
     checklistItems?: Array<{ category: string; items: string[] }>
@@ -972,12 +991,8 @@
   $effect(() => {
     const phase = batchPhase; // track phase only
     if (phase === 'review') {
-      // Immediately show static anchors as placeholder while AI generates
-      const anchors = untrack(() => scoringAnchors);
-      const maxScore = untrack(() => rubricMaxScore);
-      anchorText = anchors
-        .map(a => `${a.label} (${a.score}/${maxScore}): ${a.description}`)
-        .join('\n');
+      // Clear text so placeholder shows while AI generates
+      anchorText = '';
       anchorGenerating = true;
 
       // Use async IIFE to call the AI anchor generation API
@@ -990,12 +1005,10 @@
 
           // Guard: skip AI call if provider or model is empty
           if (!currentProvider || !currentModel) {
-            console.log('[anchors] No provider/model, using static anchors');
             return;
           }
 
           if (!currentRubric) {
-            console.log('[anchors] No rubric, using static anchors');
             return;
           }
 
@@ -1008,19 +1021,26 @@
               checklistItems: currentRubric.checklistItems,
               rubricItems: currentRubric.rubricItems,
               modelText: currentRubric.modelText,
-              maxScore: currentMaxScore,
+              maxScore: '10', // always generate on virtual 10-pt scale
             },
           });
 
           // Format AI-generated anchors into textarea text
           if (anchorResponses && anchorResponses.length > 0) {
             anchorText = anchorResponses
-              .map(a => `${a.label} (${a.score}/${a.maxScore}): ${a.response}`)
+              .map(a => {
+                const displayScore = Math.round(a.score * (parseFloat(currentMaxScore) || 10) / 10 * 10) / 10;
+                return `${a.label} (${displayScore}/${parseFloat(currentMaxScore) || 10}): ${a.response}`;
+              })
               .join('\n\n');
           }
         } catch (err) {
-          // Fallback: keep static anchor text, log warning
-          console.warn('[anchors] AI generation failed, using static anchors:', err);
+          // Fallback: show static anchors if AI generation fails
+          const anchors = untrack(() => scoringAnchors);
+          const maxScore = untrack(() => rubricMaxScore);
+          anchorText = anchors
+            .map(a => `${a.label} (${a.score}/${maxScore}): ${a.description}`)
+            .join('\n');
         } finally {
           anchorGenerating = false;
 
@@ -1105,11 +1125,18 @@
           onclick={() => togglePreset('skipNoResponse')} disabled={isBatchRunning}>
           Skip No Response
         </button>
-        <button class="btn-preset" class:active={forceRegrade}
-          onclick={() => forceRegrade = !forceRegrade} disabled={isBatchRunning}>
-          Regrade All
+        <button class="btn-preset" class:active={isNoFormulaPenaltyActive}
+          onclick={() => togglePreset('noFormulaPenalty')} disabled={isBatchRunning}>
+          No Formula Penalty
         </button>
       </div>
+      <label class="toggle-switch-row" class:disabled={isBatchRunning}>
+        <span class="toggle-switch-label">Regrade All</span>
+        <span class="toggle-switch" class:on={forceRegrade}>
+          <input type="checkbox" bind:checked={forceRegrade} disabled={isBatchRunning} />
+          <span class="toggle-thumb"></span>
+        </span>
+      </label>
       <textarea
         class="instructions-textarea"
         rows="4"
@@ -1537,6 +1564,70 @@
   .btn-preset:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+  }
+
+  /* ── Regrade Toggle Switch ── */
+  .toggle-switch-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-1) 0;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .toggle-switch-row.disabled {
+    opacity: 0.4;
+    pointer-events: none;
+  }
+
+  .toggle-switch-label {
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+  }
+
+  .toggle-switch {
+    position: relative;
+    width: 36px;
+    height: 20px;
+    flex-shrink: 0;
+  }
+
+  .toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+    position: absolute;
+  }
+
+  .toggle-thumb {
+    position: absolute;
+    inset: 0;
+    background: var(--color-border, #444);
+    border-radius: 20px;
+    transition: background 0.2s ease;
+    cursor: pointer;
+  }
+
+  .toggle-thumb::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 14px;
+    height: 14px;
+    background: white;
+    border-radius: 50%;
+    transition: transform 0.2s ease;
+  }
+
+  .toggle-switch.on .toggle-thumb {
+    background: var(--color-primary, #6366f1);
+  }
+
+  .toggle-switch.on .toggle-thumb::after {
+    transform: translateX(16px);
   }
 
 

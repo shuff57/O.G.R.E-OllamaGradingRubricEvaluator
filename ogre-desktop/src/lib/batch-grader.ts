@@ -255,9 +255,7 @@ function delay(ms: number): Promise<void> {
  * @throws Error if extraction fails or no students found
  */
 export async function extractStudents(selectors: SiteSelectors): Promise<Student[]> {
-  console.log('[batch] extractStudents: starting, waiting for Turndown...');
   await ensureTurndownLoaded();
-  console.log('[batch] extractStudents: Turndown ready, querying student count...');
   if (!selectors.studentSection) {
     throw new Error('Failed to extract students. Check that the site profile selectors are correct.');
   }
@@ -266,7 +264,6 @@ export async function extractStudents(selectors: SiteSelectors): Promise<Student
   const count = await evalScriptJSON<number>(
     `document.querySelectorAll(${JSON.stringify(selectors.studentSection)}).length`
   );
-  console.log('[batch] extractStudents: found', count, 'students, extracting one-by-one...');
   if (!count) {
     throw new Error('Failed to extract students. Check that the site profile selectors are correct.');
   }
@@ -283,8 +280,9 @@ export async function extractStudents(selectors: SiteSelectors): Promise<Student
       // Jump to this student so the extraction is visible
       s.scrollIntoView({ block: 'start' });
       var region = sel.questionRegion ? s.querySelector(sel.questionRegion) : null;
-      var responseDiv = (region && region.children[1] && region.children[1].children[1])
-        ? region.children[1].children[1]
+      var part1Div = region ? region.querySelector(':scope > div') : null; // First direct div = Part 1 content
+      var responseDiv = (part1Div && part1Div.querySelectorAll(':scope > div').length > 1)
+        ? part1Div.querySelectorAll(':scope > div')[1]
         : null;
       var fbBox = sel.feedbackBox ? s.querySelector(sel.feedbackBox) : null;
       return {
@@ -316,9 +314,7 @@ export async function extractStudents(selectors: SiteSelectors): Promise<Student
  * @throws Error if rubric extraction fails
  */
 export async function extractRubric(selectors: SiteSelectors, studentIndex: number = 0): Promise<Rubric> {
-  console.log('[batch] extractRubric: starting, waiting for Turndown...');
   await ensureTurndownLoaded();
-  console.log('[batch] extractRubric: Turndown ready, extracting rubric from student', studentIndex, '...');
   const result = await evalScriptJSON<Rubric | null>(`(function() {
     var sel = ${JSON.stringify(selectors)};
     if (!sel.studentSection) return null;
@@ -333,7 +329,7 @@ export async function extractRubric(selectors: SiteSelectors, studentIndex: numb
     var essayPrompt = '';
 
     if (region) {
-      var part1Div = region.children[1];
+      var part1Div = region ? region.querySelector(':scope > div') : null; // First direct div = Part 1 content
       var promptDiv = part1Div ? part1Div.children[0] : null;
 
       var checkDetails = promptDiv ? promptDiv.querySelector('details') : null;
@@ -348,7 +344,7 @@ export async function extractRubric(selectors: SiteSelectors, studentIndex: numb
         }).filter(function(x) { return x.category || x.items.length; });
       }
 
-      var part2Div = region.children[3];
+      var part2Div = region.querySelectorAll(':scope > div')[1]; // Second direct div = Part 2/rubric
       var rubDetails = part2Div ? part2Div.querySelector('details') : null;
       var rubDiv = rubDetails ? rubDetails.querySelector('div') : null;
       if (rubDiv) {
@@ -436,14 +432,14 @@ export async function extractPromptFingerprints(selectors: SiteSelectors): Promi
     for (var i = 0; i < sections.length; i++) {
       var region = sel.questionRegion ? sections[i].querySelector(sel.questionRegion) : null;
       if (!region) { fingerprints[i] = ''; continue; }
-      var part1Div = region.children[1];
-      var promptDiv = part1Div ? part1Div.children[0] : null;
+      var promptDiv = region.querySelector(':scope > div'); // First direct div = Part 1 content
       var text = promptDiv ? promptDiv.textContent.replace(/\\s+/g, ' ').trim().substring(0, 500) : '';
       fingerprints[i] = text;
     }
     return fingerprints;
   })()`);
-  return result || {};
+  const fingerprints = result || {};
+  return fingerprints;
 }
 
 /**
@@ -474,7 +470,7 @@ export async function extractVersionPromptData(
     var modelText = null;
 
     // Extract essay prompt from Part 1 promptDiv
-    var part1Div = region.children[1];
+    var part1Div = region.querySelector(':scope > div'); // First direct div = Part 1 content
     var promptDiv = part1Div ? part1Div.children[0] : null;
     if (promptDiv) {
       var promptPs = promptDiv.querySelectorAll(':scope > p, :scope > div > p, :scope > ul, :scope > ol');
@@ -503,7 +499,7 @@ export async function extractVersionPromptData(
     }
 
     // Extract model text from Part 2 rubric details
-    var part2Div = region.children[3];
+    var part2Div = region.querySelectorAll(':scope > div')[1]; // Second direct div = Part 2/rubric
     var rubDetails = part2Div ? part2Div.querySelector('details') : null;
     var rubDiv = rubDetails ? rubDetails.querySelector('div') : null;
     if (rubDiv) {
@@ -956,7 +952,6 @@ export async function navigateToNextStudent(navigation: NavigationConfig): Promi
     })()`);
 
     if (beforeName && afterName && beforeName === afterName) {
-      console.warn('[BatchGrader] Student name did not change after navigation — may be at last student');
     }
   }
 }
@@ -1342,7 +1337,6 @@ export class BatchGrader {
    * @param resumeAfter - Student name to resume after (skip up to and including)
    */
   async start(profile: SiteProfile, resumeAfter?: string | null, forceRegrade = false): Promise<void> {
-    console.log('[batch] BatchGrader.start() called');
     this._profile = profile;
     this._isRunning = true;
     this._paused = false;
@@ -1356,24 +1350,22 @@ export class BatchGrader {
     this._currentVersionIndex = 0;
 
     // Extract rubric
-    console.log('[batch] start: extracting rubric...');
     try {
       this._rubric = await extractRubric(profile.selectors);
     } catch {
       this._rubric = null;
     }
-    console.log('[batch] start: rubric extraction done, rubric =', !!this._rubric);
 
     // Extract students
-    console.log('[batch] start: extracting students...');
     this._students = await extractStudents(profile.selectors);
 
     // Detect question versions (batch mode only — sequential mode has no studentSection)
     if (profile.navigation.mode === 'batch' && profile.selectors.studentSection) {
-      console.log('[batch] start: detecting question versions...');
       const fingerprints = await extractPromptFingerprints(profile.selectors);
       this._versionGroups = groupStudentsByVersion(this._students, fingerprints);
-      console.log('[batch] start: detected', this._versionGroups.length, 'version(s)');
+      for (let _vgi = 0; _vgi < this._versionGroups.length; _vgi++) {
+        const _vg = this._versionGroups[_vgi];
+      }
 
       // Extract version-specific prompt/model data from each version's representative student
       for (const group of this._versionGroups) {
@@ -1487,7 +1479,12 @@ export class BatchGrader {
   async applyGrade(studentIndex: number, score: number, feedback: string): Promise<void> {
     if (!this._profile) throw new Error('BatchGrader not started');
 
-    const student = this._toGrade[this._currentIndex];
+    // Lookup by actual studentIndex — in batch/multi-version mode results arrive for
+    // non-sequential indices (e.g. 4, 7, 9...) while _currentIndex is a sequential
+    // counter, so _toGrade[_currentIndex] would give the wrong student and the name
+    // lookup in fillGrade would scroll to and fill the wrong DOM row.
+    const student = this._toGrade.find(s => s.index === studentIndex)
+                 ?? this._toGrade[this._currentIndex];
     const studentName = student?.name || null;
 
     await fillGrade(
@@ -1500,24 +1497,44 @@ export class BatchGrader {
     );
 
     const displayName = studentName || `Student ${studentIndex}`;
-    
-    this._results.push({
-      name: displayName,
-      index: studentIndex,
-      score,
-      feedback,
-    });
 
-    this._log.push({
-      studentName: displayName,
-      studentIndex,
-      score,
-      feedback,
-      timestamp: new Date().toISOString(),
-      status: 'success',
-    });
+    // Outlier correction: update in-place rather than pushing a duplicate entry.
+    // applyGrade() is called for both initial grades and outlier adjustments, so
+    // we must not double-count students that are already in _results.
+    const existingIdx = this._results.findIndex(r => r.index === studentIndex);
+    if (existingIdx >= 0) {
+      this._results[existingIdx] = { name: displayName, index: studentIndex, score, feedback };
+    } else {
+      this._results.push({ name: displayName, index: studentIndex, score, feedback });
+      this._currentIndex++;
+    }
 
-    this._currentIndex++;
+    // Mirror the same in-place logic for _log: outlier adjustments update the
+    // existing entry rather than pushing a duplicate, so log.length === student count.
+    // Primary dedup: match by studentIndex. Fallback: match by studentName (catches
+    // cases where the outlier review's positional mapping produces a different index).
+    let existingLogIdx = this._log.findLastIndex(e => e.studentIndex === studentIndex && e.status === 'success');
+    if (existingLogIdx < 0 && displayName) {
+      existingLogIdx = this._log.findLastIndex(e => e.studentName === displayName && e.status === 'success');
+    }
+    if (existingLogIdx >= 0) {
+      this._log[existingLogIdx] = {
+        ...this._log[existingLogIdx],
+        studentIndex,
+        score,
+        feedback,
+        timestamp: new Date().toISOString(),
+      };
+    } else {
+      this._log.push({
+        studentName: displayName,
+        studentIndex,
+        score,
+        feedback,
+        timestamp: new Date().toISOString(),
+        status: 'success',
+      });
+    }
   }
 
   /**
@@ -1529,7 +1546,8 @@ export class BatchGrader {
   recordError(studentName: string, error: string): void {
     this._errors.push({ name: studentName, error });
     
-    const student = this._toGrade[this._currentIndex];
+    const student = this._toGrade.find(s => s.name === studentName)
+                 ?? this._toGrade[this._currentIndex];
     this._log.push({
       studentName,
       studentIndex: student?.index ?? this._currentIndex,

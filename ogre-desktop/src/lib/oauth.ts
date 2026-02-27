@@ -68,7 +68,6 @@ export async function startGitHubDeviceFlow(): Promise<DeviceFlowResult> {
   if (!res.ok) throw new Error(`GitHub device code request failed: ${res.status}`);
   const data = await res.json();
 
-  console.log("GitHub device code response:", data);
 
   const {
     device_code,
@@ -77,7 +76,6 @@ export async function startGitHubDeviceFlow(): Promise<DeviceFlowResult> {
     interval: rawInterval,
   } = data;
 
-  console.log("Opening verification URL:", verification_uri);
 
   let interval = (rawInterval ?? 5) * 1000 + POLLING_SAFETY_MARGIN_MS;
   let cancelled = false;
@@ -108,9 +106,7 @@ export async function startGitHubDeviceFlow(): Promise<DeviceFlowResult> {
           }),
         });
 
-        console.log("GitHub token response status:", tokenRes.status);
         const responseText = await tokenRes.text();
-        console.log("GitHub token response body:", responseText);
         const tokenData = JSON.parse(responseText);
 
         if (tokenData.error === "authorization_pending") continue;
@@ -123,19 +119,15 @@ export async function startGitHubDeviceFlow(): Promise<DeviceFlowResult> {
         }
 
         if (tokenData.access_token) {
-          console.log("[OAuth] GitHub access token received, saving to DB...");
           try {
             await saveOAuthToken({
               provider: "github",
               access_token: tokenData.access_token,
               token_type: tokenData.token_type ?? "Bearer",
             });
-            console.log("[OAuth] Token saved successfully to DB");
           } catch (err) {
-            console.error("[OAuth] Failed to save token to DB:", err);
             return { success: false, error: `Failed to save token: ${err}` };
           }
-          console.log("[OAuth] Returning success result");
           return { success: true, accessToken: tokenData.access_token };
         }
       }
@@ -398,7 +390,6 @@ export async function getValidAnthropicToken(): Promise<string | null> {
       await pushProvidersToServer();
       return refreshed.access_token;
     } catch (err) {
-      console.error("[OAuth] Anthropic token refresh failed:", err);
       return null;
     }
   }

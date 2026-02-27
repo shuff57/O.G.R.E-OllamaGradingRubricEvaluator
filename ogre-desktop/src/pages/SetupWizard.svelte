@@ -131,7 +131,6 @@
         handleDeviceFlow(providerId, flow);
       }
     } catch (err: any) {
-      console.error('Auth start failed:', err);
       authErrors[providerId] = err instanceof Error ? err.message : String(err);
       authErrors = { ...authErrors };
     } finally {
@@ -246,7 +245,6 @@
         }
       }
     } catch (err: any) {
-      console.error(err);
       const msg = err.message || 'Failed to fetch models.';
       // Friendly error for Ollama connection failures
       if (providerId === 'ollama' && (msg.includes('connect') || msg.includes('refused') || msg.includes('network') || msg.includes('fetch'))) {
@@ -336,7 +334,6 @@
       await setSetting('setup_complete', 'true');
       dispatch('complete');
     } catch (err) {
-      console.error(err);
       error = 'Failed to save configuration. Please try again.';
     } finally {
       loading = false;
