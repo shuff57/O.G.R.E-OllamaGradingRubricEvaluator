@@ -20,9 +20,9 @@
     extractPageContent,
     isRubricSufficient,
   } from '../../lib/batch-grader';
-  import type { BatchProgress, Rubric, SiteProfile } from '../../lib/batch-grader';
+  import type { BatchProgress, Rubric, SiteProfile, VersionGroup } from '../../lib/batch-grader';
   import { ProfileStorageImpl } from '../../lib/site-profiles';
-  import { startBatchGrading, generateAnchors } from '../../lib/grading-api';
+  import { startBatchGrading, generateAnchors, type AnchorResponse } from '../../lib/grading-api';
   import type {
     BatchGradingHandle,
     BatchChunkEvent,
@@ -31,7 +31,6 @@
     BatchDoneEvent,
     BatchErrorEvent,
   } from '../../lib/grading-api';
-
   import type { SavedRubric } from '../../lib/rubric-api';
   import { getBatchSession, saveBatchSession, clearBatchSession } from '../../lib/db';
   import { getEmbeddedUrl } from '../../lib/browser';
@@ -136,6 +135,10 @@
   let isAutoStopped = false; // plain let, not $state — no reactivity needed
   let extractionCancelled = $state(false);
 
+  // ── Version Grouping ────────────────────────────────────────────────
+  let currentVersionIndex = $state(0);
+  let versionCount = $state(1);
+
   let progressPercent = $derived(
     batchProgress && batchProgress.totalStudents > 0
       ? (batchProgress.gradedCount + batchProgress.errorCount) / batchProgress.totalStudents * 100
@@ -144,6 +147,7 @@
 
   // ── Resume After ─────────────────────────────────────────────────────
   let resumeAfter = $state('');
+  let forceRegrade = $state(false);
   let savedSessionStudent = $state<string | null>(null);
   let currentPageUrl = $state('');
 
@@ -296,6 +300,8 @@
         isBatchPaused = reset.isBatchPaused;
         currentStudentName = reset.currentStudentName;
         resumeAfter = reset.resumeAfter;
+        currentVersionIndex = 0;
+        versionCount = 1;
         stopTimer();
       }
       // Re-detect profile and session for new URL
@@ -330,13 +336,32 @@
   }
 
   // ── Rubric formatting helper ─────────────────────────────────────────
-  function formatRubricForDisplay(rubric: Rubric): string {
+  /**
+   * Format rubric for the review textarea.
+   *
+   * - If a grading checklist or rubric targets exist, hide the question/prompt
+   *   (the prompt is already visible on the grading page itself).
+   * - If multi-version, show all version prompts above the shared rubric.
+   * - If NO checklist/rubric exists, show the prompt as fallback content.
+   */
+  function formatRubricForDisplay(rubric: Rubric, allVersions?: VersionGroup[]): string {
     const lines: string[] = [];
-    if (rubric.essayPrompt) {
+    const isMultiVersion = allVersions && allVersions.length > 1;
+
+    if (isMultiVersion) {
+      // Multi-version: show all version prompts above the shared rubric
+      for (const group of allVersions) {
+        lines.push(`--- Version ${group.versionNumber} Prompt ---`);
+        lines.push(group.essayPrompt || '(no prompt)');
+        lines.push('');
+      }
+    } else if (rubric.essayPrompt) {
+      // Single version: show prompt normally
       lines.push('--- Question/Prompt ---');
       lines.push(rubric.essayPrompt);
       lines.push('');
     }
+
     if (rubric.checklistItems.length > 0) {
       lines.push('--- Grading Checklist ---');
       for (const item of rubric.checklistItems) {
@@ -375,7 +400,7 @@
     try {
       batchGrader = new BatchGrader();
     console.log('[batch] handleExtract: calling batchGrader.start()...');
-      await batchGrader.start(activeProfile, resumeAfter || null);
+      await batchGrader.start(activeProfile, resumeAfter || null, forceRegrade);
     console.log('[batch] handleExtract: start() returned successfully');
       if (extractionCancelled) {
         batchGrader.stop();
@@ -386,9 +411,24 @@
       }
       updateBatchState();
 
+      // Read version info
+      versionCount = batchGrader.versionCount;
+      currentVersionIndex = 0;
+
       const rubric = batchGrader.rubric;
-      if (rubric) {
-      extractedRubric = rubric;
+
+      if (versionCount > 1) {
+        // Multi-version: use version 1's prompt data merged with shared rubric
+        const v1Rubric = batchGrader.getRubricForVersion(0);
+        if (v1Rubric) {
+          extractedRubric = v1Rubric;
+          rubricText = formatRubricForDisplay(v1Rubric, batchGrader.versionGroups);
+          rubricMaxScore = v1Rubric.maxScore || '10';
+          essayPrompt = v1Rubric.essayPrompt || '';
+          if (sourceRubricId !== null) { sourceRubricId = null; }
+        }
+      } else if (rubric) {
+        extractedRubric = rubric;
         rubricText = formatRubricForDisplay(rubric);
         rubricMaxScore = rubric.maxScore || '10';
         essayPrompt = rubric.essayPrompt || '';
@@ -405,6 +445,9 @@
 
       if (batchGrader.studentsToGrade.length === 0) {
         phaseMessage = 'All students already graded or skipped';
+      } else if (versionCount > 1) {
+        const v1Students = batchGrader.getStudentsForVersion(0);
+        phaseMessage = `Found ${batchGrader.studentsToGrade.length} students across ${versionCount} versions (v1: ${v1Students.length} students)`;
       } else {
         phaseMessage = `Found ${batchGrader.studentsToGrade.length} students to grade (${batchGrader.students.length} total)`;
       }
@@ -425,10 +468,19 @@
     isAutoStopped = false;
     batchError = '';
 
-
-    const studentsToGrade = batchGrader.studentsToGrade;
+    // Scope students to the current version group (or all if single version)
+    const studentsToGrade = versionCount > 1
+      ? batchGrader.getStudentsForVersion(currentVersionIndex)
+      : batchGrader.studentsToGrade;
 
     if (studentsToGrade.length === 0) {
+      // Try advancing to next version
+      if (versionCount > 1 && batchGrader.advanceVersion()) {
+        currentVersionIndex = batchGrader.currentVersionIndex;
+        updateVersionDisplay();
+        handleContinueGrading();
+        return;
+      }
       phaseMessage = 'No students to grade';
       batchPhase = 'done';
       batchGrader.stop();
@@ -458,8 +510,18 @@
       return;
     }
 
-    // Build rubric from (possibly edited) review text
-    const rubric = extractedRubric ?? batchGrader.rubric;
+    // Build rubric: for multi-version, merge shared structure with version-specific prompt
+    let rubric: Rubric | null;
+    if (versionCount > 1) {
+      rubric = batchGrader.getRubricForVersion(currentVersionIndex);
+      // Apply any user edits to the shared structural fields
+      if (rubric && extractedRubric) {
+        rubric.checklistItems = extractedRubric.checklistItems;
+        rubric.rubricItems = extractedRubric.rubricItems;
+      }
+    } else {
+      rubric = extractedRubric ?? batchGrader.rubric;
+    }
     if (!rubric) {
       batchError = 'No rubric available. Check that you are on a grading page.';
       return;
@@ -475,7 +537,12 @@
     isBatchRunning = true;
     isBatchPaused = false;
     isLogExpanded = true;
-    phaseMessage = `Sending ${studentsToGrade.length} students to AI...`;
+
+    if (versionCount > 1) {
+      phaseMessage = `Version ${currentVersionIndex + 1}/${versionCount}: Sending ${studentsToGrade.length} students to AI...`;
+    } else {
+      phaseMessage = `Sending ${studentsToGrade.length} students to AI...`;
+    }
 
     // Build combined instructions (preset texts are now included in customInstructions via toggle buttons)
     const instructionsParts = [];
@@ -516,6 +583,22 @@
       batchPhase = 'review';
       updateBatchState();
     }
+  }
+
+  /**
+   * Update the rubric display and phase message for the current version.
+   */
+  function updateVersionDisplay() {
+    if (!batchGrader) return;
+    const rubric = batchGrader.getRubricForVersion(currentVersionIndex);
+    if (rubric) {
+      extractedRubric = rubric;
+      rubricText = formatRubricForDisplay(rubric, batchGrader.versionGroups);
+      rubricMaxScore = rubric.maxScore || '10';
+      essayPrompt = rubric.essayPrompt || '';
+    }
+    const vStudents = batchGrader.getStudentsForVersion(currentVersionIndex);
+    phaseMessage = `Version ${currentVersionIndex + 1} of ${versionCount}: ${vStudents.length} students`;
   }
 
 
@@ -605,14 +688,78 @@
 
   async function handleSSEDone(data: BatchDoneEvent) {
     if (isAutoStopped) return;
-    phaseMessage = `Complete — ${data.metadata.totalStudents} students in ${data.metadata.elapsedSeconds}s`;
+
     if (pausedResultBuffer.length > 0 && !isBatchPaused) {
       await flushPausedBuffer();
     }
+
+    // Save progress after this version/batch completes
     if (batchGrader) {
       try { await batchGrader.save(); } catch { /* non-fatal */ }
-      batchGrader.stop();
     }
+
+    // Chain to next version if there are more
+    if (versionCount > 1 && batchGrader?.advanceVersion()) {
+      currentVersionIndex = batchGrader.currentVersionIndex;
+      const vStudents = batchGrader.getStudentsForVersion(currentVersionIndex);
+      phaseMessage = `Version ${currentVersionIndex} of ${versionCount} complete. Starting version ${currentVersionIndex + 1} (${vStudents.length} students)...`;
+      updateVersionDisplay();
+
+      // Regenerate AI anchors for the new version's rubric
+      anchorGenerating = true;
+      try {
+        const currentProvider = untrack(() => provider);
+        const currentModel = untrack(() => model);
+        const versionRubric = batchGrader.getRubricForVersion(currentVersionIndex);
+
+        if (currentProvider && currentModel && versionRubric) {
+          const anchorResponses = await generateAnchors({
+            provider: currentProvider,
+            model: currentModel,
+            rubric: {
+              essayPrompt: versionRubric.essayPrompt,
+              checklistItems: versionRubric.checklistItems,
+              rubricItems: versionRubric.rubricItems,
+              modelText: versionRubric.modelText,
+              maxScore: versionRubric.maxScore || rubricMaxScore,
+            },
+          });
+
+          if (anchorResponses && anchorResponses.length > 0) {
+            anchorText = anchorResponses
+              .map(a => `${a.label} (${a.score}/${a.maxScore}): ${a.response}`)
+              .join('\n\n');
+          }
+        } else {
+          // Fallback to static anchors
+          const anchors = untrack(() => scoringAnchors);
+          const maxScore = untrack(() => rubricMaxScore);
+          anchorText = anchors
+            .map(a => `${a.label} (${a.score}/${maxScore}): ${a.description}`)
+            .join('\n');
+        }
+      } catch (err) {
+        console.warn('[anchors] Version chain anchor regeneration failed, using static anchors:', err);
+        // Fallback to static anchors
+        const anchors = untrack(() => scoringAnchors);
+        const maxScore = untrack(() => rubricMaxScore);
+        anchorText = anchors
+          .map(a => `${a.label} (${a.score}/${maxScore}): ${a.description}`)
+          .join('\n');
+      } finally {
+        anchorGenerating = false;
+      }
+
+      batchHandle = null;
+      // Brief pause then start next version
+      await new Promise(r => setTimeout(r, 500));
+      handleContinueGrading();
+      return;
+    }
+
+    // All versions done (or single version)
+    phaseMessage = `Complete — ${data.metadata.totalStudents} students in ${data.metadata.elapsedSeconds}s`;
+    if (batchGrader) batchGrader.stop();
     // Clear session on completion — no need to resume
     if (currentPageUrl) {
       try { await clearBatchSession(currentPageUrl); } catch { /* non-fatal */ }
@@ -692,6 +839,8 @@
     pausedResultBuffer = [];
     batchError = '';
     extractionCancelled = true; // Signal extraction to abort
+    currentVersionIndex = 0;
+    versionCount = 1;
     // Phase-aware reset: extracting/review go to idle, grading goes to review
     if (batchPhase === 'grading') {
       batchPhase = 'review';
@@ -730,6 +879,8 @@
     batchGrader = null;
     pendingReview = null;
     reviewResolve = null;
+    currentVersionIndex = 0;
+    versionCount = 1;
   }
 
   // ── Review Gate Functions ────────────────────────────────────────────
@@ -774,14 +925,17 @@
     maxScore: number,
     checklistItems?: Array<{ category: string; items: string[] }>
   ): AnchorItem[] {
-    const excellent    = Math.round(maxScore * 0.9);
-    const adequate     = Math.round(maxScore * 0.65);
-    const belowAverage = Math.round(maxScore * 0.5);
-    const minimal      = Math.round(maxScore * 0.3);
+    // Round to 1 decimal place for small max scores (< 6) so anchors stay
+    // proportionate rather than collapsing to the same integer value.
+    const roundScore = (s: number) => maxScore < 6 ? Math.round(s * 10) / 10 : Math.round(s);
+    const excellent    = roundScore(maxScore * 0.9);
+    const adequate     = roundScore(maxScore * 0.65);
+    const belowAverage = roundScore(maxScore * 0.5);
+    const minimal      = roundScore(maxScore * 0.3);
 
     let excellentDesc    = 'Demonstrates comprehensive understanding with all key concepts addressed clearly.';
     let adequateDesc     = 'Shows solid grasp of main concepts with minor gaps or unclear explanations.';
-    let belowAverageDesc = 'Shows partial understanding but missing key concepts, formulas, or depth.';
+    let belowAverageDesc = 'Shows partial understanding but missing key concepts or sufficient depth.';
     let minimalDesc      = 'Addresses some basic concepts but lacks depth or contains significant errors.';
 
     if (checklistItems && checklistItems.length > 0) {
@@ -814,43 +968,68 @@
   let anchorGenerating = $state(false);
 
 
-  // When entering review phase, call the AI to generate example student responses.
-  // Falls back to computed descriptions if the call fails.
+  // Generate AI scoring anchors when entering review phase.
   $effect(() => {
     const phase = batchPhase; // track phase only
     if (phase === 'review') {
-      const currentProvider = untrack(() => provider);
-      const currentModel    = untrack(() => model);
-      const currentRubric   = untrack(() => extractedRubric);
-      const anchors         = untrack(() => scoringAnchors);
+      // Immediately show static anchors as placeholder while AI generates
+      const anchors = untrack(() => scoringAnchors);
       const maxScore = untrack(() => rubricMaxScore);
-      anchorText = '';
+      anchorText = anchors
+        .map(a => `${a.label} (${a.score}/${maxScore}): ${a.description}`)
+        .join('\n');
       anchorGenerating = true;
 
+      // Use async IIFE to call the AI anchor generation API
+      (async () => {
+        try {
+          const currentProvider = untrack(() => provider);
+          const currentModel = untrack(() => model);
+          const currentRubric = untrack(() => extractedRubric);
+          const currentMaxScore = untrack(() => rubricMaxScore);
 
-      generateAnchors({
-        provider: currentProvider || undefined,
-        model: currentModel || undefined,
-        rubric: {
-          essayPrompt:    currentRubric?.essayPrompt,
-          checklistItems: currentRubric?.checklistItems,
-          rubricItems:    currentRubric?.rubricItems,
-          modelText:      currentRubric?.modelText,
-          maxScore:       currentRubric?.maxScore || maxScore,
-        },
-      }).then(anchorData => {
-        anchorText = anchorData
-          .map(a => `${a.label} (${a.score}/${a.maxScore}):\n${a.response}`)
-          .join('\n\n');
-        anchorGenerating = false;
-      }).catch(err => {
-        // Fallback to computed descriptions
-        anchorText = anchors
-          .map(a => `${a.label} (${a.score}/${maxScore}): ${a.description}`)
-          .join('\n');
-        anchorGenerating = false;
-        console.warn('[anchors] generation failed, using computed fallback:', err);
-      });
+          // Guard: skip AI call if provider or model is empty
+          if (!currentProvider || !currentModel) {
+            console.log('[anchors] No provider/model, using static anchors');
+            return;
+          }
+
+          if (!currentRubric) {
+            console.log('[anchors] No rubric, using static anchors');
+            return;
+          }
+
+          // Call the AI anchor generation API
+          const anchorResponses = await generateAnchors({
+            provider: currentProvider,
+            model: currentModel,
+            rubric: {
+              essayPrompt: currentRubric.essayPrompt,
+              checklistItems: currentRubric.checklistItems,
+              rubricItems: currentRubric.rubricItems,
+              modelText: currentRubric.modelText,
+              maxScore: currentMaxScore,
+            },
+          });
+
+          // Format AI-generated anchors into textarea text
+          if (anchorResponses && anchorResponses.length > 0) {
+            anchorText = anchorResponses
+              .map(a => `${a.label} (${a.score}/${a.maxScore}): ${a.response}`)
+              .join('\n\n');
+          }
+        } catch (err) {
+          // Fallback: keep static anchor text, log warning
+          console.warn('[anchors] AI generation failed, using static anchors:', err);
+        } finally {
+          anchorGenerating = false;
+
+          // Auto-continue to grading in auto mode (if not in review mode)
+          if (!untrack(() => isReviewMode)) {
+            setTimeout(() => handleContinueGrading(), 0);
+          }
+        }
+      })();
     }
   });
 
@@ -863,16 +1042,13 @@
 
 <section class="batch-panel">
   <!-- ── Site Profile Selection ──────────────────────────────────── -->
-  <div class="section-card">
-    <div class="section-header-row">
-      <h3>Site Profile</h3>
-      <button
-        class="btn-link add-profile-btn"
-        onclick={() => onRequestDiscovery()}
-        disabled={isBatchRunning}
-      >➕ Add New Profile</button>
-    </div>
-    <div class="profile-bar">
+  <details class="section-details">
+    <summary class="section-summary">
+      <span>Site Profile</span>
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="chevron"><polyline points="6 9 12 15 18 9"></polyline></svg>
+    </summary>
+    <div class="section-content">
+    <div class="dropdown-row">
       <select
         class="profile-select"
         bind:value={selectedProfileId}
@@ -888,6 +1064,11 @@
           </option>
         {/each}
       </select>
+      <button
+        class="btn-secondary small new-profile-btn"
+        onclick={() => onRequestDiscovery()}
+        disabled={isBatchRunning}
+      >New Profile</button>
     </div>
     {#if profileWarning}
       <div class="profile-warning">
@@ -897,7 +1078,8 @@
     <div class="profile-description">
       <small class="text-muted">{profileDescription}</small>
     </div>
-  </div>
+    </div>
+  </details>
 
   <!-- ── Grading Instructions ────────────────────────────────────── -->
   <details class="section-details">
@@ -922,6 +1104,10 @@
         <button class="btn-preset" class:active={isSkipNoResponseActive}
           onclick={() => togglePreset('skipNoResponse')} disabled={isBatchRunning}>
           Skip No Response
+        </button>
+        <button class="btn-preset" class:active={forceRegrade}
+          onclick={() => forceRegrade = !forceRegrade} disabled={isBatchRunning}>
+          Regrade All
         </button>
       </div>
       <textarea
@@ -971,29 +1157,22 @@
   {/if}
 
   <!-- ── Fill Mode Toggle ────────────────────────────────────────── -->
-  <div class="fill-mode-toggle">
-    <label class="fill-mode-option">
-      <input
-        type="radio"
-        name="fillMode"
-        value="auto"
-        checked={!isReviewMode}
-        onchange={() => { isReviewMode = false; }}
+  <div class="fill-mode-toggle" class:disabled={isBatchRunning}>
+    <div class="toggle-track">
+      <div class="toggle-slider" class:review={isReviewMode}></div>
+      <button
+        class="toggle-option"
+        class:active={!isReviewMode}
+        onclick={() => { if (!isBatchRunning) isReviewMode = false; }}
         disabled={isBatchRunning}
-      />
-      <span>⚡ Auto</span>
-    </label>
-    <label class="fill-mode-option">
-      <input
-        type="radio"
-        name="fillMode"
-        value="review"
-        checked={isReviewMode}
-        onchange={() => { isReviewMode = true; }}
+      >Auto</button>
+      <button
+        class="toggle-option"
+        class:active={isReviewMode}
+        onclick={() => { if (!isBatchRunning) isReviewMode = true; }}
         disabled={isBatchRunning}
-      />
-      <span>👁 Review</span>
-    </label>
+      >Review</button>
+    </div>
   </div>
 
   <!-- ── Resume After ────────────────────────────────────────────── -->
@@ -1072,6 +1251,11 @@
       {#if phaseMessage}
         <div class="phase-message">
           <small class="text-muted">{phaseMessage}</small>
+        </div>
+      {/if}
+      {#if versionCount > 1}
+        <div class="version-indicator">
+          <small class="version-badge">Version {currentVersionIndex + 1} of {versionCount}</small>
         </div>
       {/if}
       {#if currentStudentName}
@@ -1232,38 +1416,17 @@
     margin: 0;
   }
 
-  /* ── Section Card ── */
-  .section-card {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-2);
-  }
+  /* ── Dropdown Row (shared by profile + rubric) ── */
 
-  .section-header-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .auto-discover-btn {
-    font-size: 0.75rem;
-    opacity: 0.7;
-    padding: 0;
-  }
-
-  .auto-discover-btn:hover:not(:disabled) {
-    opacity: 1;
-  }
-
-  .auto-discover-btn:disabled {
-    opacity: 0.35;
-    cursor: not-allowed;
-  }
-
-  .profile-bar {
+  .dropdown-row {
     display: flex;
     gap: var(--spacing-2);
     align-items: center;
+  }
+
+  .new-profile-btn {
+    white-space: nowrap;
+    flex-shrink: 0;
   }
 
   .profile-select {
@@ -1577,6 +1740,16 @@
   .value.complete { color: var(--color-success); font-weight: 600; }
 
   .phase-message { margin-top: var(--spacing-1); font-size: 0.8rem; }
+  .version-indicator { margin-top: var(--spacing-1); }
+  .version-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: var(--color-primary, #4a90d9);
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
   .current-student { margin-top: var(--spacing-1); font-style: italic; }
 
   .batch-error {
@@ -1778,29 +1951,62 @@
   /* ── Fill Mode Toggle ── */
   .fill-mode-toggle {
     display: flex;
-    gap: var(--spacing-2, 8px);
-    align-items: center;
   }
 
-  .fill-mode-option {
+  .fill-mode-toggle.disabled {
+    opacity: 0.4;
+    pointer-events: none;
+  }
+
+  .toggle-track {
+    position: relative;
     display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 10px;
-    border-radius: 4px;
+    width: 100%;
+    background: var(--color-bg-main, #1a1a2e);
     border: 1px solid var(--color-border, #444);
+    border-radius: var(--radius-md, 8px);
+    padding: 3px;
+  }
+
+  .toggle-slider {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: calc(50% - 3px);
+    height: calc(100% - 6px);
+    background: var(--color-primary, #6366f1);
+    border-radius: calc(var(--radius-md, 8px) - 2px);
+    transition: transform 0.2s ease;
+    z-index: 0;
+  }
+
+  .toggle-slider.review {
+    transform: translateX(100%);
+  }
+
+  .toggle-option {
+    position: relative;
+    z-index: 1;
+    flex: 1;
+    background: none;
+    border: none;
+    padding: 6px 0;
+    font-size: 0.85rem;
+    font-weight: 600;
+    font-family: var(--font-body);
+    color: var(--color-text-secondary, #999);
     cursor: pointer;
-    font-size: 0.85em;
     user-select: none;
+    transition: color 0.2s ease;
+    text-align: center;
   }
 
-  .fill-mode-option:has(input:checked) {
-    background: var(--color-bg-alt, #1a1a2e);
-    border-color: var(--color-primary, #6366f1);
+  .toggle-option.active {
+    color: #fff;
   }
 
-  .fill-mode-option input[type="radio"] {
-    display: none;
+  .toggle-option:disabled {
+    cursor: not-allowed;
   }
 
   /* ── Review Panel ── */
