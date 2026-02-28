@@ -241,6 +241,7 @@ export const GRADING_SITE_PRESETS = [
   { name: 'Canvas', url: 'https://canvas.instructure.com/' },
   { name: 'Blackboard', url: 'https://blackboard.com/' },
   { name: 'Moodle', url: 'https://moodle.org/' },
+  { name: 'Aeries', url: 'https://chicousd.aeries.net/teacher/Login.aspx' },
 ];
 
 // --- Webview Screenshot Capture (V1 — webview-based via html2canvas) ---
