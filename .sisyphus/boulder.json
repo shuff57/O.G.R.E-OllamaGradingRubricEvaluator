@@ -1,9 +1,6 @@
 {
-  "active_plan": "C:\\Users\\shuff\\OneDrive\\Documents\\GitHub\\O.G.R.E-OllamaGradingReviewEvaluator\\.sisyphus\\plans\\per-version-anchor-responses.md",
-  "started_at": "2026-02-27T03:47:18.206Z",
-  "session_ids": [
-    "ses_362dbaa57ffep20wgtOCFB0Vxz"
-  ],
-  "plan_name": "per-version-anchor-responses",
+  "active_plans": ["browser-multi-tab", "skills-local-sync"],
+  "started_at": "2026-02-28T16:45:00.000Z",
+  "session_ids": [],
   "agent": "atlas"
 }

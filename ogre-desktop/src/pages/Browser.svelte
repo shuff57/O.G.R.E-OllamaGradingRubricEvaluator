@@ -10,13 +10,21 @@
     getEmbeddedUrl,
     hideWebview,
     showWebview,
+    destroyWebview,
     listenBrowserUrlChanged, 
     listenBrowserPageLoaded,
     listenBrowserStatus,
     injectAutofill,
-    GRADING_SITE_PRESETS 
+    setActiveTabId,
+    GRADING_SITE_PRESETS,
+    type BrowserEventPayload,
   } from '../lib/browser';
   import { calculateWebviewBounds } from '../lib/webview-layout';
+  import {
+    shouldTriggerSidebarAnimation,
+    scheduleBoundsUpdateAfterAnimation,
+    createDestroyGuard,
+  } from '../lib/webview-lifecycle';
   import { getSetting, setSetting, getSiteCredentials } from '../lib/db';
   import { matchCredentialsToUrl } from '../lib/autofill';
   import { ICON_STRIP_WIDTH } from '../lib/constants';
@@ -24,13 +32,10 @@
 
   // State
   let urlInput = '';
-  let pageLoadedUrl = '';
-  let isLoading = false;
   let showPresets = true;
   let showGradingPanel = false;
   let gradingPanelCollapsed = false;
   let gradingPanelWidth = 400;
-  let browserCreated = false;
   let toastMessage = '';
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
   
@@ -45,7 +50,27 @@
   let unlistenStatus: (() => void) | undefined;
   let resizeTimeout: ReturnType<typeof setTimeout> | undefined;
   let sidebarAnimationId: number | undefined;
+  const guard = createDestroyGuard();
+  let cancelScheduledBoundsUpdate: (() => void) | undefined;
   let drawerResizeTimeout: ReturnType<typeof setTimeout> | undefined;
+
+  // ── Tab State ────────────────────────────────────────────────────────────
+  interface Tab {
+    id: string;
+    url: string;
+    title: string;
+    isLoading: boolean;
+    browserCreated: boolean;
+  }
+  let tabs: Tab[] = [];
+  let activeTabId = '';
+  let creatingTabId = '';
+
+  // Derived from active tab
+  $: currentTab = tabs.find(t => t.id === activeTabId);
+  $: isLoading = currentTab?.isLoading ?? false;
+  $: browserCreated = currentTab?.browserCreated ?? false;
+  $: pageLoadedUrl = currentTab?.url ?? '';
 
   /** Show a transient toast notification */
   function showToast(message: string, durationMs = 3000) {
@@ -54,13 +79,75 @@
     toastTimer = setTimeout(() => { toastMessage = ''; }, durationMs);
   }
 
+  /** Get a display title for a tab (hostname or 'New Tab') */
+  function getTabDisplayTitle(tab: Tab): string {
+    if (!tab.url) return 'New Tab';
+    try {
+      const normalized = tab.url.startsWith('http') ? tab.url : 'https://' + tab.url;
+      return new URL(normalized).hostname || 'New Tab';
+    } catch {
+      return tab.url.slice(0, 20) || 'New Tab';
+    }
+  }
+
+  /** Open a new tab, optionally navigating to a URL */
+  async function openNewTab(url?: string) {
+    const id = crypto.randomUUID();
+    const newTab: Tab = { id, url: url ?? '', title: '', isLoading: false, browserCreated: false };
+    tabs = [...tabs, newTab];
+    await switchTab(id);
+    if (url) {
+      urlInput = url;
+      await handleNavigate();
+    }
+  }
+
+  /** Switch to an existing tab by ID */
+  async function switchTab(id: string) {
+    if (activeTabId && activeTabId !== id) {
+      const prev = tabs.find(t => t.id === activeTabId);
+      if (prev?.browserCreated) {
+        await hideWebview(activeTabId).catch(() => {});
+      }
+    }
+    activeTabId = id;
+    setActiveTabId(id);
+    const tab = tabs.find(t => t.id === id);
+    if (tab) {
+      urlInput = tab.url;
+    }
+    if (tab?.browserCreated) {
+      await showWebview(id).catch(() => {});
+      await tick();
+      updateWebviewBounds();
+    }
+  }
+
+  /** Close a tab and destroy its webview */
+  async function closeTab(id: string) {
+    const tab = tabs.find(t => t.id === id);
+    if (tab?.browserCreated) {
+      await destroyWebview(id).catch(() => {});
+    }
+    tabs = tabs.filter(t => t.id !== id);
+    if (activeTabId === id) {
+      if (tabs.length > 0) {
+        await switchTab(tabs[tabs.length - 1].id);
+      } else {
+        activeTabId = '';
+        setActiveTabId('');
+        urlInput = '';
+      }
+    }
+  }
+
   /** Check credentials and inject auto-fill for the loaded URL */
-  async function tryAutofill(url: string) {
+  async function tryAutofill(tabId: string, url: string) {
     try {
       const credentials = await getSiteCredentials();
       const match = matchCredentialsToUrl(url, credentials);
       if (match) {
-        await injectAutofill(match.username, match.password);
+        await injectAutofill(tabId, match.username, match.password);
         showToast(`Auto-filled credentials for ${match.site_name}`);
       }
     } catch (e) {
@@ -69,7 +156,7 @@
 
   /** Calculate and apply webview bounds accounting for sidebar state */
   function updateWebviewBounds() {
-    if (!browserCreated) return;
+    if (!browserCreated || !activeTabId) return;
     
     // Get actual sidebar width from DOM (handles both collapsed and expanded states)
     const sidebar = document.querySelector('.sidebar');
@@ -78,6 +165,10 @@
     // Get the nav-bar height from the DOM element
     const navBar = document.querySelector('.nav-bar');
     const navBarHeight = navBar ? navBar.getBoundingClientRect().height : 50;
+
+    // Calculate tab bar height
+    const tabBarEl = document.querySelector('.tab-bar');
+    const tabBarHeight = tabBarEl ? tabBarEl.getBoundingClientRect().height : 0;
     
     // Calculate presets panel height if visible
     const presetsPanel = showPresets ? document.querySelector('.presets-panel') : null;
@@ -93,12 +184,11 @@
       panelWidth: drawerWidth,
       windowWidth: window.innerWidth,
       windowHeight: window.innerHeight,
-      extraTopOffset: presetsPanelHeight,
+      extraTopOffset: presetsPanelHeight + tabBarHeight,
     });
     
     if (bounds.width > 0 && bounds.height > 0) {
-      setWebviewBounds(bounds.x, bounds.y, bounds.width, bounds.height).catch((e) => {
-      });
+      setWebviewBounds(activeTabId, bounds.x, bounds.y, bounds.width, bounds.height).catch(() => {});
     }
   }
 
@@ -159,12 +249,14 @@
   onMount(async () => {
     // Load saved URLs
     const saved = await getSetting('browser_saved_urls');
+    if (guard.destroyed) return;
     if (saved) {
       try { savedUrls = JSON.parse(saved); } catch { savedUrls = []; }
     }
 
     // Load saved drawer state
     const savedDrawerState = await getSetting('ogreDrawerState');
+    if (guard.destroyed) return;
     if (savedDrawerState) {
       try {
         const state = JSON.parse(savedDrawerState);
@@ -172,110 +264,111 @@
         if (state.width !== undefined) gradingPanelWidth = state.width;
         if (state.collapsed !== undefined) gradingPanelCollapsed = state.collapsed;
       } catch {
-        // Use defaults if parsing fails
         showGradingPanel = false;
         gradingPanelWidth = 400;
       }
     } else {
-      // Use defaults if no saved state
       showGradingPanel = false;
       gradingPanelWidth = 400;
     }
 
-    // Set up listeners
-    unlistenUrl = await listenBrowserUrlChanged((url) => {
-      urlInput = url;
+    // Set up event listeners
+    unlistenUrl = await listenBrowserUrlChanged(({ tabId, url }: BrowserEventPayload) => {
+      tabs = tabs.map(t => t.id === tabId ? { ...t, url } : t);
+      if (tabId === activeTabId) urlInput = url;
     });
+    if (guard.destroyed) { unlistenUrl(); return; }
 
-    unlistenLoaded = await listenBrowserPageLoaded(async (url: string) => {
-      isLoading = false;
-      urlInput = url; // Sync URL bar with actual webview URL (fixes back/forward desync)
-      pageLoadedUrl = url;
-      await tryAutofill(url);
+    unlistenLoaded = await listenBrowserPageLoaded(async ({ tabId, url }: BrowserEventPayload) => {
+      tabs = tabs.map(t => t.id === tabId ? { ...t, isLoading: false, url } : t);
+      if (tabId === activeTabId) urlInput = url;
+      await tryAutofill(tabId, url);
     });
+    if (guard.destroyed) { unlistenUrl(); unlistenLoaded(); return; }
 
-    // Listen for webview creation success/failure
     unlistenStatus = await listenBrowserStatus(async (status: string) => {
-      if (status === 'embedded-open') {
-        browserCreated = true;
-        showPresets = false;
-        isLoading = false;
-        
-        // Set bounds BEFORE showing to avoid flash at Rust's default position (x=0, y=60).
-        // tick() ensures DOM has updated (presets panel hidden, etc.) before measuring.
-        await tick();
-        updateWebviewBounds();
-        await showWebview().catch(() => {});
+      if (status === 'embedded-open' && creatingTabId) {
+        const tid = creatingTabId;
+        creatingTabId = '';
+        tabs = tabs.map(t => t.id === tid ? { ...t, browserCreated: true, isLoading: false } : t);
+        if (tid === activeTabId) {
+          showPresets = false;
+          await tick();
+          updateWebviewBounds();
+          await showWebview(tid).catch(() => {});
+        }
       } else if (status === 'error') {
-        browserCreated = false;
-        isLoading = false;
+        if (creatingTabId) {
+          tabs = tabs.map(t => t.id === creatingTabId ? { ...t, isLoading: false } : t);
+          creatingTabId = '';
+        }
         showToast('Failed to create browser. Please try again.');
       }
     });
-
-    // Check if webview already exists (persists across page switches)
-    try {
-      const currentUrl = await getEmbeddedUrl();
-      if (currentUrl) {
-        browserCreated = true;
-        urlInput = currentUrl;
-        showPresets = false;
-        await tick();
-        updateWebviewBounds();
-      }
-    } catch {
-      // Webview doesn't exist yet — that's fine
-    }
+    if (guard.destroyed) { unlistenUrl(); unlistenLoaded(); unlistenStatus(); return; }
 
     // Handle window resize with debounce
     window.addEventListener('resize', handleResize);
 
     // Handle sidebar changes with RAF animation
     window.addEventListener('ogre:sidebar-changed', handleSidebarChanged);
+
+    // Create the initial tab
+    await openNewTab();
   });
 
   onDestroy(() => {
-    if (unlistenUrl) unlistenUrl();
-    if (unlistenLoaded) unlistenLoaded();
-    if (unlistenStatus) unlistenStatus();
-    if (resizeTimeout) clearTimeout(resizeTimeout);
-    if (drawerResizeTimeout) clearTimeout(drawerResizeTimeout);
-    if (sidebarAnimationId) cancelAnimationFrame(sidebarAnimationId);
-    window.removeEventListener('resize', handleResize);
-    window.removeEventListener('ogre:sidebar-changed', handleSidebarChanged);
+    // Destroy all tab webviews
+    tabs.forEach(tab => {
+      if (tab.browserCreated) {
+        destroyWebview(tab.id).catch(() => {});
+      }
+    });
+
+    guard.onDestroy([
+      () => { if (unlistenUrl) unlistenUrl(); },
+      () => { if (unlistenLoaded) unlistenLoaded(); },
+      () => { if (unlistenStatus) unlistenStatus(); },
+      () => { if (resizeTimeout) clearTimeout(resizeTimeout); },
+      () => { if (drawerResizeTimeout) clearTimeout(drawerResizeTimeout); },
+      () => { if (sidebarAnimationId) cancelAnimationFrame(sidebarAnimationId); },
+      () => { if (cancelScheduledBoundsUpdate) cancelScheduledBoundsUpdate(); },
+      () => { window.removeEventListener('resize', handleResize); },
+      () => { window.removeEventListener('ogre:sidebar-changed', handleSidebarChanged); },
+    ]);
   });
 
   // Navigation Handlers
   async function handleNavigate() {
-    if (!urlInput.trim()) return;
-    isLoading = true;
+    if (!urlInput.trim() || !activeTabId) return;
+    const url = urlInput.trim();
+    tabs = tabs.map(t => t.id === activeTabId ? { ...t, isLoading: true, url } : t);
     try {
-      if (!browserCreated) {
-        // First navigation: create the embedded webview
-        // browserCreated will be set by the status listener when creation succeeds
-        await createEmbeddedBrowser(urlInput);
-        // Wait for DOM to update, then set accurate bounds
+      if (!currentTab?.browserCreated) {
+        creatingTabId = activeTabId;
+        await createEmbeddedBrowser(activeTabId, url);
         await tick();
         updateWebviewBounds();
       } else {
-        await navigateEmbedded(urlInput);
+        await navigateEmbedded(activeTabId, url);
       }
     } catch (e) {
-      isLoading = false;
+      tabs = tabs.map(t => t.id === activeTabId ? { ...t, isLoading: false } : t);
     }
   }
 
   async function handleBack() {
-    await goBack();
+    if (activeTabId) await goBack(activeTabId);
   }
 
   async function handleForward() {
-    await goForward();
+    if (activeTabId) await goForward(activeTabId);
   }
 
   async function handleReload() {
-    isLoading = true;
-    await reloadBrowser();
+    if (!activeTabId) return;
+    tabs = tabs.map(t => t.id === activeTabId ? { ...t, isLoading: true } : t);
+    await reloadBrowser(activeTabId);
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -312,6 +405,26 @@
 </script>
 
 <div class="browser-container">
+  <!-- Tab Bar -->
+  <div class="tab-bar">
+    {#each tabs as tab (tab.id)}
+      <div
+        class="tab"
+        class:active={tab.id === activeTabId}
+        on:click={() => switchTab(tab.id)}
+        on:keydown={(e) => e.key === 'Enter' && switchTab(tab.id)}
+        role="tab"
+        tabindex="0"
+      >
+        <span class="tab-title">{tab.title || getTabDisplayTitle(tab)}</span>
+        {#if tabs.length > 1}
+          <button class="tab-close" on:click|stopPropagation={() => closeTab(tab.id)}>×</button>
+        {/if}
+      </div>
+    {/each}
+    <button class="tab-new" on:click={() => openNewTab()}>+</button>
+  </div>
+
   <!-- Navigation Bar -->
   <div class="nav-bar">
     <div class="nav-controls">
@@ -661,5 +774,87 @@
 
   @keyframes spin {
     to { transform: rotate(360deg); }
+  }
+
+  /* Tab Bar */
+  .tab-bar {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    padding: 0.25rem 0.5rem 0;
+    background: var(--color-bg-main);
+    border-bottom: 1px solid var(--color-border);
+    overflow-x: auto;
+    flex-shrink: 0;
+  }
+
+  .tab {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 4px 4px 0 0;
+    background: transparent;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    font-size: 0.8rem;
+    max-width: 160px;
+    min-width: 80px;
+    white-space: nowrap;
+    overflow: hidden;
+    transition: background 0.15s;
+  }
+
+  .tab:hover {
+    background: var(--color-bg-hover);
+    color: var(--color-text-primary);
+  }
+
+  .tab.active {
+    background: var(--color-bg-card);
+    border-color: var(--color-border);
+    color: var(--color-text-primary);
+  }
+
+  .tab-title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .tab-close {
+    background: none;
+    border: none;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    padding: 0 2px;
+    font-size: 1rem;
+    line-height: 1;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+
+  .tab-close:hover {
+    background: var(--color-error-bg);
+    color: var(--color-error);
+  }
+
+  .tab-new {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    padding: 0.3rem 0.5rem;
+    border-radius: 4px 4px 0 0;
+    font-size: 1rem;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
+  .tab-new:hover {
+    background: var(--color-bg-hover);
+    color: var(--color-text-primary);
   }
 </style>

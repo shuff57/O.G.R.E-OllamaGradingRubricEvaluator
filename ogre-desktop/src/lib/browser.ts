@@ -4,91 +4,101 @@ import { generateAutoFillScript } from './autofill';
 import { isConnected, connectCDP, cdpScreenshot } from './cdp-actions';
 import { cdp } from './cdp-client';
 
+// ── Active Tab Tracking ─────────────────────────────────────────────────
+// Tracks the currently active tab ID for code without explicit tab context
+// (e.g. markdown-extract, DiscoveryPanel). Browser.svelte calls setActiveTabId
+// on every tab switch.
+let _activeTabId = '';
+export function setActiveTabId(id: string) { _activeTabId = id; }
+export function getActiveTabId(): string { return _activeTabId; }
 // --- Embedded Browser Functions ---
 
 /**
  * Create the embedded browser webview.
  */
-export async function createEmbeddedBrowser(url: string): Promise<void> {
+export async function createEmbeddedBrowser(tabId: string, url: string): Promise<void> {
   let normalized = url.trim();
   if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
     normalized = 'https://' + normalized;
   }
-  await invoke('create_embedded_browser', { url: normalized });
+  await invoke('create_embedded_browser', { tabId, url: normalized });
 }
 
 /**
  * Navigate the embedded browser to a new URL.
  */
-export async function navigateEmbedded(url: string): Promise<void> {
+export async function navigateEmbedded(tabId: string, url: string): Promise<void> {
   let normalized = url.trim();
   if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
     normalized = 'https://' + normalized;
   }
-  await invoke('navigate_embedded', { url: normalized });
+  await invoke('navigate_embedded', { tabId, url: normalized });
 }
 
 /**
  * Go back in the embedded browser history.
  */
-export async function goBack(): Promise<void> {
-  await invoke('go_back');
+export async function goBack(tabId: string): Promise<void> {
+  await invoke('go_back', { tabId });
 }
 
 /**
  * Go forward in the embedded browser history.
  */
-export async function goForward(): Promise<void> {
-  await invoke('go_forward');
+export async function goForward(tabId: string): Promise<void> {
+  await invoke('go_forward', { tabId });
 }
 
 /**
  * Reload the embedded browser page.
  */
-export async function reloadBrowser(): Promise<void> {
-  await invoke('reload_browser');
+export async function reloadBrowser(tabId: string): Promise<void> {
+  await invoke('reload_browser', { tabId });
 }
 
 /**
  * Set the bounds of the embedded webview.
  */
-export async function setWebviewBounds(x: number, y: number, width: number, height: number): Promise<void> {
-  await invoke('set_webview_bounds', { x, y, width, height });
+export async function setWebviewBounds(tabId: string, x: number, y: number, width: number, height: number): Promise<void> {
+  await invoke('set_webview_bounds', { tabId, x, y, width, height });
 }
 
 /**
  * Hide the embedded webview.
  */
-export async function hideWebview(): Promise<void> {
-  await invoke('hide_webview');
+export async function hideWebview(tabId: string): Promise<void> {
+  await invoke('hide_webview', { tabId });
 }
 
 /**
  * Show the embedded webview.
  */
-export async function showWebview(): Promise<void> {
-  await invoke('show_webview');
+export async function showWebview(tabId: string): Promise<void> {
+  await invoke('show_webview', { tabId });
 }
 
 /**
  * Get the current URL of the embedded browser.
  */
-export async function getEmbeddedUrl(): Promise<string> {
-  return await invoke('get_embedded_url');
+export async function getEmbeddedUrl(tabId?: string): Promise<string> {
+  return await invoke('get_embedded_url', { tabId: tabId ?? _activeTabId });
 }
 
 /**
  * Destroy the embedded webview.
  */
-export async function destroyWebview(): Promise<void> {
-  await invoke('destroy_webview');
+export async function destroyWebview(tabId: string): Promise<void> {
+  await invoke('destroy_webview', { tabId });
 }
 
 /**
  * Listen for URL changes in the embedded browser.
  */
-export async function listenBrowserUrlChanged(callback: (url: string) => void) {
-  return listen<string>('browser-url-changed', (event) => {
+/** Payload emitted by browser URL and page-loaded events. */
+export type BrowserEventPayload = { tabId: string; url: string };
+
+export async function listenBrowserUrlChanged(callback: (payload: BrowserEventPayload) => void) {
+  return listen<BrowserEventPayload>('browser-url-changed', (event) => {
     callback(event.payload);
   });
 }
@@ -96,8 +106,8 @@ export async function listenBrowserUrlChanged(callback: (url: string) => void) {
 /**
  * Listen for page loaded events in the embedded browser.
  */
-export async function listenBrowserPageLoaded(callback: (url: string) => void) {
-  return listen<string>('browser-page-loaded', (event) => {
+export async function listenBrowserPageLoaded(callback: (payload: BrowserEventPayload) => void) {
+  return listen<BrowserEventPayload>('browser-page-loaded', (event) => {
     callback(event.payload);
   });
 }
@@ -116,9 +126,9 @@ export async function listenBrowserStatus(callback: (status: string) => void) {
  * Inject auto-fill credentials into the embedded browser.
  * Generates the autofill script from username/password and evaluates it in the webview.
  */
-export async function injectAutofill(username: string, password: string): Promise<void> {
+export async function injectAutofill(tabId: string, username: string, password: string): Promise<void> {
   const script = generateAutoFillScript(username, password);
-  await invoke('inject_autofill', { script });
+  await invoke('inject_autofill', { tabId, script });
 }
 
 // --- Webview Script Evaluation (Wave 0.2 Spike) ---
@@ -187,8 +197,8 @@ export async function evalScript(script: string): Promise<string> {
  *
  * @param script - JavaScript to inject (no return value expected)
  */
-export async function injectScript(script: string): Promise<void> {
-  await invoke<void>('inject_webview_script', { script });
+export async function injectScript(script: string, tabId?: string): Promise<void> {
+  await invoke<void>('inject_webview_script', { tabId: tabId ?? _activeTabId, script });
 }
 
 /**

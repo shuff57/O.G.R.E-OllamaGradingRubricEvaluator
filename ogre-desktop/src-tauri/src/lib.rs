@@ -18,7 +18,7 @@ struct SidecarState {
 
 /// Holds the embedded browser webview state so we can manage it.
 struct WebviewState {
-    label: Option<String>,
+    tabs: HashMap<String, String>,
 }
 
 /// Registry for pending webview eval callbacks.
@@ -214,43 +214,52 @@ fn spawn_sidecar(app_handle: &tauri::AppHandle, restart_count: Arc<Mutex<u32>>) 
 // ── Embedded Browser Commands ────────────────────────────────────────────
 
 #[tauri::command]
-async fn create_embedded_browser(app: tauri::AppHandle, url: String) -> Result<(), String> {
+async fn create_embedded_browser(app: tauri::AppHandle, tab_id: String, url: String) -> Result<(), String> {
     let parsed: url::Url = url.parse().map_err(|e| format!("Invalid URL: {}", e))?;
-
-    // If embedded browser already exists, just navigate it
-    if let Some(wv) = app.get_webview("embedded-browser") {
-        wv.navigate(parsed).map_err(|e| format!("Navigate failed: {}", e))?;
-        return Ok(());
-    }
 
     // Create in spawned task to avoid Windows deadlock
     let app_clone = app.clone();
     tauri::async_runtime::spawn(async move {
+        let label = format!("embedded-browser-{}", tab_id);
         let emit_nav = app_clone.clone();
         let emit_load = app_clone.clone();
         let emit_newwin = app_clone.clone();
+        let tab_id_nav = tab_id.clone();
+        let tab_id_load = tab_id.clone();
+        let tab_id_newwin = tab_id.clone();
 
         let builder = WebviewBuilder::new(
-            "embedded-browser",
+            label.clone(),
             WebviewUrl::External(parsed),
         )
         // Note: don't call auto_resize() — we want manual bounds management
         .on_navigation(move |url| {
-            let _ = emit_nav.emit("browser-url-changed", url.as_str());
+            let url_str = url.to_string();
+            let tid = tab_id_nav.clone();
+            let _ = emit_nav.emit("browser-url-changed", serde_json::json!({"tabId": tid, "url": url_str}));
             true
         })
         .on_page_load(move |wv, _payload| {
             if let Ok(url) = wv.url() {
-                let _ = emit_load.emit("browser-page-loaded", url.to_string());
+                let tid = tab_id_load.clone();
+                let _ = emit_load.emit("browser-page-loaded", serde_json::json!({"tabId": tid, "url": url.to_string()}));
             }
         })
         .on_new_window(move |url, _features| {
             let h = emit_newwin.clone();
             let u = url.to_string();
+            let tid = tab_id_newwin.clone();
             tauri::async_runtime::spawn(async move {
-                if let Some(wv) = h.get_webview("embedded-browser") {
-                    if let Ok(parsed) = u.parse::<url::Url>() {
-                        let _ = wv.navigate(parsed);
+                let label = {
+                    let state = h.state::<Mutex<WebviewState>>();
+                    let guard = state.lock().unwrap();
+                    guard.tabs.get(&tid).cloned()
+                };
+                if let Some(label) = label {
+                    if let Some(wv) = h.get_webview(&label) {
+                        if let Ok(parsed) = u.parse::<url::Url>() {
+                            let _ = wv.navigate(parsed);
+                        }
                     }
                 }
             });
@@ -267,7 +276,7 @@ async fn create_embedded_browser(app: tauri::AppHandle, url: String) -> Result<(
                     {
                         let state = app_clone.state::<Mutex<WebviewState>>();
                         let mut guard = state.lock().unwrap();
-                        guard.label = Some("embedded-browser".to_string());
+                        guard.tabs.insert(tab_id.clone(), label.clone());
                     }
                     let _ = app_clone.emit("browser-status", "embedded-open");
                 }
@@ -286,36 +295,52 @@ async fn create_embedded_browser(app: tauri::AppHandle, url: String) -> Result<(
 }
 
 #[tauri::command]
-async fn navigate_embedded(app: tauri::AppHandle, url: String) -> Result<(), String> {
-    let wv = app.get_webview("embedded-browser")
-        .ok_or("Embedded browser not open")?;
+async fn navigate_embedded(app: tauri::AppHandle, tab_id: String, url: String) -> Result<(), String> {
+    let label = {
+        let state = app.state::<Mutex<WebviewState>>();
+        let guard = state.lock().unwrap();
+        guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
+    };
+    let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
     let parsed: url::Url = url.parse().map_err(|e| format!("Invalid URL: {}", e))?;
     wv.navigate(parsed).map_err(|e| format!("Navigation failed: {}", e))?;
     Ok(())
 }
 
 #[tauri::command]
-async fn go_back(app: tauri::AppHandle) -> Result<(), String> {
-    let wv = app.get_webview("embedded-browser")
-        .ok_or("Embedded browser not open")?;
+async fn go_back(app: tauri::AppHandle, tab_id: String) -> Result<(), String> {
+    let label = {
+        let state = app.state::<Mutex<WebviewState>>();
+        let guard = state.lock().unwrap();
+        guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
+    };
+    let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
     wv.eval("history.back()")
         .map_err(|e| format!("Failed to go back: {}", e))?;
     Ok(())
 }
 
 #[tauri::command]
-async fn go_forward(app: tauri::AppHandle) -> Result<(), String> {
-    let wv = app.get_webview("embedded-browser")
-        .ok_or("Embedded browser not open")?;
+async fn go_forward(app: tauri::AppHandle, tab_id: String) -> Result<(), String> {
+    let label = {
+        let state = app.state::<Mutex<WebviewState>>();
+        let guard = state.lock().unwrap();
+        guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
+    };
+    let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
     wv.eval("history.forward()")
         .map_err(|e| format!("Failed to go forward: {}", e))?;
     Ok(())
 }
 
 #[tauri::command]
-async fn reload_browser(app: tauri::AppHandle) -> Result<(), String> {
-    let wv = app.get_webview("embedded-browser")
-        .ok_or("Embedded browser not open")?;
+async fn reload_browser(app: tauri::AppHandle, tab_id: String) -> Result<(), String> {
+    let label = {
+        let state = app.state::<Mutex<WebviewState>>();
+        let guard = state.lock().unwrap();
+        guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
+    };
+    let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
     wv.eval("location.reload()")
         .map_err(|e| format!("Failed to reload: {}", e))?;
     Ok(())
@@ -324,10 +349,15 @@ async fn reload_browser(app: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 async fn set_webview_bounds(
     app: tauri::AppHandle,
+    tab_id: String,
     x: f64, y: f64, width: f64, height: f64,
 ) -> Result<(), String> {
-    let wv = app.get_webview("embedded-browser")
-        .ok_or("Embedded browser not open")?;
+    let label = {
+        let state = app.state::<Mutex<WebviewState>>();
+        let guard = state.lock().unwrap();
+        guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
+    };
+    let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
     wv.set_position(tauri::LogicalPosition::new(x, y))
         .map_err(|e| format!("Failed to set position: {}", e))?;
     wv.set_size(tauri::LogicalSize::new(width, height))
@@ -336,44 +366,67 @@ async fn set_webview_bounds(
 }
 
 #[tauri::command]
-async fn hide_webview(app: tauri::AppHandle) -> Result<(), String> {
-    let wv = app.get_webview("embedded-browser")
-        .ok_or("Embedded browser not open")?;
+async fn hide_webview(app: tauri::AppHandle, tab_id: String) -> Result<(), String> {
+    let label = {
+        let state = app.state::<Mutex<WebviewState>>();
+        let guard = state.lock().unwrap();
+        guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
+    };
+    let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
     wv.hide().map_err(|e| format!("Failed to hide: {}", e))?;
     Ok(())
 }
 
 #[tauri::command]
-async fn show_webview(app: tauri::AppHandle) -> Result<(), String> {
-    let wv = app.get_webview("embedded-browser")
-        .ok_or("Embedded browser not open")?;
+async fn show_webview(app: tauri::AppHandle, tab_id: String) -> Result<(), String> {
+    let label = {
+        let state = app.state::<Mutex<WebviewState>>();
+        let guard = state.lock().unwrap();
+        guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
+    };
+    let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
     wv.show().map_err(|e| format!("Failed to show: {}", e))?;
     Ok(())
 }
 
 #[tauri::command]
-async fn get_embedded_url(app: tauri::AppHandle) -> Result<String, String> {
-    let wv = app.get_webview("embedded-browser")
-        .ok_or("Embedded browser not open")?;
+async fn get_embedded_url(app: tauri::AppHandle, tab_id: String) -> Result<String, String> {
+    let label = {
+        let state = app.state::<Mutex<WebviewState>>();
+        let guard = state.lock().unwrap();
+        guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
+    };
+    let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
     let url = wv.url().map_err(|e| format!("Failed to get URL: {}", e))?;
     Ok(url.to_string())
 }
 
 #[tauri::command]
-async fn destroy_webview(app: tauri::AppHandle) -> Result<(), String> {
-    if let Some(wv) = app.get_webview("embedded-browser") {
-        wv.close().map_err(|e| format!("Failed to close: {}", e))?;
+async fn destroy_webview(app: tauri::AppHandle, tab_id: String) -> Result<(), String> {
+    let label = {
+        let state = app.state::<Mutex<WebviewState>>();
+        let guard = state.lock().unwrap();
+        guard.tabs.get(&tab_id).cloned()
+    };
+    if let Some(label) = label {
+        if let Some(wv) = app.get_webview(&label) {
+            wv.close().map_err(|e| format!("Failed to close: {}", e))?;
+        }
+        let state = app.state::<Mutex<WebviewState>>();
+        let mut guard = state.lock().unwrap();
+        guard.tabs.remove(&tab_id);
     }
-    let state = app.state::<Mutex<WebviewState>>();
-    let mut guard = state.lock().unwrap();
-    guard.label = None;
     Ok(())
 }
 
 #[tauri::command]
-async fn inject_autofill(app: tauri::AppHandle, script: String) -> Result<(), String> {
-    let wv = app.get_webview("embedded-browser")
-        .ok_or("Embedded browser not open")?;
+async fn inject_autofill(app: tauri::AppHandle, tab_id: String, script: String) -> Result<(), String> {
+    let label = {
+        let state = app.state::<Mutex<WebviewState>>();
+        let guard = state.lock().unwrap();
+        guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
+    };
+    let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
     wv.eval(&script)
         .map_err(|e| format!("Failed to inject autofill script: {}", e))?;
     Ok(())
@@ -386,11 +439,16 @@ async fn inject_autofill(app: tauri::AppHandle, script: String) -> Result<(), St
 #[tauri::command]
 async fn eval_webview_script(
     app: tauri::AppHandle,
+    tab_id: String,
     script: String,
 ) -> Result<String, String> {
     let eval_id = uuid::Uuid::new_v4().to_string();
-    let wv = app.get_webview("embedded-browser")
-        .ok_or("Embedded browser not open")?;
+    let label = {
+        let state = app.state::<Mutex<WebviewState>>();
+        let guard = state.lock().unwrap();
+        guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
+    };
+    let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
     
     // Create channel for result
     let (tx, rx) = oneshot::channel::<String>();
@@ -462,11 +520,62 @@ async fn eval_webview_script(
 #[tauri::command]
 async fn inject_webview_script(
     app: tauri::AppHandle,
+    tab_id: String,
     script: String,
 ) -> Result<(), String> {
-    let wv = app.get_webview("embedded-browser")
-        .ok_or("Embedded browser not open")?;
+    let label = {
+        let state = app.state::<Mutex<WebviewState>>();
+        let guard = state.lock().unwrap();
+        guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
+    };
+    let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
     wv.eval(&script).map_err(|e| format!("Failed to inject script: {}", e))
+}
+
+#[derive(serde::Serialize)]
+struct LocalSkillFile {
+    folder: String,
+    content: String,
+}
+
+/// Scan ~/.claude/skills/ for local skill files (SKILL.md or CLAUDE.md) and return their contents.
+#[tauri::command]
+async fn scan_claude_skills(app: tauri::AppHandle) -> Result<Vec<LocalSkillFile>, String> {
+    let home = app.path().home_dir().map_err(|e| format!("Failed to get home dir: {}", e))?;
+    let skills_dir = home.join(".claude").join("skills");
+
+    if !skills_dir.exists() {
+        return Ok(vec![]);
+    }
+
+    let mut results = Vec::new();
+    let entries = std::fs::read_dir(&skills_dir)
+        .map_err(|e| format!("Failed to read skills dir: {}", e))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read dir entry: {}", e))?;
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let folder = match path.file_name().and_then(|n| n.to_str()) {
+            Some(s) => s.to_string(),
+            None => continue,
+        };
+        let skill_file = path.join("SKILL.md");
+        let claude_file = path.join("CLAUDE.md");
+        let content = if skill_file.exists() {
+            std::fs::read_to_string(&skill_file)
+                .map_err(|e| format!("Failed to read {}: {}", skill_file.display(), e))?
+        } else if claude_file.exists() {
+            std::fs::read_to_string(&claude_file)
+                .map_err(|e| format!("Failed to read {}: {}", claude_file.display(), e))?
+        } else {
+            continue;
+        };
+        results.push(LocalSkillFile { folder, content });
+    }
+    Ok(results)
 }
 
 /// Internal callback handler for eval results.
@@ -851,6 +960,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_skills_source ON skills(source, source_id)
             eval_webview_script,
             _eval_callback,
             inject_webview_script,
+            scan_claude_skills,
             start_oauth_callback_server,
             stop_oauth_callback_server,
             get_cdp_port,
@@ -874,7 +984,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_skills_source ON skills(source, source_id)
             }
         }))
         .manage(Mutex::new(SidecarState { child: None, status_item: None }))
-        .manage(Mutex::new(WebviewState { label: None }))
+        .manage(Mutex::new(WebviewState { tabs: HashMap::new() }))
         .manage(EvalRegistry::new(Mutex::new(HashMap::new())))
         .manage(Mutex::new(OAuthCallbackState { cancel_tx: None }))
         .manage(CdpPortState { port: cdp_port })

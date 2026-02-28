@@ -6,6 +6,7 @@
  */
 
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+import { invoke } from '@tauri-apps/api/core';
 
 // The validated URL pattern from the spike
 export const SKILLS_SH_SEARCH_URL = "https://skills.sh/api/search";
@@ -107,6 +108,7 @@ export async function fetchSkillContent(source: string, skillId: string): Promis
 // ── Install Logic ───────────────────────────────────────────────────────
 
 import { getSkillBySource, saveSkill, getActiveSkills } from './db';
+import { parseSkillMarkdown } from './skill-parser';
 
 export interface InstallSkillParams {
   skillId: string;
@@ -170,4 +172,46 @@ export async function getSkillInjectionSize(): Promise<{ charCount: number; skil
   const injection = await buildSkillInjection();
   const skills = await getActiveSkills();
   return { charCount: injection.length, skillCount: skills.length };
+}
+
+interface LocalSkillFile {
+  folder: string;
+  content: string;
+}
+
+/**
+ * Scan ~/.claude/skills/ for local skill files and import new ones into OGRE's DB.
+ * Skips skills already imported (identified by source='local-claude' + source_id=folder).
+ * Returns counts of imported vs skipped skills.
+ */
+export async function syncLocalSkills(): Promise<{ imported: number; skipped: number }> {
+  let imported = 0;
+  let skipped = 0;
+
+  try {
+    const files = await invoke<LocalSkillFile[]>('scan_claude_skills');
+
+    for (const file of files) {
+      const existing = await getSkillBySource('local-claude', file.folder);
+      if (existing) {
+        skipped++;
+        continue;
+      }
+
+      const parsed = parseSkillMarkdown(file.content);
+      await saveSkill({
+        name: parsed.name || file.folder,
+        description: parsed.description || '',
+        content: file.content,
+        source: 'local-claude',
+        source_id: file.folder,
+        is_active: 0,
+      });
+      imported++;
+    }
+  } catch (e) {
+    console.warn('syncLocalSkills failed:', e);
+  }
+
+  return { imported, skipped };
 }

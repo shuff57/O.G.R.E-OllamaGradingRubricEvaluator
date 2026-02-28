@@ -5,6 +5,7 @@
   import SkillCard from '../components/skills/SkillCard.svelte';
   import { getSkills, saveSkill, deleteSkill, updateSkillActive, type Skill } from '../lib/db';
   import { parseSkillMarkdown } from '../lib/skill-parser';
+  import { syncLocalSkills } from '../lib/skills-api';
 
   let currentView = $state<'my-skills' | 'find-skills' | 'create-skill'>('my-skills');
   let skillCreatorKey = $state(0);
@@ -18,6 +19,8 @@
   let loading = $state(true);
   let error = $state<string | null>(null);
   let fileInput: HTMLInputElement;
+  let syncing = $state(false);
+  let syncMessage = $state<string | null>(null);
 
   async function loadSkills() {
     loading = true;
@@ -83,8 +86,32 @@
     }
   }
 
+  async function handleSyncLocal() {
+    syncing = true;
+    syncMessage = null;
+    try {
+      const { imported, skipped } = await syncLocalSkills();
+      await loadSkills();
+      if (imported > 0) {
+        syncMessage = `Synced ${imported} new skill${imported !== 1 ? 's' : ''} from ~/.claude/skills/`;
+      } else {
+        syncMessage = skipped > 0
+          ? `All ${skipped} local skill${skipped !== 1 ? 's' : ''} already synced.`
+          : 'No local skills found in ~/.claude/skills/';
+      }
+    } catch (e) {
+      syncMessage = `Sync failed: ${e instanceof Error ? e.message : 'Unknown error'}`;
+    } finally {
+      syncing = false;
+      setTimeout(() => { syncMessage = null; }, 4000);
+    }
+  }
+
   onMount(() => {
     loadSkills();
+    syncLocalSkills().then(({ imported }) => {
+      if (imported > 0) loadSkills();
+    }).catch(() => {});
   });
 </script>
 
@@ -117,6 +144,9 @@
     {#if currentView === 'my-skills'}
       <div class="my-skills-view">
         <div class="actions-bar">
+          <button class="btn-secondary" onclick={handleSyncLocal} disabled={syncing}>
+            {syncing ? 'Syncing...' : 'Sync Local Skills'}
+          </button>
           <button class="btn-primary" onclick={() => fileInput.click()}>
             Import Skill (.md)
           </button>
@@ -128,6 +158,9 @@
             style="display: none;"
           >
         </div>
+        {#if syncMessage}
+          <div class="sync-message">{syncMessage}</div>
+        {/if}
 
         {#if loading}
           <div class="loading">Loading skills...</div>
@@ -229,6 +262,32 @@
   .actions-bar {
     display: flex;
     justify-content: flex-end;
+  }
+
+  .btn-secondary {
+    background-color: var(--color-bg-card);
+    color: var(--color-text-primary);
+    border: 1px solid var(--color-border);
+    padding: 0.5rem 1rem;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-weight: 500;
+    transition: background-color 0.2s;
+  }
+
+  .btn-secondary:hover:not(:disabled) {
+    background-color: var(--color-bg-hover);
+  }
+
+  .btn-secondary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .sync-message {
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+    padding: 0.25rem 0;
   }
 
   .btn-primary {
