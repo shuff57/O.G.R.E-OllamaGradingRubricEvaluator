@@ -30,9 +30,9 @@
 
 const CONFIG = {
   models: [
-    { provider: 'ollama',     model: 'glm-5:cloud',                label: 'GLM-5',           customInstructions: 'When a student demonstrates partial understanding or addresses most criteria with minor gaps, give proportional partial credit for what they got right. In the 4-7 range especially, do not penalize incompleteness too harshly — a response that covers most criteria reasonably well should receive credit for what is addressed. Err slightly toward recognizing demonstrated understanding rather than penalizing for what is missing.' },
+    { provider: 'ollama',     model: 'glm-5:cloud',                label: 'GLM-5'/*,           customInstructions: 'When a student demonstrates partial understanding or addresses most criteria with minor gaps, give proportional partial credit for what they got right. In the 4-7 range especially, do not penalize incompleteness too harshly — a response that covers most criteria reasonably well should receive credit for what is addressed. Err slightly toward recognizing demonstrated understanding rather than penalizing for what is missing.' */},
     { provider: 'ollama',     model: 'kimi-k2.5:cloud',            label: 'Kimi-K2.5'        },
-    { provider: 'ollama',     model: 'minimax-m2.5:cloud',         label: 'Minimax-M2.5',    customInstructions: 'Be strict with partial credit. Only award points when a criterion is clearly and explicitly addressed. Vague or incomplete responses in the 2-5 range should NOT be rounded up — if the student barely addresses a criterion, give half credit or less. Truly excellent responses that address all criteria thoroughly deserve 9-10. Do not compress scores toward the middle — let weak responses score low and strong responses score high.' },
+    { provider: 'ollama',     model: 'minimax-m2.5:cloud',         label: 'Minimax-M2.5'/*,    customInstructions: 'Be strict with partial credit. Only award points when a criterion is clearly and explicitly addressed. Vague or incomplete responses in the 2-5 range should NOT be rounded up — if the student barely addresses a criterion, give half credit or less. Truly excellent responses that address all criteria thoroughly deserve 9-10. Do not compress scores toward the middle — let weak responses score low and strong responses score high.' */},
     { provider: 'ollama',     model: 'gemini-3-flash-preview:cloud', label: 'Gemini 3 Flash'  },
     { provider: 'ollama',     model: 'deepseek-v3.2:cloud',        label: 'DeepSeek 3.2'     },
     { provider: 'ollama',     model: 'qwen3.5:397b-cloud',         label: 'Qwen 3.5 397B'    },
@@ -54,11 +54,30 @@ const CONFIG = {
   outputReport: 'test-data/benchmark-report.md',
 };
 
+// Dataset presets for different subject areas
+const DATASETS = {
+  stats:   { rubric: 'test-data/captured-rubric.json',        students: 'test-data/captured-students.json' },
+  biology: { rubric: 'test-data/test-biology-rubric.json',    students: 'test-data/test-biology-students.json' },
+  history: { rubric: 'test-data/test-history-rubric.json',    students: 'test-data/test-history-students.json' },
+};
+
 // --only=<label> filter (e.g. node run-benchmark.js --only=Mistral)
 const _onlyArg = process.argv.find(a => a.startsWith('--only='));
 if (_onlyArg) {
   const _labels = _onlyArg.slice(7).split(',').map(s => s.toLowerCase());
   CONFIG.models = CONFIG.models.filter(m => _labels.some(l => m.label.toLowerCase().includes(l)));
+}
+
+// --dataset=<name> selector (e.g. --dataset=biology)
+const _datasetArg = process.argv.find(a => a.startsWith('--dataset='));
+if (_datasetArg) {
+  const _dsName = _datasetArg.slice(10);
+  if (!DATASETS[_dsName]) {
+    console.error(`Unknown dataset '${_dsName}'. Available: ${Object.keys(DATASETS).join(', ')}`);
+    process.exit(1);
+  }
+  CONFIG.inputRubric   = DATASETS[_dsName].rubric;
+  CONFIG.inputStudents = DATASETS[_dsName].students;
 }
 
 // --tolerance=<number> override (e.g. --tolerance=0.5)
