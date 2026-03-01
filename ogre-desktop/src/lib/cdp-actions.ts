@@ -293,3 +293,48 @@ export async function cdpScreenshot(): Promise<string> {
 
   return 'data:image/jpeg;base64,' + result.data;
 }
+
+/**
+ * Press a keyboard key via CDP Input.dispatchKeyEvent (keyDown + keyUp).
+ * Key names follow the W3C UI Events spec: 'Tab', 'Enter', 'Escape',
+ * 'ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Backspace', 'Delete'.
+ * Single printable chars (e.g. 'a', '1') also work.
+ */
+export async function pwPressKey(key: string): Promise<ActionResult> {
+  try {
+    if (!cdp.isConnected()) return { success: false, error: 'Not connected to CDP' };
+
+    // Map W3C key names → Windows Virtual Key codes (required by CDP)
+    const KEY_MAP: Record<string, { code: string; keyCode: number }> = {
+      'Tab':        { code: 'Tab',        keyCode: 9  },
+      'Enter':      { code: 'Enter',       keyCode: 13 },
+      'Escape':     { code: 'Escape',      keyCode: 27 },
+      'Space':      { code: 'Space',       keyCode: 32 },
+      'ArrowLeft':  { code: 'ArrowLeft',   keyCode: 37 },
+      'ArrowUp':    { code: 'ArrowUp',     keyCode: 38 },
+      'ArrowRight': { code: 'ArrowRight',  keyCode: 39 },
+      'ArrowDown':  { code: 'ArrowDown',   keyCode: 40 },
+      'Backspace':  { code: 'Backspace',   keyCode: 8  },
+      'Delete':     { code: 'Delete',      keyCode: 46 },
+    };
+
+    const keyInfo = KEY_MAP[key] ?? { code: key, keyCode: 0 };
+
+    await cdp.send('Input.dispatchKeyEvent', {
+      type: 'keyDown',
+      key,
+      code: keyInfo.code,
+      windowsVirtualKeyCode: keyInfo.keyCode,
+    });
+    await cdp.send('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key,
+      code: keyInfo.code,
+      windowsVirtualKeyCode: keyInfo.keyCode,
+    });
+
+    return { success: true };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}

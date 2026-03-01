@@ -21,7 +21,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { cdp } from './cdp-client';
 import {
   connectCDP, disconnectCDP, isConnected,
-  pwClick, pwType, pwReadText, pwWaitFor, pwScroll,
+  pwClick, pwType, pwReadText, pwWaitFor, pwScroll, pwPressKey,
   cdpScreenshot,
 } from './cdp-actions';
 
@@ -168,5 +168,70 @@ describe('cdp-actions: actions when connected', () => {
     const result = await cdpScreenshot();
     expect(result).toBe('data:image/jpeg;base64,abc123');
     expect(result.startsWith('data:image/jpeg;base64,')).toBe(true);
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// pwPressKey
+// ---------------------------------------------------------------------------
+
+describe('cdp-actions: pwPressKey when not connected', () => {
+  test('returns failure when not connected', async () => {
+    const result = await pwPressKey('Tab');
+    expect(result.success).toBe(false);
+    expect(typeof result.error).toBe('string');
+  });
+
+  test('never throws — always returns ActionResult', async () => {
+    await expect(pwPressKey('Enter')).resolves.toHaveProperty('success');
+  });
+});
+
+describe('cdp-actions: pwPressKey when connected', () => {
+  beforeEach(() => {
+    mockCdp.isConnected.mockReturnValue(true);
+    mockCdp.send.mockResolvedValue({});
+  });
+
+  test('sends keyDown and keyUp events', async () => {
+    const result = await pwPressKey('Tab');
+    expect(result.success).toBe(true);
+    const calls = mockCdp.send.mock.calls.map((c: [string, unknown]) => c[0]);
+    expect(calls).toContain('Input.dispatchKeyEvent');
+    expect(mockCdp.send).toHaveBeenCalledTimes(2);
+  });
+
+  test('sends correct key code for Tab (keyCode=9)', async () => {
+    await pwPressKey('Tab');
+    const keyDownCall = mockCdp.send.mock.calls[0][1] as Record<string, unknown>;
+    expect(keyDownCall.type).toBe('keyDown');
+    expect(keyDownCall.key).toBe('Tab');
+    expect(keyDownCall.windowsVirtualKeyCode).toBe(9);
+  });
+
+  test('sends correct key code for Enter (keyCode=13)', async () => {
+    await pwPressKey('Enter');
+    const keyDownCall = mockCdp.send.mock.calls[0][1] as Record<string, unknown>;
+    expect(keyDownCall.windowsVirtualKeyCode).toBe(13);
+  });
+
+  test('sends correct key code for Escape (keyCode=27)', async () => {
+    await pwPressKey('Escape');
+    const keyDownCall = mockCdp.send.mock.calls[0][1] as Record<string, unknown>;
+    expect(keyDownCall.windowsVirtualKeyCode).toBe(27);
+  });
+
+  test('unknown key falls back to keyCode=0', async () => {
+    await pwPressKey('F13');
+    const keyDownCall = mockCdp.send.mock.calls[0][1] as Record<string, unknown>;
+    expect(keyDownCall.windowsVirtualKeyCode).toBe(0);
+  });
+
+  test('returns error result when cdp.send throws', async () => {
+    mockCdp.send.mockRejectedValueOnce(new Error('CDP send failed'));
+    const result = await pwPressKey('Tab');
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('CDP send failed');
   });
 });

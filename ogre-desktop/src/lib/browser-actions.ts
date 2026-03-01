@@ -17,8 +17,7 @@ import {
 } from './browser';
 import { findFuzzyMatch, fuzzyMatchReason } from './agent-dom-fuzzy';
 import { captureInteractiveDom } from './agent-dom';
-import { isConnected, pwClick, pwType, pwReadText, pwWaitFor, pwScroll } from './cdp-actions';
-
+import { isConnected, pwClick, pwType, pwReadText, pwWaitFor, pwScroll, pwPressKey } from './cdp-actions';
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -346,6 +345,44 @@ function doneAction(success: boolean, message: string): ActionResult {
   return { success, data: { message } };
 }
 
+/**
+ * Sleep for the specified number of milliseconds.
+ * Capped at 30000ms (30 seconds) to prevent accidental lockup.
+ * Used after async AJAX operations (Aeries save, Kendo widget updates).
+ */
+async function sleepAction(ms: number): Promise<ActionResult> {
+  const capped = Math.min(ms, 30000);
+  await new Promise<void>((resolve) => setTimeout(resolve, capped));
+  return { success: true, data: { sleptMs: capped } };
+}
+
+/**
+ * Dispatch a keyboard key press on the currently focused element.
+ * Fires keydown, keypress, and keyup synthetic events via evalScript.
+ * CDP path uses pwPressKey (Input.dispatchKeyEvent) when connected.
+ * Common keys: 'Tab', 'Enter', 'Escape', 'ArrowDown', 'ArrowUp'.
+ */
+async function pressKeyAction(key: string): Promise<ActionResult> {
+  try {
+    const safeKey = escapeSelector(key);
+    const result = await evalScriptJSON<ActionResult>(`(function() {
+  try {
+    var el = document.activeElement || document.body;
+    var init = { key: '${safeKey}', bubbles: true, cancelable: true };
+    el.dispatchEvent(new KeyboardEvent('keydown',  init));
+    el.dispatchEvent(new KeyboardEvent('keypress', init));
+    el.dispatchEvent(new KeyboardEvent('keyup',    init));
+    return { success: true };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+})()`);
+    return result;
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 // ============================================================================
 // Dispatcher
 // ============================================================================
@@ -372,6 +409,8 @@ export async function executeAction(params: ActionParams): Promise<ActionResult>
           return pwWaitFor(p.selector, p.timeoutMs);
         case 'scroll':
           return pwScroll(p.direction, p.amount);
+        case 'pressKey':
+          return pwPressKey(p.key);
         // All other actions fall through to evalScript below
       }
     }
@@ -394,6 +433,10 @@ export async function executeAction(params: ActionParams): Promise<ActionResult>
         return waitForAction(p.selector, p.timeoutMs);
       case 'navigate':
         return navigateAction(p.url);
+      case 'sleep':
+        return sleepAction(p.ms);
+      case 'pressKey':
+        return pressKeyAction(p.key);
       case 'runJS':
         return runJSAction(p.code);
       case 'done':
@@ -422,6 +465,8 @@ export async function executeAction(params: ActionParams): Promise<ActionResult>
     void showCursorDot(params.selector);
   } else if (params.action === 'type') {
     void showCursorDot(params.selector, '#22c55e');
+  } else if (params.action === 'pressKey') {
+    void showCursorDot('*:focus', '#f59e0b');
   }
 
   const result = await dispatch(params);

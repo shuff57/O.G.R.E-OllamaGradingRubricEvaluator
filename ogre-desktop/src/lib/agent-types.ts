@@ -23,6 +23,8 @@ export type AgentAction =
   | 'waitFor'
   | 'navigate'
   | 'runJS'
+  | 'sleep'
+  | 'pressKey'
   | 'done';
 
 /**
@@ -38,6 +40,8 @@ export type ActionParams =
   | { action: 'screenshot' }
   | { action: 'waitFor'; selector: string; timeoutMs?: number }
   | { action: 'navigate'; url: string }
+  | { action: 'sleep'; ms: number }
+  | { action: 'pressKey'; key: string }
   | { action: 'runJS'; code: string }
   | { action: 'done'; success: boolean; message: string };
 

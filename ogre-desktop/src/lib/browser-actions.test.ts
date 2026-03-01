@@ -262,3 +262,69 @@ describe('executeAction: unknown action', () => {
     expect(result.error).toContain('hover');
   });
 });
+
+
+// ---------------------------------------------------------------------------
+// sleep
+// ---------------------------------------------------------------------------
+
+describe('executeAction: sleep', () => {
+  test('resolves with sleptMs data', async () => {
+    const result = await executeAction({ action: 'sleep', ms: 0 });
+    expect(result.success).toBe(true);
+    expect((result.data as { sleptMs: number }).sleptMs).toBe(0);
+  });
+
+  test('caps ms at 30000', async () => {
+    vi.useFakeTimers();
+    const promise = executeAction({ action: 'sleep', ms: 99999 });
+    vi.advanceTimersByTime(30001);
+    const result = await promise;
+    vi.useRealTimers();
+    expect(result.success).toBe(true);
+    expect((result.data as { sleptMs: number }).sleptMs).toBe(30000);
+  });
+
+  test('passes through reasonable values unchanged', async () => {
+    const result = await executeAction({ action: 'sleep', ms: 500 });
+    expect(result.success).toBe(true);
+    expect((result.data as { sleptMs: number }).sleptMs).toBe(500);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pressKey
+// ---------------------------------------------------------------------------
+
+describe('executeAction: pressKey', () => {
+  test('calls evalScriptJSON to dispatch KeyboardEvent', async () => {
+    mockEvalScriptJSON.mockResolvedValueOnce({ success: true });
+    const result = await executeAction({ action: 'pressKey', key: 'Tab' });
+    expect(result.success).toBe(true);
+    expect(mockEvalScriptJSON).toHaveBeenCalledOnce();
+  });
+
+  test('embeds key name in dispatched code', async () => {
+    mockEvalScriptJSON.mockResolvedValueOnce({ success: true });
+    await executeAction({ action: 'pressKey', key: 'Enter' });
+    const code = mockEvalScriptJSON.mock.calls[0][0];
+    expect(code).toContain("'Enter'");
+    expect(code).toContain('KeyboardEvent');
+  });
+
+  test('dispatches keydown, keypress, and keyup', async () => {
+    mockEvalScriptJSON.mockResolvedValueOnce({ success: true });
+    await executeAction({ action: 'pressKey', key: 'Escape' });
+    const code = mockEvalScriptJSON.mock.calls[0][0];
+    expect(code).toContain('keydown');
+    expect(code).toContain('keypress');
+    expect(code).toContain('keyup');
+  });
+
+  test('returns error result when evalScriptJSON throws', async () => {
+    mockEvalScriptJSON.mockRejectedValueOnce(new Error('KeyEvent failed'));
+    const result = await executeAction({ action: 'pressKey', key: 'Tab' });
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('KeyEvent failed');
+  });
+});
