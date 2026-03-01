@@ -194,7 +194,7 @@ await state.momPage.selectOption('select#search-type', questionTypeValue);
 // Clear previous search and type new term
 await state.momPage.locator('#search').fill('');
 await state.momPage.locator('#search').type(state.searchTopic);
-await state.momPage.locator('role=button[name="Search"]').click();
+await state.momPage.locator('role=button[name="Search"]').first().click();
 await state.momPage.waitForTimeout(2000); // wait for results
 await snapshot({ page: state.momPage, search: /result|found|showing/i }).then(console.log);
 ```
@@ -346,7 +346,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 // Ensure temp/ exists
-const tempDir = path.join(process.cwd(), 'temp');
+const tempDir = path.resolve('temp'); // relative to project root
 if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
 
 const result = {

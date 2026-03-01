@@ -3,8 +3,8 @@
 > **Auto-populated by `mom-fact-finder`**. Load via `load_skills=["mom-patterns"]` to access discovered patterns.
 > Do NOT edit manually — use `mom-fact-finder` with `refresh=true` to update a topic.
 
-**Last Updated**: (none)  
-**Total Entries**: 0  
+**Last Updated**: 2026-03-01  
+**Total Entries**: 1  
 **Line Count**: ~70 (cap: 800)
 
 ---
@@ -55,7 +55,7 @@ Each pattern entry MUST follow this exact structure:
 
 ## Topic Index
 
-*(empty — populated as patterns are discovered)*
+1. [Statistics Essay / FRQ](#statistics-essay--frq)
 
 ---
 
@@ -82,3 +82,34 @@ Each pattern entry MUST follow this exact structure:
 
 ---
 <!-- END TEMPLATE -->
+
+## Statistics Essay / FRQ
+**Added**: 2026-03-01 | **Sources**: QID #58134, #620020, #58991 | **Times Used (max)**: 1446
+**Question Types**: essay | **Libraries**: *(none required)*
+
+### Key Patterns
+- `$answer` as a plain string = model/ideal response for open-ended essay questions
+- `getfeedbacktxtessay($stuanswers[$thisq], 'model answer')` provides post-submission feedback to students
+- `$scoremethod = 'takeanything'` is standard for FRQ — no auto-scoring, manual grading expected
+- `$hidetips = true` hides MOM standard hints for written-response questions
+- `showdataarray(array(...), numCols)` renders an inline data table directly in question text
+
+### Best Code Example (QID #620020, 300 uses)
+```php
+$scoremethod = "takeanything"
+$hidetips = true
+$fb = getfeedbacktxtessay($stuanswers[$thisq],"Answers will vary. Here are a few possible reasons:
+<ul>
+  <li>It would take too long to survey an entire population</li>
+  <li>It may be impossible to contact every member</li>
+</ul>")
+```
+
+### Extracted Function Calls
+- `getfeedbacktxtessay($stuanswers[$thisq], 'html feedback')` — feedback after submission
+- `showdataarray(array('label','value',...), ncols)` — renders a data table in qtext
+- `$scoremethod = 'takeanything'` — accepts any response (manual grading)
+- `$scoremethod = 'singlescore'` — used when essay is one part of a multipart question
+
+---
+
