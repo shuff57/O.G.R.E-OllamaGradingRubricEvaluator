@@ -11,3 +11,623 @@
 | #5193 | 1:26 PM | ✅ | Updated mom-frq skill to enforce natural language and avoid em dashes | ~317 |
 | #5192 | " | ✅ | Updated mom-frq skill rubric generation guidelines | ~321 |
 </claude-mem-context>
+
+# MyOpenMath Question Writing Reference
+
+**Official docs**: https://www.myopenmath.com/help.php?section=writingquestions  
+**Library functions** (requires MOM login): https://www.myopenmath.com/assessment/libs/libhelp.php
+
+---
+
+## Quick Patterns (Most Common)
+
+```php
+// Integer coefficient, non-zero, avoid ±1
+$a = nonzerorand(-9,9) where ($a!=1 && $a!=-1)
+
+// Two distinct integers, not negatives of each other
+$a,$b = diffrands(-5,5,2) where ($a+$b!=0)
+
+// Pick from a fixed list
+$op = randfrom("add,subtract,multiply")
+
+// Conditional sign word
+$sign = "positive" if ($a > 0)
+$sign = "negative" if ($a < 0)
+
+// Display fraction reduced to lowest terms
+$frac = dispreducedfraction($num,$den)
+
+// Clean up polynomial display (removes 1*, 0*, ^1, ^0)
+$poly = polymakeprettydisp("$a*x^2+$b*x+$c")
+
+// LaTeX inline: \( expr \)   Display: \[ expr \]
+// Backtick also works for inline math display: `expr`
+```
+
+---
+
+## Question Structure
+
+A MOM question has these sections (all can go in Common Control):
+
+| Section | Purpose |
+|---------|---------|
+| **Common Control** | PHP code for randomization, answer setup. Runs for both display and grading. |
+| **Question Control** | PHP only needed for display (optional — use Common Control instead) |
+| **Question Text** | HTML + variable interpolation. Blank line = paragraph break. |
+| **Answer** | Sets `$answer` (and related vars). Can also go in Common Control. |
+
+**Minimal working example:**
+```php
+// Common Control
+$a = rand(2,9)
+$b = rand(2,9)
+$answer = $a + $b
+
+// Question Text
+What is $a + $b? $answerbox
+
+// Answer (or put $answer in Common Control)
+$answer = $a + $b
+```
+
+---
+
+## Variables & Types
+
+```php
+$a = 15              // number
+$b = 3.14            // decimal
+$c = "hello"         // string (double-quotes: interpolates vars)
+$d = 'literal'       // string (single-quotes: no interpolation)
+$e = true            // boolean
+$f = array(2,4,6)    // array (zero-indexed: $f[0]=2, $f[1]=4, $f[2]=6)
+$g = [2,4,6]         // shorthand array
+
+// String interpolation
+$x = 5
+$str = "The value is $x"          // → "The value is 5"
+$str = "Squared is {$ar[0]}"      // use {} for array elements in strings
+
+// Concatenation
+$both = $a . " and " . $b
+
+// Multi-line value (& = continue, && = continue with <br/>)
+$q = array("choice one",&
+           "choice two")
+
+// Comments
+// This is a comment
+$a = 3  // inline comment
+```
+
+---
+
+## Conditionals
+
+```php
+// Inline "if" (conditional assignment)
+$b = "sin(x)" if ($a==0)
+$b = "cos(x)" if ($a==1)
+
+// Block if / elseif / else
+if ($a==0) {
+  $b = 1
+} elseif ($a==2) {
+  $b = 3
+} else {
+  $b = 2
+}
+
+// "where" — retry randomizer until condition met (max 200 tries; >10% probability needed)
+$a,$b = diffrands(-5,5,2) where ($a+$b!=0)
+$a = rand(1,100) where (gcd($a,$b)==1) else ($a = 7)
+
+// "where" on a block
+{
+  $a = rand(-5,-1)
+  $b = rand(1,5)
+} where ($a+$b !== 0) else {
+  $a = -3
+  $b = 5
+}
+
+// Operators: == != > < >= <= isset($v)   Compound: && ||
+
+// Conditional text in Question Text (no $ on variable name, no quotes on value)
+[if sign==positive]
+The value is positive: \($a\)
+[/if]
+[if sign==negative]
+The value is negative: \($a\)
+[/if]
+```
+
+---
+
+## Loops
+
+```php
+// For loop (a and b are integers or variables)
+for ($i=1..5) { $f = $f + $i }
+
+// Accumulate array
+$a = rands(1,5,5)
+for ($i=0..4) {
+  $c[$i] = $a[$i] * 2
+}
+
+// Foreach (associative arrays)
+$arr = ['red' => 3, 'green' => 5]
+$str = ''
+foreach ($arr as $color=>$num) {
+  $str .= "There are $num $color balls. "
+}
+
+// break and continue work inside loops
+```
+
+---
+
+## Randomizers
+
+### Single Value
+| Function | Returns |
+|----------|---------|
+| `rand(min,max)` | Integer in [min,max] |
+| `rrand(min,max,p)` | Real in [min,max] in steps of p |
+| `nonzerorand(min,max)` | Non-zero integer |
+| `nonzerorrand(min,max,p)` | Non-zero real in steps of p |
+| `randfrom("a,b,c")` | One element from list or array |
+| `randname()` / `randmalename()` / `randfemalename()` | Random first name |
+| `randnamewpronouns([opt])` | Name + pronouns: `$name,$heshe,$himher,$hisher,$hishers,$himherself = randnamewpronouns()` |
+| `uniqid()` | Random unique string (for HTML ids) |
+
+### Multiple Values
+| Function | Returns |
+|----------|---------|
+| `rands(min,max,n,[order])` | n integers (may repeat). order: 'inc'/'dec' |
+| `rrands(min,max,p,n,[order])` | n reals in steps of p |
+| `nonzerorands(min,max,n,[order])` | n non-zero integers |
+| `diffrands(min,max,n,[order])` | n **distinct** integers |
+| `diffrrands(min,max,p,n,[order])` | n **distinct** reals in steps of p |
+| `diffrandsfrom(list/array,n,[order])` | n distinct elements from list |
+| `randsfrom(list/array,n,[order])` | n elements from list (may repeat) |
+| `nonzerodiffrands(min,max,n,[order])` | n distinct non-zero integers |
+| `singleshuffle(list/array,[n])` | Shuffled list (optionally pick n) |
+| `jointshuffle(arr1,arr2,[n1,n2])` | Shuffle two arrays keeping paired order |
+| `jointrandfrom(list1,list2,...)` | One element from each list at same index |
+| `randnames(n)` / `randmalenames(n)` / `randfemalenames(n)` | n names |
+| `randcity([country])` / `randcities(n,[country])` | US/Canadian city |
+| `randstate([country])` / `randstates(n,[country])` | US state / Canadian province |
+| `randcountry()` / `randcountries(n)` | Country name(s) |
+| `randpythag([min,max])` | Pythagorean triple |
+
+**Array assignment shortcuts:**
+```php
+$a,$b = diffrands(-5,5,2)       // $a and $b each get one value
+$ar = diffrands(-5,5,2)          // $ar[0] and $ar[1]
+```
+
+---
+
+## Answer Types
+
+Set `$answer` (and optionally `$answersize`, `$anstypes`, `$scoremethod`) in Common Control.
+
+### Number
+```php
+$answer = $a + $b
+// Question type: Number
+// Tolerates small floating-point error automatically
+```
+
+### Calculated (algebraic expression, student must simplify)
+```php
+$answer = "$a*x^2 + $b*x + $c"
+// Question type: Calculated
+// Student enters an expression; MOM evaluates numerically to check
+```
+
+### Function (exact algebraic match)
+```php
+$answer = "sin(x) + $a"
+// Question type: Function
+// More strict than Calculated — checks algebraic form
+```
+
+### Multiple Choice
+```php
+$choices = array("$a","$b","$c","$d")   // displayed choices
+$answer = 1                              // index of correct answer (0-based... or check MOM docs: often 1-based)
+// Question type: Multiple-Choice
+// OR: set $answer to the correct choice string itself for some setups
+```
+
+### Multiple Answer (select all that apply)
+```php
+$choices = array("choice1","choice2","choice3","choice4")
+$correct = array(0,2)    // indices of correct choices
+// Question type: Multiple-Answer
+```
+
+### Matching
+```php
+$questions = array("Term A","Term B","Term C")
+$answers   = array("Def A","Def B","Def C")
+// Question type: Matching
+```
+
+### N-Tuple (ordered list of numbers, e.g. a point)
+```php
+$answer = array($x, $y)
+$answersize = "1,2"       // 1 row, 2 columns
+// Question type: N-Tuple
+// For a 3D point: $answer = array($x,$y,$z), $answersize = "1,3"
+```
+
+### Calculated N-Tuple (expressions in an ordered list)
+```php
+$answer = array("$a*x","$b*x+$c")
+$answersize = "1,2"
+// Question type: Calculated N-Tuple
+```
+
+### Numerical Matrix
+```php
+// 2x2 matrix example
+$answer = array($a,$b,$c,$d)   // row-major order: [row0col0, row0col1, row1col0, row1col1]
+$answersize = "2,2"
+// Question type: Numerical Matrix
+```
+
+### Calculated Matrix
+```php
+$answer = array("$a*x+$b","$c","0","$d*x")
+$answersize = "2,2"
+// Question type: Calculated Matrix
+```
+
+### Interval
+```php
+// Use interval notation strings
+$answer = "[$a,$b)"     // closed-open interval
+$answer = "(-inf,$a]"   // negative infinity to $a
+$answer = "(-inf,inf)"  // all reals
+// Question type: Interval
+```
+
+### String (exact text match)
+```php
+$answer = "Paris"
+// Question type: String
+// Case-insensitive by default
+```
+
+### Essay / File Upload
+```php
+// No $answer needed — instructor grades manually
+// Question type: Essay  or  File Upload
+```
+
+### Multipart
+```php
+$anstypes = array("Number","Number","Calculated")
+$answer[0] = $x_solution
+$answer[1] = $y_solution
+$answer[2] = "$m*x+$b"
+// $answersize[i] for matrix parts
+// $scoremethod[i] = "takeanything" to give credit for any answer
+// Question type: Multipart
+// In Question Text: use $answerbox[0], $answerbox[1], $answerbox[2]
+```
+
+### Conditional
+```php
+// Displays different sub-questions based on a random variable
+// Usually combined with [if var==val]...[/if] in question text
+// Each branch sets its own $answer
+```
+
+---
+
+## Question Text: Display Variables
+
+```php
+$answerbox       // renders the answer input field (single-part questions)
+$answerbox[0]    // for multipart — renders input for part 0
+$showanswer      // display string shown after submission (set this to a pretty answer)
+
+// LaTeX math display
+// Inline:  \( x^2 + 1 \)   or   `x^2 + 1`
+// Display block: \[ \frac{a}{b} \]
+
+// Interpolate a variable into LaTeX
+// $a is 3 → "Solve \( x + $a = 0 \)" renders as "Solve x + 3 = 0"
+```
+
+---
+
+## Format Macros
+
+### Polynomials & Signs
+```php
+makepretty("$a+$b")              // removes double signs: "3+-4" → "3-4"
+makeprettydisp("$a+$b")         // makepretty + backtick for math display
+polymakepretty("$a*x^2+0*x+$c") // cleans 0*, 1*, ^1, ^0 for polynomials
+polymakeprettydisp(...)          // same + math display
+makexxpretty("$a*x+$b*1")       // aggressive cleanup (x^1→x, 1*x→x, etc.)
+makexxprettydisp(...)
+makepretynegative("3--4")        // → "3-(-4)"
+```
+
+### Numbers for Display
+```php
+prettyint(1234)                  // → "1,234"
+prettyreal(1234.567, 2)          // → "1,234.57"
+prettysigfig(0.003456, 3)        // → "0.00346" (3 sig figs)
+makescinot(0.00023, 2)           // → "2.3×10⁻⁴"
+prettysmallnumber(0.000002)      // prevents scientific notation display
+numtowords(1203)                 // → "one thousand two hundred three"
+numtowords(1203, true)           // → "one thousand two hundred third" (ordinal)
+numtoroman(14)                   // → "XIV"
+fractowords(3, 4)                // → "three fourths"
+fractowords(-7, 4, 'mixed')      // → "negative one and three fourths"
+```
+
+### Fractions
+```php
+dispreducedfraction(3, 6)        // → "1/2" (display-ready, reduced)
+makereducedfraction(3, 6)        // → "1/2" (not yet display form)
+makereducedfraction(3,6,'parts') // → array(1, 2)
+decimaltofraction(0.75)          // → "3/4"
+decimaltofraction(1.5,'mixednumber') // → "1 1/2"
+```
+
+### Time
+```php
+prettytime(90, 'm', 'hm')        // → "1 hour and 30 minutes"
+prettytime(15, 'h', 'clock')     // → "3:00pm"
+today()                          // → "March 1, 2026"
+today("Y-m-d")                   // → "2026-03-01"
+```
+
+### Other
+```php
+formatcomplex(2, -3)             // → "2-3i"
+htmldisp("x_1")                  // → HTML subscript display
+```
+
+---
+
+## Graph Macros
+
+```php
+// Basic plot
+$graph = showplot("sin(x),blue", -6.28, 6.28, -2, 2)
+
+// Multiple functions
+$graph = showplot(array("x^2,red", "x^3,blue"), -3, 3, -5, 5)
+
+// Function string format: "func,color,min,max,startmarker,endmarker,linewidth,dash"
+// startmarker/endmarker: "open", "closed", "arrow", or blank for none
+// dash: "dash" for dashed line
+
+// Vertical line
+$graph = showplot("x=2,red")
+
+// Parametric
+$graph = showplot("[sin(t),cos(t)],blue,0,6.28")
+
+// With dots
+$graph = showplot(array("x^2,red", "dot,1,1,closed,blue", "dot,-1,1,open,red"))
+
+// Add labels
+$graph = addlabel($graph, 2, 4, "f(x)", "blue", "right")
+
+// Add fraction axis labels (e.g., pi multiples)
+$graph = showplot("sin(x)", -6.28, 6.28, -2, 2, 100, 1)
+$graph = addfractionaxislabels($graph, "pi/2")
+
+// showplot parameters: (funcstrings, xmin, xmax, ymin, ymax, labels, grid, width, height)
+// labels: spacing (default 1), "off" for none, "xlbl:ylbl" for different axes
+// grid: spacing (default 1), "off" for none
+// width, height: pixels (default 200×200)
+```
+
+### Tables
+```php
+// Column table
+$table = showarrays("x", $xvals, "y", $yvals)
+$table = showarrays("x", $xvals, "y", $yvals, "c")   // centered
+
+// Row table
+$table = horizshowarrays("x", $xvals, "y", $yvals)
+
+// Data grid (no headers)
+$table = showdataarray($vals, 3)   // 3 columns
+
+// 2D table
+$table = showrecttable($data, $colLabels, $rowLabels)
+```
+
+---
+
+## Array Macros
+
+```php
+listtoarray("1,2,3,4")             // → array
+listtoarray("1,2,3", true)         // → array of numbers
+calclisttoarray("2^2,3^5")         // → array([4,243]) — evaluates expressions
+arraytolist($arr)                  // → "1,2,3"
+arraytolist($arr, true)            // → "1, 2, 3" (spaces)
+joinarray($arr, " and ")           // → "1 and 2 and 3"
+explode(",", "a,b,c")              // → array("a","b","c")
+stringtoarray("hello")             // → array("h","e","l","l","o")
+fillarray(0, 5)                    // → array(0,0,0,0,0)
+consecutive(1, 5)                  // → array(1,2,3,4,5)
+consecutive(0, 10, 2)              // → array(0,2,4,6,8,10)
+```
+
+---
+
+## String Macros
+
+```php
+stringappend($arr, "!")            // appends to string or each array element
+stringprepend($arr, "$")
+stringpos("lo", "hello")           // → 3
+stringlen("hello")                 // → 5
+stringclean("  hi  ")              // trims whitespace (mode 0)
+stringclean("hi there", 1)         // removes all whitespace
+stringclean("abc123!", 2)          // removes non-alphanumeric
+substr("hello", 1, 3)              // → "ell"
+strtoupper("hello")                // → "HELLO"
+strtolower("HELLO")                // → "hello"
+ucfirst("hello world")             // → "Hello world"
+str_replace("cat","dog","the cat") // → "the dog"
+substr_count("hello","l")          // → 2
+```
+
+---
+
+## Math Macros (Common)
+
+```php
+abs($a)              // absolute value
+sqrt($a)             // square root
+round($a, 2)         // round to 2 decimal places
+ceil($a)             // ceiling
+floor($a)            // floor
+pow($a, $b)          // $a^$b
+log($a)              // natural log
+log($a, 10)          // log base 10
+sin($a)  cos($a)  tan($a)   // trig (radians)
+asin($a) acos($a) atan($a)  // inverse trig
+pi()                 // π
+gcd($a, $b)          // greatest common divisor
+lcm($a, $b)          // least common multiple (in libhelp.php)
+max($a, $b)          // maximum
+min($a, $b)          // minimum
+roundsigfig($a, 3)   // round to 3 significant figures (for calculations, not display)
+```
+
+---
+
+## Worked Examples
+
+### Linear Equation: ax + b = c
+```php
+// Common Control
+$a = nonzerorand(-9,9) where ($a!=1 && $a!=-1)
+$b = rand(-9,9)
+$c = rand(-9,9)
+$answer = ($c - $b) / $a
+$showanswer = dispreducedfraction($c-$b, $a)
+
+// Question Text
+Solve for \(x\): \[ $a x + $b = $c \]
+\(x =\) $answerbox
+```
+
+### System of 2 Equations (integer solutions)
+```php
+// Common Control
+$x = rand(-5,5)
+$y = rand(-5,5)
+// Generate coefficients such that the system has ($x,$y) as solution
+$a1 = nonzerorand(-4,4)
+$b1 = nonzerorand(-4,4)
+$c1 = $a1*$x + $b1*$y
+$a2 = nonzerorand(-4,4) where ($a2*$b1 != $a1*$b2)  // not parallel
+$b2 = nonzerorand(-4,4)
+$c2 = $a2*$x + $b2*$y
+
+$anstypes = array("Number","Number")
+$answer[0] = $x
+$answer[1] = $y
+
+// Question Text
+Solve the system:
+\[ $a1 x + $b1 y = $c1 \]
+\[ $a2 x + $b2 y = $c2 \]
+\(x =\) $answerbox[0] &nbsp;&nbsp; \(y =\) $answerbox[1]
+```
+
+### Multiple Choice with Shuffled Distractors
+```php
+// Common Control
+$a = rand(2,9)
+$correct = $a * $a        // correct answer: a²
+$d1 = $a + $a             // distractor: 2a
+$d2 = $a * 2 + 1          // distractor: 2a+1
+$d3 = ($a+1)*($a-1)       // distractor: a²-1
+
+$choices,$answer = shuffle_with_correct(array($d1,$d2,$d3), $correct)
+// OR manually:
+$choices = array("$correct","$d1","$d2","$d3")
+$answer = 1   // 1-indexed position of correct answer
+
+// Question Text
+What is \($a^2\)?
+$answerbox
+```
+
+### Polynomial Simplification
+```php
+$a = nonzerorand(-5,5)
+$b = rand(-5,5)
+$c = nonzerorand(-5,5)
+$answer = "$a*x^2+($b+$c)*x"   // combined like terms
+
+$display = polymakeprettydisp("$a*x^2+{$b+$c}*x")
+$showanswer = $display
+
+// Question Text
+Simplify: \( $a x^2 + $b x + $c x \)
+$answerbox
+```
+
+### Graph-Based Question
+```php
+$m = nonzerorand(-3,3)
+$b = rand(-4,4)
+$graph = showplot("$m*x+$b,blue", -5, 5, -6, 6)
+$answer = array($m, $b)
+$anstypes = array("Number","Number")
+
+// Question Text
+$graph
+Find the slope and y-intercept of the line shown.
+
+Slope: $answerbox[0] &nbsp;&nbsp; y-intercept: $answerbox[1]
+```
+
+---
+
+## Common Pitfalls
+
+| Problem | Fix |
+|---------|-----|
+| `$a = -4` then `$b = "$a^2"` gives `"-4^2"` | Use `$b = "($a)^2"` |
+| Array element in string not interpolated | Use `{$ar[0]}` in double-quoted string |
+| `where` never resolves | Condition probability too low — loosen it or use `else` fallback |
+| `==` vs `=` in conditionals | `==` tests equality; `=` assigns (always true) |
+| Polynomial looks like `1*x+0` | Use `polymakeprettydisp()` |
+| Double sign: `3+-4` | Use `makepretty()` |
+| Fraction not reduced | Use `dispreducedfraction($num,$den)` |
+| Matrix answer row order | `$answersize = "rows,cols"` — data is row-major |
+| Parallel lines in system | Use `where` to exclude degenerate cases |
+
+---
+
+## Tips for the Agent
+
+- **Always preview after writing** — use `capturePopup` after clicking "Quick Save and Preview" to see the rendered question
+- **Use `polymakeprettydisp`** on any polynomial expression for display
+- **Wrap negative coefficients in parens** in strings: `"($a)*x"` not `"$a*x"` when $a can be negative
+- **For answer display**, set `$showanswer = dispreducedfraction(...)` or `$showanswer = polymakeprettydisp(...)`
+- **All code can go in Common Control** — you don't need to split between Common Control and Answer sections
+- **Question Text is HTML** — use `&nbsp;` for spaces, `<br/>` for line breaks, HTML tables for structured display
+- **The `$answerbox` variable** is automatically available — just place it where you want the input field
