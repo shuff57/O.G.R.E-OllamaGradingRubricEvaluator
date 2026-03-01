@@ -7,15 +7,39 @@ vi.mock('./browser', () => ({
   evalScriptJSON: vi.fn(),
   captureWebviewScreenshot: vi.fn(),
   navigateEmbedded: vi.fn(),
+  getActiveTabId: vi.fn(() => 'test-tab-1'),
 }));
 
-import { evalScript, evalScriptJSON, captureWebviewScreenshot, navigateEmbedded } from './browser';
+vi.mock('./cdp-actions', () => ({
+  isConnected: vi.fn(() => false),
+  pwClick: vi.fn(),
+  pwType: vi.fn(),
+  pwReadText: vi.fn(),
+  pwWaitFor: vi.fn(),
+  pwScroll: vi.fn(),
+  pwPressKey: vi.fn(),
+  pwWriteCodeMirror: vi.fn(),
+  pwCapturePopup: vi.fn(),
+}));
+
+vi.mock('./cdp-client', () => ({
+  cdp: {
+    send: vi.fn(),
+  },
+}));
+
+import { evalScript, evalScriptJSON, captureWebviewScreenshot, navigateEmbedded, getActiveTabId } from './browser';
+import { cdp } from './cdp-client';
+import { isConnected } from './cdp-actions';
 import { executeAction } from './browser-actions';
 
 const mockEvalScriptJSON = evalScriptJSON as ReturnType<typeof vi.fn>;
 const mockEvalScript = evalScript as ReturnType<typeof vi.fn>;
 const mockScreenshot = captureWebviewScreenshot as ReturnType<typeof vi.fn>;
 const mockNavigate = navigateEmbedded as ReturnType<typeof vi.fn>;
+const mockGetActiveTabId = getActiveTabId as ReturnType<typeof vi.fn>;
+const mockIsConnected = isConnected as ReturnType<typeof vi.fn>;
+const mockCdpSend = (cdp as { send: ReturnType<typeof vi.fn> }).send;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -189,11 +213,11 @@ describe('executeAction: waitFor', () => {
 // ---------------------------------------------------------------------------
 
 describe('executeAction: navigate', () => {
-  test('calls navigateEmbedded and returns success', async () => {
+  test('calls navigateEmbedded with tabId and url, returns success', async () => {
     mockNavigate.mockResolvedValueOnce(undefined);
     const result = await executeAction({ action: 'navigate', url: 'https://example.com' });
     expect(result.success).toBe(true);
-    expect(mockNavigate).toHaveBeenCalledWith('https://example.com');
+    expect(mockNavigate).toHaveBeenCalledWith('test-tab-1', 'https://example.com');
   });
 
   test('returns error result when navigateEmbedded throws', async () => {
@@ -201,6 +225,15 @@ describe('executeAction: navigate', () => {
     const result = await executeAction({ action: 'navigate', url: 'https://example.com' });
     expect(result.success).toBe(false);
     expect(result.error).toBe('Navigation blocked');
+  });
+
+  test('uses CDP Page.navigate when CDP is connected', async () => {
+    mockIsConnected.mockReturnValueOnce(true);
+    mockCdpSend.mockResolvedValueOnce({});
+    const result = await executeAction({ action: 'navigate', url: 'https://example.com' });
+    expect(result.success).toBe(true);
+    expect(mockCdpSend).toHaveBeenCalledWith('Page.navigate', { url: 'https://example.com' });
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 });
 

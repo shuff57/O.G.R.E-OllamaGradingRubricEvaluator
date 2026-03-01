@@ -14,10 +14,12 @@ import {
   evalScriptJSON,
   captureWebviewScreenshot,
   navigateEmbedded,
+  getActiveTabId,
 } from './browser';
 import { findFuzzyMatch, fuzzyMatchReason } from './agent-dom-fuzzy';
 import { captureInteractiveDom } from './agent-dom';
 import { isConnected, pwClick, pwType, pwReadText, pwWaitFor, pwScroll, pwPressKey, pwWriteCodeMirror, pwCapturePopup } from './cdp-actions';
+import { cdp } from './cdp-client';
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -314,7 +316,7 @@ async function waitForAction(
  */
 async function navigateAction(url: string): Promise<ActionResult> {
   try {
-    await navigateEmbedded(url);
+    await navigateEmbedded(getActiveTabId(), url);
     return { success: true };
   } catch (err: unknown) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
@@ -444,6 +446,8 @@ export async function executeAction(params: ActionParams): Promise<ActionResult>
           return pwWriteCodeMirror(p.selector, p.value);
         case 'capturePopup':
           return pwCapturePopup(p.timeoutMs);
+        case 'navigate':
+          return cdp.send('Page.navigate', { url: p.url }).then(() => ({ success: true as const })).catch((err: unknown) => ({ success: false as const, error: err instanceof Error ? err.message : String(err) }));
         // All other actions fall through to evalScript below
       }
     }
