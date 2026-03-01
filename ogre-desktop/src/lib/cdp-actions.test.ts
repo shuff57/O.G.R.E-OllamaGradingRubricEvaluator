@@ -22,6 +22,7 @@ import { cdp } from './cdp-client';
 import {
   connectCDP, disconnectCDP, isConnected,
   pwClick, pwType, pwReadText, pwWaitFor, pwScroll, pwPressKey,
+  pwWriteCodeMirror, pwCapturePopup,
   cdpScreenshot,
 } from './cdp-actions';
 
@@ -233,5 +234,101 @@ describe('cdp-actions: pwPressKey when connected', () => {
     const result = await pwPressKey('Tab');
     expect(result.success).toBe(false);
     expect(result.error).toBe('CDP send failed');
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// pwWriteCodeMirror
+// ---------------------------------------------------------------------------
+
+describe('cdp-actions: pwWriteCodeMirror when not connected', () => {
+  test('returns failure when not connected', async () => {
+    const result = await pwWriteCodeMirror('#control', '$a = 5;');
+    expect(result.success).toBe(false);
+    expect(typeof result.error).toBe('string');
+  });
+
+  test('never throws', async () => {
+    await expect(pwWriteCodeMirror('#qtext', 'hello')).resolves.toHaveProperty('success');
+  });
+});
+
+describe('cdp-actions: pwWriteCodeMirror when connected', () => {
+  beforeEach(() => {
+    mockCdp.isConnected.mockReturnValue(true);
+  });
+
+  test('calls Runtime.evaluate with returnByValue and returns success', async () => {
+    mockCdp.send.mockResolvedValueOnce({
+      result: { value: { success: true, data: { lines: 3 } } },
+    });
+    const result = await pwWriteCodeMirror('#control', '$a = rands(1,10,1)\n$answer = $a + 3');
+    expect(result.success).toBe(true);
+    expect(mockCdp.send).toHaveBeenCalledWith('Runtime.evaluate', expect.objectContaining({
+      returnByValue: true,
+    }));
+  });
+
+  test('passes value via JSON.stringify so PHP dollar signs are safe', async () => {
+    mockCdp.send.mockResolvedValueOnce({ result: { value: { success: true, data: { lines: 1 } } } });
+    await pwWriteCodeMirror('#control', '$answer = $a + $b;');
+    const callExpr = (mockCdp.send.mock.calls[0][1] as { expression: string }).expression;
+    expect(callExpr).toContain('"$answer = $a + $b;"');
+  });
+
+  test('propagates CodeMirror not-found error from page', async () => {
+    mockCdp.send.mockResolvedValueOnce({
+      result: { value: { success: false, error: 'No CodeMirror instance found on #control' } },
+    });
+    const result = await pwWriteCodeMirror('#control', 'x');
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/CodeMirror/);
+  });
+
+  test('returns error when cdp.send throws', async () => {
+    mockCdp.send.mockRejectedValueOnce(new Error('ws broken'));
+    const result = await pwWriteCodeMirror('#control', 'code');
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('ws broken');
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// pwCapturePopup
+// ---------------------------------------------------------------------------
+
+describe('cdp-actions: pwCapturePopup when not connected', () => {
+  test('returns failure when not connected', async () => {
+    const result = await pwCapturePopup();
+    expect(result.success).toBe(false);
+    expect(typeof result.error).toBe('string');
+  });
+
+  test('never throws', async () => {
+    await expect(pwCapturePopup()).resolves.toHaveProperty('success');
+  });
+});
+
+describe('cdp-actions: pwCapturePopup when connected — no popup appears', () => {
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    mockCdp.isConnected.mockReturnValue(true);
+    mockInvoke.mockResolvedValue(9222);
+    const targets = [{ type: 'page', url: 'https://www.myopenmath.com/course/moddataset.php', webSocketDebuggerUrl: 'ws://127.0.0.1:9222/page/A' }];
+    fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => targets,
+    } as Response);
+  });
+
+  afterEach(() => fetchSpy.mockRestore());
+
+  test('returns error when no new popup target appears', async () => {
+    const result = await pwCapturePopup(400);
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/no popup/i);
   });
 });

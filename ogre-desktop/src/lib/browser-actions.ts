@@ -17,7 +17,7 @@ import {
 } from './browser';
 import { findFuzzyMatch, fuzzyMatchReason } from './agent-dom-fuzzy';
 import { captureInteractiveDom } from './agent-dom';
-import { isConnected, pwClick, pwType, pwReadText, pwWaitFor, pwScroll, pwPressKey } from './cdp-actions';
+import { isConnected, pwClick, pwType, pwReadText, pwWaitFor, pwScroll, pwPressKey, pwWriteCodeMirror, pwCapturePopup } from './cdp-actions';
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -357,6 +357,35 @@ async function sleepAction(ms: number): Promise<ActionResult> {
 }
 
 /**
+ * Write content into a CodeMirror editor via evalScript.
+ * Falls back to evalScript when CDP is not connected.
+ * Uses JSON.stringify to safely embed PHP/math content regardless of special chars.
+ */
+async function writeCodeMirrorAction(selector: string, value: string): Promise<ActionResult> {
+  try {
+    const escaped = escapeSelector(selector);
+    const safeValue = JSON.stringify(value);
+    const result = await evalScriptJSON<ActionResult>(`(function(val) {
+  try {
+    var el = document.querySelector('${escaped}');
+    if (!el) return { success: false, error: 'Element not found: ${escaped}' };
+    var cm = el.CodeMirror
+      || (el.querySelector && el.querySelector('.CodeMirror') && el.querySelector('.CodeMirror').CodeMirror)
+      || (el.parentElement && el.parentElement.CodeMirror)
+      || (el.classList && el.classList.contains('CodeMirror') && el.CodeMirror);
+    if (!cm) return { success: false, error: 'No CodeMirror instance found on ${escaped}' };
+    cm.setValue(val);
+    cm.refresh();
+    return { success: true, data: { lines: cm.lineCount() } };
+  } catch(e) { return { success: false, error: e.message }; }
+})(${safeValue})`);
+    return result;
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
  * Dispatch a keyboard key press on the currently focused element.
  * Fires keydown, keypress, and keyup synthetic events via evalScript.
  * CDP path uses pwPressKey (Input.dispatchKeyEvent) when connected.
@@ -411,6 +440,10 @@ export async function executeAction(params: ActionParams): Promise<ActionResult>
           return pwScroll(p.direction, p.amount);
         case 'pressKey':
           return pwPressKey(p.key);
+        case 'writeCodeMirror':
+          return pwWriteCodeMirror(p.selector, p.value);
+        case 'capturePopup':
+          return pwCapturePopup(p.timeoutMs);
         // All other actions fall through to evalScript below
       }
     }
@@ -437,13 +470,17 @@ export async function executeAction(params: ActionParams): Promise<ActionResult>
         return sleepAction(p.ms);
       case 'pressKey':
         return pressKeyAction(p.key);
+      case 'writeCodeMirror':
+        return writeCodeMirrorAction(p.selector, p.value);
+      case 'capturePopup':
+        return { success: false, error: 'capturePopup requires CDP — not available in evalScript mode' };
       case 'runJS':
         return runJSAction(p.code);
       case 'done':
         return doneAction(p.success, p.message);
       default:
         return { success: false, error: `Unknown action: ${params.action}` };
-    }
+  }
   }
 
   // Extract selector for potential fuzzy retry (only selector-based actions)
@@ -453,6 +490,7 @@ export async function executeAction(params: ActionParams): Promise<ActionResult>
     case 'triple_click':
     case 'type':
     case 'waitFor':
+    case 'writeCodeMirror':
       originalSelector = params.selector;
       break;
     case 'readText':

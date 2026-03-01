@@ -6,7 +6,7 @@
  * and provides JSON-RPC messaging + event subscription over WebSocket.
  */
 
-interface CDPTarget {
+export interface CDPTarget {
   id: string;
   type: string;
   title: string;
@@ -17,7 +17,7 @@ interface CDPTarget {
 type EventCallback = (params: Record<string, unknown>) => void;
 
 /** URL patterns that identify the main Tauri app webview (not the embedded browser). */
-const MAIN_APP_PATTERNS = [
+export const MAIN_APP_PATTERNS = [
   /^tauri:\/\/localhost/,
   /^https:\/\/tauri\.localhost/,
   /^http:\/\/localhost:(1420|5173)/, // Vite dev server

@@ -9,7 +9,7 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
-import { cdp } from './cdp-client';
+import { cdp, CDPClient, MAIN_APP_PATTERNS, type CDPTarget } from './cdp-client';
 import type { ActionResult } from './agent-types';
 import { DANGEROUS_JS_PATTERNS } from './agent-types';
 
@@ -334,6 +334,127 @@ export async function pwPressKey(key: string): Promise<ActionResult> {
     });
 
     return { success: true };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Write content into a CodeMirror editor without the runJS approval gate.
+ * Resolves the CodeMirror instance from the textarea ID, a .CodeMirror wrapper,
+ * or the .CodeMirror div itself. Uses JSON.stringify to safely pass the value
+ * regardless of its content (PHP code, math, backslashes, dollar signs, etc.).
+ *
+ * @param selector - CSS selector of the textarea (#control, #qtext) or container
+ * @param value    - Full text to set; replaces all existing content
+ */
+export async function pwWriteCodeMirror(selector: string, value: string): Promise<ActionResult> {
+  try {
+    if (!cdp.isConnected()) return { success: false, error: 'Not connected to CDP' };
+
+    const esc = escapeSelector(selector);
+    const safeValue = JSON.stringify(value); // handles backslashes, newlines, $, backticks
+
+    const expression = `(function(val) {
+  try {
+    var el = document.querySelector('${esc}');
+    if (!el) return { success: false, error: 'Element not found: ${esc}' };
+    var cm = el.CodeMirror
+      || (el.querySelector && el.querySelector('.CodeMirror') && el.querySelector('.CodeMirror').CodeMirror)
+      || (el.parentElement && el.parentElement.CodeMirror)
+      || (el.classList && el.classList.contains('CodeMirror') && el.CodeMirror);
+    if (!cm) return { success: false, error: 'No CodeMirror instance found on ${esc}. Is this a CodeMirror editor?' };
+    cm.setValue(val);
+    cm.refresh();
+    return { success: true, data: { lines: cm.lineCount() } };
+  } catch(e) { return { success: false, error: e.message }; }
+})(${safeValue})`;
+
+    const evalResult = await cdp.send('Runtime.evaluate', {
+      expression,
+      returnByValue: true,
+    }) as { result: { value?: unknown } };
+
+    return (evalResult.result?.value as ActionResult) ?? { success: false, error: 'No result from CodeMirror write' };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Capture a screenshot of a popup window that was just opened by the current page.
+ * Polls the CDP target list for a new page target (max `timeoutMs`, default 8 s),
+ * connects a temporary CDPClient to it, takes a screenshot, and disconnects.
+ *
+ * Returns the screenshot as a data URL (data:image/jpeg;base64,...).
+ * Returns an error if no popup appears in time or if the popup is a native window
+ * (e.g. opened outside WebView2) and is therefore not reachable via CDP.
+ *
+ * @param timeoutMs - Max milliseconds to wait for popup to appear (default 8000, max 15000)
+ */
+export async function pwCapturePopup(timeoutMs?: number): Promise<ActionResult> {
+  try {
+    if (!cdp.isConnected()) return { success: false, error: 'Not connected to CDP' };
+
+    const port = await invoke<number | null>('get_cdp_port');
+    if (port === null || port === undefined) return { success: false, error: 'CDP port unavailable' };
+
+    // Snapshot known targets so we can detect the NEW popup target
+    let beforeTargets: CDPTarget[] = [];
+    try {
+      const resp = await fetch(`http://127.0.0.1:${port}/json`);
+      if (resp.ok) beforeTargets = (await resp.json()) as CDPTarget[];
+    } catch { /* proceed — beforeTargets stays empty, we'll still detect new targets */ }
+    const knownUrls = new Set(beforeTargets.map((t) => t.webSocketDebuggerUrl));
+
+    // Poll for a new non-main-app page target
+    const timeout = Math.min(timeoutMs ?? 8000, 15000);
+    const start = Date.now();
+    let popupTarget: CDPTarget | undefined;
+
+    while (Date.now() - start < timeout) {
+      await new Promise<void>((r) => setTimeout(r, 400));
+      try {
+        const afterResp = await fetch(`http://127.0.0.1:${port}/json`);
+        if (!afterResp.ok) continue;
+        const afterTargets = (await afterResp.json()) as CDPTarget[];
+        popupTarget = afterTargets.find(
+          (t) =>
+            t.type === 'page' &&
+            t.url !== 'about:blank' &&
+            t.url !== '' &&
+            !MAIN_APP_PATTERNS.some((p) => p.test(t.url)) &&
+            !knownUrls.has(t.webSocketDebuggerUrl),
+        );
+        if (popupTarget) break;
+      } catch { /* retry */ }
+    }
+
+    if (!popupTarget) {
+      return {
+        success: false,
+        error: 'No popup window appeared within timeout. The preview may have opened in a native window outside WebView2 — try readText or navigate to the saved question instead.',
+      };
+    }
+
+    // Connect a temporary client to the popup, screenshot, disconnect
+    const popupClient = new CDPClient();
+    const connected = await popupClient.connectToUrl(popupTarget.webSocketDebuggerUrl);
+    if (!connected) {
+      return { success: false, error: 'Found popup target but could not connect to it' };
+    }
+
+    try {
+      // Brief pause for popup to finish rendering
+      await new Promise<void>((r) => setTimeout(r, 600));
+      const result = await popupClient.send('Page.captureScreenshot', {
+        format: 'jpeg',
+        quality: 80,
+      }) as { data: string };
+      return { success: true, data: 'data:image/jpeg;base64,' + result.data };
+    } finally {
+      await popupClient.disconnect();
+    }
   } catch (err: unknown) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
   }

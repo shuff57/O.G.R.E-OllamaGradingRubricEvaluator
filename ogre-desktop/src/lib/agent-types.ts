@@ -25,6 +25,8 @@ export type AgentAction =
   | 'runJS'
   | 'sleep'
   | 'pressKey'
+  | 'writeCodeMirror'
+  | 'capturePopup'
   | 'done';
 
 /**
@@ -43,6 +45,8 @@ export type ActionParams =
   | { action: 'sleep'; ms: number }
   | { action: 'pressKey'; key: string }
   | { action: 'runJS'; code: string }
+  | { action: 'writeCodeMirror'; selector: string; value: string }
+  | { action: 'capturePopup'; timeoutMs?: number }
   | { action: 'done'; success: boolean; message: string };
 
 // ============================================================================

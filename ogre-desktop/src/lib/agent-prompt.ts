@@ -20,7 +20,7 @@ export interface ToolDefinition {
   params: Record<string, string>; // param name → description
 }
 
-/** All 10 tools the browser agent can invoke. */
+/** All 12 tools the browser agent can invoke. */
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: 'click',
@@ -84,7 +84,22 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       success: '"true" if task succeeded, "false" if it failed',
       message: 'Summary of what was accomplished or why it failed'
     }
-  }
+  },
+  {
+    name: 'writeCodeMirror',
+    description: 'Write content into a CodeMirror editor (e.g. the MOM question editor Common Control or Question Text fields). Does NOT require runJS approval.',
+    params: {
+      selector: 'CSS selector of the underlying textarea or .CodeMirror container. For MOM: "#control" (Common Control) or "#qtext" (Question Text).',
+      value: 'Full text to write — replaces existing content. PHP/math code is safe; no escaping needed.'
+    }
+  },
+  {
+    name: 'capturePopup',
+    description: 'Capture a screenshot of a popup window that just opened (e.g. after clicking MOM "Quick Save and Preview"). Returns a screenshot data URL.',
+    params: {
+      timeoutMs: '(optional) Max ms to wait for the popup to appear. Default 8000, max 15000.'
+    }
+  },
 ];
 
 // ============================================================================
@@ -137,6 +152,16 @@ AVAILABLE ACTIONS AND PARAMETERS:
 9. done — Signal task completion
    {"action": "done", "params": {"success": true, "message": "Summary of what was done"}, "reasoning": "Task complete"}
 
+10. writeCodeMirror — Write to a CodeMirror editor (no approval required)
+   {"action": "writeCodeMirror", "params": {"selector": "#control", "value": "$a = rands(1,10,1)\\n$answer = $a + 3"}, "reasoning": "..."}  
+   Use for MOM question editor fields: "#control" (Common Control PHP) or "#qtext" (Question Text HTML).
+   The value replaces all existing content. PHP code, math, and special chars are safe to pass directly.
+
+11. capturePopup — Screenshot a popup window that just opened
+   {"action": "capturePopup", "params": {"timeoutMs": 8000}, "reasoning": "..."}  
+   Use after clicking MOM 'Quick Save and Preview'. Waits for the preview popup to appear and returns its screenshot.
+   If the popup opens in a native window outside WebView2, returns an error — fall back to readText in that case.
+
 TEXT RESPONSE FORMAT (for conversational replies without browser action):
 {"text": "Your response here"}
 
@@ -155,7 +180,7 @@ User: I'm done, thanks!
 Response: {"action": "done", "params": {"success": true, "message": "Task completed successfully"}, "reasoning": "User indicated the task is complete"}
 
 User: What can you do?
-Response: {"text": "I can automate browser interactions on the current page. I can click elements, type text, scroll, read content, take screenshots, wait for elements, navigate to URLs, and execute custom JavaScript. Just describe what you want me to do!"}
+Response: {"text": "I can automate browser interactions: click, type, scroll, read content, take screenshots, wait for elements, navigate URLs, write to CodeMirror editors, capture popups, and execute JavaScript. For the MOM question editor, I can write PHP code into Common Control (#control) and Question Text (#qtext) directly without runJS approval. Just describe what you want me to do!"}
 
 IMPORTANT RULES:
 1. ALWAYS respond with a single JSON object — never plain text
