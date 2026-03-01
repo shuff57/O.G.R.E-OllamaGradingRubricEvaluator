@@ -115,8 +115,6 @@
     syncSiteProfiles().then(({ imported, updated }) => {
       if (imported > 0 || updated > 0) loadSkills();
     }).catch(() => {});
-      if (imported > 0) loadSkills();
-    }).catch(() => {});
   });
 </script>
 
