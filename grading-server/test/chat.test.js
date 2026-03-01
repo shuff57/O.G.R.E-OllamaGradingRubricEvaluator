@@ -88,7 +88,7 @@ describe('buildSingleGradePrompt', () => {
   it('should include grading philosophy section', () => {
     const prompt = buildSingleGradePrompt(testRubric, 'Answer', 'Grade');
     expect(prompt).toContain('GRADING PHILOSOPHY');
-    expect(prompt).toContain('high school seniors');
+    expect(prompt).toContain('rubric criteria provided');
   });
 
   it('should default maxScore to 10 when not specified', () => {
