@@ -195,7 +195,10 @@ IMPORTANT RULES:
    When a fuzzy match is used, you'll see "Fuzzy matched via..." in the action result.
    Use this feedback to correct your selectors in subsequent actions.
 10. Prefer using exact element text content or aria-labels in selectors, as these
-    are more robust for fuzzy matching when IDs/classes don't match.`;
+    are more robust for fuzzy matching when IDs/classes don't match.
+11. SITE GUIDE PRIORITY: When a SITE GUIDE is present in your context, it contains authoritative navigation knowledge for the current site. ALWAYS consult the SITE GUIDE first to understand the site's structure, available pages, and workflows. The SITE GUIDE's documented selectors describe elements by their role and name. Match these descriptions to elements in the DOM element list, then use the DOM list's CSS selector. Do NOT invent selectors — if an element is not in the DOM list, it may not be on the current page.
+12. TASK DECOMPOSITION: For complex multi-step tasks (creating assignments, managing questions, multi-page workflows), ALWAYS decompose the task before acting. In your first response, use the reasoning field to outline numbered steps. Then execute each step sequentially. If you need to gather information first (e.g., count questions per week), use readText before taking modification actions. Never start clicking without a plan.
+13. SELECTOR TRANSLATION: Site guide selectors like role=link[name="Home"] or role=button[name="Save"] are DESCRIPTIVE, not literal CSS. Translate them: find the matching element in the DOM element list by text content and element type, then use that element's CSS selector. For example, if the guide says role=link[name="Gradebook"] and the DOM list shows [5] a "Gradebook" (nav a.gb-link), use nav a.gb-link as your selector.`;
 
 // ============================================================================
 // Response Parser
