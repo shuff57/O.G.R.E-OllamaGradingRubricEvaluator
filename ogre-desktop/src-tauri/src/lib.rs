@@ -942,6 +942,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_batch_session_url ON batch_session(url);",
 CREATE UNIQUE INDEX IF NOT EXISTS idx_skills_source ON skills(source, source_id) WHERE source IS NOT NULL;",
             kind: MigrationKind::Up,
         },
+        // Migration 9: add url_pattern column to skills table for site profile auto-injection
+        Migration {
+            version: 9,
+            description: "add_url_pattern_to_skills",
+            sql: "ALTER TABLE skills ADD COLUMN url_pattern TEXT;",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()

@@ -37,6 +37,7 @@ import {
   updateSkillActive,
   deleteSkill,
   getSkillBySource,
+  getSkillsWithUrlPattern,
   type SiteCredential,
   type BatchSession,
   type Skill,
@@ -331,6 +332,7 @@ function makeSkill(overrides: Partial<Skill> = {}): Skill {
     source: null,
     source_id: null,
     is_active: 0,
+    url_pattern: null,
     created_at: '2025-01-01T00:00:00',
     updated_at: '2025-01-01T00:00:00',
     ...overrides,
@@ -479,5 +481,39 @@ describe('db.ts — Skills CRUD', () => {
 
     const result = await getSkillBySource('github', 'nonexistent');
     expect(result).toBeNull();
+  });
+
+
+  // ── url_pattern / getSkillsWithUrlPattern ────────────────────────
+
+  it('saveSkill persists url_pattern when provided', async () => {
+    mockExecute.mockResolvedValueOnce({});
+
+    await saveSkill({ name: 'MOM Guide', url_pattern: 'myopenmath.com' });
+    const sql = mockExecute.mock.calls[0][0] as string;
+    const args = mockExecute.mock.calls[0][1] as unknown[];
+    expect(sql).toContain('url_pattern');
+    expect(args).toContain('myopenmath.com');
+  });
+
+  it('saveSkill works without url_pattern (backward compatible)', async () => {
+    mockExecute.mockResolvedValueOnce({});
+
+    const id = await saveSkill({ name: 'Old Skill' });
+    expect(typeof id).toBe('string');
+    const sql = mockExecute.mock.calls[0][0] as string;
+    expect(sql).toContain('INSERT INTO skills');
+  });
+
+  it('getSkillsWithUrlPattern returns only skills with url_pattern set', async () => {
+    const profileSkill = makeSkill({ url_pattern: 'myopenmath.com' });
+    mockSelect.mockResolvedValueOnce([profileSkill]);
+
+    const result = await getSkillsWithUrlPattern();
+    expect(result).toHaveLength(1);
+    expect(result[0].url_pattern).toBe('myopenmath.com');
+    expect(mockSelect).toHaveBeenCalledWith(
+      expect.stringContaining('url_pattern IS NOT NULL'),
+    );
   });
 });

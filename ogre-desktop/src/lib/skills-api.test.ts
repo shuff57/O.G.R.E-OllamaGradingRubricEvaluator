@@ -10,7 +10,7 @@ vi.mock("@tauri-apps/plugin-http", () => ({
 }));
 
 // Import AFTER mocks are set up
-import { buildSkillContentUrl, SKILLS_SH_SEARCH_URL, searchSkills, fetchSkillContent, fetchTrendingSkills, installSkill, buildSkillInjection, getSkillInjectionSize } from "./skills-api";
+import { buildSkillContentUrl, SKILLS_SH_SEARCH_URL, searchSkills, fetchSkillContent, fetchTrendingSkills, installSkill, buildSkillInjection, getSkillInjectionSize, findMatchingProfiles, buildSiteContextInjection, syncSiteProfiles, BUNDLED_PROFILES } from "./skills-api";
 
 // ── Tests ─────────────────────────────────────────────────────────────────
 
@@ -71,15 +71,17 @@ describe("SKILLS_SH_SEARCH_URL", () => {
 });
 
 // ── Mock db.ts ────────────────────────────────────────────────────────────
-const { mockGetSkillBySource, mockSaveSkill, mockGetActiveSkills } = vi.hoisted(() => ({
+const { mockGetSkillBySource, mockSaveSkill, mockGetActiveSkills, mockGetSkillsWithUrlPattern } = vi.hoisted(() => ({
   mockGetSkillBySource: vi.fn(),
   mockSaveSkill: vi.fn(),
   mockGetActiveSkills: vi.fn(),
+  mockGetSkillsWithUrlPattern: vi.fn(),
 }));
 vi.mock("./db", () => ({
   getSkillBySource: mockGetSkillBySource,
   saveSkill: mockSaveSkill,
   getActiveSkills: mockGetActiveSkills,
+  getSkillsWithUrlPattern: mockGetSkillsWithUrlPattern,
 }));
 
 // ── searchSkills tests ───────────────────────────────────────────────────
@@ -343,5 +345,140 @@ describe("getSkillInjectionSize", () => {
     const size = await getSkillInjectionSize();
 
     expect(size).toEqual({ charCount: 0, skillCount: 0 });
+  });
+});
+
+// ── Site Profile Injection tests ───────────────────────────────────
+
+function makeProfileSkill(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'skill-1', name: 'MOM Guide', description: '', content: 'MOM content',
+    source: 'site-profile', source_id: 'myopenmath.com', is_active: 0,
+    url_pattern: 'myopenmath.com',
+    created_at: '2025-01-01', updated_at: '2025-01-01',
+    ...overrides,
+  };
+}
+
+describe('findMatchingProfiles', () => {
+  it('returns profiles matching the URL', () => {
+    const profiles = [makeProfileSkill()];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = findMatchingProfiles('https://www.myopenmath.com/course/123', profiles as any);
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe('MOM Guide');
+  });
+
+  it('returns empty array when URL does not match any profile', () => {
+    const profiles = [makeProfileSkill()];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = findMatchingProfiles('https://canvas.instructure.com', profiles as any);
+    expect(result).toHaveLength(0);
+  });
+
+  it('returns all matching profiles when multiple match', () => {
+    const profiles = [
+      makeProfileSkill({ name: 'MOM Guide', url_pattern: 'myopenmath.com' }),
+      makeProfileSkill({ id: 'skill-2', name: 'Aeries Guide', url_pattern: 'aeries.net' }),
+    ];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = findMatchingProfiles('https://chicousd.aeries.net/teacher', profiles as any);
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe('Aeries Guide');
+  });
+
+  it('is case-insensitive', () => {
+    const profiles = [makeProfileSkill({ url_pattern: 'MyOpenMath.com' })];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = findMatchingProfiles('https://www.myopenmath.com', profiles as any);
+    expect(result).toHaveLength(1);
+  });
+});
+
+describe('buildSiteContextInjection', () => {
+  beforeEach(() => {
+    mockGetSkillsWithUrlPattern.mockReset();
+  });
+
+  it('returns empty string when no profiles match URL', async () => {
+    mockGetSkillsWithUrlPattern.mockResolvedValue([makeProfileSkill()]);
+    const result = await buildSiteContextInjection('https://canvas.instructure.com');
+    expect(result).toBe('');
+  });
+
+  it('returns formatted SITE GUIDE block when profile matches URL', async () => {
+    mockGetSkillsWithUrlPattern.mockResolvedValue([makeProfileSkill()]);
+    const result = await buildSiteContextInjection('https://www.myopenmath.com/course/123');
+    expect(result).toContain('--- SITE GUIDE: MOM Guide ---');
+    expect(result).toContain('MOM content');
+    expect(result).toContain('--- END SITE GUIDE ---');
+  });
+});
+
+// ── syncSiteProfiles tests ─────────────────────────────────────────────
+
+const MOM_MD = '---\nname: "MyOpenMath \u2014 Knowledge Profile"\ndescription: "MOM guide"\nurlPatterns:\n  - "myopenmath.com"\n---\n# MOM Content';
+const AERIES_MD = '---\nname: "Aeries \u2014 Knowledge Profile"\ndescription: "Aeries guide"\nurlPatterns:\n  - "aeries.net"\n---\n# Aeries Content';
+
+describe('syncSiteProfiles', () => {
+  beforeEach(() => {
+    mockGetSkillBySource.mockReset();
+    mockSaveSkill.mockReset();
+  });
+
+  it('imports both profiles when neither exists', async () => {
+    mockGetSkillBySource.mockResolvedValue(null);
+    mockSaveSkill.mockResolvedValue('new-id');
+
+    const result = await syncSiteProfiles([MOM_MD, AERIES_MD]);
+
+    expect(result).toEqual({ imported: 2, updated: 0 });
+    expect(mockSaveSkill).toHaveBeenCalledTimes(2);
+    expect(mockSaveSkill).toHaveBeenCalledWith(expect.objectContaining({
+      source: 'site-profile',
+      source_id: 'myopenmath.com',
+      url_pattern: 'myopenmath.com',
+      is_active: 0,
+    }));
+  });
+
+  it('updates existing profiles to keep content fresh', async () => {
+    const existingMom = { id: 'mom-id', is_active: 0, name: 'old', description: '', content: '', source: 'site-profile', source_id: 'myopenmath.com', url_pattern: 'myopenmath.com', created_at: '', updated_at: '' };
+    const existingAeries = { id: 'aeries-id', is_active: 1, name: 'old', description: '', content: '', source: 'site-profile', source_id: 'aeries.net', url_pattern: 'aeries.net', created_at: '', updated_at: '' };
+    mockGetSkillBySource
+      .mockResolvedValueOnce(existingMom)
+      .mockResolvedValueOnce(existingAeries);
+    mockSaveSkill.mockResolvedValue('id');
+
+    const result = await syncSiteProfiles([MOM_MD, AERIES_MD]);
+
+    expect(result).toEqual({ imported: 0, updated: 2 });
+    expect(mockSaveSkill).toHaveBeenCalledWith(expect.objectContaining({ id: 'mom-id' }));
+    expect(mockSaveSkill).toHaveBeenCalledWith(expect.objectContaining({ id: 'aeries-id' }));
+  });
+
+  it('preserves is_active state when updating existing profile', async () => {
+    const existing = { id: 'eid', is_active: 1, name: 'MOM', description: '', content: '', source: 'site-profile', source_id: 'myopenmath.com', url_pattern: 'myopenmath.com', created_at: '', updated_at: '' };
+    mockGetSkillBySource.mockResolvedValue(existing);
+    mockSaveSkill.mockResolvedValue('eid');
+
+    await syncSiteProfiles([MOM_MD]);
+
+    expect(mockSaveSkill).toHaveBeenCalledWith(expect.objectContaining({ is_active: 1 }));
+  });
+
+  it('skips profiles without urlPatterns', async () => {
+    const noPatterns = '---\nname: "No URL"\ndescription: "test"\n---\n# Content';
+
+    const result = await syncSiteProfiles([noPatterns]);
+
+    expect(result).toEqual({ imported: 0, updated: 0 });
+    expect(mockSaveSkill).not.toHaveBeenCalled();
+  });
+
+  it('BUNDLED_PROFILES exports two profiles', () => {
+    expect(BUNDLED_PROFILES).toHaveLength(2);
+    expect(BUNDLED_PROFILES[0]).toContain('myopenmath.com');
+    expect(BUNDLED_PROFILES[1]).toContain('aeries.net');
   });
 });

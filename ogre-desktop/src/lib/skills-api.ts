@@ -107,7 +107,7 @@ export async function fetchSkillContent(source: string, skillId: string): Promis
 
 // ── Install Logic ───────────────────────────────────────────────────────
 
-import { getSkillBySource, saveSkill, getActiveSkills } from './db';
+import { getSkillBySource, saveSkill, getActiveSkills, getSkillsWithUrlPattern, type Skill } from './db';
 import { parseSkillMarkdown } from './skill-parser';
 
 export interface InstallSkillParams {
@@ -172,6 +172,111 @@ export async function getSkillInjectionSize(): Promise<{ charCount: number; skil
   const injection = await buildSkillInjection();
   const skills = await getActiveSkills();
   return { charCount: injection.length, skillCount: skills.length };
+}
+
+// ── Site Profile Injection ──────────────────────────────────────────
+
+/**
+ * Pure function: Find skills whose url_pattern matches the given URL.
+ * Performs TypeScript-side substring matching (case-insensitive).
+ * A skill's url_pattern may be a single value or comma-separated list.
+ *
+ * @param url - The current browser URL
+ * @param skills - List of skills with url_pattern set
+ * @returns Skills whose url_pattern matches the URL
+ */
+export function findMatchingProfiles(url: string, skills: Skill[]): Skill[] {
+  const lowerUrl = url.toLowerCase();
+  return skills.filter(skill => {
+    if (!skill.url_pattern) return false;
+    const patterns = skill.url_pattern.split(',').map(p => p.trim()).filter(Boolean);
+    return patterns.some(pattern => lowerUrl.includes(pattern.toLowerCase()));
+  });
+}
+
+/**
+ * Build a site context injection string for the given URL.
+ * Fetches all skills with url_pattern set, finds matches, and formats them
+ * as SITE GUIDE blocks to inject into the Agent Mode system prompt.
+ *
+ * @param url - The current browser URL
+ * @returns Formatted site guide injection string, or empty string if no matches
+ */
+export async function buildSiteContextInjection(url: string): Promise<string> {
+  const skillsWithPatterns = await getSkillsWithUrlPattern();
+  const matching = findMatchingProfiles(url, skillsWithPatterns);
+  if (matching.length === 0) return '';
+  return matching
+    .map(s => `\n\n--- SITE GUIDE: ${s.name} ---\n${s.content}\n--- END SITE GUIDE ---\n\n`)
+    .join('');
+}
+
+// ── Bundled Site Profiles ────────────────────────────────────────────────
+
+import momProfileRaw from '../assets/profiles/myopenmath.md?raw';
+import aeriesProfileRaw from '../assets/profiles/aeries.md?raw';
+
+/** Bundled site profiles shipped with the app. Exported for testing. */
+export const BUNDLED_PROFILES: string[] = [momProfileRaw, aeriesProfileRaw];
+
+export interface SyncSiteProfilesResult {
+  imported: number;
+  updated: number;
+}
+
+/**
+ * Sync bundled site profiles (MyOpenMath, Aeries) into the skills DB.
+ * Profiles are always upserted so content stays fresh on app updates.
+ * Preserves each profile's is_active toggle state when updating.
+ *
+ * @param profiles - Markdown content array. Defaults to BUNDLED_PROFILES.
+ *                   Pass custom content in tests to avoid file I/O.
+ */
+export async function syncSiteProfiles(
+  profiles: string[] = BUNDLED_PROFILES
+): Promise<SyncSiteProfilesResult> {
+  let imported = 0;
+  let updated = 0;
+
+  for (const content of profiles) {
+    try {
+      const parsed = parseSkillMarkdown(content);
+      const sourceId = parsed.urlPatterns?.[0] ?? '';
+      if (!sourceId) continue;
+
+      const urlPattern = parsed.urlPatterns?.join(',') ?? '';
+      const existing = await getSkillBySource('site-profile', sourceId);
+
+      if (existing) {
+        await saveSkill({
+          id: existing.id,
+          name: parsed.name || sourceId,
+          description: parsed.description || '',
+          content,
+          source: 'site-profile',
+          source_id: sourceId,
+          is_active: existing.is_active,
+          url_pattern: urlPattern,
+        });
+        updated++;
+      } else {
+        await saveSkill({
+          name: parsed.name || sourceId,
+          description: parsed.description || '',
+          content,
+          source: 'site-profile',
+          source_id: sourceId,
+          is_active: 0,
+          url_pattern: urlPattern,
+        });
+        imported++;
+      }
+    } catch (e) {
+      console.warn('syncSiteProfiles: failed to sync profile:', e);
+    }
+  }
+
+  return { imported, updated };
 }
 
 interface LocalSkillFile {

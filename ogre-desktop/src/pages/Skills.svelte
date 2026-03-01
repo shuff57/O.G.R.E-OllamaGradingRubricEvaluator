@@ -5,7 +5,7 @@
   import SkillCard from '../components/skills/SkillCard.svelte';
   import { getSkills, saveSkill, deleteSkill, updateSkillActive, type Skill } from '../lib/db';
   import { parseSkillMarkdown } from '../lib/skill-parser';
-  import { syncLocalSkills } from '../lib/skills-api';
+  import { syncLocalSkills, syncSiteProfiles } from '../lib/skills-api';
 
   let currentView = $state<'my-skills' | 'find-skills' | 'create-skill'>('my-skills');
   let skillCreatorKey = $state(0);
@@ -110,6 +110,11 @@
   onMount(() => {
     loadSkills();
     syncLocalSkills().then(({ imported }) => {
+      if (imported > 0) loadSkills();
+    }).catch(() => {});
+    syncSiteProfiles().then(({ imported, updated }) => {
+      if (imported > 0 || updated > 0) loadSkills();
+    }).catch(() => {});
       if (imported > 0) loadSkills();
     }).catch(() => {});
   });

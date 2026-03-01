@@ -72,6 +72,7 @@ export interface Skill {
   source: string | null;
   source_id: string | null;
   is_active: number;
+  url_pattern: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -569,22 +570,34 @@ export async function saveSkill(skill: {
   source?: string | null;
   source_id?: string | null;
   is_active?: number;
+  url_pattern?: string | null;
 }): Promise<string> {
   const database = await initDB();
   const id = skill.id || crypto.randomUUID();
   if (skill.id) {
     await database.execute(
-      `UPDATE skills SET name = $1, description = $2, content = $3, source = $4, source_id = $5, is_active = $6, updated_at = datetime('now') WHERE id = $7`,
-      [skill.name, skill.description ?? '', skill.content ?? '', skill.source ?? null, skill.source_id ?? null, skill.is_active ?? 0, skill.id]
+      `UPDATE skills SET name = $1, description = $2, content = $3, source = $4, source_id = $5, is_active = $6, url_pattern = $7, updated_at = datetime('now') WHERE id = $8`,
+      [skill.name, skill.description ?? '', skill.content ?? '', skill.source ?? null, skill.source_id ?? null, skill.is_active ?? 0, skill.url_pattern ?? null, skill.id]
     );
     return skill.id;
   } else {
     await database.execute(
-      `INSERT INTO skills (id, name, description, content, source, source_id, is_active) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [id, skill.name, skill.description ?? '', skill.content ?? '', skill.source ?? null, skill.source_id ?? null, skill.is_active ?? 0]
+      `INSERT INTO skills (id, name, description, content, source, source_id, is_active, url_pattern) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [id, skill.name, skill.description ?? '', skill.content ?? '', skill.source ?? null, skill.source_id ?? null, skill.is_active ?? 0, skill.url_pattern ?? null]
     );
     return id;
   }
+}
+
+/**
+ * Get all skills that have a url_pattern set (non-null, non-empty).
+ * Used for site-based profile injection in Agent Mode.
+ */
+export async function getSkillsWithUrlPattern(): Promise<Skill[]> {
+  const database = await initDB();
+  return await database.select<Skill[]>(
+    "SELECT * FROM skills WHERE url_pattern IS NOT NULL AND url_pattern != '' ORDER BY name"
+  );
 }
 
 /**

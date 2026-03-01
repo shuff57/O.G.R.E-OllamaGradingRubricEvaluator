@@ -270,3 +270,50 @@ Safe content here.`;
     expect(result).toContain('https://example.com/image.png');
   });
 });
+
+// ── Tests: urlPatterns ───────────────────────────────────────────────────
+
+describe('parseSkillMarkdown - urlPatterns', () => {
+  it('extracts urlPatterns array from frontmatter', () => {
+    const raw = `---
+name: My Skill
+description: A skill
+urlPatterns:
+  - myopenmath.com
+  - mom.example.com
+---
+
+Body content.`;
+
+    const result = parseSkillMarkdown(raw);
+
+    expect(result.urlPatterns).toEqual(['myopenmath.com', 'mom.example.com']);
+  });
+
+  it('returns undefined when urlPatterns is not in frontmatter', () => {
+    const raw = `---
+name: My Skill
+description: A skill
+---
+
+Body content.`;
+
+    const result = parseSkillMarkdown(raw);
+
+    expect(result.urlPatterns).toBeUndefined();
+  });
+
+  it('returns empty array when urlPatterns is empty list', () => {
+    const raw = `---
+name: My Skill
+description: A skill
+urlPatterns: []
+---
+
+Body content.`;
+
+    const result = parseSkillMarkdown(raw);
+
+    expect(result.urlPatterns).toEqual([]);
+  });
+});

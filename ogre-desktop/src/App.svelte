@@ -119,7 +119,10 @@
     currentPage = page;
     if (page === 'browser') {
       sidebarCollapsed = true;
-      showWebview().catch(() => {});
+      // NOTE: showWebview() is intentionally NOT called here.
+      // Browser.svelte calls showWebview() from onMount after setting correct bounds,
+      // preventing a flash at the default Rust position (x=0, y=60).
+      // The reactive block above handles re-showing after update modal closes.
       window.dispatchEvent(new CustomEvent('ogre:sidebar-changed'));
     } else {
       sidebarCollapsed = false;

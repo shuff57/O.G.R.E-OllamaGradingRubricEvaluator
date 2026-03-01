@@ -10,10 +10,11 @@
  */
 
 import { captureInteractiveDom, formatDomForPrompt } from './agent-dom';
-import { captureWebviewScreenshot } from './browser';
+import { captureWebviewScreenshot, getEmbeddedUrl } from './browser';
 import { sendAgentRequest } from './agent-api';
 import { executeAction } from './browser-actions';
 import { AGENT_SYSTEM_PROMPT } from './agent-prompt';
+import { buildSiteContextInjection } from './skills-api';
 import type {
   AgentMode,
   AgentAction,
@@ -168,9 +169,23 @@ export function createAgentController(): AgentController {
     const loopConfig: AgentConfig = { ...DEFAULT_AGENT_CONFIG, ...config.config };
     const signal = config.signal ?? internalAbort.signal;
 
+    // Get current browser URL and build site context injection if a profile matches
+    let siteContext = '';
+    try {
+      const currentUrl = await getEmbeddedUrl();
+      if (currentUrl) {
+        siteContext = await buildSiteContextInjection(currentUrl);
+      }
+    } catch {
+      // No browser open or URL unavailable — skip injection
+    }
+    const systemPrompt = siteContext
+      ? `${AGENT_SYSTEM_PROMPT}\n\n${siteContext}`
+      : AGENT_SYSTEM_PROMPT;
+
     // Conversation history — includes system role and optional screenshot field
     const conversationHistory: AgentMessage[] = [
-      { role: 'system', content: AGENT_SYSTEM_PROMPT },
+      { role: 'system', content: systemPrompt },
       { role: 'user', content: config.initialMessage },
     ];
 

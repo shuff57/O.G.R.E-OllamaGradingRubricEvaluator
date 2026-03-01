@@ -7,6 +7,7 @@ export interface ParsedSkill {
   content: string;
   author?: string;
   tags?: string[];
+  urlPatterns?: string[];
 }
 
 export function parseSkillMarkdown(rawContent: string): ParsedSkill {
@@ -27,6 +28,7 @@ export function parseSkillMarkdown(rawContent: string): ParsedSkill {
   let description = data.description || '';
   const author = data.author;
   const tags = data.tags;
+  const urlPatterns = data.urlPatterns;
 
   // If name is missing (or no frontmatter), try to find first # Heading in body
   if (!name) {
@@ -62,7 +64,8 @@ export function parseSkillMarkdown(rawContent: string): ParsedSkill {
     description,
     content: rawContent, // Always store full original content
     author,
-    tags
+    tags,
+    urlPatterns
   };
 }
 

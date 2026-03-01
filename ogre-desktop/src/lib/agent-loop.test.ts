@@ -7,6 +7,7 @@ vi.mock('./agent-dom', () => ({
 
 vi.mock('./browser', () => ({
   captureWebviewScreenshot: vi.fn().mockResolvedValue('data:image/png;base64,abc'),
+  getEmbeddedUrl: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock('./agent-api', () => ({
@@ -19,6 +20,10 @@ vi.mock('./browser-actions', () => ({
 
 vi.mock('./agent-prompt', () => ({
   AGENT_SYSTEM_PROMPT: 'You are a browser agent.',
+}));
+
+vi.mock('./skills-api', () => ({
+  buildSiteContextInjection: vi.fn().mockResolvedValue(''),
 }));
 
 import { sendAgentRequest } from './agent-api';
@@ -36,6 +41,10 @@ beforeEach(async () => {
   (formatDomForPrompt as ReturnType<typeof vi.fn>).mockReturnValue('');
   const { captureWebviewScreenshot } = await import('./browser');
   (captureWebviewScreenshot as ReturnType<typeof vi.fn>).mockResolvedValue('data:image/png;base64,abc');
+  const { getEmbeddedUrl } = await import('./browser');
+  (getEmbeddedUrl as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+  const { buildSiteContextInjection } = await import('./skills-api');
+  (buildSiteContextInjection as ReturnType<typeof vi.fn>).mockResolvedValue('');
   });
 
 // ---------------------------------------------------------------------------
@@ -295,5 +304,66 @@ describe('agent-loop: AI error', () => {
     const errorEvent = events.find((e) => e.type === 'error');
     expect(errorEvent).toBeDefined();
     expect(errorEvent.message).toBe('Network error');
+  });
+});
+
+// ── Site Profile Injection in Agent Loop ────────────────────────────────
+
+describe('site profile injection', () => {
+  function doneResponse() {
+    return { action: 'done', params: { success: true, message: 'Done!' }, reasoning: '' };
+  }
+
+  beforeEach(() => {
+    mockExecute.mockResolvedValue({ success: true, data: { message: 'Done!' } });
+  });
+
+  test('injects site context when URL matches a profile', async () => {
+    const { getEmbeddedUrl } = await import('./browser');
+    const { buildSiteContextInjection } = await import('./skills-api');
+    (getEmbeddedUrl as ReturnType<typeof vi.fn>).mockResolvedValue('https://www.myopenmath.com/course/123');
+    (buildSiteContextInjection as ReturnType<typeof vi.fn>).mockResolvedValue('\n\n--- SITE GUIDE: MOM ---\nMOM content\n--- END SITE GUIDE ---\n\n');
+    (mockSend as ReturnType<typeof vi.fn>).mockResolvedValue(doneResponse());
+
+    const controller = createAgentController();
+    const gen = controller.start({ mode: 'auto', initialMessage: 'Help me grade', config: { actionDelayMs: 0, maxSteps: 1, maxTimeMs: 30000, maxSameAction: 3 } });
+    await collectEvents(gen);
+
+    expect(buildSiteContextInjection).toHaveBeenCalledWith('https://www.myopenmath.com/course/123');
+    const firstCall = (mockSend as ReturnType<typeof vi.fn>).mock.calls[0];
+    const callArg = firstCall[0] as { messages: Array<{ role: string; content: string }> };
+    const systemMsg = callArg.messages.find(m => m.role === 'system');
+    expect(systemMsg?.content).toContain('--- SITE GUIDE: MOM ---');
+  });
+
+  test('uses base system prompt when URL does not match any profile', async () => {
+    const { getEmbeddedUrl } = await import('./browser');
+    const { buildSiteContextInjection } = await import('./skills-api');
+    (getEmbeddedUrl as ReturnType<typeof vi.fn>).mockResolvedValue('https://canvas.instructure.com');
+    (buildSiteContextInjection as ReturnType<typeof vi.fn>).mockResolvedValue('');
+    (mockSend as ReturnType<typeof vi.fn>).mockResolvedValue(doneResponse());
+
+    const controller = createAgentController();
+    const gen = controller.start({ mode: 'auto', initialMessage: 'Help', config: { actionDelayMs: 0, maxSteps: 1, maxTimeMs: 30000, maxSameAction: 3 } });
+    await collectEvents(gen);
+
+    const firstCall = (mockSend as ReturnType<typeof vi.fn>).mock.calls[0];
+    const callArg = firstCall[0] as { messages: Array<{ role: string; content: string }> };
+    const systemMsg = callArg.messages.find(m => m.role === 'system');
+    expect(systemMsg?.content).toBe('You are a browser agent.');
+  });
+
+  test('works normally when getEmbeddedUrl throws (no browser open)', async () => {
+    const { getEmbeddedUrl } = await import('./browser');
+    (getEmbeddedUrl as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('No browser'));
+    (mockSend as ReturnType<typeof vi.fn>).mockResolvedValue(doneResponse());
+
+    const controller = createAgentController();
+    const gen = controller.start({ mode: 'auto', initialMessage: 'Help', config: { actionDelayMs: 0, maxSteps: 1, maxTimeMs: 30000, maxSameAction: 3 } });
+    const events = await collectEvents(gen);
+
+    // Should not crash — should complete normally
+    const errorEvent = events.find(e => e.type === 'error');
+    expect(errorEvent).toBeUndefined();
   });
 });

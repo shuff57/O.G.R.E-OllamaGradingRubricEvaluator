@@ -46,6 +46,9 @@
     <div class="title-section">
       <h3>{skill.name}</h3>
       <span class="badge {getSourceClass(skill)}">{getSourceLabel(skill)}</span>
+      {#if skill.url_pattern}
+        <span class="badge badge-url" title="Auto-injects when browsing this site">🌐 {skill.url_pattern.length > 30 ? skill.url_pattern.slice(0, 30) + '…' : skill.url_pattern}</span>
+      {/if}
     </div>
     <div class="actions">
       <label class="switch" onclick={(e) => e.stopPropagation()}>
@@ -143,6 +146,12 @@
   .badge-marketplace {
     color: var(--color-primary);
     background-color: var(--color-primary-bg);
+  }
+
+  .badge-url {
+    color: var(--color-secondary);
+    background-color: rgba(210, 168, 255, 0.1);
+    font-size: 0.65rem;
   }
 
   .actions {
