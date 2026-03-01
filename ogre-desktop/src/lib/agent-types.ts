@@ -95,6 +95,8 @@ export interface AgentConfig {
   maxTimeMs: number;
   /** Maximum consecutive same actions before stopping */
   maxSameAction: number;
+  /** Maximum consecutive failed actions before stopping (catches alternating failure spirals) */
+  maxConsecutiveFailures: number;
   /** Delay between actions in milliseconds */
   actionDelayMs: number;
 }
@@ -104,9 +106,9 @@ export const DEFAULT_AGENT_CONFIG: AgentConfig = {
   maxSteps: 30,
   maxTimeMs: 300000, // 5 minutes
   maxSameAction: 3,
+  maxConsecutiveFailures: 5,
   actionDelayMs: 500
 };
-
 // ============================================================================
 // DOM Element Types
 // ============================================================================

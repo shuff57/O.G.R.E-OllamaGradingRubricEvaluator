@@ -193,6 +193,7 @@ export function createAgentController(): AgentController {
     const startTime = Date.now();
     let lastActionKey = '';
     let lastActionRepeatCount = 0;
+    let consecutiveFailures = 0;
 
     const isCompact = config.compact ?? true;
     /** Tracks the action key of the last selector failure that triggered a screenshot retry */
@@ -373,6 +374,22 @@ export function createAgentController(): AgentController {
       // Clear retry tracker on successful action or different failure
       if (result.success) {
         lastFailedAction = null;
+      }
+
+      // ── Consecutive failure detection ──
+      // Counts failures across different actions (catches alternating failure spirals).
+      // Screenshot retry (Step 6b) uses `continue` before reaching here, so it is NOT counted.
+      if (!result.success && action !== 'done') {
+        consecutiveFailures++;
+        if (consecutiveFailures >= loopConfig.maxConsecutiveFailures) {
+          yield {
+            type: 'done',
+            message: `Too many consecutive failures (${consecutiveFailures}): last error: ${result.error ?? 'unknown'}`,
+          };
+          return;
+        }
+      } else if (result.success) {
+        consecutiveFailures = 0;
       }
       // ── Step 7: Check for done action ──
       if (action === 'done') {

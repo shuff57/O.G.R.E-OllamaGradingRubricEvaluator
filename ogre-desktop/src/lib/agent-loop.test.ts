@@ -367,3 +367,93 @@ describe('site profile injection', () => {
     expect(errorEvent).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Consecutive failure detection (Task 3)
+// ---------------------------------------------------------------------------
+
+describe('agent-loop: consecutive failure detection', () => {
+  const makeClickResponse = (selector: string) => ({
+    action: 'click',
+    params: { selector },
+    reasoning: `click ${selector}`,
+  });
+
+  test('terminates after maxConsecutiveFailures consecutive failures across different actions', async () => {
+    // 3 different failing actions
+    mockSend
+      .mockResolvedValueOnce(makeClickResponse('#a'))
+      .mockResolvedValueOnce(makeClickResponse('#b'))
+      .mockResolvedValueOnce(makeClickResponse('#c'));
+    mockExecute.mockResolvedValue({ success: false, error: 'Action failed: timeout' });
+
+    const controller = createAgentController();
+    const gen = controller.start({
+      mode: 'auto',
+      initialMessage: 'Do something',
+      config: { actionDelayMs: 0, maxSteps: 20, maxTimeMs: 30000, maxSameAction: 10, maxConsecutiveFailures: 3 },
+    });
+    const events = await collectEvents(gen);
+
+    const doneEvent = events.find((e) => e.type === 'done');
+    expect(doneEvent).toBeDefined();
+    expect(doneEvent.message).toMatch(/consecutive failures/i);
+  });
+
+  test('successful action resets consecutive failure counter', async () => {
+    // fail, fail, succeed, fail, fail -> should NOT terminate (counter reset at success)
+    mockSend
+      .mockResolvedValueOnce(makeClickResponse('#a'))
+      .mockResolvedValueOnce(makeClickResponse('#b'))
+      .mockResolvedValueOnce(makeClickResponse('#c'))
+      .mockResolvedValueOnce(makeClickResponse('#d'))
+      .mockResolvedValueOnce(makeClickResponse('#e'))
+      .mockResolvedValue({ action: 'done', params: { success: true, message: 'Done!' }, reasoning: '' });
+    mockExecute
+      .mockResolvedValueOnce({ success: false, error: 'fail 1' })
+      .mockResolvedValueOnce({ success: false, error: 'fail 2' })
+      .mockResolvedValueOnce({ success: true })  // reset counter
+      .mockResolvedValueOnce({ success: false, error: 'fail 3' })
+      .mockResolvedValueOnce({ success: false, error: 'fail 4' })
+      .mockResolvedValue({ success: true, data: { message: 'Done!' } });
+
+    const controller = createAgentController();
+    const gen = controller.start({
+      mode: 'auto',
+      initialMessage: 'Do something',
+      config: { actionDelayMs: 0, maxSteps: 20, maxTimeMs: 30000, maxSameAction: 10, maxConsecutiveFailures: 3 },
+    });
+    const events = await collectEvents(gen);
+
+    const doneEvent = events.find((e) => e.type === 'done');
+    expect(doneEvent).toBeDefined();
+    // Should complete normally (not from consecutive failures)
+    expect(doneEvent.message).not.toMatch(/consecutive failures/i);
+  });
+
+  test('screenshot retry (selector not found) does not count as consecutive failure', async () => {
+    // selector-not-found failure triggers screenshot retry (free retry, no counter increment)
+    // then a success — should not terminate
+    mockSend
+      .mockResolvedValueOnce(makeClickResponse('#bad-selector'))
+      .mockResolvedValueOnce(makeClickResponse('#good-selector'))
+      .mockResolvedValue({ action: 'done', params: { success: true, message: 'Done!' }, reasoning: '' });
+    mockExecute
+      .mockResolvedValueOnce({ success: false, error: 'Element not found: #bad-selector' })
+      .mockResolvedValueOnce({ success: true })
+      .mockResolvedValue({ success: true, data: { message: 'Done!' } });
+
+    const controller = createAgentController();
+    const gen = controller.start({
+      mode: 'auto',
+      initialMessage: 'Click something',
+      config: { actionDelayMs: 0, maxSteps: 20, maxTimeMs: 30000, maxSameAction: 10, maxConsecutiveFailures: 2 },
+    });
+    const events = await collectEvents(gen);
+
+    const doneEvent = events.find((e) => e.type === 'done');
+    expect(doneEvent).toBeDefined();
+    // Should complete normally (screenshot retry is a free retry, not a failure)
+    expect(doneEvent.message).not.toMatch(/consecutive failures/i);
+  });
+});
