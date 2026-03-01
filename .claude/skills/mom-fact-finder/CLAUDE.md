@@ -94,6 +94,11 @@ Before opening the browser:
 ## Step 1 — Find or Open MOM Tab
 
 ```js
+// Set state.searchTopic from the caller's 'topic' input parameter
+// (The caller passes this via their task prompt — extract it and assign here before running)
+// e.g., state.searchTopic = 'linear regression'; // set by caller
+if (!state.searchTopic) throw new Error('state.searchTopic must be set before running this workflow. Assign: state.searchTopic = topic from input.');
+
 // Find an existing MOM teacher tab
 let momPage = context.pages().find(p => p.url().includes('myopenmath.com'));
 if (!momPage) {
@@ -162,7 +167,9 @@ await state.momPage.waitForTimeout(1500);
 await state.momPage.locator('#advsearchbtn').click();
 await state.momPage.waitForTimeout(500);
 
-// Set type filter — use the value from the table below
+// Set type filter — map caller's questionType to the value from the table below
+// e.g., 'essay' → 'essay', 'multiple choice' → 'choices'
+const questionTypeValue = state.questionType || 'essay'; // use state.questionType set from input
 await state.momPage.selectOption('select#search-type', questionTypeValue);
 ```
 
@@ -227,12 +234,13 @@ const rows = await state.momPage.evaluate(() => {
       const cells = [...r.querySelectorAll('td')];
       return {
         desc: cells[1]?.textContent?.trim(),
+        qid: cells[4]?.textContent?.trim(),  // matches output contract schema
         id: cells[4]?.textContent?.trim(),
         type: cells[5]?.textContent?.trim(),
         timesUsed: parseInt(cells[6]?.textContent?.trim() || '0', 10)
       };
     })
-    .filter(r => r.id && /^\d+$/.test(r.id)) // only rows with numeric IDs
+    .filter(r => r.qid && /^\d+$/.test(r.qid)) // only rows with numeric QIDs
     .sort((a, b) => b.timesUsed - a.timesUsed); // highest first
 });
 
@@ -256,9 +264,9 @@ For each question in `topQuestions`:
 ```js
 for (const q of topQuestions) {
   // SAFETY CHECK: only proceed if we have a valid numeric QID
-  if (!q.id || !/^\d+$/.test(q.id)) continue;
+  if (!q.qid || !/^\d+$/.test(q.qid)) continue;
 
-  const viewonlyUrl = `https://www.myopenmath.com/course/moddataset.php?id=${q.id}&cid=${state.cid}&viewonly=1`;
+  const viewonlyUrl = `https://www.myopenmath.com/course/moddataset.php?id=${q.qid}&cid=${state.cid}&viewonly=1`;
   await state.momPage.goto(viewonlyUrl, { waitUntil: 'domcontentloaded' });
   await state.momPage.waitForTimeout(1000);
 
@@ -268,7 +276,7 @@ for (const q of topQuestions) {
     document.querySelector('h2, h1')?.textContent?.trim() || ''
   );
   if (!pageUrl.includes('viewonly=1') || !pageHeading.includes('View:')) {
-    console.warn(`QID ${q.id}: Not in viewonly mode — skipping. URL: ${pageUrl}`);
+    console.warn(`QID ${q.qid}: Not in viewonly mode \u2014 skipping. URL: ${pageUrl}`);
     continue;
   }
 
@@ -284,7 +292,7 @@ for (const q of topQuestions) {
   );
 
   if (!control && !qtext) {
-    console.warn(`QID ${q.id}: Both control and qtext empty — skipping.`);
+    console.warn(`QID ${q.qid}: Both control and qtext empty \u2014 skipping.`);
     continue;
   }
 
@@ -295,7 +303,7 @@ for (const q of topQuestions) {
   q.questionText = qtextLines.slice(0, 40).join('\n') + (qtextLines.length > 40 ? '\n<!-- [truncated] -->' : '');
   q.qtype = qtype;
 
-  console.log(`QID ${q.id}: extracted ${controlLines.length} control lines, ${qtextLines.length} qtext lines`);
+  console.log(`QID ${q.qid}: extracted ${controlLines.length} control lines, ${qtextLines.length} qtext lines`);
 
   // Rate limit between navigations
   await state.momPage.waitForTimeout(1000);
