@@ -167,7 +167,7 @@ SCORING ANCHORS (use these as calibration references):
 Compare each student response to these anchors to ensure consistency.
 
 ${getScoringScaleString()}
-#WS|
+
 
 CRITICAL: A response that correctly hits every rubric criterion earns 8-9, REGARDLESS of length.
 A short, accurate answer scores higher than a long, partially-wrong one.
