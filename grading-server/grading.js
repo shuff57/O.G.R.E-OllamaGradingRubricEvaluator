@@ -6,18 +6,17 @@
 import { GRADING_PHILOSOPHY, SCORING_SCALE_DESCRIPTORS } from './grading-constants.js';
 
 /**
- * Inject custom instructions into a prompt, separating scoring calibration examples
- * (reference-only) from teacher override instructions (mandatory).
+ * Extract custom instructions into structured parts for tiered positioning.
+ * Separates scoring calibration examples (reference-only) from teacher override instructions (mandatory).
  *
- * @param {string} prompt - Current prompt string
  * @param {string} customInstructions - Combined instructions from client
- * @returns {string} - Prompt with instructions injected appropriately
+ * @returns {{ calibration: string|null, overrideInstructions: string|null }}
  */
-function injectCustomInstructions(prompt, customInstructions) {
-  if (!customInstructions) return prompt;
+function extractCustomInstructions(customInstructions) {
+  if (!customInstructions) return { calibration: null, overrideInstructions: null };
 
   if (!customInstructions.startsWith('SCORING CALIBRATION:')) {
-    return prompt + `\n\nIMPORTANT \u2014 INSTRUCTOR OVERRIDE INSTRUCTIONS (you MUST follow these):\n${customInstructions}`;
+    return { calibration: null, overrideInstructions: customInstructions };
   }
 
   const withoutHeader = customInstructions.slice('SCORING CALIBRATION:\n'.length);
@@ -38,13 +37,10 @@ function injectCustomInstructions(prompt, customInstructions) {
   const calibPart    = (splitPos === -1 ? withoutHeader : withoutHeader.slice(0, splitPos)).trim();
   const overridePart = (splitPos === -1 ? '' : withoutHeader.slice(splitPos)).trim();
 
-  if (calibPart) {
-    prompt += `\n\nSCORING CALIBRATION EXAMPLES (use to calibrate score levels only \u2014 grade against rubric criteria and SCORING SCALE above, not these examples):\n${calibPart}`;
-  }
-  if (overridePart) {
-    prompt += `\n\nIMPORTANT \u2014 INSTRUCTOR OVERRIDE INSTRUCTIONS (you MUST follow these):\n${overridePart}`;
-  }
-  return prompt;
+  return {
+    calibration: calibPart || null,
+    overrideInstructions: overridePart || null,
+  };
 }
 
 
@@ -114,9 +110,11 @@ export function buildBatchPrompt(rubric, students, anchors, bridgeResponses = nu
     essayPrompt = essayPrompt.replace(/\n\nADDITIONAL GRADING INSTRUCTIONS:\n[\s\S]+$/, '').trim();
   }
 
+  const { calibration, overrideInstructions } = extractCustomInstructions(customInstructions);
+
    let prompt = `You are an expert grading assistant. Grade ALL students in this batch against the provided rubric.
 
-GRADING PHILOSOPHY:
+${overrideInstructions ? `INSTRUCTOR OVERRIDE INSTRUCTIONS (you MUST follow these \u2014 they take absolute precedence):\n${overrideInstructions}\n\n` : ''}GRADING PHILOSOPHY:
 ${GRADING_PHILOSOPHY}
 
 MAX SCORE: ${virtualMax}
@@ -174,6 +172,9 @@ A short, accurate answer scores higher than a long, partially-wrong one.
 Only drop below 8 if a rubric criterion is genuinely missing or incorrect — NOT merely brief.
 When in doubt between two scores, choose the HIGHER one.
 `;
+  if (calibration) {
+    prompt += `\nSCORING CALIBRATION EXAMPLES (use to calibrate score levels only \u2014 grade against rubric criteria and SCORING SCALE above, not these examples):\n${calibration}\n`;
+  }
   // Add bridge responses from previous chunk for cross-chunk consistency
   if (bridgeResponses && bridgeResponses.length > 0) {
     prompt += `
@@ -235,8 +236,6 @@ Return one object per student using the EXACT studentIndex shown above each resp
 
 CRITICAL: Return results for ALL ${students.length} students. Use the studentIndex from each "--- Student N:" header.`;
 
-  // Inject custom instructions: calibration examples as reference, overrides as mandatory
-  prompt = injectCustomInstructions(prompt, customInstructions);
 
   return prompt;
 }
@@ -486,6 +485,8 @@ export function buildOutlierReviewPrompt(rubric, outlierStudents, anchors, stats
     essayPrompt = essayPrompt.replace(/\n\nADDITIONAL GRADING INSTRUCTIONS:\n[\s\S]+$/, '').trim();
   }
 
+  const { calibration, overrideInstructions } = extractCustomInstructions(customInstructions);
+
   let prompt = `You are an expert grading assistant performing a SECOND-PASS REVIEW of flagged student responses.
 
 These students received scores that deviated more than 1 standard deviation from the batch mean. Your job is to re-evaluate each one carefully by comparing against the rubric AND against similarly-scored peers to ensure the score is accurate and consistent.
@@ -495,7 +496,7 @@ BATCH CONTEXT:
 - Standard deviation: ${stats.stdDev}
 - Total students in batch: ${stats.totalStudents}
 
-GRADING PHILOSOPHY:
+${overrideInstructions ? `INSTRUCTOR OVERRIDE INSTRUCTIONS (you MUST follow these \u2014 they take absolute precedence):\n${overrideInstructions}\n\n` : ''}GRADING PHILOSOPHY:
 ${GRADING_PHILOSOPHY}
 
 MAX SCORE: ${maxScore}
@@ -543,6 +544,10 @@ SCORING ANCHORS:
 - Below Average (${anchors.belowAverage.score}/${maxScore}): ${anchors.belowAverage.description}
 - Minimal (${anchors.minimal.score}/${maxScore}): ${anchors.minimal.description}
 `;
+
+  if (calibration) {
+    prompt += `\nSCORING CALIBRATION EXAMPLES (use to calibrate score levels only \u2014 grade against rubric criteria and SCORING SCALE above, not these examples):\n${calibration}\n`;
+  }
 
   // Add each outlier student with peer comparison context
   prompt += '\nSTUDENTS TO RE-EVALUATE:\n\n';
@@ -592,8 +597,6 @@ You MUST respond with a valid JSON array ONLY. No markdown, no code fences, no e
 
 CRITICAL: Return results for ALL ${outlierStudents.length} student(s) in the array.`;
 
-  // Inject custom instructions: calibration examples as reference, overrides as mandatory
-  if (customInstructions) prompt = injectCustomInstructions(prompt, customInstructions);
 
   return prompt;
 }
@@ -740,10 +743,12 @@ export function buildSingleGradePrompt(rubric, studentWork, instructions) {
   const { virtualMax } = getScaleInfo(maxScore);
   const _sScoreHint = scoreFormatHint(virtualMax);
   const essayPrompt = rubric.essayPrompt || '(No prompt provided)';
+  const customInstructions = rubric.customInstructions || '';
+  const { calibration, overrideInstructions } = extractCustomInstructions(customInstructions);
 
   let prompt = `You are an expert grading assistant. Grade this student's work against the provided rubric.
 
-GRADING PHILOSOPHY:
+${overrideInstructions ? `INSTRUCTOR OVERRIDE INSTRUCTIONS (you MUST follow these \u2014 they take absolute precedence):\n${overrideInstructions}\n\n` : ''}GRADING PHILOSOPHY:
 ${GRADING_PHILOSOPHY}
 
 MAX SCORE: ${virtualMax}
@@ -792,9 +797,9 @@ ${studentWork || '(No response submitted)'}
     prompt += `\nADDITIONAL INSTRUCTIONS:\n${instructions}\n`;
   }
 
-  // Inject custom instructions: calibration examples as reference, overrides as mandatory
-  const customInstructions = rubric.customInstructions || '';
-  prompt = injectCustomInstructions(prompt, customInstructions);
+  if (calibration) {
+    prompt += `\nSCORING CALIBRATION EXAMPLES (use to calibrate score levels only \u2014 grade against rubric criteria and SCORING SCALE above, not these examples):\n${calibration}\n`;
+  }
   prompt += '\n';
 
   prompt += `
