@@ -1,0 +1,35 @@
+{
+  "essayPrompt": "Explain the process of photosynthesis, including where it occurs, what inputs are required, and what outputs are produced. Then describe why photosynthesis is essential for life on Earth beyond just producing food for plants.\n\nIn your explanation, be sure to cover:\n- The basic steps of the light-dependent and light-independent (Calvin cycle) reactions\n- The role of chloroplasts, chlorophyll, and key molecules (water, CO₂, glucose, oxygen)\n- At least one way photosynthesis impacts ecosystems or human life beyond plant nutrition",
+  "checklistItems": [
+    {
+      "category": "Process & Location (4 pts)",
+      "points": 4,
+      "items": [
+        "Identifies chloroplasts as the organelle where photosynthesis occurs and mentions chlorophyll as the light-absorbing pigment",
+        "Describes the light-dependent reactions: occur in the thylakoid membranes, use water and light energy, produce oxygen and ATP/NADPH",
+        "Describes the Calvin cycle (light-independent reactions): occurs in the stroma, uses CO₂ and ATP/NADPH to produce glucose (G3P)"
+      ]
+    },
+    {
+      "category": "Inputs & Outputs (3 pts)",
+      "points": 3,
+      "items": [
+        "Correctly identifies the overall inputs: water (H₂O), carbon dioxide (CO₂), and light energy",
+        "Correctly identifies the overall outputs: glucose (C₆H₁₂O₆) and oxygen (O₂)",
+        "Connects inputs to outputs by referencing the overall equation or describing the energy transformation from light to chemical energy"
+      ]
+    },
+    {
+      "category": "Broader Significance (3 pts)",
+      "points": 3,
+      "items": [
+        "Explains that photosynthesis produces the oxygen that most organisms need for cellular respiration",
+        "Describes how photosynthesis forms the base of food chains/webs, supporting nearly all life on Earth",
+        "Identifies at least one additional impact: carbon dioxide removal, fossil fuel formation, oxygen in atmosphere, or role in climate regulation"
+      ]
+    }
+  ],
+  "rubricItems": [],
+  "modelText": "Photosynthesis is the process by which plants, algae, and some bacteria convert light energy into chemical energy stored in glucose. It occurs primarily in the chloroplasts of plant cells, where the green pigment chlorophyll absorbs light energy. The process has two main stages. In the light-dependent reactions, which take place in the thylakoid membranes, water molecules are split using light energy, releasing oxygen as a byproduct and producing ATP and NADPH as energy carriers. In the Calvin cycle (light-independent reactions), which occurs in the stroma of the chloroplast, carbon dioxide from the atmosphere is fixed into organic molecules, ultimately producing glucose (G3P) using the ATP and NADPH from the light reactions. The overall equation is 6CO₂ + 6H₂O + light energy → C₆H₁₂O₆ + 6O₂. Beyond feeding plants, photosynthesis is essential for life on Earth in several ways. It produces the oxygen in our atmosphere that nearly all aerobic organisms depend on for cellular respiration. It also forms the foundation of virtually all food chains, since plants are primary producers that convert solar energy into forms other organisms can use. Additionally, photosynthesis plays a critical role in regulating Earth's climate by removing carbon dioxide from the atmosphere, acting as a natural carbon sink.",
+  "maxScore": "10"
+}

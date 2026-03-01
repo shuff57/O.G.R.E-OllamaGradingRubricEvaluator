@@ -95,6 +95,17 @@ if (_outputArg) {
   CONFIG.outputReport  = _outputArg.slice(9).replace(/\.json$/, '.md');
 }
 
+// --custom=<instructions> apply custom instructions to ALL models in this run (T15 override testing)
+const _customArg = process.argv.find(a => a.startsWith('--custom='));
+if (_customArg) {
+  const _customText = _customArg.slice(9);
+  CONFIG.models = CONFIG.models.map(m => ({ ...m, customInstructions: _customText }));
+  console.log(`[config] Custom instructions applied to all models: ${_customText.slice(0, 60)}...`);
+}
+
+// --resume: load existing output and skip models that already have successful runs
+const _resumeFlag = process.argv.includes('--resume');
+
 const fs = await import('fs');
 
 // ── Helpers ──
@@ -251,17 +262,26 @@ async function gradeOnce(modelConfig, token, rubric, students) {
 }
 
 // ── 4. Benchmark main loop ──
-async function runBenchmark(token, rubric, students) {
+async function runBenchmark(token, rubric, students, savedResults = {}) {
   const totalModels = CONFIG.models.length;
-  const allResults = {};  // { label: [ runResult | null, ... ] }
+  const allResults = { ...savedResults };  // Seed with any saved data
 
   for (let mi = 0; mi < totalModels; mi++) {
     const mc = CONFIG.models[mi];
+
+    // Resume: skip models that already have at least one successful run saved
+    if (allResults[mc.label]?.some(r => r !== null)) {
+      const nOk = allResults[mc.label].filter(r => r !== null).length;
+      console.log(`\n[Skip] ${mc.label} — using ${nOk} saved run(s)`);
+      continue;
+    }
+
     allResults[mc.label] = [];
 
     for (let ri = 0; ri < CONFIG.runsPerModel; ri++) {
       console.log(`\n[Model ${mi + 1}/${totalModels}] [Run ${ri + 1}/${CONFIG.runsPerModel}] ${mc.label} \u2014 grading ${students.length} students...`);
 
+      let runFailed = false;
       try {
         const result = await gradeOnce(mc, token, rubric, students);
         allResults[mc.label].push(result);
@@ -269,14 +289,36 @@ async function runBenchmark(token, rubric, students) {
         const sd = result.stats?.stdDev?.toFixed(2) ?? 'N/A';
         console.log(`  Done in ${(result.elapsed / 1000).toFixed(1)}s \u2014 mean=${m} stdDev=${sd}`);
       } catch (err) {
+        runFailed = true;
         console.error(`  FAILED: ${err.message}`);
         allResults[mc.label].push(null);
       }
 
-      // Sleep between requests (skip after last)
+      // Sleep between requests — longer after failures to let server stabilize
+      const delay = runFailed ? 30000 : CONFIG.delayMs;
       if (ri < CONFIG.runsPerModel - 1 || mi < totalModels - 1) {
-        await sleep(CONFIG.delayMs);
+        if (runFailed) console.log(`  (waiting ${delay / 1000}s after failure...)`);
+        await sleep(delay);
       }
+    }  // end ri loop
+
+    // Incremental save after each model — preserves data if server crashes mid-run
+    {
+      const partialStats = computeStats(allResults, students);
+      const partialData = {
+        timestamp: new Date().toISOString(),
+        config: {
+          models: CONFIG.models.map(m => m.label),
+          runsPerModel: CONFIG.runsPerModel,
+          tolerance: CONFIG.tolerance,
+          chunkSize: CONFIG.chunkSize,
+          sweep: CONFIG.sweep,
+          studentCount: students.length,
+        },
+        stats: partialStats,
+        rawResults: allResults,
+      };
+      saveResults(partialData);
     }
   }
 
@@ -464,7 +506,21 @@ async function main() {
 
   const token = await preflight();
   const { students, rubric } = loadInputs();
-  const rawResults = await runBenchmark(token, rubric, students);
+
+  // Load saved results if --resume flag is set
+  let savedResults = {};
+  if (_resumeFlag && fs.existsSync(CONFIG.outputResults)) {
+    try {
+      const existing = JSON.parse(fs.readFileSync(CONFIG.outputResults, 'utf-8'));
+      savedResults = existing.rawResults || {};
+      const nSaved = Object.values(savedResults).reduce((acc, runs) => acc + (runs?.filter(r => r !== null).length || 0), 0);
+      console.log(`[Resume] Loaded ${nSaved} saved run(s) from ${CONFIG.outputResults}\n`);
+    } catch (e) {
+      console.warn(`[Resume] Could not load existing results: ${e.message}\n`);
+    }
+  }
+
+  const rawResults = await runBenchmark(token, rubric, students, savedResults);
   const stats = computeStats(rawResults, students);
 
   const data = {

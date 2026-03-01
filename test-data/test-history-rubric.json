@@ -1,0 +1,34 @@
+{
+  "essayPrompt": "Analyze the causes of the American Civil War. While slavery is often cited as the primary cause, the road to war involved a complex web of political, economic, and social factors.\n\nIn your essay, address the following:\n- Identify and explain at least two major causes of the Civil War, providing specific historical evidence for each\n- Analyze how these causes were interconnected rather than isolated events\n- Evaluate which cause you believe was most significant and defend your position with reasoning",
+  "checklistItems": [
+    {
+      "category": "Cause Identification & Evidence (4 pts)",
+      "points": 4,
+      "items": [
+        "Identifies at least two distinct causes of the Civil War (e.g., slavery, states' rights, economic differences, territorial expansion, political failures)",
+        "Provides specific historical evidence for each cause — names events, laws, people, or dates (e.g., Missouri Compromise, Kansas-Nebraska Act, Dred Scott, John Brown, election of 1860)",
+        "Demonstrates understanding that slavery was central to the conflict, even when discussing other factors like states' rights or economics"
+      ]
+    },
+    {
+      "category": "Interconnection Analysis (3 pts)",
+      "points": 3,
+      "items": [
+        "Shows how at least two causes were linked rather than treating them as separate, isolated factors",
+        "Explains cause-and-effect relationships between events or issues (e.g., how territorial expansion intensified the slavery debate, or how economic differences fueled political conflict)"
+      ]
+    },
+    {
+      "category": "Evaluation & Argument (3 pts)",
+      "points": 3,
+      "items": [
+        "Takes a clear position on which cause was most significant",
+        "Supports that position with logical reasoning and historical evidence, not just opinion",
+        "Acknowledges complexity — recognizes that other factors also played important roles even while arguing for one as primary"
+      ]
+    }
+  ],
+  "rubricItems": [],
+  "modelText": "The American Civil War resulted from a convergence of deeply intertwined political, economic, and moral conflicts, though slavery stood at the center of virtually all of them. The most direct cause was the institution of slavery itself and the growing moral opposition to it in the North. By the 1850s, the abolitionist movement had gained significant momentum, and events like the publication of Uncle Tom's Cabin (1852) and John Brown's raid on Harpers Ferry (1859) inflamed sectional tensions. The Southern economy depended on enslaved labor for its plantation system, making slavery not just a moral issue but an economic one. A second major cause was the political crisis over territorial expansion. Each new territory forced the question of whether slavery would expand westward. The Missouri Compromise (1820), the Compromise of 1850, and the Kansas-Nebraska Act (1854) were all attempts to manage this tension, but each ultimately deepened the divide. The Kansas-Nebraska Act in particular led to violent conflict in 'Bleeding Kansas' and destroyed the Whig Party, giving rise to the Republican Party. These causes were deeply interconnected: the debate over states' rights was fundamentally a debate about whether states had the right to maintain slavery. Economic differences between the industrializing North and the agrarian South were rooted in the South's dependence on enslaved labor. Political compromises failed precisely because slavery was a moral issue on which neither side could fully compromise. I believe slavery was the most significant cause because every other factor — states' rights arguments, economic tensions, territorial disputes, and political breakdowns — ultimately traced back to the question of whether human beings could be held as property. The election of Abraham Lincoln in 1860, who opposed slavery's expansion, was the immediate trigger for secession, demonstrating that the South viewed any threat to slavery as an existential crisis. While acknowledging that economic and political factors created the conditions for war, slavery was the irreducible core issue without which the other tensions would likely have been resolved through normal political processes.",
+  "maxScore": "10"
+}
