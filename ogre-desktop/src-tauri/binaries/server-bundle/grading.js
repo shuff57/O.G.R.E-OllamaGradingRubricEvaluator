@@ -134,6 +134,7 @@ ${essayPrompt}
         }
       }
     }
+    prompt += `\nPARTIAL CREDIT RULE: When a criterion is addressed conceptually but lacks specific values, formulas, or concrete evidence, award 40-60% of that criterion's points. Award 20-40% if only loosely related; 60-80% if substantially complete but missing one key element. Evaluate each criterion INDEPENDENTLY - do not let strength on one compensate for weakness on another.\n`;
   }
 
   // Add rubric targets if present
@@ -211,29 +212,32 @@ CONSISTENCY RULES:
     prompt += `${student.response || '(No response submitted)'}\n\n`;
   }
 
+  // Build Chain-of-Rubric criterion names for JSON response template
+  const _corNames = (rubric.checklistItems || []).map(c => c.category.replace(/\s*\(\d+\s*pts?\)/i, '').trim());
+  const _corField = _corNames.length > 0
+    ? `    "criterion_scores": {${_corNames.map(n => `"${n}": <pts>`).join(', ')}},\n`
+    : '';
   // Response format instructions — use actual student indices so AI doesn't guess
   const firstIdx = students[0]?.index ?? 0;
   const secondIdx = students.length > 1 ? (students[1]?.index ?? firstIdx + 1) : firstIdx + 1;
   prompt += `
-RESPONSE FORMAT:
-You MUST respond with a valid JSON array ONLY. No markdown, no code fences, no explanation.
-Return one object per student using the EXACT studentIndex shown above each response.
+${_corNames.length > 0 ? `GRADING PROCESS:\nFor each student: (1) score each GRADING CHECKLIST criterion independently using the PARTIAL CREDIT RULE above, (2) record scores in criterion_scores, (3) sum for the final score. Do NOT adjust criterion scores to hit a desired total.\n` : ''}
 
 [
   {
     "studentIndex": ${firstIdx},
-    "score": <${_scoreHint}>
+    ${_corField}    "score": <${_scoreHint}>
     "feedback": "<Use the student's first name from their header. Write one bullet point per rubric category. Use \\n between each bullet so they appear on separate lines. For each bullet: say what they did well, then say what was missing and what they would need to write to earn full credit. Write like a high school math teacher talking directly to the student. No em dashes. Short and clear.>"
   },
   {
     "studentIndex": ${secondIdx},
-    "score": <${_scoreHint}>
+    ${_corField}    "score": <${_scoreHint}>
     "feedback": "<feedback>"
   }
   // ... continue for all ${students.length} students
 ]
 
-CRITICAL: Return results for ALL ${students.length} students. Use the studentIndex from each "--- Student N:" header.`;
+CRITICAL: Return results for ALL ${students.length} students. Use the studentIndex from each \"--- Student N:\" header.`;
 
 
   return prompt;
@@ -767,6 +771,7 @@ ${essayPrompt}
         }
       }
     }
+    prompt += `\nPARTIAL CREDIT RULE: When a criterion is addressed conceptually but lacks specific values, formulas, or concrete evidence, award 40-60% of that criterion's points. Award 20-40% if only loosely related; 60-80% if substantially complete but missing one key element. Evaluate each criterion INDEPENDENTLY - do not let strength on one compensate for weakness on another.\n`;
   }
 
   // Add rubric targets if present
@@ -800,14 +805,20 @@ ${essayPrompt}
     prompt += `\nADDITIONAL INSTRUCTIONS:\n${instructions}\n`;
   }
 
+  // Build Chain-of-Rubric criterion names for single prompt
+  const _sCorNames = (rubric.checklistItems || []).map(c => c.category.replace(/\s*\(\d+\s*pts?\)/i, '').trim());
+  const _sCorField = _sCorNames.length > 0
+    ? `  "criterion_scores": {${_sCorNames.map(n => `"${n}": <pts>`).join(', ')}},\n`
+    : '';
   prompt += `
+${_sCorNames.length > 0 ? 'GRADING PROCESS: Score each GRADING CHECKLIST criterion independently using the PARTIAL CREDIT RULE, then sum for the final score.\n' : ''}
 RESPONSE FORMAT:
 Return ONLY valid JSON. No markdown code fences. No explanation text.
 
 {
-  "score": <${_sScoreHint}>
-    "feedback": "<Write directly to the student using 'you'. Write one bullet point per rubric category. Use \\n between each bullet so they appear on separate lines. For each bullet: say what they did well, then say what was missing and what they would need to write to earn full credit. Write like a high school math teacher talking directly to the student. No em dashes. Short and clear.>"
-}` ;
+${_sCorField}  "score": <${_sScoreHint}>
+  "feedback": "<Write directly to the student using 'you'. Write one bullet point per rubric category. Use \\n between each bullet so they appear on separate lines. For each bullet: say what they did well, then say what was missing and what they would need to write to earn full credit. Write like a high school math teacher talking directly to the student. No em dashes. Short and clear.>"
+}`;
 
   return prompt;
 }

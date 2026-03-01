@@ -153,7 +153,7 @@ describe('Tiered Prompt Architecture - Regression Tests (T12)', () => {
       const rubric = { ...baseRubric, customInstructions: '' };
       const prompt = buildBatchPrompt(rubric, mockStudents, mockAnchors);
       const idxStudents = prompt.indexOf('STUDENTS TO GRADE');
-      const idxFormatEnd = prompt.lastIndexOf('Return one object per student');
+      const idxFormatEnd = prompt.lastIndexOf('CRITICAL: Return results for ALL');
       expect(idxStudents).toBeGreaterThan(-1);
       expect(idxFormatEnd).toBeGreaterThan(idxStudents);
     });

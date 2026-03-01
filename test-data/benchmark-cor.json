@@ -1,0 +1,832 @@
+{
+  "timestamp": "2026-03-01T17:58:04.588Z",
+  "config": {
+    "models": [
+      "GLM-5",
+      "GPT-OSS 120B",
+      "Sonnet 4.6"
+    ],
+    "runsPerModel": 3,
+    "tolerance": 1,
+    "chunkSize": 30,
+    "sweep": "none",
+    "studentCount": 25
+  },
+  "stats": {
+    "perModel": {
+      "GLM-5": {
+        "successfulRuns": 0,
+        "totalRuns": 3,
+        "meanScore": 0,
+        "stdDev": 0,
+        "runToRunVariance": 0
+      },
+      "GPT-OSS 120B": {
+        "successfulRuns": 0,
+        "totalRuns": 3,
+        "meanScore": 0,
+        "stdDev": 0,
+        "runToRunVariance": 0
+      },
+      "Sonnet 4.6": {
+        "successfulRuns": 3,
+        "totalRuns": 3,
+        "meanScore": 5.973333333333333,
+        "stdDev": 0.06110100926607792,
+        "runToRunVariance": 0.00373333333333334
+      }
+    },
+    "perStudent": {
+      "0": {
+        "name": "Alvarez, Emiliano",
+        "models": {
+          "GLM-5": null,
+          "GPT-OSS 120B": null,
+          "Sonnet 4.6": 7
+        }
+      },
+      "1": {
+        "name": "Cartwright, Juliet",
+        "models": {
+          "GLM-5": null,
+          "GPT-OSS 120B": null,
+          "Sonnet 4.6": 6
+        }
+      },
+      "2": {
+        "name": "Consoli, Ben",
+        "models": {
+          "GLM-5": null,
+          "GPT-OSS 120B": null,
+          "Sonnet 4.6": 8
+        }
+      },
+      "3": {
+        "name": "Cox, Jenna",
+        "models": {
+          "GLM-5": null,
+          "GPT-OSS 120B": null,
+          "Sonnet 4.6": 4
+        }
+      },
+      "4": {
+        "name": "Davis, Cecilia",
+        "models": {
+          "GLM-5": null,
+          "GPT-OSS 120B": null,
+          "Sonnet 4.6": 2
+        }
+      },
+      "5": {
+        "name": "Doris, Nicole",
+        "models": {
+          "GLM-5": null,
+          "GPT-OSS 120B": null,
+          "Sonnet 4.6": 5
+        }
+      },
+      "6": {
+        "name": "Guichard, Sophia",
+        "models": {
+          "GLM-5": null,
+          "GPT-OSS 120B": null,
+          "Sonnet 4.6": 7
+        }
+      },
+      "7": {
+        "name": "Guzman Rangel, Jimena",
+        "models": {
+          "GLM-5": null,
+          "GPT-OSS 120B": null,
+          "Sonnet 4.6": 9
+        }
+      },
+      "8": {
+        "name": "Herl, Chrey",
+        "models": {
+          "GLM-5": null,
+          "GPT-OSS 120B": null,
+          "Sonnet 4.6": 7.333333333333333
+        }
+      },
+      "9": {
+        "name": "Jimmerson, Kwan",
+        "models": {
+          "GLM-5": null,
+          "GPT-OSS 120B": null,
+          "Sonnet 4.6": 2
+        }
+      },
+      "10": {
+        "name": "Johnson, Kenzie",
+        "models": {
+          "GLM-5": null,
+          "GPT-OSS 120B": null,
+          "Sonnet 4.6": 9
+        }
+      },
+      "11": {
+        "name": "Laparan, Elle",
+        "models": {
+          "GLM-5": null,
+          "GPT-OSS 120B": null,
+          "Sonnet 4.6": 7
+        }
+      },
+      "12": {
+        "name": "Martin, Makenzie",
+        "models": {
+          "GLM-5": null,
+          "GPT-OSS 120B": null,
+          "Sonnet 4.6": 8
+        }
+      },
+      "13": {
+        "name": "melton, myla",
+        "models": {
+          "GLM-5": null,
+          "GPT-OSS 120B": null,
+          "Sonnet 4.6": 3
+        }
+      },
+      "14": {
+        "name": "Metroka, Layla",
+        "models": {
+          "GLM-5": null,
+          "GPT-OSS 120B": null,
+          "Sonnet 4.6": 4.666666666666667
+        }
+      },
+      "15": {
+        "name": "Milton, Joshua",
+        "models": {
+          "GLM-5": null,
+          "GPT-OSS 120B": null,
+          "Sonnet 4.6": 7
+        }
+      },
+      "16": {
+        "name": "Parker, Tyson",
+        "models": {
+          "GLM-5": null,
+          "GPT-OSS 120B": null,
+          "Sonnet 4.6": 7.666666666666667
+        }
+      },
+      "17": {
+        "name": "Plummer, Justin",
+        "models": {
+          "GLM-5": null,
+          "GPT-OSS 120B": null,
+          "Sonnet 4.6": 4
+        }
+      },
+      "18": {
+        "name": "Price, Lynn",
+        "models": {
+          "GLM-5": null,
+          "GPT-OSS 120B": null,
+          "Sonnet 4.6": 7
+        }
+      },
+      "19": {
+        "name": "Simcox, Foster",
+        "models": {
+          "GLM-5": null,
+          "GPT-OSS 120B": null,
+          "Sonnet 4.6": 8
+        }
+      },
+      "20": {
+        "name": "Sorenson, Jack",
+        "models": {
+          "GLM-5": null,
+          "GPT-OSS 120B": null,
+          "Sonnet 4.6": 7
+        }
+      },
+      "21": {
+        "name": "Stratton, Tessa",
+        "models": {
+          "GLM-5": null,
+          "GPT-OSS 120B": null,
+          "Sonnet 4.6": 5.333333333333333
+        }
+      },
+      "22": {
+        "name": "Teran, William",
+        "models": {
+          "GLM-5": null,
+          "GPT-OSS 120B": null,
+          "Sonnet 4.6": 4
+        }
+      },
+      "23": {
+        "name": "Xiong, William",
+        "models": {
+          "GLM-5": null,
+          "GPT-OSS 120B": null,
+          "Sonnet 4.6": 2
+        }
+      },
+      "24": {
+        "name": "Zimmerman, Caidyn",
+        "models": {
+          "GLM-5": null,
+          "GPT-OSS 120B": null,
+          "Sonnet 4.6": 8.333333333333334
+        }
+      }
+    },
+    "agreement": {
+      "GLM-5 vs GPT-OSS 120B": {
+        "agreementPct": 0,
+        "agreeCount": 0,
+        "comparableCount": 0
+      },
+      "GLM-5 vs Sonnet 4.6": {
+        "agreementPct": 0,
+        "agreeCount": 0,
+        "comparableCount": 0
+      },
+      "GPT-OSS 120B vs Sonnet 4.6": {
+        "agreementPct": 0,
+        "agreeCount": 0,
+        "comparableCount": 0
+      }
+    },
+    "flagged": []
+  },
+  "rawResults": {
+    "GLM-5": [
+      null,
+      null,
+      null
+    ],
+    "GPT-OSS 120B": [
+      null,
+      null,
+      null
+    ],
+    "Sonnet 4.6": [
+      {
+        "elapsed": 87570,
+        "stats": {
+          "mean": 5.92,
+          "stdDev": 2.13,
+          "outliers": 6,
+          "adjusted": 0
+        },
+        "results": [
+          {
+            "studentIndex": 0,
+            "name": "Alvarez, Emiliano",
+            "rawScore": 7,
+            "score": 7,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 1,
+            "name": "Cartwright, Juliet",
+            "rawScore": 6,
+            "score": 6,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 2,
+            "name": "Consoli, Ben",
+            "rawScore": 8,
+            "score": 8,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 3,
+            "name": "Cox, Jenna",
+            "rawScore": 4,
+            "score": 4,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 4,
+            "name": "Davis, Cecilia",
+            "rawScore": 2,
+            "score": 2,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 5,
+            "name": "Doris, Nicole",
+            "rawScore": 5,
+            "score": 5,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 6,
+            "name": "Guichard, Sophia",
+            "rawScore": 7,
+            "score": 7,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 7,
+            "name": "Guzman Rangel, Jimena",
+            "rawScore": 9,
+            "score": 9,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 8,
+            "name": "Herl, Chrey",
+            "rawScore": 7,
+            "score": 7,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 9,
+            "name": "Jimmerson, Kwan",
+            "rawScore": 2,
+            "score": 2,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 10,
+            "name": "Johnson, Kenzie",
+            "rawScore": 9,
+            "score": 9,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 11,
+            "name": "Laparan, Elle",
+            "rawScore": 7,
+            "score": 7,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 12,
+            "name": "Martin, Makenzie",
+            "rawScore": 8,
+            "score": 8,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 13,
+            "name": "melton, myla",
+            "rawScore": 3,
+            "score": 3,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 14,
+            "name": "Metroka, Layla",
+            "rawScore": 5,
+            "score": 5,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 15,
+            "name": "Milton, Joshua",
+            "rawScore": 7,
+            "score": 7,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 16,
+            "name": "Parker, Tyson",
+            "rawScore": 7,
+            "score": 7,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 17,
+            "name": "Plummer, Justin",
+            "rawScore": 4,
+            "score": 4,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 18,
+            "name": "Price, Lynn",
+            "rawScore": 7,
+            "score": 7,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 19,
+            "name": "Simcox, Foster",
+            "rawScore": 8,
+            "score": 8,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 20,
+            "name": "Sorenson, Jack",
+            "rawScore": 7,
+            "score": 7,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 21,
+            "name": "Stratton, Tessa",
+            "rawScore": 5,
+            "score": 5,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 22,
+            "name": "Teran, William",
+            "rawScore": 4,
+            "score": 4,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 23,
+            "name": "Xiong, William",
+            "rawScore": 2,
+            "score": 2,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 24,
+            "name": "Zimmerman, Caidyn",
+            "rawScore": 8,
+            "score": 8,
+            "adjusted": false
+          }
+        ]
+      },
+      {
+        "elapsed": 89558,
+        "stats": {
+          "mean": 5.96,
+          "stdDev": 2.16,
+          "outliers": 6,
+          "adjusted": 0
+        },
+        "results": [
+          {
+            "studentIndex": 0,
+            "name": "Alvarez, Emiliano",
+            "rawScore": 7,
+            "score": 7,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 1,
+            "name": "Cartwright, Juliet",
+            "rawScore": 6,
+            "score": 6,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 2,
+            "name": "Consoli, Ben",
+            "rawScore": 8,
+            "score": 8,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 3,
+            "name": "Cox, Jenna",
+            "rawScore": 4,
+            "score": 4,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 4,
+            "name": "Davis, Cecilia",
+            "rawScore": 2,
+            "score": 2,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 5,
+            "name": "Doris, Nicole",
+            "rawScore": 5,
+            "score": 5,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 6,
+            "name": "Guichard, Sophia",
+            "rawScore": 7,
+            "score": 7,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 7,
+            "name": "Guzman Rangel, Jimena",
+            "rawScore": 9,
+            "score": 9,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 8,
+            "name": "Herl, Chrey",
+            "rawScore": 7,
+            "score": 7,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 9,
+            "name": "Jimmerson, Kwan",
+            "rawScore": 2,
+            "score": 2,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 10,
+            "name": "Johnson, Kenzie",
+            "rawScore": 9,
+            "score": 9,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 11,
+            "name": "Laparan, Elle",
+            "rawScore": 7,
+            "score": 7,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 12,
+            "name": "Martin, Makenzie",
+            "rawScore": 8,
+            "score": 8,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 13,
+            "name": "melton, myla",
+            "rawScore": 3,
+            "score": 3,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 14,
+            "name": "Metroka, Layla",
+            "rawScore": 5,
+            "score": 5,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 15,
+            "name": "Milton, Joshua",
+            "rawScore": 7,
+            "score": 7,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 16,
+            "name": "Parker, Tyson",
+            "rawScore": 8,
+            "score": 8,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 17,
+            "name": "Plummer, Justin",
+            "rawScore": 4,
+            "score": 4,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 18,
+            "name": "Price, Lynn",
+            "rawScore": 7,
+            "score": 7,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 19,
+            "name": "Simcox, Foster",
+            "rawScore": 8,
+            "score": 8,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 20,
+            "name": "Sorenson, Jack",
+            "rawScore": 7,
+            "score": 7,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 21,
+            "name": "Stratton, Tessa",
+            "rawScore": 5,
+            "score": 5,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 22,
+            "name": "Teran, William",
+            "rawScore": 4,
+            "score": 4,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 23,
+            "name": "Xiong, William",
+            "rawScore": 2,
+            "score": 2,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 24,
+            "name": "Zimmerman, Caidyn",
+            "rawScore": 8,
+            "score": 8,
+            "adjusted": false
+          }
+        ]
+      },
+      {
+        "elapsed": 69687,
+        "stats": {
+          "mean": 6.04,
+          "stdDev": 2.25,
+          "outliers": 7,
+          "adjusted": 0
+        },
+        "results": [
+          {
+            "studentIndex": 0,
+            "name": "Alvarez, Emiliano",
+            "rawScore": 7,
+            "score": 7,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 1,
+            "name": "Cartwright, Juliet",
+            "rawScore": 6,
+            "score": 6,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 2,
+            "name": "Consoli, Ben",
+            "rawScore": 8,
+            "score": 8,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 3,
+            "name": "Cox, Jenna",
+            "rawScore": 4,
+            "score": 4,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 4,
+            "name": "Davis, Cecilia",
+            "rawScore": 2,
+            "score": 2,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 5,
+            "name": "Doris, Nicole",
+            "rawScore": 5,
+            "score": 5,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 6,
+            "name": "Guichard, Sophia",
+            "rawScore": 7,
+            "score": 7,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 7,
+            "name": "Guzman Rangel, Jimena",
+            "rawScore": 9,
+            "score": 9,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 8,
+            "name": "Herl, Chrey",
+            "rawScore": 8,
+            "score": 8,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 9,
+            "name": "Jimmerson, Kwan",
+            "rawScore": 2,
+            "score": 2,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 10,
+            "name": "Johnson, Kenzie",
+            "rawScore": 9,
+            "score": 9,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 11,
+            "name": "Laparan, Elle",
+            "rawScore": 7,
+            "score": 7,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 12,
+            "name": "Martin, Makenzie",
+            "rawScore": 8,
+            "score": 8,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 13,
+            "name": "melton, myla",
+            "rawScore": 3,
+            "score": 3,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 14,
+            "name": "Metroka, Layla",
+            "rawScore": 4,
+            "score": 4,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 15,
+            "name": "Milton, Joshua",
+            "rawScore": 7,
+            "score": 7,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 16,
+            "name": "Parker, Tyson",
+            "rawScore": 8,
+            "score": 8,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 17,
+            "name": "Plummer, Justin",
+            "rawScore": 4,
+            "score": 4,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 18,
+            "name": "Price, Lynn",
+            "rawScore": 7,
+            "score": 7,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 19,
+            "name": "Simcox, Foster",
+            "rawScore": 8,
+            "score": 8,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 20,
+            "name": "Sorenson, Jack",
+            "rawScore": 7,
+            "score": 7,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 21,
+            "name": "Stratton, Tessa",
+            "rawScore": 6,
+            "score": 6,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 22,
+            "name": "Teran, William",
+            "rawScore": 4,
+            "score": 4,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 23,
+            "name": "Xiong, William",
+            "rawScore": 2,
+            "score": 2,
+            "adjusted": false
+          },
+          {
+            "studentIndex": 24,
+            "name": "Zimmerman, Caidyn",
+            "rawScore": 9,
+            "score": 9,
+            "adjusted": false
+          }
+        ]
+      }
+    ]
+  }
+}
