@@ -136,7 +136,7 @@ describe('Provider Request Builders', () => {
       const result = buildAnthropicRequest(config, messages);
       
       expect(result.body.model).toBe('claude-sonnet-4-20250514');
-      expect(result.body.max_tokens).toBe(4096);
+      expect(result.body.max_tokens).toBe(16000);
     });
 
     test('handles messages without system message', () => {

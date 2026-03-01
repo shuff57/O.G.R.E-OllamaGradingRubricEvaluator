@@ -3,7 +3,7 @@
  * Handles batch grading with scoring anchors, chunking, and outlier detection
  */
 
-import { GRADING_PHILOSOPHY } from './grading-constants.js';
+import { GRADING_PHILOSOPHY, SCORING_SCALE_DESCRIPTORS } from './grading-constants.js';
 
 /**
  * Inject custom instructions into a prompt, separating scoring calibration examples
@@ -166,18 +166,8 @@ SCORING ANCHORS (use these as calibration references):
 
 Compare each student response to these anchors to ensure consistency.
 
-SCORING SCALE (use integers 0-10 — server converts to actual points):
-0  – No submission or completely blank
-1  – Off-topic: response does not address the question at all
-2  – Minimal effort: mentions the topic but shows almost no understanding
-3  – Very limited: some awareness of concepts but largely incomplete
-4  – Partial: shows basic familiarity but misses most key criteria
-5  – Developing: demonstrates partial understanding, covers some key points
-6  – Approaching: addresses main ideas but with notable gaps or errors
-7  – Competent: correctly addresses SOME but not all rubric criteria
-8  – Proficient: correctly addresses ALL rubric criteria, even if briefly or concisely
-9  – Strong: correctly addresses ALL rubric criteria with clear, accurate explanation
-10 – Excellent: addresses all criteria thoroughly with precision and depth
+${getScoringScaleString()}
+#WS|
 
 CRITICAL: A response that correctly hits every rubric criterion earns 8-9, REGARDLESS of length.
 A short, accurate answer scores higher than a long, partially-wrong one.
@@ -373,6 +363,12 @@ function scoreFormatHint(_maxScore) {
 function getScaleInfo(maxScore) {
   const max = parseFloat(maxScore) || 10;
   return { virtualMax: 10, factor: 10 / max };
+}
+
+// Build scoring scale string from shared constant
+function getScoringScaleString() {
+  return 'SCORING SCALE (use integers 0-10 — server converts to actual points):\n' +
+    SCORING_SCALE_DESCRIPTORS.map(s => `${s.score.toString().padStart(2)} – ${s.descriptor}`).join('\n');
 }
 
 function validateBatchResults(parsed, students, maxScore) {
@@ -802,18 +798,8 @@ ${studentWork || '(No response submitted)'}
   prompt += '\n';
 
   prompt += `
-SCORING SCALE (use integers 0-10 — server converts to actual points):
-0  – No submission or completely blank
-1  – Off-topic: response does not address the question at all
-2  – Minimal effort: mentions the topic but shows almost no understanding
-3  – Very limited: some awareness of concepts but largely incomplete
-4  – Partial: shows basic familiarity but misses most key criteria
-5  – Developing: demonstrates partial understanding, covers some key points
-6  – Approaching: addresses main ideas but with notable gaps or errors
-7  – Satisfactory: shows reasonable understanding of core concepts
-8  – Good: solid understanding with only minor gaps or imprecision
-9  – Very good: thorough and accurate, demonstrates strong command
-10 – Excellent: comprehensive, precise, and clearly communicated
+${getScoringScaleString()}
+
 
 When in doubt between two scores, choose the HIGHER one.
 

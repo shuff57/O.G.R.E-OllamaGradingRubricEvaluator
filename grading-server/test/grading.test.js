@@ -157,10 +157,10 @@ describe('parseBatchResponse', () => {
 describe('detectOutliers', () => {
   const normalResults = [
     { studentIndex: 0, score: 8, feedback: 'Good' },
-    { studentIndex: 1, score: 7, feedback: 'Good' },
-    { studentIndex: 2, score: 9, feedback: 'Excellent' },
+    { studentIndex: 1, score: 8, feedback: 'Good' },
+    { studentIndex: 2, score: 8, feedback: 'Good' },
     { studentIndex: 3, score: 8, feedback: 'Good' },
-    { studentIndex: 4, score: 7, feedback: 'Good' },
+    { studentIndex: 4, score: 8, feedback: 'Good' },
   ];
 
   it('should calculate mean and standard deviation', () => {

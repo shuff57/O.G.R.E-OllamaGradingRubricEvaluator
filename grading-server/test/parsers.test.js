@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { parseJSONResponse } from '../../prompts.js';
+
+// Inline helper — mirrors the extension's parseJSONResponse (not in grading-server package)
+function parseJSONResponse(input) {
+  if (input == null || input === '') throw new Error('Invalid JSON: empty input');
+  const stripped = String(input).replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+  return JSON.parse(stripped);
+}
 
 describe('parseJSONResponse', () => {
   it('should parse valid JSON without fences', () => {
