@@ -142,7 +142,7 @@ describe("parseSSEText", () => {
     expect(arg.message).toBe("Provider timeout");
   });
 
-  it("dispatches multiple events from a single text", () => {
+  it("dispatches multiple events from a single text", async () => {
     const onProgress = vi.fn();
     const onChunk = vi.fn();
     const onDone = vi.fn();
@@ -153,7 +153,7 @@ describe("parseSSEText", () => {
       sseBlock("done", { stats: { mean: 9, stdDev: 0, outliers: 0, adjusted: 0 }, anchors: {}, metadata: {} }),
     ].join("");
 
-    parseSSEText(text, { onProgress, onChunk, onDone });
+    await parseSSEText(text, { onProgress, onChunk, onDone });
 
     expect(onProgress).toHaveBeenCalledOnce();
     expect(onChunk).toHaveBeenCalledOnce();
@@ -186,7 +186,7 @@ describe("parseSSEText", () => {
     expect(callbacks.onError).not.toHaveBeenCalled();
   });
 
-  it("silently skips events with malformed JSON data", () => {
+  it("silently skips events with malformed JSON data", async () => {
     const onProgress = vi.fn();
     const onDone = vi.fn();
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -195,7 +195,7 @@ describe("parseSSEText", () => {
       "event: progress\ndata: {not valid json}\n\n" +
       sseBlock("done", { stats: {} });
 
-    parseSSEText(text, { onProgress, onDone });
+    await parseSSEText(text, { onProgress, onDone });
 
     // Malformed event should be skipped, next event still dispatched
     expect(onProgress).not.toHaveBeenCalled();
