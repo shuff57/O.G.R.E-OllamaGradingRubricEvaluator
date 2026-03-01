@@ -194,6 +194,7 @@ export function createAgentController(): AgentController {
     let lastActionKey = '';
     let lastActionRepeatCount = 0;
     let consecutiveFailures = 0;
+    let lastSiteContext = siteContext;
 
     const isCompact = config.compact ?? true;
     /** Tracks the action key of the last selector failure that triggered a screenshot retry */
@@ -390,6 +391,26 @@ export function createAgentController(): AgentController {
         }
       } else if (result.success) {
         consecutiveFailures = 0;
+      }
+      // ── Site context refresh after navigate ──
+      // When the agent navigates to a new URL, inject an updated site guide as a
+      // supplementary user message. Only inject if the guide has changed (avoids
+      // duplicates when navigating within the same profiled site).
+      if (action === 'navigate' && result.success) {
+        try {
+          const newUrl = await getEmbeddedUrl();
+          const newSiteContext = newUrl ? await buildSiteContextInjection(newUrl) : '';
+          if (newSiteContext !== lastSiteContext) {
+            const guideContent = newSiteContext || 'No site guide available for this URL. Use DOM elements only.';
+            conversationHistory.push({
+              role: 'user',
+              content: `[System: Navigated to ${newUrl ?? 'new page'}. ${guideContent}]`,
+            });
+            lastSiteContext = newSiteContext;
+          }
+        } catch {
+          // URL unavailable after navigate — skip context refresh
+        }
       }
       // ── Step 7: Check for done action ──
       if (action === 'done') {

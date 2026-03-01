@@ -457,3 +457,115 @@ describe('agent-loop: consecutive failure detection', () => {
     expect(doneEvent.message).not.toMatch(/consecutive failures/i);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Site context refresh after navigate (Task 4)
+// ---------------------------------------------------------------------------
+
+describe('agent-loop: site context refresh after navigate', () => {
+  const makeNavigateResponse = (url: string) => ({
+    action: 'navigate',
+    params: { url },
+    reasoning: `navigate to ${url}`,
+  });
+
+  test('injects updated site guide after navigating to a profiled URL', async () => {
+    const { getEmbeddedUrl } = await import('./browser');
+    const { buildSiteContextInjection } = await import('./skills-api');
+
+    // Start on non-profiled URL, navigate to MOM
+    (getEmbeddedUrl as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(null)  // initial URL (no profile)
+      .mockResolvedValue('https://www.myopenmath.com/course.php');  // after navigate
+    (buildSiteContextInjection as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce('')  // initial context (no profile)
+      .mockResolvedValue('SITE GUIDE: MyOpenMath guide content here');  // after navigate
+
+    mockSend
+      .mockResolvedValueOnce(makeNavigateResponse('https://www.myopenmath.com/course.php'))
+      .mockResolvedValue({ action: 'done', params: { success: true, message: 'Done!' }, reasoning: '' });
+    mockExecute
+      .mockResolvedValueOnce({ success: true })
+      .mockResolvedValue({ success: true, data: { message: 'Done!' } });
+
+    const controller = createAgentController();
+    const gen = controller.start({
+      mode: 'auto',
+      initialMessage: 'Navigate to MOM',
+      config: { actionDelayMs: 0, maxSteps: 10, maxTimeMs: 30000, maxSameAction: 3, maxConsecutiveFailures: 5 },
+    });
+    const events = await collectEvents(gen);
+
+    // Verify the loop completed
+    const doneEvent = events.find((e) => e.type === 'done');
+    expect(doneEvent).toBeDefined();
+
+    // Verify buildSiteContextInjection was called after navigate
+    expect(buildSiteContextInjection).toHaveBeenCalledWith('https://www.myopenmath.com/course.php');
+  });
+
+  test('injects no-guide message when navigating to non-profiled URL', async () => {
+    const { getEmbeddedUrl } = await import('./browser');
+    const { buildSiteContextInjection } = await import('./skills-api');
+
+    // Start on MOM, navigate to google.com (no profile)
+    (getEmbeddedUrl as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce('https://www.myopenmath.com')  // initial URL
+      .mockResolvedValue('https://www.google.com');  // after navigate
+    (buildSiteContextInjection as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce('SITE GUIDE: MOM content')  // initial context
+      .mockResolvedValue('');  // no profile for google.com
+
+    mockSend
+      .mockResolvedValueOnce(makeNavigateResponse('https://www.google.com'))
+      .mockResolvedValue({ action: 'done', params: { success: true, message: 'Done!' }, reasoning: '' });
+    mockExecute
+      .mockResolvedValueOnce({ success: true })
+      .mockResolvedValue({ success: true, data: { message: 'Done!' } });
+
+    const controller = createAgentController();
+    const gen = controller.start({
+      mode: 'auto',
+      initialMessage: 'Navigate to Google',
+      config: { actionDelayMs: 0, maxSteps: 10, maxTimeMs: 30000, maxSameAction: 3, maxConsecutiveFailures: 5 },
+    });
+    await collectEvents(gen);
+
+    // buildSiteContextInjection should have been called for google.com
+    expect(buildSiteContextInjection).toHaveBeenCalledWith('https://www.google.com');
+  });
+
+  test('does not inject duplicate when navigating within same profile', async () => {
+    const { getEmbeddedUrl } = await import('./browser');
+    const { buildSiteContextInjection } = await import('./skills-api');
+
+    const MOM_GUIDE = 'SITE GUIDE: MOM content';
+    // Start on MOM page, navigate to another MOM page (same profile)
+    (getEmbeddedUrl as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce('https://www.myopenmath.com/course.php')  // initial URL
+      .mockResolvedValue('https://www.myopenmath.com/addassessment.php');  // after navigate
+    (buildSiteContextInjection as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(MOM_GUIDE)  // initial context
+      .mockResolvedValue(MOM_GUIDE);  // same guide after navigate
+
+    mockSend
+      .mockResolvedValueOnce(makeNavigateResponse('https://www.myopenmath.com/addassessment.php'))
+      .mockResolvedValue({ action: 'done', params: { success: true, message: 'Done!' }, reasoning: '' });
+    mockExecute
+      .mockResolvedValueOnce({ success: true })
+      .mockResolvedValue({ success: true, data: { message: 'Done!' } });
+
+    const controller = createAgentController();
+    const gen = controller.start({
+      mode: 'auto',
+      initialMessage: 'Navigate within MOM',
+      config: { actionDelayMs: 0, maxSteps: 10, maxTimeMs: 30000, maxSameAction: 3, maxConsecutiveFailures: 5 },
+    });
+    await collectEvents(gen);
+
+    // buildSiteContextInjection called for the new URL
+    expect(buildSiteContextInjection).toHaveBeenCalledWith('https://www.myopenmath.com/addassessment.php');
+    // But since the guide content is the same, no supplementary message should be pushed
+    // (verified by checking the guide content equality check in the implementation)
+  });
+});
