@@ -59,6 +59,9 @@ export function buildOllamaRequest(config, messages) {
     model: config.model,
     messages: ollamaMessages,
     stream: false,
+    options: {
+      temperature: config.temperature ?? 0.2,
+    },
   };
 
   return {
@@ -84,8 +87,10 @@ export function buildOpenAIRequest(config, messages) {
 
   const body = {
     model: config.model,
+    max_tokens: 16000,
     messages: messages,
     stream: false,
+    temperature: config.temperature ?? 0.2,
   };
 
   return {
@@ -143,8 +148,9 @@ export function buildAnthropicRequest(config, messages) {
   }
   const body = {
     model: config.model,
-    max_tokens: 4096,
+    max_tokens: 16000,
     messages: userMessages,
+    temperature: config.temperature ?? 0.2,
   };
 
   if (systemMessage) {
@@ -209,6 +215,9 @@ export function buildGoogleGeminiRequest(config, messages) {
 
   const body = {
     contents: geminiMessages,
+    generationConfig: {
+      temperature: config.temperature ?? 0.2,
+    },
   };
 
   if (systemInstruction) {
@@ -350,6 +359,7 @@ export function buildGitHubModelsRequest(config, messages) {
     model: config.model,
     messages: messages,
     stream: false,
+    temperature: config.temperature ?? 0.2,
   };
 
   return {

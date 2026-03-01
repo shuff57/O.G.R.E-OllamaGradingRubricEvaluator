@@ -112,7 +112,7 @@ export function buildBatchPrompt(rubric, students, anchors, bridgeResponses = nu
 
   const { calibration, overrideInstructions } = extractCustomInstructions(customInstructions);
 
-   let prompt = `You are an expert grading assistant. Grade ALL students in this batch against the provided rubric.
+   let prompt = `You are an expert grading assistant. Grade ALL students in this batch against the provided rubric. Output: JSON array only.
 
 ${overrideInstructions ? `INSTRUCTOR OVERRIDE INSTRUCTIONS (you MUST follow these \u2014 they take absolute precedence):\n${overrideInstructions}\n\n` : ''}GRADING PHILOSOPHY:
 ${GRADING_PHILOSOPHY}
@@ -170,7 +170,6 @@ ${getScoringScaleString()}
 CRITICAL: A response that correctly hits every rubric criterion earns 8-9, REGARDLESS of length.
 A short, accurate answer scores higher than a long, partially-wrong one.
 Only drop below 8 if a rubric criterion is genuinely missing or incorrect — NOT merely brief.
-When in doubt between two scores, choose the HIGHER one.
 `;
   if (calibration) {
     prompt += `\nSCORING CALIBRATION EXAMPLES (use to calibrate score levels only \u2014 grade against rubric criteria and SCORING SCALE above, not these examples):\n${calibration}\n`;
@@ -487,7 +486,7 @@ export function buildOutlierReviewPrompt(rubric, outlierStudents, anchors, stats
 
   const { calibration, overrideInstructions } = extractCustomInstructions(customInstructions);
 
-  let prompt = `You are an expert grading assistant performing a SECOND-PASS REVIEW of flagged student responses.
+  let prompt = `You are an expert grading assistant performing a SECOND-PASS REVIEW of flagged student responses. Output: JSON array only.
 
 These students received scores that deviated more than 1 standard deviation from the batch mean. Your job is to re-evaluate each one carefully by comparing against the rubric AND against similarly-scored peers to ensure the score is accurate and consistent.
 
@@ -746,7 +745,7 @@ export function buildSingleGradePrompt(rubric, studentWork, instructions) {
   const customInstructions = rubric.customInstructions || '';
   const { calibration, overrideInstructions } = extractCustomInstructions(customInstructions);
 
-  let prompt = `You are an expert grading assistant. Grade this student's work against the provided rubric.
+  let prompt = `You are an expert grading assistant. Grade this student's work against the provided rubric. Output: JSON object only.
 
 ${overrideInstructions ? `INSTRUCTOR OVERRIDE INSTRUCTIONS (you MUST follow these \u2014 they take absolute precedence):\n${overrideInstructions}\n\n` : ''}GRADING PHILOSOPHY:
 ${GRADING_PHILOSOPHY}
@@ -788,33 +787,27 @@ ${essayPrompt}
     prompt += `\nMODEL RESPONSE (for reference):\n${rubric.modelText}\n`;
   }
 
-  prompt += `
-STUDENT WORK:
-${studentWork || '(No response submitted)'}
-`;
+  // Tier 5: Scoring scale + calibration (before student work)
+  prompt += '\n' + getScoringScaleString() + '\n';
+  if (calibration) {
+    prompt += `\nSCORING CALIBRATION EXAMPLES (use to calibrate score levels only \u2014 grade against rubric criteria and SCORING SCALE above, not these examples):\n${calibration}\n`;
+  }
+
+  // Tier 6: Student work
+  prompt += `\nSTUDENT WORK:\n${studentWork || '(No response submitted)'}\n`;
 
   if (instructions) {
     prompt += `\nADDITIONAL INSTRUCTIONS:\n${instructions}\n`;
   }
 
-  if (calibration) {
-    prompt += `\nSCORING CALIBRATION EXAMPLES (use to calibrate score levels only \u2014 grade against rubric criteria and SCORING SCALE above, not these examples):\n${calibration}\n`;
-  }
-  prompt += '\n';
-
   prompt += `
-${getScoringScaleString()}
-
-
-When in doubt between two scores, choose the HIGHER one.
-
 RESPONSE FORMAT:
 Return ONLY valid JSON. No markdown code fences. No explanation text.
 
 {
   "score": <${_sScoreHint}>
     "feedback": "<Write directly to the student using 'you'. Write one bullet point per rubric category. Use \\n between each bullet so they appear on separate lines. For each bullet: say what they did well, then say what was missing and what they would need to write to earn full credit. Write like a high school math teacher talking directly to the student. No em dashes. Short and clear.>"
-}`;
+}` ;
 
   return prompt;
 }

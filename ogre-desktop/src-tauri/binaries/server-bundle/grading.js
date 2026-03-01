@@ -3,21 +3,20 @@
  * Handles batch grading with scoring anchors, chunking, and outlier detection
  */
 
-import { GRADING_PHILOSOPHY } from './grading-constants.js';
+import { GRADING_PHILOSOPHY, SCORING_SCALE_DESCRIPTORS } from './grading-constants.js';
 
 /**
- * Inject custom instructions into a prompt, separating scoring calibration examples
- * (reference-only) from teacher override instructions (mandatory).
+ * Extract custom instructions into structured parts for tiered positioning.
+ * Separates scoring calibration examples (reference-only) from teacher override instructions (mandatory).
  *
- * @param {string} prompt - Current prompt string
  * @param {string} customInstructions - Combined instructions from client
- * @returns {string} - Prompt with instructions injected appropriately
+ * @returns {{ calibration: string|null, overrideInstructions: string|null }}
  */
-function injectCustomInstructions(prompt, customInstructions) {
-  if (!customInstructions) return prompt;
+function extractCustomInstructions(customInstructions) {
+  if (!customInstructions) return { calibration: null, overrideInstructions: null };
 
   if (!customInstructions.startsWith('SCORING CALIBRATION:')) {
-    return prompt + `\n\nIMPORTANT \u2014 INSTRUCTOR OVERRIDE INSTRUCTIONS (you MUST follow these):\n${customInstructions}`;
+    return { calibration: null, overrideInstructions: customInstructions };
   }
 
   const withoutHeader = customInstructions.slice('SCORING CALIBRATION:\n'.length);
@@ -38,13 +37,10 @@ function injectCustomInstructions(prompt, customInstructions) {
   const calibPart    = (splitPos === -1 ? withoutHeader : withoutHeader.slice(0, splitPos)).trim();
   const overridePart = (splitPos === -1 ? '' : withoutHeader.slice(splitPos)).trim();
 
-  if (calibPart) {
-    prompt += `\n\nSCORING CALIBRATION EXAMPLES (use to calibrate score levels only \u2014 grade against rubric criteria and SCORING SCALE above, not these examples):\n${calibPart}`;
-  }
-  if (overridePart) {
-    prompt += `\n\nIMPORTANT \u2014 INSTRUCTOR OVERRIDE INSTRUCTIONS (you MUST follow these):\n${overridePart}`;
-  }
-  return prompt;
+  return {
+    calibration: calibPart || null,
+    overrideInstructions: overridePart || null,
+  };
 }
 
 
@@ -114,9 +110,11 @@ export function buildBatchPrompt(rubric, students, anchors, bridgeResponses = nu
     essayPrompt = essayPrompt.replace(/\n\nADDITIONAL GRADING INSTRUCTIONS:\n[\s\S]+$/, '').trim();
   }
 
-   let prompt = `You are an expert grading assistant. Grade ALL students in this batch against the provided rubric.
+  const { calibration, overrideInstructions } = extractCustomInstructions(customInstructions);
 
-GRADING PHILOSOPHY:
+   let prompt = `You are an expert grading assistant. Grade ALL students in this batch against the provided rubric. Output: JSON array only.
+
+${overrideInstructions ? `INSTRUCTOR OVERRIDE INSTRUCTIONS (you MUST follow these \u2014 they take absolute precedence):\n${overrideInstructions}\n\n` : ''}GRADING PHILOSOPHY:
 ${GRADING_PHILOSOPHY}
 
 MAX SCORE: ${virtualMax}
@@ -166,24 +164,16 @@ SCORING ANCHORS (use these as calibration references):
 
 Compare each student response to these anchors to ensure consistency.
 
-SCORING SCALE (use integers 0-10 — server converts to actual points):
-0  – No submission or completely blank
-1  – Off-topic: response does not address the question at all
-2  – Minimal effort: mentions the topic but shows almost no understanding
-3  – Very limited: some awareness of concepts but largely incomplete
-4  – Partial: shows basic familiarity but misses most key criteria
-5  – Developing: demonstrates partial understanding, covers some key points
-6  – Approaching: addresses main ideas but with notable gaps or errors
-7  – Competent: correctly addresses SOME but not all rubric criteria
-8  – Proficient: correctly addresses ALL rubric criteria, even if briefly or concisely
-9  – Strong: correctly addresses ALL rubric criteria with clear, accurate explanation
-10 – Excellent: addresses all criteria thoroughly with precision and depth
+${getScoringScaleString()}
+
 
 CRITICAL: A response that correctly hits every rubric criterion earns 8-9, REGARDLESS of length.
 A short, accurate answer scores higher than a long, partially-wrong one.
 Only drop below 8 if a rubric criterion is genuinely missing or incorrect — NOT merely brief.
-When in doubt between two scores, choose the HIGHER one.
 `;
+  if (calibration) {
+    prompt += `\nSCORING CALIBRATION EXAMPLES (use to calibrate score levels only \u2014 grade against rubric criteria and SCORING SCALE above, not these examples):\n${calibration}\n`;
+  }
   // Add bridge responses from previous chunk for cross-chunk consistency
   if (bridgeResponses && bridgeResponses.length > 0) {
     prompt += `
@@ -245,8 +235,6 @@ Return one object per student using the EXACT studentIndex shown above each resp
 
 CRITICAL: Return results for ALL ${students.length} students. Use the studentIndex from each "--- Student N:" header.`;
 
-  // Inject custom instructions: calibration examples as reference, overrides as mandatory
-  prompt = injectCustomInstructions(prompt, customInstructions);
 
   return prompt;
 }
@@ -375,6 +363,12 @@ function getScaleInfo(maxScore) {
   return { virtualMax: 10, factor: 10 / max };
 }
 
+// Build scoring scale string from shared constant
+function getScoringScaleString() {
+  return 'SCORING SCALE (use integers 0-10 — server converts to actual points):\n' +
+    SCORING_SCALE_DESCRIPTORS.map(s => `${s.score.toString().padStart(2)} – ${s.descriptor}`).join('\n');
+}
+
 function validateBatchResults(parsed, students, maxScore) {
   // Build expected index set for validation
   const expectedIndices = new Set(students.map(s => s.index));
@@ -490,7 +484,9 @@ export function buildOutlierReviewPrompt(rubric, outlierStudents, anchors, stats
     essayPrompt = essayPrompt.replace(/\n\nADDITIONAL GRADING INSTRUCTIONS:\n[\s\S]+$/, '').trim();
   }
 
-  let prompt = `You are an expert grading assistant performing a SECOND-PASS REVIEW of flagged student responses.
+  const { calibration, overrideInstructions } = extractCustomInstructions(customInstructions);
+
+  let prompt = `You are an expert grading assistant performing a SECOND-PASS REVIEW of flagged student responses. Output: JSON array only.
 
 These students received scores that deviated more than 1 standard deviation from the batch mean. Your job is to re-evaluate each one carefully by comparing against the rubric AND against similarly-scored peers to ensure the score is accurate and consistent.
 
@@ -499,7 +495,7 @@ BATCH CONTEXT:
 - Standard deviation: ${stats.stdDev}
 - Total students in batch: ${stats.totalStudents}
 
-GRADING PHILOSOPHY:
+${overrideInstructions ? `INSTRUCTOR OVERRIDE INSTRUCTIONS (you MUST follow these \u2014 they take absolute precedence):\n${overrideInstructions}\n\n` : ''}GRADING PHILOSOPHY:
 ${GRADING_PHILOSOPHY}
 
 MAX SCORE: ${maxScore}
@@ -547,6 +543,10 @@ SCORING ANCHORS:
 - Below Average (${anchors.belowAverage.score}/${maxScore}): ${anchors.belowAverage.description}
 - Minimal (${anchors.minimal.score}/${maxScore}): ${anchors.minimal.description}
 `;
+
+  if (calibration) {
+    prompt += `\nSCORING CALIBRATION EXAMPLES (use to calibrate score levels only \u2014 grade against rubric criteria and SCORING SCALE above, not these examples):\n${calibration}\n`;
+  }
 
   // Add each outlier student with peer comparison context
   prompt += '\nSTUDENTS TO RE-EVALUATE:\n\n';
@@ -596,8 +596,6 @@ You MUST respond with a valid JSON array ONLY. No markdown, no code fences, no e
 
 CRITICAL: Return results for ALL ${outlierStudents.length} student(s) in the array.`;
 
-  // Inject custom instructions: calibration examples as reference, overrides as mandatory
-  if (customInstructions) prompt = injectCustomInstructions(prompt, customInstructions);
 
   return prompt;
 }
@@ -744,10 +742,12 @@ export function buildSingleGradePrompt(rubric, studentWork, instructions) {
   const { virtualMax } = getScaleInfo(maxScore);
   const _sScoreHint = scoreFormatHint(virtualMax);
   const essayPrompt = rubric.essayPrompt || '(No prompt provided)';
+  const customInstructions = rubric.customInstructions || '';
+  const { calibration, overrideInstructions } = extractCustomInstructions(customInstructions);
 
-  let prompt = `You are an expert grading assistant. Grade this student's work against the provided rubric.
+  let prompt = `You are an expert grading assistant. Grade this student's work against the provided rubric. Output: JSON object only.
 
-GRADING PHILOSOPHY:
+${overrideInstructions ? `INSTRUCTOR OVERRIDE INSTRUCTIONS (you MUST follow these \u2014 they take absolute precedence):\n${overrideInstructions}\n\n` : ''}GRADING PHILOSOPHY:
 ${GRADING_PHILOSOPHY}
 
 MAX SCORE: ${virtualMax}
@@ -787,43 +787,27 @@ ${essayPrompt}
     prompt += `\nMODEL RESPONSE (for reference):\n${rubric.modelText}\n`;
   }
 
-  prompt += `
-STUDENT WORK:
-${studentWork || '(No response submitted)'}
-`;
+  // Tier 5: Scoring scale + calibration (before student work)
+  prompt += '\n' + getScoringScaleString() + '\n';
+  if (calibration) {
+    prompt += `\nSCORING CALIBRATION EXAMPLES (use to calibrate score levels only \u2014 grade against rubric criteria and SCORING SCALE above, not these examples):\n${calibration}\n`;
+  }
+
+  // Tier 6: Student work
+  prompt += `\nSTUDENT WORK:\n${studentWork || '(No response submitted)'}\n`;
 
   if (instructions) {
     prompt += `\nADDITIONAL INSTRUCTIONS:\n${instructions}\n`;
   }
 
-  // Inject custom instructions: calibration examples as reference, overrides as mandatory
-  const customInstructions = rubric.customInstructions || '';
-  prompt = injectCustomInstructions(prompt, customInstructions);
-  prompt += '\n';
-
   prompt += `
-SCORING SCALE (use integers 0-10 — server converts to actual points):
-0  – No submission or completely blank
-1  – Off-topic: response does not address the question at all
-2  – Minimal effort: mentions the topic but shows almost no understanding
-3  – Very limited: some awareness of concepts but largely incomplete
-4  – Partial: shows basic familiarity but misses most key criteria
-5  – Developing: demonstrates partial understanding, covers some key points
-6  – Approaching: addresses main ideas but with notable gaps or errors
-7  – Satisfactory: shows reasonable understanding of core concepts
-8  – Good: solid understanding with only minor gaps or imprecision
-9  – Very good: thorough and accurate, demonstrates strong command
-10 – Excellent: comprehensive, precise, and clearly communicated
-
-When in doubt between two scores, choose the HIGHER one.
-
 RESPONSE FORMAT:
 Return ONLY valid JSON. No markdown code fences. No explanation text.
 
 {
   "score": <${_sScoreHint}>
     "feedback": "<Write directly to the student using 'you'. Write one bullet point per rubric category. Use \\n between each bullet so they appear on separate lines. For each bullet: say what they did well, then say what was missing and what they would need to write to earn full credit. Write like a high school math teacher talking directly to the student. No em dashes. Short and clear.>"
-}`;
+}` ;
 
   return prompt;
 }

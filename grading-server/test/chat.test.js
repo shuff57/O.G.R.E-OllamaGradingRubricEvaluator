@@ -469,9 +469,9 @@ describe('buildSingleGradePrompt — prompt snapshot guards', () => {
     ],
   };
 
-  it('should include scoring scale with generosity instruction', () => {
+  it('should include scoring scale section', () => {
     const prompt = buildSingleGradePrompt(sampleRubric, 'Water evaporates and rains', '');
-    expect(prompt.toLowerCase()).toContain('higher one');
+    expect(prompt.toLowerCase()).toContain('scoring scale');
   });
 
   it('should not contain markdown code fences', () => {

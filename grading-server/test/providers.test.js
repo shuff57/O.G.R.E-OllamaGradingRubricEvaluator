@@ -5,6 +5,7 @@ import {
   buildAnthropicRequest,
   buildGoogleGeminiRequest,
   parseOllamaResponse,
+  buildGitHubModelsRequest,
   parseOpenAIResponse,
   parseAnthropicResponse,
   parseGoogleGeminiResponse,
@@ -365,5 +366,70 @@ describe('Provider Response Parsers', () => {
       
       expect(() => parseGoogleGeminiResponse(data)).toThrow('Invalid Google Gemini response: missing candidates[0].content.parts[0].text');
     });
+  });
+});
+
+
+describe('Provider Temperature Parameters', () => {
+  const messages = [{ role: 'user', content: 'Grade this.' }];
+
+  test('Ollama: default temperature is 0.2', () => {
+    const config = { apiUrl: 'http://localhost:11434', model: 'llama3' };
+    const result = buildOllamaRequest(config, messages);
+    expect(result.body.options.temperature).toBe(0.2);
+  });
+
+  test('Ollama: accepts custom temperature', () => {
+    const config = { apiUrl: 'http://localhost:11434', model: 'llama3', temperature: 0.5 };
+    const result = buildOllamaRequest(config, messages);
+    expect(result.body.options.temperature).toBe(0.5);
+  });
+
+  test('OpenAI: default temperature is 0.2', () => {
+    const config = { apiKey: 'sk-test', model: 'gpt-4o' };
+    const result = buildOpenAIRequest(config, messages);
+    expect(result.body.temperature).toBe(0.2);
+  });
+
+  test('OpenAI: accepts custom temperature', () => {
+    const config = { apiKey: 'sk-test', model: 'gpt-4o', temperature: 0.7 };
+    const result = buildOpenAIRequest(config, messages);
+    expect(result.body.temperature).toBe(0.7);
+  });
+
+  test('Anthropic: default temperature is 0.2', () => {
+    const config = { apiKey: 'sk-ant-test', model: 'claude-sonnet-4-20250514' };
+    const result = buildAnthropicRequest(config, messages);
+    expect(result.body.temperature).toBe(0.2);
+  });
+
+  test('Anthropic: accepts custom temperature', () => {
+    const config = { apiKey: 'sk-ant-test', model: 'claude-sonnet-4-20250514', temperature: 0.1 };
+    const result = buildAnthropicRequest(config, messages);
+    expect(result.body.temperature).toBe(0.1);
+  });
+
+  test('Google Gemini: default temperature is 0.2', () => {
+    const config = { apiKey: 'AIza-test', model: 'gemini-1.5-pro' };
+    const result = buildGoogleGeminiRequest(config, messages);
+    expect(result.body.generationConfig.temperature).toBe(0.2);
+  });
+
+  test('Google Gemini: accepts custom temperature', () => {
+    const config = { apiKey: 'AIza-test', model: 'gemini-1.5-pro', temperature: 0.3 };
+    const result = buildGoogleGeminiRequest(config, messages);
+    expect(result.body.generationConfig.temperature).toBe(0.3);
+  });
+
+  test('GitHub Models: default temperature is 0.2', () => {
+    const config = { apiKey: 'gh-test', model: 'gpt-4o', apiUrl: 'https://api.githubcopilot.com' };
+    const result = buildGitHubModelsRequest(config, messages);
+    expect(result.body.temperature).toBe(0.2);
+  });
+
+  test('GitHub Models: accepts custom temperature', () => {
+    const config = { apiKey: 'gh-test', model: 'gpt-4o', apiUrl: 'https://api.githubcopilot.com', temperature: 0.4 };
+    const result = buildGitHubModelsRequest(config, messages);
+    expect(result.body.temperature).toBe(0.4);
   });
 });
