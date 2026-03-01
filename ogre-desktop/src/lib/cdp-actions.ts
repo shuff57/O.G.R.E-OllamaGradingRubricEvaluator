@@ -110,29 +110,38 @@ export async function pwClick(selector: string): Promise<ActionResult> {
     // Scroll into view
     await cdp.send('DOM.scrollIntoViewIfNeeded', { objectId });
 
-    // Get box model for center coordinates
-    const boxResult = await cdp.send('DOM.getBoxModel', { objectId }) as {
-      model: { content: number[] };
-    };
-    const content = boxResult.model.content;
-    const x = (content[0] + content[4]) / 2;
-    const y = (content[1] + content[5]) / 2;
+    // Get box model for center coordinates, with JS-click fallback for hidden/animating elements
+    let clickDone = false;
+    try {
+      const boxResult = await cdp.send('DOM.getBoxModel', { objectId }) as {
+        model: { content: number[] };
+      };
+      const content = boxResult.model.content;
+      const x = (content[0] + content[4]) / 2;
+      const y = (content[1] + content[5]) / 2;
 
-    // Click: mousePressed + mouseReleased
-    await cdp.send('Input.dispatchMouseEvent', {
-      type: 'mousePressed',
-      x,
-      y,
-      button: 'left',
-      clickCount: 1,
-    });
-    await cdp.send('Input.dispatchMouseEvent', {
-      type: 'mouseReleased',
-      x,
-      y,
-      button: 'left',
-      clickCount: 1,
-    });
+      // Click: mousePressed + mouseReleased
+      await cdp.send('Input.dispatchMouseEvent', {
+        type: 'mousePressed', x, y, button: 'left', clickCount: 1,
+      });
+      await cdp.send('Input.dispatchMouseEvent', {
+        type: 'mouseReleased', x, y, button: 'left', clickCount: 1,
+      });
+      clickDone = true;
+    } catch (layoutErr: unknown) {
+      // Element has no layout object (e.g. dropdown item still animating) — fall back to JS click
+      const msg = layoutErr instanceof Error ? layoutErr.message : String(layoutErr);
+      if (!msg.toLowerCase().includes('layout object')) throw layoutErr;
+    }
+
+    // JS-click fallback: fires the click event directly, no layout coordinates needed
+    if (!clickDone) {
+      await cdp.send('Runtime.callFunctionOn', {
+        objectId,
+        functionDeclaration: 'function() { this.click(); }',
+        returnByValue: false,
+      });
+    }
 
     return { success: true };
   } catch (err: unknown) {
