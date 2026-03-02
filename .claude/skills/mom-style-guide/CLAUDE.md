@@ -62,6 +62,23 @@ Does NOT cover: randomizer function signatures. See `mom-frq/CLAUDE.md` Section 
 
 ---
 
+## Default Question Types
+
+**Always default to auto-graded question types. Use essay/FRQ only when explicitly requested.**
+
+| Scenario | Default type |
+|----------|-------------|
+| Numeric answer (exact value) | `number` or `calculated` in a multipart |
+| Choose from options | `choices` with `$displayformat[n] = "select"` (dropdown) |
+| Multiple distinct sub-questions | `multipart` combining `number` + `choices` |
+| Open-ended written response | `essay` — only when user explicitly asks for FRQ |
+
+**Why:** OGRE uses these questions to *assess* student understanding, not to collect essays. Auto-graded types (number boxes + dropdowns) give instant feedback, prevent ambiguity, and don't require AI grading. Essay/FRQ is appropriate only when the learning goal requires prose reasoning that a rubric must evaluate.
+
+**Implication for randomization:** Multipart questions can mix `number`, `calculated`, and `choices` sub-parts. Use `$anstypes = array(...)` to declare the mix. Use `$displayformat[n] = "select"` for dropdown rendering. See `mom-frq/CLAUDE.md` Section 3 for multipart syntax.
+
+---
+
 ## AI Behavioral Guardrails
 
 Three domains. All apply to every MOM question generation task.
