@@ -144,6 +144,130 @@ For assessment items:
 
 ---
 
+### Block (Section/Folder) Interaction
+
+Blocks are the collapsible folder sections on the course page. Each block has two identifiers:
+
+| Identifier | Example | Where used |
+|------------|---------|------------|
+| **DOM element ID** | `blockh24` (`blockh{bid}`) | Locating in page, CSS |
+| **Hierarchical path** | `0-1` (course=0, child index) | URL parameters |
+
+**Extract both IDs from any block by name:**
+```javascript
+const ids = await page.evaluate((name) => {
+  const link = Array.from(document.querySelectorAll('[id^="blockh"]'))
+    .find(el => el.textContent.trim() === name);
+  if (!link) return null;
+  // toggleblock(event, '{bid}', '{path}')
+  const m = (link.getAttribute('onclick') || '').match(/toggleblock\(event,'(\d+)','([^']+)'\)/);
+  return m ? { elemId: link.id, bid: m[1], path: m[2] } : null;
+}, 'TEST SECTION');
+// → { elemId: 'blockh24', bid: '24', path: '0-1' }
+```
+
+#### Block DOM Structure (confirmed via live inspection)
+
+```html
+<div class="title">
+  <b><i>                                  <!-- <b><i> = hidden; <b> only = visible -->
+    <a id="blockh{bid}"
+       href="#"
+       onclick="toggleblock(event,'{bid}','{path}'); return false;"
+       aria-controls="block{bid}"
+       aria-expanded="false|true">{Block Name}</a>
+  </i></b>
+  <span class="instrdates"><i>Hidden</i></span>  <!-- only shown when hidden -->
+</div>
+<div>  <!-- Options trigger -->
+  <a role="button" data-toggle="dropdown" aria-expanded="false">
+    <img alt="Options for {Block Name}">
+  </a>
+  <ul role="menu">
+    <li role="menuitem"><a href="course.php?cid={cid}&folder={path}">Isolate</a></li>
+    <li role="menuitem"><a href="addblock.php?cid={cid}&id={path}">Modify</a></li>
+    <li role="menuitem"><a href="#" onclick="return moveDialog('0','B{bid}');">Move</a></li>
+    <li role="menuitem"><a href="deleteblock.php?cid={cid}&id={path}&bid={bid}&remove=ask">Delete</a></li>
+    <li role="menuitem"><a href="copyoneitem.php?cid={cid}&copyid={path}&backref=blockhead{bid}">Copy</a></li>
+    <li role="menuitem"><a href="course.php?cid={cid}&togglenewflag={path}">Toggle NewFlag</a></li>
+  </ul>
+</div>
+```
+
+#### Opening the Options Dropdown
+
+> The Options trigger is `<a role="button">` — NOT a real `<button>`. It IS clickable via `getByRole`.
+
+```javascript
+// Click Options for a specific block by name
+await page.getByRole('button', { name: 'Options for TEST SECTION' }).click();
+
+// Then click a menu item
+await page.getByRole('menuitem').filter({ hasText: 'Modify' }).click();
+// waits for navigation if the menu item navigates
+```
+
+**Or skip the dropdown and navigate directly (recommended):**
+```javascript
+// Modify (Edit settings — hide/show, title, dates)
+await page.goto(`https://www.myopenmath.com/course/addblock.php?cid=${cid}&id=${path}`, { waitUntil: 'domcontentloaded' });
+
+// Isolate (view only this block)
+await page.goto(`https://www.myopenmath.com/course/course.php?cid=${cid}&folder=${path}`, { waitUntil: 'domcontentloaded' });
+
+// Delete (shows confirmation page)
+await page.goto(`https://www.myopenmath.com/course/deleteblock.php?cid=${cid}&id=${path}&bid=${bid}&remove=ask`, { waitUntil: 'domcontentloaded' });
+```
+
+#### Detecting Hidden vs Visible Blocks
+
+```javascript
+const isHidden = await page.evaluate((bid) => {
+  const link = document.getElementById('blockh' + bid);
+  if (!link) return null;
+  // Hidden: title wrapped in <b><i>, and/or instrdates span contains 'Hidden'
+  const titleDiv = link.closest('.title') || link.parentElement;
+  const hasItalic = !!titleDiv && !!titleDiv.querySelector('i > a, b > i');
+  const statusText = titleDiv ? titleDiv.querySelector('.instrdates')?.textContent || '' : '';
+  return statusText.includes('Hidden') || hasItalic;
+}, '24');
+```
+
+**Visual markers:**
+| State | Title style | `instrdates` text |
+|-------|-------------|-------------------|
+| Visible (Show Always) | `<b>` only | Empty or date range |
+| Hidden | `<b><i>` | `Hidden` |
+| Date-restricted | `<b>` | Date range string |
+
+#### Hiding / Showing a Block
+
+Navigate to the Modify page and set the availability radio:
+
+```javascript
+// Get block path first
+const { path } = await page.evaluate((name) => {
+  const link = Array.from(document.querySelectorAll('[id^="blockh"]'))
+    .find(el => el.textContent.trim() === name);
+  const m = (link?.getAttribute('onclick') || '').match(/toggleblock\(event,'(\d+)','([^']+)'\)/);
+  return m ? { bid: m[1], path: m[2] } : {};
+}, 'TEST SECTION');
+
+await page.goto(`https://www.myopenmath.com/course/addblock.php?cid=${cid}&id=${path}`, { waitUntil: 'domcontentloaded' });
+
+// Hide the block
+await page.getByRole('radio', { name: /Hide.*hide all items/ }).click();
+// OR: Show always
+await page.getByRole('radio', { name: 'Show Always' }).click();
+// OR: Show by dates
+await page.getByRole('radio', { name: 'Show by Dates' }).click();
+
+await page.getByRole('button', { name: /Modify Block|Save/i }).click();
+await page.waitForLoadState('domcontentloaded');
+// → returns to course.php
+```
+---
+
 ## Question Set Management (`manageqset.php`)
 
 ### Page Controls
@@ -657,3 +781,6 @@ $scoremethod[1] = "takeanything"
 | Using `\( ... \)` for inline math in question text (repeated) | Use backticks `` ` `` — see MOM PHP Quick Reference above |
 | `gridToPixel` using wrong canvas size | Verify actual canvas dims with `canvas.getBoundingClientRect()` if results are off |
 | Parsing `y = mx + b` from rendered text when m=1 or m=-1 | Rendered text shows `y = x + 3` (not `1x`) — handle the implicit coefficient case |
+| Using `blockh{N}` as the URL `id` param for block operations | `blockh{N}` is the DOM element ID (e.g. `blockh24`). URL params use the **path** format (e.g. `id=0-1`). Extract both via `toggleblock` onclick: `/toggleblock\(event,'(\d+)','([^']+)'\)/` |
+| Trying to `.click()` the block Options image directly | The trigger is `<a role="button">` wrapping the image — use `page.getByRole('button', { name: 'Options for {BlockName}' })` to click the anchor, not the image |
+| Using `page.locator('[id^="dropdownMenuCtrl"]')` to find a specific block's Options | These IDs are NOT unique per block — same ID repeats inside nested blocks. Use `getByRole('button', { name: 'Options for {name}' })` instead |
