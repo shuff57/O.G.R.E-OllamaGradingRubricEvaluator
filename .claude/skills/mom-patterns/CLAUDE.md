@@ -5,7 +5,7 @@
 
 **Last Updated**: 2026-03-02  
 **Total Entries**: 3  
-**Line Count**: ~210 (cap: 800)
+**Line Count**: ~240 (cap: 800)
 
 ---
 
@@ -180,7 +180,7 @@ $fb = getfeedbacktxtessay($stuanswers[$thisq],"Answers will vary. Here are a few
 - Direction dropdown: `$questions[n] = array(...)` + `$answer[n] = $dir_idx` + `$displayformat[n] = "select"` + `$noshuffle[n] = "all"` (to keep Positive/Negative/None in fixed order)
 - r² interpretation dropdown: correct answer at index 0 (`$answer[4] = 0`), `$displayformat[4] = "select"` (auto-shuffles wrong answers)
 - `diffrands(min, max, n)` for distinct x-values; `rrand(lo, hi, step)` for bounded random with step
-- Build data table via string concatenation in a for loop, wrap in `<table border="1">` inline HTML
+- Build data table via string concatenation in a for loop; wrap in a `<div style="border-radius:8px;overflow:hidden;...">` to achieve rounded corners (CSS `border-radius` on `<table>` itself has poor support)
 - `$abstolerance[n]` for numeric parts: slope ±0.005, intercept ±0.01, prediction ±0.1
 - Randomized context via parallel arrays (`$xnames`, `$ynames`, `$x_pred_labels`) indexed by `$ci = rand(0, n-1)`
 
@@ -234,13 +234,14 @@ $r2_w3 = "There is a $r2pct% chance the regression is statistically significant"
 $questions[4] = array($r2_c, $r2_w1, $r2_w2, $r2_w3);
 $answer[4] = 0; $displayformat[4] = "select";
 
-$row1 = "<tr><td style=\"font-weight:bold;padding:6px;\">$xname</td>";
-$row2 = "<tr><td style=\"font-weight:bold;padding:6px;\">$yname</td>";
+// Modern styled table — dark header row, rounded corners via outer div
+$row1 = "<tr style=\"background:#3d3d3d;color:white;\"><td style=\"padding:9px 14px;font-weight:bold;\">$xname</td>";
+$row2 = "<tr style=\"background:#f8f8f8;\"><td style=\"padding:9px 14px;font-weight:bold;color:#3d3d3d;\">$yname</td>";
 for ($k = 0..$n-1) {
-  $row1 .= "<td style=\"padding:6px;\">$xdata[$k]</td>";
-  $row2 .= "<td style=\"padding:6px;\">$ydata[$k]</td>";
+  $row1 .= "<td style=\"padding:9px 12px;text-align:center;\">$xdata[$k]</td>";
+  $row2 .= "<td style=\"padding:9px 12px;text-align:center;border-top:1px solid #e0e0e0;\">$ydata[$k]</td>";
 }
-$datatable = "<table border=\"1\" cellpadding=\"4\" style=\"border-collapse:collapse;margin:10px 0;\"><tbody>$row1</tr>$row2</tr></tbody></table>";
+$datatable = "<div style=\"border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.12);margin:12px 0;display:inline-block;\"><table style=\"border-collapse:collapse;font-size:0.95em;\"><tbody>$row1</tr>$row2</tr></tbody></table></div>";
 ```
 
 ### Extracted Function Calls
