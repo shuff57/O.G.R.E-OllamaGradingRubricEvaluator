@@ -136,7 +136,7 @@ Use this layout for all multipart auto-graded questions. Each sub-part gets its 
 
 - **Outer wrapper**: `font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif; font-size:16px; line-height:1.6; color:#21242c; max-width:688px` — 688px matches the optimal reading width used by Khan Academy
 - **Data table**: wrapped in `<div style="border-radius:12px;overflow:hidden;box-shadow:0 4px 6px -1px rgba(0,0,0,0.08),0 2px 4px -2px rgba(0,0,0,0.05);border:1px solid #e5e7eb;display:inline-block;">`. Header row: `background:#f7f9fa; font-weight:600; color:#21242c; border-bottom:2px solid #dee1e3`. Column cells: `border-left:1px solid #e5e7eb`. Never use `border="1"` attribute.
-- **Instruction callout**: `background:#f0f7ff; border-left:4px solid #1865f2; padding:10px 16px; border-radius:0 8px 8px 0` — the 4px left border is the Khan Academy style
+- **Instruction callout** *(optional — default: omit)*: `background:#f0f7ff; border-left:4px solid #1865f2; padding:10px 16px; border-radius:0 8px 8px 0` — the 4px left border is the Khan Academy style. **Before including this, ask the user: "Include an instruction hint? (default: no)"** If no answer or default, leave it out entirely.
 - **Part cards**: `background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:20px; margin:10px 0; box-shadow:0 4px 6px -1px rgba(0,0,0,0.07),0 2px 4px -2px rgba(0,0,0,0.04)` — dual-layer shadow gives depth without heaviness
 - **Part label chips** (a, b, c…): `display:inline-block; background:#e8f0fe; color:#1865f2; border-radius:6px; padding:3px 10px; font-size:13px; font-weight:700; margin-right:10px; vertical-align:middle` — light blue pill/chip, not a filled circle. Rounded rectangle, not `border-radius:50%`.
 
