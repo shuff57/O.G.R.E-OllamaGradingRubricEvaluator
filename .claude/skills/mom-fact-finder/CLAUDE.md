@@ -132,30 +132,95 @@ await snapshot({ page: state.momPage }).then(console.log);
 
 ---
 
-## Step 3 — Set Search Scope
+## Step 3 — Set Search Scope (Topic-Specific Library)
 
-### Default: All Libraries (community questions)
+> **Goal**: Scope the search to the MOM library that matches the caller's topic.
+> Use topic-specific subject libraries (e.g. Statistics > Hypothesis Testing), NOT textbook-organized ones.
+
+### Option A — Select a Topic Library via the Picker (PREFERRED)
 
 ```js
-// Open the scope dropdown
-await state.momPage.locator('button#cursearchtype').click();
-await state.momPage.waitForTimeout(500);
+// 1. Open scope dropdown and click 'Select Libraries...'
+await state.momPage.locator('#cursearchtype').click();
+await state.momPage.waitForTimeout(300);
+await state.momPage.locator('a[onclick*="libselect"]').click();
+await state.momPage.waitForTimeout(1500);
 
-// Select "All Libraries"
-await state.momPage.locator('role=button[name="All Libraries"]').click();
-await state.momPage.waitForTimeout(800);
+// 2. The GB_window dialog is now open — an iframe loads libtree3.php
+// Access it via frameLocator (required for clicks inside the iframe):
+const gbFrame = state.momPage.frameLocator('#GB_frame');
+
+// 3. Navigate the tree to the relevant subject category.
+//    ALWAYS expand a parent node BEFORE trying to check a child:
+//    Example path: Statistics (lib436) → Hypothesis Testing one pop (lib466) → children
+await gbFrame.locator('[data-id="lib436"] > .tree-item-content > button.tree-expander').click();
+await state.momPage.waitForTimeout(1000);
+
+// 4. If the sub-node also needs expanding (no checkbox visible yet):
+await gbFrame.locator('[data-id="lib466"] > .tree-item-content > button.tree-expander').click();
+await state.momPage.waitForTimeout(1000);
+
+// 5. Select the leaf library by clicking its tree-item-content:
+//    Leaf nodes have a checkbox (<input type='checkbox'>) — categories do NOT.
+//    Clicking the tree-item-content toggles aria-checked and adds to selectedLibs.
+await gbFrame.locator('[data-id="lib{N}"] > .tree-item-content').click();
+
+// 6. Click 'Use Libraries' — triggers setlib() → parent scope updates + auto-refresh:
+await state.momPage.locator('#GB_footer button.primary').click();
+await state.momPage.waitForTimeout(1500);
+// Results table auto-refreshes. No need to click Search again.
+// scope button now shows 'In Libraries ▼', #libnames shows the selected library name.
 ```
 
-### If a specific library was requested (e.g., `library="OpenIntro Statistics"`):
+### Known Topic → Library Mapping (Statistics)
+
+| Topic | Expand path | Selectable node(s) |
+|-------|-------------|-------------------|
+| Hypothesis testing (1 pop) | lib436 → lib466 | expand lib466 to find leaves |
+| Hypothesis testing (2 pop) | lib436 → lib471 | expand lib471 to find leaves |
+| Confidence intervals | lib436 → lib461 | expand lib461 to find leaves |
+| Correlation / regression | lib436 | lib476 (direct checkbox) |
+| Chi-square | lib436 → lib477 | expand lib477 |
+| ANOVA | lib436 → lib480 | expand lib480 |
+| Descriptive stats / summaries | lib436 → lib440 | expand lib440 |
+| Normal distribution | lib436 → lib454 | expand lib454 |
+| Probability | lib436 → lib446 | expand lib446 |
+| Stats general | lib436 | lib7223 Stats Lib (direct checkbox) |
+| Multiple regression | lib436 | lib38035 (direct checkbox) |
+
+**How to find the right node when topic is unknown**:
+1. Expand the top-level subject category (e.g. lib436 for Statistics).
+2. Read the child labels — match them to the caller's topic.
+3. Expand the matching child; check if its children have checkboxes.
+4. Select all relevant leaf nodes, then click 'Use Libraries'.
+
+### Option B — All Libraries (fallback if no specific library found)
 
 ```js
-// Open dropdown, click "Select Libraries..."
-await state.momPage.locator('button#cursearchtype').click();
-await state.momPage.waitForTimeout(500);
-await state.momPage.locator('role=button[name="Select Libraries..."]').click();
-// A dialog opens — find and click the named library in the dialog
-// Then wait for results to refresh
-await state.momPage.waitForTimeout(1500);
+// Use when the topic doesn't map to a known subject library
+await state.momPage.locator('#cursearchtype').click();
+await state.momPage.waitForTimeout(300);
+await state.momPage.locator('a[onclick*="alllibs"]').click();
+await state.momPage.waitForTimeout(800);
+// Then proceed to Step 5 (search) — results will be from the whole community
+```
+
+### Tree Selection Helper — finding which nodes have checkboxes
+
+```js
+// After expanding a node, check which children are directly selectable:
+const libFrame = state.momPage.frames().find(f => f.url().includes('libtree'));
+const selectableChildren = await libFrame.evaluate((parentId) => {
+  const parent = document.querySelector(`[data-id="${parentId}"]`);
+  return [...(parent?.querySelectorAll(':scope > ul li.tree-item') || [])]
+    .map(li => ({
+      dataId: li.getAttribute('data-id'),
+      label: li.querySelector('.tree-label')?.textContent?.trim(),
+      selectable: !!li.querySelector(':scope > .tree-item-content input[type="checkbox"]'),
+      hasChildren: !li.querySelector(':scope > .tree-item-content .tree-expander.no-children')
+    }));
+}, 'lib436'); // replace with actual parent data-id
+console.log('Children:', JSON.stringify(selectableChildren));
 ```
 
 ---
