@@ -64,7 +64,7 @@ From the home page, click any course name link to enter that course. Each course
 
 **Instructor sidebar** (`nav[aria-label="Instructor tool navigation"]`): Communication (Messages, Forums) | Tools (Roster, Gradebook, Calendar, Course Map) | Questions (Manage, Libraries) | Course Items (Copy From, Export) | Mass Change (Assessments, Forums, Blocks, Dates, Time Shift) | Course Settings
 
-**Content area**: View toggles (Instructor/Student/Quick Rearrange), Add Item dropdown (`select#addtype0-t`), collapsible Blocks/Folders with gear menus, Calendar view, and individual assessment items with visibility status.
+**Content area**: View toggles (Instructor/Student/Quick Rearrange), Add Item dropdown (`select[id^="addtype"]` — native select, visible but `<option>` children have no layout; use direct URL navigation or `selectOption()` with `waitForNavigation()`), collapsible Blocks/Folders with gear menus, Calendar view, and individual assessment items with visibility status.
 
 **Breadcrumbs** (`nav[aria-label="Navigation breadcrumbs"]`): Home > CourseName > Current Page
 ---
@@ -126,7 +126,7 @@ Navigate via:
 
 ### Creating a New Assessment
 
-**Navigation**: Course page → "Add An Item..." dropdown → "Add Assessment"  
+**Navigation**: Course page → navigate directly to `addassessment2.php?block=0&tb=t&cid={cid}` (recommended), or use `page.locator('select[id^="addtype"]').selectOption('assessment2')` with `waitForNavigation()`. Do NOT click `<option>` elements (CDP error -32000).
 **URL pattern**: `https://www.myopenmath.com/course/addassessment.php?cid={courseId}`  
 (Redirects to: `addassessment2.php?cid={courseId}&r={token}`)
 
@@ -170,7 +170,7 @@ Navigate via:
 
 ### Organizing into Folders/Blocks
 
-Assessments are organized via **Blocks** on the course page. To create a new block: use the "Add An Item" dropdown → "Add Block". Blocks can be nested and reordered via "Quick Rearrange". Items can be dragged between blocks or moved via the Options gear menu on each item.
+Assessments are organized via **Blocks** on the course page. To create a new block: navigate to `addblock.php?block=0&tb=t&cid={cid}`, or use `page.locator('select[id^="addtype"]').selectOption('block')` with `waitForNavigation()`. Blocks can be nested and reordered via "Quick Rearrange". Items can be dragged between blocks or moved via the Options gear menu on each item.
 
 ---
 
@@ -276,7 +276,7 @@ Questions use PHP-like IMathAS code:
 
 **Grading page**: `input[aria-label="Score"]`, `div.fbbox[role="textbox"][contenteditable]` (feedback display), `input[type="hidden"][name^="fb-"]` (feedback value)
 
-**Course page**: `select[id^="addtype"]` (add item dropdown), `input#name` (assessment name), `input#search` (question search), `input#description` (question description)
+**Course page**: `select[id^="addtype"]` (add item dropdown — `<select>` is visible but `<option>` children have 0×0px layout; use URL navigation or `selectOption()` + `waitForNavigation()`), `input#name` (assessment name), `input#search` (question search), `input#description` (question description)
 ---
 
 ## Tips & Gotchas

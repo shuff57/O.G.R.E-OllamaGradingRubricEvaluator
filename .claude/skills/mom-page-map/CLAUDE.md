@@ -68,8 +68,9 @@ Mass Change: Assessments | Forums | Blocks | Dates | Time Shift
 
 ### Adding Items to Course — "Add An Item..." Dropdown
 
-> ⚠️ **Critical**: This is a native `<select>` element — NOT a custom widget.
-> Agents fail by trying to `.click()` the option. Use `.selectOption()` or navigate directly via URL.
+> ⚠️ **Critical**: This is a native `<select>` element — NOT a custom widget. The `<select>` itself **IS** visible and has a layout box (confirmed via DOM inspection), but its `<option>` children do **NOT** — Chrome renders them via the OS native widget, outside the DOM layout tree (0×0px bounding rect). CDP error `-32000: Node does not have a layout object` occurs when an agent tries to `.click()` an `<option>` element directly.
+>
+> **Use direct URL navigation (Option A — recommended) or `selectOption()` with `waitForNavigation()` (Option B). Never `.click()` `<option>` elements.**
 
 #### Select Element ID Pattern
 
@@ -119,18 +120,20 @@ const cid = new URL(state.page.url()).searchParams.get('cid');
 await state.page.goto(`https://www.myopenmath.com/course/addassessment2.php?block=0-2&tb=t&cid=${cid}`, { waitUntil: 'domcontentloaded' });
 ```
 
-**Option B — selectOption() on the native `<select>`:**
+**Option B — `selectOption()` on the native `<select>` (works, but requires `waitForNavigation`):**
 ```javascript
-// Triggers onchange → additem() → navigation
-await state.page.locator('#addtype0-2-t').selectOption('assessment2');
-await state.page.waitForLoadState('domcontentloaded');
+// IMPORTANT: capture the nav promise BEFORE calling selectOption — it fires immediately
+const navPromise = state.page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10000 });
+await state.page.locator('#addtype0-t').selectOption('assessment2');
+await navPromise;
+// → navigates to addassessment2.php?block=0&tb=t&cid={cid}
 ```
 
-**NEVER do this** (silently fails — option elements are not clickable targets):
+**NEVER do this** — causes CDP error `-32000: Node does not have a layout object`:
 ```javascript
-// ❌ Wrong — click() on a <select> or its <option> children does nothing useful
-await state.page.locator('#addtype0-2-t').click();
+// ❌ <option> elements have no layout box (0×0px rect) — CDP cannot interact with them
 await state.page.locator('option[value="assessment2"]').click();
+await state.page.locator('[value="assessment2"]').click();
 ```
 
 For assessment items:
@@ -646,7 +649,7 @@ $scoremethod[1] = "takeanything"
 | Forgetting to set both `#control` and `#qtext` when pasting a question | Both sections are required; Common Control has variables, Question Text has the student-facing content |
 | Clicking "Save" while question type picker dropdown is open | Close dropdown first; open dropdown intercepts the save click |
 | Building `aid` from the wrong param | In `addassessment2.php?id={aid}`, the `id` param = `aid`. Don't confuse with the course `cid` |
-| `.click()` on "Add An Item" dropdown or its options | Native `<select>` — use `.selectOption('assessment2')` or navigate to URL directly |
+| `.click()` on `<option>` elements inside the "Add An Item" `<select>` | CDP error `-32000: Node does not have a layout object` — `<option>` children have zero layout (0×0px). Use `.selectOption()` with `waitForNavigation()`, or navigate directly to the URL (Option A) |
 | Using `#addtype{n}-t` where `n` is a simple integer | ID pattern is `addtype{blk}-{tb}` where `blk` is `0` (course) or `0-{blockNum}` (inside block) |
 | Using `\( ... \)` or `$` for inline math in question text | MOM uses backticks: `` `y = 2x + 3` `` renders as typeset math. `\(` shows literally. |
 | Using hardcoded canvas ID (e.g. `#canvas27`) | Canvas ID is dynamically assigned — always use `canvas[id^="canvas"]` |
