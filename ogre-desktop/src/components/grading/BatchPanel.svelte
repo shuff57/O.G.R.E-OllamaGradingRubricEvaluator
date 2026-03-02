@@ -108,15 +108,16 @@
   // ── Review Gate ──────────────────────────────────────────────────────
   type ReviewData = {
     studentIndex: number;
-    score: number;
-    feedback: string;
+    score: number;       // editable — bound to input
+    autoScore: number;   // original AI score — read-only label
+    feedback: string;    // editable — bound to textarea
     studentName: string;
     maxScore: number;
     chunkIndex: number;
     chunkTotal: number;
   };
   let pendingReview = $state<ReviewData | null>(null);
-  let reviewResolve: ((decision: { action: 'approve' | 'skip' }) => void) | null = null;
+  let reviewResolve: ((decision: { action: 'approve' | 'skip'; score?: number; feedback?: string }) => void) | null = null;
 
   // ── Rubric Review ────────────────────────────────────────────────────
   // (rubricText, rubricMaxScore, extractedRubric, sourceRubricId, batchPhase, essayPrompt
@@ -616,6 +617,12 @@
         updateBatchState();
         return;
       }
+      // Use edited values from review, falling back to original AI values
+      result = {
+        ...result,
+        score: decision.score ?? result.score,
+        feedback: decision.feedback ?? result.feedback,
+      };
     }
 
     currentStudentName = studentName;
@@ -891,16 +898,18 @@
     maxScore: number,
     index: number,
     total: number
-  ): Promise<{ action: 'approve' | 'skip' }> {
+  ): Promise<{ action: 'approve' | 'skip'; score?: number; feedback?: string }> {
     return new Promise((resolve) => {
-      pendingReview = { ...result, studentName, maxScore, chunkIndex: index, chunkTotal: total };
+      pendingReview = { ...result, autoScore: result.score, studentName, maxScore, chunkIndex: index, chunkTotal: total };
       reviewResolve = resolve;
     });
   }
 
   function handleApprove() {
-    if (reviewResolve) {
-      reviewResolve({ action: 'approve' });
+    if (reviewResolve && pendingReview) {
+      const editedScore = Math.max(0, Math.min(pendingReview.maxScore, Number(pendingReview.score) || 0));
+      const editedFeedback = pendingReview.feedback;
+      reviewResolve({ action: 'approve', score: editedScore, feedback: editedFeedback });
       pendingReview = null;
       reviewResolve = null;
     }
@@ -1300,9 +1309,26 @@
           <div class="review-summary">
             <div class="review-student-row">
               <strong>{pendingReview.studentName}</strong>
-              <span class="review-score">{pendingReview.score}/{pendingReview.maxScore}</span>
+              <small class="auto-score-label">Auto: {pendingReview.autoScore}/{pendingReview.maxScore}</small>
             </div>
-            <div class="review-feedback">{pendingReview.feedback}</div>
+            <div class="review-score-row">
+              <label class="review-score-label" for="review-score-input">Score:</label>
+              <input
+                id="review-score-input"
+                class="review-score-input"
+                type="number"
+                min="0"
+                max={pendingReview.maxScore}
+                step="0.5"
+                bind:value={pendingReview.score}
+              />
+              <span class="review-score-max">/ {pendingReview.maxScore}</span>
+            </div>
+            <textarea
+              class="review-feedback-edit"
+              rows="4"
+              bind:value={pendingReview.feedback}
+            ></textarea>
           </div>
           <div class="review-actions">
             <button class="btn-primary" onclick={handleApprove}>✓ Approve</button>
@@ -2243,6 +2269,62 @@
     font-size: 0.78rem;
     color: var(--color-error, #ef4444);
     margin: 0 0 var(--spacing-1) 0;
+  }
+
+  /* ── Review Panel Edit Controls ── */
+  .auto-score-label {
+    font-size: 0.78em;
+    color: var(--color-text-secondary);
+    font-weight: 400;
+  }
+  .review-score-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+  .review-score-label {
+    font-size: 0.85em;
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+  .review-score-input {
+    width: 70px;
+    background-color: var(--color-bg-main);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-primary);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-1) var(--spacing-2);
+    font-size: 0.9em;
+    font-weight: 600;
+  }
+  .review-score-input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px var(--color-primary-bg);
+  }
+  .review-score-max {
+    font-size: 0.85em;
+    color: var(--color-text-secondary);
+  }
+  .review-feedback-edit {
+    width: 100%;
+    background-color: var(--color-bg-main);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-primary);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-2);
+    font-family: var(--font-body);
+    font-size: 0.82em;
+    resize: vertical;
+    max-height: 150px;
+    line-height: 1.4;
+    box-sizing: border-box;
+  }
+  .review-feedback-edit:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px var(--color-primary-bg);
   }
 
 </style>
