@@ -111,31 +111,34 @@ Three domains. All apply to every MOM question generation task.
 
 **Color palette (hex + purpose, NOT CSS code):**
 
+Sourced from Khan Academy (Perseus design system), Brilliant.org, and Desmos — the industry standard for modern assessment tools.
+
 | Color | Purpose |
 |-------|---------|
-| `#3d3d3d` | Table header background, circle badge background (neutral/gray scheme) |
-| `#f8f8f8` | Table data row background; collapsible summary background (FRQ rubrics) |
-| `#e0e0e0` | Card border, row separator lines |
-| `#f5f5f5` | Callout box background (instruction line) |
-| `#999` | Callout box left-border accent |
-| `#555` | Callout box text color (de-emphasized) |
+| `#1865f2` | Primary accent — badge background, callout border, interactive elements (Khan Academy blue) |
+| `#21242c` | Body text — softer than pure black, easier on eyes |
+| `#374151` | Secondary text — labels, de-emphasized content |
+| `#f7f9fa` | Table header background — light, non-distracting |
+| `#dee1e3` | Table header bottom border (2px), row separator |
+| `#e5e7eb` | Card border, column separators |
+| `#f0f7ff` | Instruction callout background (light blue tint) |
 | `#f0f4ff` | Collapsible summary background (matrix solution guides) |
 | `#fafafa` | Content area background inside collapsibles |
 | `#e8f5e9` | Correct answer highlight, model response area |
 | `#4CAF50` | Accent bar border, highlight border (green) |
 | `#fff9ea` | Alternating row tint in rubric tables |
-| `#ccc` | Borders, separators |
+| `#ccc` | General borders, separators |
 | `#2E7D32` | "Model Narrative Response" label text (dark green) |
 
 **Multipart question layout (card-per-part pattern):**
 
-Use this layout for all multipart auto-graded questions. Each sub-part gets its own white card. Never use bare `<p>` tags with bold `a.` labels.
+Use this layout for all multipart auto-graded questions. Each sub-part gets its own white card. Never use bare `<p>` tags with bold `a.` labels. Sourced from Khan Academy Perseus component patterns.
 
-- **Outer wrapper**: `max-width:720px`, `font-family:Arial`, `font-size:medium`, `line-height:1.6`
-- **Data table**: wrapped in `<div style="border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.12);display:inline-block;">` — the wrapper achieves rounded corners since `border-radius` on `<table>` has poor browser support. Header row: `background:#3d3d3d;color:white`. Data row: `background:#f8f8f8`.
-- **Instruction callout**: `background:#f5f5f5; border-left:3px solid #999; padding:9px 14px; border-radius:0 6px 6px 0` — used for directives like "Use your calculator to find the regression line."
-- **Part cards**: `background:#fff; border:1px solid #e0e0e0; border-radius:8px; padding:12px 16px; margin:8px 0; box-shadow:0 1px 3px rgba(0,0,0,0.04)`
-- **Circle badges** (a, b, c…): `display:inline-block; text-align:center; line-height:22px; background:#3d3d3d; color:#fff; border-radius:50%; width:22px; height:22px; font-size:0.78em; font-weight:bold; margin-right:8px; vertical-align:middle`
+- **Outer wrapper**: `font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif; font-size:16px; line-height:1.6; color:#21242c; max-width:688px` — 688px matches the optimal reading width used by Khan Academy
+- **Data table**: wrapped in `<div style="border-radius:12px;overflow:hidden;box-shadow:0 4px 6px -1px rgba(0,0,0,0.08),0 2px 4px -2px rgba(0,0,0,0.05);border:1px solid #e5e7eb;display:inline-block;">`. Header row: `background:#f7f9fa; font-weight:600; color:#21242c; border-bottom:2px solid #dee1e3`. Column cells: `border-left:1px solid #e5e7eb`. Never use `border="1"` attribute.
+- **Instruction callout**: `background:#f0f7ff; border-left:4px solid #1865f2; padding:10px 16px; border-radius:0 8px 8px 0` — the 4px left border is the Khan Academy style
+- **Part cards**: `background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:20px; margin:10px 0; box-shadow:0 4px 6px -1px rgba(0,0,0,0.07),0 2px 4px -2px rgba(0,0,0,0.04)` — dual-layer shadow gives depth without heaviness
+- **Circle badges** (a, b, c…): `display:inline-flex; align-items:center; justify-content:center; background:#1865f2; color:#fff; border-radius:50%; width:32px; height:32px; font-size:14px; font-weight:700; margin-right:12px; vertical-align:middle; flex-shrink:0` — 32px with `inline-flex` is more reliable than `inline-block + line-height` for vertical centering
 
 **Typography and layout rules:**
 
