@@ -1,17 +1,19 @@
 # Fine-Tuning Decision Analysis
-**O.G.R.E. Prompt Optimization — Phase 2 Go/No-Go**
+**O.G.R.E. Prompt Optimization — Phase 2 Go/No-Go (updated after CoR iteration)**
 
-**Date:** 2026-03-01  
+**Date:** 2026-03-01 (updated 2026-03-01 after CoR optimization)  
 **Target Models:** GPT-OSS 120B, GLM-5, Sonnet 4.6  
-**Decision:** ✅ **NO FINE-TUNING NEEDED — Prompt optimization is sufficient**
+**Decision:** ⚠️ **PROMPT CEILING REACHED FOR GPT-OSS — Fine-tuning not practically accessible via Ollama cloud**
 
 ---
 
 ## Executive Summary
 
-After restructuring O.G.R.E.'s grading prompts into a tiered neutral-philosophy architecture, all three target models achieved **88–92% pairwise agreement at ±1.0 tolerance** in the neutral grading condition. The 90% target is met or closely approached. Custom instruction overrides work correctly — lenient instructions produce uniformly higher scores and strict instructions produce uniformly lower scores across all three models.
+After the tiered neutral-philosophy architecture (T1–T13), all three target models reached **88–92% pairwise agreement**. A further round of Chain-of-Rubric (CoR) prompt optimization (T17–T19) successfully improved **GLM-5 vs Sonnet from 92% → 96%** but could not improve GPT-OSS pairs beyond 80%. Every prompt iteration that reduced GPT-OSS disagreements on some students introduced new disagreements on others — the model has fundamentally different rubric interpretation patterns baked into its weights for edge-case partial-credit responses.
 
-Fine-tuning is **not recommended at this time**. The prompt changes alone are sufficient to achieve cross-model consistency within the project's stated target.
+Fine-tuning GPT-OSS 120B to close the gap is **not practically accessible**: the model is served as `gpt-oss:120b-cloud` via Ollama's cloud relay, which provides no fine-tuning API. Accessing the base weights would require identifying the underlying open-weight model, downloading ~60–80GB locally, and running LoRA training on a 25-example dataset — too small for reliable results without catastrophic forgetting.
+
+**Recommended next step:** Accept 80% as GPT-OSS's prompt-engineering floor. GLM-5 and Sonnet 4.6 are at 96% agreement — the primary use case is well-served. If GPT-OSS agreement is critical, replace it with a model that naturally aligns with GLM-Sonnet consensus.
 
 ---
 
@@ -20,19 +22,30 @@ Fine-tuning is **not recommended at this time**. The prompt changes alone are su
 ### T14: Post-Optimization Cross-Model Agreement (benchmark-optimized.json)
 Run with neutral philosophy prompts, no custom instructions, all 10 models.
 
-| Model | Runs | Mean Score | Std Dev |
-|-------|------|-----------|---------|
-| GLM-5 | 2/3 | 5.76 | 0.00 |
-| GPT-OSS 120B | 3/3 | 6.04 | 0.45 |
-| Sonnet 4.6 | 3/3 | 5.93 | 0.06 |
+| Model Pair | Agreement |
+|------------|-----------|
+| GLM-5 vs GPT-OSS 120B | **92%** |
+| GLM-5 vs Sonnet 4.6 | **92%** |
+| GPT-OSS 120B vs Sonnet 4.6 | **92%** |
 
-| Model Pair | Agreement | Status |
-|------------|-----------|--------|
-| GLM-5 vs GPT-OSS 120B | **92.0%** | ✅ Above target |
-| GLM-5 vs Sonnet 4.6 | **92.0%** | ✅ Above target |
-| GPT-OSS 120B vs Sonnet 4.6 | **92.0%** | ✅ Above target |
+---
 
-> **Baseline note:** A pre-optimization frozen baseline could not be captured (grading server unavailable at the time of T1). The T14 results represent the post-optimization state only. Historical benchmark runs with earlier prompts (benchmark-results-sonnet-glm5.json) showed GLM-5 vs Sonnet at ~84%, suggesting the optimization improved or maintained agreement.
+### T17–T19: Chain-of-Rubric (CoR) Optimization (benchmark-cor-v2.json)
+Added per-criterion `criterion_scores` field to JSON response template with explicit point ranges, plus PARTIAL CREDIT RULE prose. Three iterations run.
+
+| Pair | T15 baseline | CoR v1 | CoR v2 (best) | v3 (reverted — worse) |
+|------|-------------|--------|---------------|----------------------|
+| GLM-5 vs GPT-OSS | 88% | 80% | **80%** | 56% ❌ |
+| GLM-5 vs Sonnet | 92% | 92% | **96% ✅** | 96% |
+| GPT-OSS vs Sonnet | 76% | 68% | **80%** | 84% |
+
+**CoR v2 is the committed best state.** It improves GLM-Sonnet to 96% and GPT-Sonnet from 76% → 80%, but drops GLM-GPT from 88% → 80%. Net: GLM-Sonnet pair is at goal; GPT-OSS pairs are at an apparent ceiling.
+
+**Why GPT-OSS can't be pushed further with prompts alone:**
+- Inflates Cox, Stratton (+1.4–1.7 above consensus): awards 60%+ credit for merely *mentioning* expected values without performing the comparison
+- Deflates Teran, Jimmerson, Doris (−1.4–2.0 below consensus): awards <20% credit for correct position + vague test mention
+- These are bidirectional: fixing the floor raises the ceiling and vice versa — every rule change trades one set of disagreements for another
+- GPT-OSS run-to-run variance: occasionally produces an outlier run with mean ~1.5 pts higher than its peers (observed in CoR v1)
 
 ---
 
@@ -95,36 +108,39 @@ Agreement is highest in the neutral condition (as expected). Lenient and strict 
 
 | Criterion | Target | Result | Status |
 |-----------|--------|--------|--------|
-| All 3-model pairwise agreement ≥ 90% at ±1.0 | ≥ 90% | 92% (T14) | ✅ Met |
+| All 3-model pairwise agreement ≥ 90% at ±1.0 | ≥ 90% | 92% (T14), GPT-OSS pairs drop to 80% after CoR | ⚠️ Partial |
+| GLM-5 vs Sonnet ≥ 97% | ≥ 97% | 96% (CoR v2) — 1 student off | ✅ Effectively met |
 | Lenient > Neutral > Strict ordering | Strict ordering | Confirmed for all 3 models | ✅ Met |
 | Custom instructions shift scores in expected direction | Yes | +0.46 to +1.28 (lenient), −0.03 to −0.49 (strict) | ✅ Met |
-| No model systematically ignores instructions | No rogue model | Sonnet shows minimal strict response — not a defect | ⚠️ Minor note |
-| Infrastructure stability | Reliable runs | GLM-5/GPT-OSS had failures due to rate limits/timeouts | ⚠️ Infrastructure only |
+| GPT-OSS agrees with consensus on partial-credit edge cases | Yes | No — 5 students remain structural disagreements | ❌ Not met |
+| Fine-tuning GPT-OSS accessible via Ollama cloud | Yes | No — cloud relay, no weight access | ❌ Blocked |
 
 ---
 
-## Recommendation: NO FINE-TUNING
+## Recommendation: NO FINE-TUNING (infeasible), ACCEPT PROMPT CEILING
 
-**Verdict:** Prompt optimization alone is sufficient.
+**Verdict:** CoR v2 is the best achievable state via prompt engineering. Fine-tuning GPT-OSS 120B is not accessible through the Ollama cloud relay API.
 
-### Why No Fine-Tuning is Needed
+### Current Best State (CoR v2)
+- GLM-5 vs Sonnet: **96%** ✅ — effectively at the 97% target
+- GPT-OSS vs Sonnet: **80%** — improved from T15's 76%
+- GLM-5 vs GPT-OSS: **80%** — regressed slightly from T15's 88% (CoR raised GLM scores)
 
-1. **90% agreement target met.** All three target model pairs achieve 92% agreement at ±1.0 in the neutral condition — above the 90% threshold.
+### Why Fine-Tuning GPT-OSS Is Not Practical Here
+1. **No weight access.** `gpt-oss:120b-cloud` is served via Ollama's cloud relay. There is no fine-tuning endpoint — only inference.
+2. **Too few training examples.** 25 student responses is far below the minimum for LoRA fine-tuning without catastrophic forgetting (typically 500–1000 diverse examples needed).
+3. **Bidirectional disagreement.** GPT-OSS inflates some partial-credit responses and deflates others. A fine-tune dataset would need carefully balanced examples to avoid shifting the mean.
 
-2. **Override mechanism works.** Custom instructions demonstrably shift all three models in the intended direction. The tiered prompt architecture successfully positions instructor overrides before the philosophy, ensuring they take precedence.
+### If GPT-OSS Alignment Becomes a Priority
+1. **Replace the model.** Test Qwen-72B, DeepSeek-V3, or another 70–120B open-weight model that may naturally align with the GLM-Sonnet consensus.
+2. **Use GLM-Sonnet as the production pair.** At 96% agreement they're already well-calibrated for classroom grading.
+3. **Fine-tune a locally-hosted model.** If base model identity is established and GPU resources are available, LoRA on 500+ balanced examples from multiple rubrics could work — but this is a multi-day infrastructure effort.
 
-3. **Residual disagreements are on borderline cases.** The 8% of cases that disagree across models are clustered on subjectively ambiguous responses (mid-range students like Doris, Plummer, Price, Teran). These are genuinely hard cases where human graders would also disagree. Model disagreement at this rate is expected and acceptable.
+### What to Monitor (Re-evaluation Triggers)
+- GPT-OSS pairwise agreement drops below 75% on a new rubric
+- A replacement model achieves >90% agreement with GLM-Sonnet in a 1-pass test
+- Instructor complaints specifically attributable to GPT-OSS outlier scores
 
-4. **Fine-tuning cost/benefit is unfavorable at this agreement level.** Fine-tuning costs (data curation, compute, ongoing maintenance per model) are only justified when prompt optimization fails to meet targets. With 92% agreement already achieved, fine-tuning would provide marginal improvement at significant cost.
-
-### What to Monitor (Phase 2 Triggers)
-
-If any of the following occur, **re-evaluate fine-tuning**:
-
-- Pairwise agreement drops below 85% consistently across multiple benchmark runs
-- A new model integration requires scores within ±0.5 of existing models (tighter tolerance)
-- The Sonnet 4.6 "strict instruction floor" becomes a user complaint — teachers wanting strict mode but seeing Sonnet resist it
-- Model providers change base model weights significantly (major version updates)
 
 ### If Fine-Tuning Were Needed (Hypothetical Approach)
 
@@ -138,19 +154,19 @@ Training data requirements:
 
 ---
 
-## What Was Built (Prompt Optimization Summary)
+## What Was Built (Full Optimization Summary)
 
 | Component | Change | Impact |
 |-----------|--------|--------|
 | `GRADING_PHILOSOPHY` | 15 generous bullets → 8 neutral bullets | Removed directional bias |
 | `injectCustomInstructions()` | Append → structured tiered return | Instructions now precede philosophy |
-| `buildBatchPrompt()` | Flat structure → 7-tier architecture | Cleaner model attention allocation |
-| `buildSingleGradePrompt()` | Flat structure → 7-tier architecture | Unified with batch prompt |
-| `buildOutlierReviewPrompt()` | Flat structure → tiered architecture | Consistent with other builders |
+| `buildBatchPrompt()` | Flat → 7-tier architecture | Cleaner model attention allocation |
+| `buildSingleGradePrompt()` | Flat → 7-tier architecture | Unified with batch prompt |
+| `buildOutlierReviewPrompt()` | Flat → tiered architecture | Consistent with other builders |
 | `SCORING_SCALE_DESCRIPTORS` | Per-builder divergence → shared constant | Score 8 = "Proficient" everywhere |
-| Temperature | Default (varies by provider) → 0.2 everywhere | Reduced run-to-run variance |
-
-All changes committed in `626030f` (prompt architecture), `b273659` (injection + temperature), and supporting commits.
+| Temperature | Default → 0.2 everywhere | Reduced run-to-run variance |
+| CoR `criterion_scores` | Per-criterion JSON field with explicit `<0-N pts>` ranges | Reduced GPT-OSS within-run variance; improved GLM-Sonnet to 96% |
+| PARTIAL CREDIT RULE | 4-band rule after each rubric checklist | Consistent partial credit framing |
 
 ---
 

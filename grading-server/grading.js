@@ -213,15 +213,18 @@ CONSISTENCY RULES:
   }
 
   // Build Chain-of-Rubric criterion names for JSON response template
-  const _corNames = (rubric.checklistItems || []).map(c => c.category.replace(/\s*\(\d+\s*pts?\)/i, '').trim());
-  const _corField = _corNames.length > 0
-    ? `    "criterion_scores": {${_corNames.map(n => `"${n}": <pts>`).join(', ')}},\n`
+  const _corItems = (rubric.checklistItems || []).map(c => ({
+    name: c.category.replace(/\s*\(\d+\s*pts?\)/i, '').trim(),
+    pts: c.points ?? 10
+  }));
+  const _corField = _corItems.length > 0
+    ? `    "criterion_scores": {${_corItems.map(({name, pts}) => `"${name}": <0-${pts} pts>`).join(', ')}},\n`
     : '';
   // Response format instructions — use actual student indices so AI doesn't guess
   const firstIdx = students[0]?.index ?? 0;
   const secondIdx = students.length > 1 ? (students[1]?.index ?? firstIdx + 1) : firstIdx + 1;
   prompt += `
-${_corNames.length > 0 ? `GRADING PROCESS:\nFor each student: (1) score each GRADING CHECKLIST criterion independently using the PARTIAL CREDIT RULE above, (2) record scores in criterion_scores, (3) sum for the final score. Do NOT adjust criterion scores to hit a desired total.\n` : ''}
+${_corItems.length > 0 ? `GRADING PROCESS:\nFor each student: (1) score each GRADING CHECKLIST criterion independently using the PARTIAL CREDIT RULE above, (2) record scores in criterion_scores, (3) sum for the final score. Do NOT adjust criterion scores to hit a desired total.\n` : ''}
 
 [
   {
@@ -806,9 +809,13 @@ ${essayPrompt}
   }
 
   // Build Chain-of-Rubric criterion names for single prompt
-  const _sCorNames = (rubric.checklistItems || []).map(c => c.category.replace(/\s*\(\d+\s*pts?\)/i, '').trim());
-  const _sCorField = _sCorNames.length > 0
-    ? `  "criterion_scores": {${_sCorNames.map(n => `"${n}": <pts>`).join(', ')}},\n`
+  const _sCorItems = (rubric.checklistItems || []).map(c => ({
+    name: c.category.replace(/\s*\(\d+\s*pts?\)/i, '').trim(),
+    pts: c.points ?? 10
+  }));
+  const _sCorNames = _sCorItems.map(c => c.name);
+  const _sCorField = _sCorItems.length > 0
+    ? `  "criterion_scores": {${_sCorItems.map(({name, pts}) => `"${name}": <0-${pts} pts>`).join(', ')}},\n`
     : '';
   prompt += `
 ${_sCorNames.length > 0 ? 'GRADING PROCESS: Score each GRADING CHECKLIST criterion independently using the PARTIAL CREDIT RULE, then sum for the final score.\n' : ''}
