@@ -1,9 +1,9 @@
 {
-  "active_plan": "C:\\Users\\shuff\\Documents\\GitHub\\O.G.R.E-OllamaGradingRubricEvaluator\\.sisyphus\\plans\\mom-style-guide.md",
-  "started_at": "2026-03-01T23:55:00.000Z",
+  "active_plan": "C:\\Users\\shuff\\Documents\\GitHub\\O.G.R.E-OllamaGradingRubricEvaluator\\.sisyphus\\plans\\review-mode-override.md",
+  "started_at": "2026-03-02T15:45:00.000Z",
   "session_ids": ["ses_current"],
-  "plan_name": "mom-style-guide",
-  "worktree_path": "C:\\Users\\shuff\\Documents\\GitHub\\O.G.R.E-OllamaGradingRubricEvaluator"
+  "plan_name": "review-mode-override",
+  "worktree_path": "C:\\Users\\shuff\\Documents\\GitHub\\O.G.R.E-OllamaGradingRubricEvaluator",
   "agent": "atlas",
-  "model_preference": "minimax"
+  "model_preference": "claude-sonnet-4-6"
 }

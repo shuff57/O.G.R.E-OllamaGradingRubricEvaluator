@@ -66,21 +66,71 @@ Course Items: Copy From... | Export
 Mass Change: Assessments | Forums | Blocks | Dates | Time Shift
 ```
 
-### Adding Items to Course
-Each folder/block has a combobox `id="addtype{n}-t"` (n = position index):
+### Adding Items to Course — "Add An Item..." Dropdown
+
+> ⚠️ **Critical**: This is a native `<select>` element — NOT a custom widget.
+> Agents fail by trying to `.click()` the option. Use `.selectOption()` or navigate directly via URL.
+
+#### Select Element ID Pattern
+
 ```
-Options: Add Assessment | Add Inline Text | Add Link | Add Forum | Add Wiki | Add Drill | Add Block | Add Calendar
+addtype{blk}-{tb}
+  blk = '0'       → course-level (outside any block)
+  blk = '0-1'     → inside block 1
+  blk = '0-2'     → inside block 2  (increment for more blocks)
+  tb  = 't'       → top of section
+  tb  = 'b'       → bottom of section
 ```
 
-### Item-Level Actions (per content item)
-Each item has an Options button `button[id="dropdownMenuCtrl{n}"]`:
+**All selects on a typical course page:**
+
+| Selector ID | `onchange` call | Location |
+|-------------|-----------------|----------|
+| `#addtype0-t` | `additem('0','t')` | Top of course (above all blocks) |
+| `#addtype0-1-t` | `additem('0-1','t')` | Top of block 1 |
+| `#addtype0-1-b` | `additem('0-1','b')` | Bottom of block 1 |
+| `#addtype0-2-t` | `additem('0-2','t')` | Top of block 2 |
+| `#addtype0-2-b` | `additem('0-2','b')` | Bottom of block 2 |
+| `#addtype0-b` | `additem('0','b')` | Bottom of course (below all blocks) |
+
+Block names map to numbers via `[id^="blockh"]` elements (e.g. `#blockh1` = block 1).
+
+#### Option Values and Destination URLs
+
+The `additem()` JS function constructs: `add{type}.php?block={blk}&tb={tb}&cid={cid}`
+
+| Label | `value` | Destination page |
+|-------|---------|-----------------|
+| Add Assessment | `assessment2` | `addassessment2.php` |
+| Add Inline Text | `inlinetext` | `addinlinetext.php` |
+| Add Link | `linkedtext` | `addlinkedtext.php` |
+| Add Forum | `forum` | `addforum.php` |
+| Add Wiki | `wiki` | `addwiki.php` |
+| Add Drill | `drillassess` | `adddrillassess.php` |
+| Add Block | `block` | `addblock.php` |
+| Add Calendar | `calendar` | `addcalendar.php` |
+
+#### How to Interact (pick one approach)
+
+**Option A — Direct URL navigation (recommended, skips the dropdown entirely):**
+```javascript
+// Add Assessment to block 2, at the top
+const cid = new URL(state.page.url()).searchParams.get('cid');
+await state.page.goto(`https://www.myopenmath.com/course/addassessment2.php?block=0-2&tb=t&cid=${cid}`, { waitUntil: 'domcontentloaded' });
 ```
-Links visible next to items:
-- Modify → addinlinetext.php?id={id}&block={block}&cid={cid}  (for text items)
-- Move   → JS-only (drag or modal)
-- Delete → deleteinlinetext.php?id={id}&block={block}&cid={cid}&remove=ask
-- Copy   → copyoneitem.php?cid={cid}&copyid={id}&backref={type+id}
-- Stats  → contentstats.php?cid={cid}&type=I&id={id}
+
+**Option B — selectOption() on the native `<select>`:**
+```javascript
+// Triggers onchange → additem() → navigation
+await state.page.locator('#addtype0-2-t').selectOption('assessment2');
+await state.page.waitForLoadState('domcontentloaded');
+```
+
+**NEVER do this** (silently fails — option elements are not clickable targets):
+```javascript
+// ❌ Wrong — click() on a <select> or its <option> children does nothing useful
+await state.page.locator('#addtype0-2-t').click();
+await state.page.locator('option[value="assessment2"]').click();
 ```
 
 For assessment items:
@@ -370,6 +420,162 @@ Accessible from: the grading page is reached by clicking a student's score cell 
 
 ---
 
+---
+
+## Question Preview / Test Page (`testquestion2.php`)
+
+URL: `https://www.myopenmath.com/course/testquestion2.php?cid={cid}&qsetid={qid}`
+
+Used by instructors to preview a question with live randomization and to verify auto-grading. This is NOT a student-facing page — it's an authoring/verification tool.
+
+> 🔴 **REQUIRED VALIDATION RULE**: After answering any question on this page, you **MUST** click Submit and confirm you receive a **Correct** result before declaring the question working. Getting Incorrect (or no result) means the question code is broken or your answer math is wrong — either way, do not proceed. This applies to every question type, every seed.
+
+### Key Page Elements
+
+| Element | Selector | Notes |
+|---------|---------|-------|
+| Question text | `.qtext` or first visible text block | Contains the student-facing prompt |
+| Answer box area | `#answerarea` | Wraps canvas or input depending on question type |
+| Canvas (draw questions) | `canvas[id^="canvas"]` | ID is dynamically assigned (e.g. `canvas27`) — always use the prefix selector |
+| Submit button | `input[type="button"][value="Submit"]` or `button:has-text("Submit")` | Submits the answer for grading |
+| Grade/result display | `.scoredisplay`, `.correct`, `.incorrect`, or text containing "Score" | Shows grade after submit |
+| New Version button | `input[type="button"][value="New Version"]` or `button:has-text("New Version")` | Loads a new random seed |
+
+### Draw Question (`$answerformat = "twopoint"`) Canvas Interaction
+
+> ⚠️ **Critical**: The canvas ID is dynamic. Always locate it with `canvas[id^="canvas"]` — never hardcode the number.
+
+#### Grid Configuration
+
+The grid is defined by `$grid = "xmin,xmax,ymin,ymax,xscl,yscl,width,height"` in the question's Common Control.
+
+Standard graph: `$grid = "-6,6,-6,6,1,1,300,300"` → 298×298px canvas, grid from -6 to 6 on both axes.
+
+#### Grid → Pixel Conversion
+
+```javascript
+// For a standard -6 to 6 grid on a 298x298 canvas:
+const canvasW = 298, canvasH = 298;
+const xMin = -6, xMax = 6, yMin = -6, yMax = 6;
+
+function gridToPixel(gx, gy) {
+  return {
+    x: Math.round((gx - xMin) / (xMax - xMin) * canvasW),
+    y: Math.round((yMax - gy) / (yMax - yMin) * canvasH),
+  };
+}
+
+// Example: click points (0,-2) and (3,4)
+const p1 = gridToPixel(0, -2);  // { x: 149, y: 198 }
+const p2 = gridToPixel(3, 4);   // { x: 224, y: 74 }
+```
+
+#### Drawing a Line (Two Clicks)
+
+With `$snaptogrid = 1`, clicks snap to the nearest integer grid point. Pick any two distinct integer points on the line.
+
+```javascript
+// Step 1: locate the canvas (ID is dynamic)
+const canvas = await state.page.locator('canvas[id^="canvas"]').first();
+
+// Step 2: compute pixel positions from two grid points on the line
+// e.g. for y = 2x + 3, use (-1, 1) and (1, 5)
+const p1 = gridToPixel(-1, 1);
+const p2 = gridToPixel(1, 5);
+
+// Step 3: click both points — order does not matter
+await canvas.click({ position: p1 });
+await canvas.click({ position: p2 });
+```
+
+#### Computing Points on the Line
+
+Given the equation `y = m*x + b`, pick two integer x values and compute y:
+
+```javascript
+function twoPointsOnLine(m, b, xMin = -6, xMax = 6) {
+  // Try x = 0 first, then x = 1 (or adjust to keep within grid)
+  const x1 = 0;
+  const y1 = m * x1 + b;
+  const x2 = (Math.abs(m) <= 3) ? 1 : (m > 0 ? -1 : 1);
+  const y2 = m * x2 + b;
+  // Clamp to grid if needed
+  return [{ x: x1, y: y1 }, { x: x2, y: y2 }];
+}
+```
+
+For general use, pick x values such that both resulting y values stay within [yMin, yMax].
+
+#### Full Draw + Submit Workflow
+
+```javascript
+// 1. Navigate to the question
+await state.page.goto(`https://www.myopenmath.com/course/testquestion2.php?cid=${cid}&qsetid=${qid}`, { waitUntil: 'domcontentloaded' });
+
+// 2. Read the equation from the page (or know it from the question code)
+//    e.g. parse 'y = 2x + 3' from the visible question text
+
+// 3. Compute two points on the line
+const [p1grid, p2grid] = twoPointsOnLine(m, b);
+const p1px = gridToPixel(p1grid.x, p1grid.y);
+const p2px = gridToPixel(p2grid.x, p2grid.y);
+
+// 4. Click both points on the canvas
+const canvas = await state.page.locator('canvas[id^="canvas"]').first();
+await canvas.click({ position: p1px });
+await canvas.click({ position: p2px });
+
+// 5. Submit and ASSERT CORRECT — this is required validation, not optional
+await state.page.locator('input[type="button"][value="Submit"]').click();
+await state.page.waitForTimeout(1500);
+
+// 6. Read result and verify
+const resultEl = await state.page.locator('.scoredisplay, .correct, .incorrect').first();
+const resultText = await resultEl.textContent().catch(() => '');
+const isCorrect = resultText.includes('1/1') || (await state.page.locator('.correct').count()) > 0;
+if (!isCorrect) {
+  // ❌ STOP — question is broken. Do NOT proceed.
+  // Debug: check that your gridToPixel math matches the actual equation,
+  //        verify canvas dimensions with canvas.getBoundingClientRect(),
+  //        and confirm the equation was read correctly from qtext.
+  throw new Error(`Submit returned incorrect: "${resultText}" — fix the question or answer math before continuing`);
+}
+
+// 7. Optionally test a second seed to confirm the question works across randomizations
+await state.page.locator('input[type="button"][value="New Version"]').click();
+await state.page.waitForLoadState('domcontentloaded');
+// Repeat steps 2–6 for the new seed to confirm correctness holds
+
+### Reading the Current Equation from the Question
+
+The question text is rendered HTML. Parse it to extract slope/intercept:
+
+```javascript
+const qtext = await state.page.locator('.qtext').first().innerText();
+// qtext will contain something like: "Graph the linear function y = 2x + 3"
+// Use a regex to extract m and b:
+const match = qtext.match(/y\s*=\s*(-?\d*)x\s*([+-]\s*\d+)?/);
+// Parse m and b from match groups
+```
+
+Alternatively, if the slope/intercept values are known from the question source, use them directly rather than parsing the rendered text.
+
+### Grading Result Interpretation (Required Pass/Fail)
+
+After submit, check the result **before** declaring the question complete:
+
+| Result | Meaning | Action |
+|--------|---------|--------|
+| `Score: 1/1` or `.correct` present | ✅ Question works | Proceed / test more seeds |
+| `Score: 0/1` or `.incorrect` present | ❌ Question broken or answer math wrong | Debug and fix — do NOT proceed |
+| No result shown after submit | ❌ Submit click missed or canvas interaction failed | Re-verify `gridToPixel` math and canvas size |
+
+**Debugging incorrect results:**
+1. Take a screenshot to see what line was drawn vs. what was expected
+2. Confirm the equation was read correctly from `.qtext` (watch for `m=1` rendering as `x`, not `1x`)
+3. Verify canvas pixel dimensions with `canvas.getBoundingClientRect()` — if they differ from 298×298, recalculate
+4. Click "New Version" and try a simpler seed (e.g. slope=1) to isolate whether it's a pixel math issue or a question code issue
+
 ## How to Get `cid` and `aid`
 
 - **`cid`** — appears in every page URL. Extract from current page: `new URL(location.href).searchParams.get('cid')`
@@ -440,3 +646,11 @@ $scoremethod[1] = "takeanything"
 | Forgetting to set both `#control` and `#qtext` when pasting a question | Both sections are required; Common Control has variables, Question Text has the student-facing content |
 | Clicking "Save" while question type picker dropdown is open | Close dropdown first; open dropdown intercepts the save click |
 | Building `aid` from the wrong param | In `addassessment2.php?id={aid}`, the `id` param = `aid`. Don't confuse with the course `cid` |
+| `.click()` on "Add An Item" dropdown or its options | Native `<select>` — use `.selectOption('assessment2')` or navigate to URL directly |
+| Using `#addtype{n}-t` where `n` is a simple integer | ID pattern is `addtype{blk}-{tb}` where `blk` is `0` (course) or `0-{blockNum}` (inside block) |
+| Using `\( ... \)` or `$` for inline math in question text | MOM uses backticks: `` `y = 2x + 3` `` renders as typeset math. `\(` shows literally. |
+| Using hardcoded canvas ID (e.g. `#canvas27`) | Canvas ID is dynamically assigned — always use `canvas[id^="canvas"]` |
+| Clicking Submit before both canvas points are placed | Two clicks required for `twopoint` draw type — one click draws nothing visible |
+| Using `\( ... \)` for inline math in question text (repeated) | Use backticks `` ` `` — see MOM PHP Quick Reference above |
+| `gridToPixel` using wrong canvas size | Verify actual canvas dims with `canvas.getBoundingClientRect()` if results are off |
+| Parsing `y = mx + b` from rendered text when m=1 or m=-1 | Rendered text shows `y = x + 3` (not `1x`) — handle the implicit coefficient case |
