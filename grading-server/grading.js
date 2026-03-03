@@ -94,7 +94,7 @@ export function generateScoringAnchors(rubric) {
  * @param {Array|null} bridgeResponses - Graded examples from previous chunk for consistency
  * @returns {String} - Complete prompt for AI grading
  */
-export function buildBatchPrompt(rubric, students, anchors, bridgeResponses = null) {
+export function buildBatchPrompt(rubric, students, anchors, bridgeResponses = null, calibrationExamples = null) {
   const maxScore = rubric.maxScore || '10';
   const { virtualMax, factor: scoreFactor } = getScaleInfo(maxScore);
   const _scoreHint = 'integer 0-10 (see SCORING SCALE below)';
@@ -203,6 +203,18 @@ CONSISTENCY RULES:
 - A response WORSE than the "low quality" examples should score the same or lower.
 - Score distribution should be comparable to the previous batch.
 `;
+  }
+
+  // Add historical calibration examples from previous sessions (additive — never replaces bridge responses)
+  if (calibrationExamples && calibrationExamples.total > 0) {
+    prompt += `\nHISTORICAL CALIBRATION EXAMPLES (from previous grading sessions with similar rubrics \u2014 use to calibrate your scoring standard):\n`;
+    for (const [tier, label] of [['excellent', 'HIGH QUALITY'], ['adequate', 'AVERAGE QUALITY'], ['minimal', 'LOW QUALITY']]) {
+      const ex = calibrationExamples[tier];
+      if (ex) {
+        prompt += `\n${label}:\n  - "[STUDENT]" = ${Math.round(ex.gradingScore * scoreFactor * 10) / 10}/${virtualMax}: ${(ex.feedback || '').substring(0, 300)}\n`;
+      }
+    }
+    prompt += `\nHISTORICAL CONSISTENCY RULES:\n- Use these historical examples to understand the scoring standard applied in past sessions.\n- A response of similar quality to a historical HIGH QUALITY example should score similarly.\n- These examples supplement (do not replace) the SCORING ANCHORS and CALIBRATION EXAMPLES above.\n`;
   }
 
   // Add all students to the prompt

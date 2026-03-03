@@ -1418,7 +1418,7 @@ app.post('/api/grade', async (c) => {
         });
 
         console.log(`[${timestamp()}] [sse] Grading calibration batch (${calStudents.length} students)...`);
-        const calPrompt = buildBatchPrompt(rubric, calStudents, anchors, null);
+        const calPrompt = buildBatchPrompt(rubric, calStudents, anchors, null, calibrationExamples);
         const calText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: calPrompt }], timestamp());
         const calResults = parseBatchResponse(calText, calStudents, maxScore);
         allResults.push(calResults);
@@ -1456,7 +1456,7 @@ app.post('/api/grade', async (c) => {
 
             const waveTexts = await Promise.all(
               wave.map(chunk => {
-                const prompt = buildBatchPrompt(rubric, chunk.students, anchors, bridgeResponses);
+                const prompt = buildBatchPrompt(rubric, chunk.students, anchors, bridgeResponses, calibrationExamples);
                 return callProviderDirect(provider, providerConfig, [{ role: 'user', content: prompt }], timestamp());
               })
             );
@@ -1468,7 +1468,7 @@ app.post('/api/grade', async (c) => {
               const _dropped = wave[j].students.slice(chunkResults.length);
               if (_dropped.length > 0) {
                 console.warn(`[${timestamp()}] [sse] ⚠ Parallel chunk ${chunkIdx + 1}: AI dropped ${_dropped.length}/${wave[j].students.length} — retrying...`);
-                const _retryPrompt = buildBatchPrompt(rubric, _dropped, anchors, bridgeResponses);
+                const _retryPrompt = buildBatchPrompt(rubric, _dropped, anchors, bridgeResponses, calibrationExamples);
                 const _retryText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: _retryPrompt }], timestamp());
                 const _retryResults = parseBatchResponse(_retryText, _dropped, maxScore);
                 chunkResults.push(..._retryResults);

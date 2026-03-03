@@ -338,3 +338,59 @@ describe('mergeResults', () => {
     expect(merged.length).toBeGreaterThan(0);
   });
 });
+
+// ── buildBatchPrompt — calibrationExamples (Task 8) ─────────────────────
+
+describe('buildBatchPrompt — calibrationExamples', () => {
+  const anchors = generateScoringAnchors(testRubric);
+  const students = testStudents.slice(0, 2);
+
+  const calibrationExamples = {
+    total: 3,
+    excellent: { id: 1, similarity: 0.98, studentResponse: '[STUDENT] response A', gradingScore: 9, feedback: 'Excellent understanding of the core concepts.' },
+    adequate:  { id: 2, similarity: 0.85, studentResponse: '[STUDENT] response B', gradingScore: 6, feedback: 'Partial understanding, missing key details.' },
+    minimal:   { id: 3, similarity: 0.72, studentResponse: '[STUDENT] response C', gradingScore: 3, feedback: 'Minimal engagement with the topic.' },
+  };
+
+  it('null calibrationExamples → prompt is IDENTICAL to baseline (no regression)', () => {
+    const baseline = buildBatchPrompt(testRubric, students, anchors, null, null);
+    const withNull = buildBatchPrompt(testRubric, students, anchors, null);
+    expect(withNull).toBe(baseline);
+  });
+
+  it('with calibrationExamples → prompt contains HISTORICAL CALIBRATION EXAMPLES section', () => {
+    const prompt = buildBatchPrompt(testRubric, students, anchors, null, calibrationExamples);
+    expect(prompt).toContain('HISTORICAL CALIBRATION EXAMPLES');
+  });
+
+  it('with calibrationExamples → prompt contains all three tier labels', () => {
+    const prompt = buildBatchPrompt(testRubric, students, anchors, null, calibrationExamples);
+    expect(prompt).toContain('HIGH QUALITY');
+    expect(prompt).toContain('AVERAGE QUALITY');
+    expect(prompt).toContain('LOW QUALITY');
+  });
+
+  it('with calibrationExamples → feedback text appears in prompt', () => {
+    const prompt = buildBatchPrompt(testRubric, students, anchors, null, calibrationExamples);
+    expect(prompt).toContain('Excellent understanding of the core concepts.');
+    expect(prompt).toContain('Partial understanding, missing key details.');
+  });
+
+  it('calibrationExamples AND bridgeResponses both present → both sections appear', () => {
+    const bridge = [{ tier: 'excellent', name: 'BridgeStudent', studentIndex: 0, score: 8, feedback: 'Bridge feedback.' }];
+    const prompt = buildBatchPrompt(testRubric, students, anchors, bridge, calibrationExamples);
+    expect(prompt).toContain('CALIBRATION EXAMPLES (from previously graded batch');
+    expect(prompt).toContain('HISTORICAL CALIBRATION EXAMPLES');
+  });
+
+  it('calibrationExamples with total:0 → no HISTORICAL section in prompt', () => {
+    const empty = { total: 0 };
+    const prompt = buildBatchPrompt(testRubric, students, anchors, null, empty);
+    expect(prompt).not.toContain('HISTORICAL CALIBRATION EXAMPLES');
+  });
+
+  it('with calibrationExamples → HISTORICAL CONSISTENCY RULES appear', () => {
+    const prompt = buildBatchPrompt(testRubric, students, anchors, null, calibrationExamples);
+    expect(prompt).toContain('HISTORICAL CONSISTENCY RULES');
+  });
+});
