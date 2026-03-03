@@ -1,0 +1,16 @@
+=== Task 6: Mode Selector Placeholder Evidence ===
+
+Mode selector placeholder added to DiscoveryPanel.svelte orchestrator.
+
+--- Template excerpt (lines ~405-412 of DiscoveryPanel.svelte) ---
+411:  <div class="mode-selector-placeholder">
+412:    <button class="mode-btn active" disabled>🔍 AI Discover</button>
+413:    <button class="mode-btn" disabled>📝 Guided Form</button>
+414:    <button class="mode-btn" disabled>💬 Chat</button>
+415:    <button class="mode-btn" disabled>🎯 Teach by Example</button>
+504:  .mode-selector-placeholder {
+512:  .mode-btn {
+526:  .mode-btn.active {
+
+All 4 buttons are disabled with 'AI Discover' marked active.
+Styled as a segmented tab bar in the discovery form area.
