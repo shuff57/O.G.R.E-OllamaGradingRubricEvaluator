@@ -1,9 +1,9 @@
 {
-  "active_plan": "C:\\Users\\shuff\\Documents\\GitHub\\O.G.R.E-OllamaGradingRubricEvaluator\\.sisyphus\\plans\\review-mode-override.md",
-  "started_at": "2026-03-02T15:45:00.000Z",
-  "session_ids": ["ses_current"],
-  "plan_name": "review-mode-override",
-  "worktree_path": "C:\\Users\\shuff\\Documents\\GitHub\\O.G.R.E-OllamaGradingRubricEvaluator",
-  "agent": "atlas",
-  "model_preference": "claude-sonnet-4-6"
+  "active_plan": "C:\\Users\\shuff\\OneDrive\\Documents\\GitHub\\O.G.R.E-OllamaGradingReviewEvaluator\\.sisyphus\\plans\\fix-add-item-dropdown.md",
+  "started_at": "2026-03-02T23:12:58.289Z",
+  "session_ids": [
+    "ses_34f3954d0ffeiQ1JQ0f4qN5h35"
+  ],
+  "plan_name": "fix-add-item-dropdown",
+  "agent": "atlas"
 }
