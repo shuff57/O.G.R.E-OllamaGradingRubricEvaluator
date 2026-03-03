@@ -33,7 +33,7 @@
     ],
     "externalBin": ["binaries/grading-server"],
     "resources": ["binaries/server-bundle"],
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": false
   },
   "plugins": {
     "updater": {
