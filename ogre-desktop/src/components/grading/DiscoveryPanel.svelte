@@ -27,6 +27,7 @@
     type ConfirmationFlow,
   } from '../../lib/confirmation-flow';
   import { ProfileStorageImpl, type SiteProfile } from '../../lib/site-profiles';
+  import { discoveryResultToSiteProfile } from '../../lib/type-mappers';
   import { getEmbeddedUrl, evalScript } from '../../lib/browser';
 
   import DiscoveryProgress from './DiscoveryProgress.svelte';
@@ -327,12 +328,6 @@
     try {
       const storage = new ProfileStorageImpl();
 
-      // Map feedback type to strictly supported types
-      let feedbackType = discoveryResult.feedback.type;
-      if (feedbackType === 'unknown') {
-        feedbackType = 'textarea'; // Default fallback
-      }
-
       // Get current embedded URL for the pattern
       let currentUrl = '';
       try {
@@ -350,31 +345,10 @@
         urlPattern = u.hostname + u.pathname;
       } catch {}
 
-      // Ensure valid SiteProfile structure
-      const newProfile: SiteProfile = {
-        id: crypto.randomUUID(),
+      const newProfile = discoveryResultToSiteProfile(discoveryResult, undefined, {
         name: profileName.trim(),
-        isBuiltIn: false,
         urlPatterns: [urlPattern],
-        selectors: {
-          studentSection: discoveryResult.selectors.studentSection || null,
-          studentName: discoveryResult.selectors.studentName,
-          scoreInput: discoveryResult.selectors.scoreInput,
-          feedbackBox: discoveryResult.selectors.feedbackBox || null,
-          feedbackHidden: discoveryResult.selectors.feedbackHidden || null,
-          questionRegion: discoveryResult.selectors.questionRegion || null,
-          fullCreditLink: discoveryResult.selectors.fullCreditLink || null
-        },
-        navigation: discoveryResult.navigation,
-        feedback: {
-          ...discoveryResult.feedback,
-          type: feedbackType as any // Cast safe because we handled 'unknown'
-        },
-        save: {
-          ...discoveryResult.save,
-          fallbackText: discoveryResult.save.fallbackText || 'Save'
-        }
-      };
+      });
 
       await storage.saveProfile(newProfile);
 

@@ -55,6 +55,8 @@ export interface SelectorMap {
   questionRegion?: string | null;
   /** Link/button for "full credit" shortcut. */
   fullCreditLink?: string | null;
+  /** If a selector targets content inside an iframe, record which iframe selector */
+  iframeContext?: string | null;
 }
 
 /** Feedback configuration. */
@@ -78,6 +80,15 @@ export interface DiscoveryResult {
   save: SaveConfig;
   confidence: "high" | "medium" | "low";
   notes?: string;
+  /** Populated when heuristic detection was used instead of AI */
+  heuristicMatch?: { patternName: string; confidence: number };
+  /** Stats from the smart DOM walker */
+  snapshotMetadata?: {
+    totalVisited: number;
+    nodesIncluded: number;
+    nodesDropped: number;
+    wasTruncated: boolean;
+  };
 }
 
 /** Validation result for a single selector. */
