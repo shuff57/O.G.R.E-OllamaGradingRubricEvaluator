@@ -3,11 +3,15 @@
   import { getGradingSessions, getSetting, initDB } from "../lib/db";
   import type { GradingSession } from "../lib/db";
   import { open } from "@tauri-apps/plugin-shell";
+  import { deleteEmbeddingsBySessionId } from "../lib/vector-store";
+  import { getEmbeddingStats, getSessionEmbeddingCounts, type EmbeddingStats } from "../lib/embedding-stats";
 
   /** Incremented by App.svelte when a new grading session is recorded */
   export let sessionVersion = 0;
 
   let sessions: GradingSession[] = [];
+  let embeddingStats: EmbeddingStats | null = null;
+  let sessionEmbeddingCounts = new Map<number, number>();
   let visibleColumns: string[] = [];
   let sortColumn: string | null = "created_at";
   let sortAscending = false;
@@ -38,11 +42,16 @@
           "studentCount",
           "meanScore",
           "pageUrl",
+          "embeddings",
         ];
   });
 
   async function loadData() {
     sessions = await getGradingSessions();
+    try {
+      embeddingStats = await getEmbeddingStats();
+      sessionEmbeddingCounts = await getSessionEmbeddingCounts();
+    } catch { /* non-critical */ }
   }
 
   function sortBy(column: keyof GradingSession) {
@@ -75,11 +84,27 @@
       return;
     }
 
-    // Delete all sessions
+    // Delete all sessions (and embeddings)
     const db = await initDB();
+    await db.execute("DELETE FROM response_embeddings");
     await db.execute("DELETE FROM grading_sessions");
     await loadData();
     currentPage = 0;
+  }
+
+  async function deleteSessionEmbeddings(sessionId: number) {
+    if (!confirm("Delete all embeddings for this session? This removes its calibration data.")) return;
+    await deleteEmbeddingsBySessionId(sessionId);
+    embeddingStats = await getEmbeddingStats();
+    sessionEmbeddingCounts = await getSessionEmbeddingCounts();
+  }
+
+  async function clearAllEmbeddings() {
+    if (!confirm("Delete ALL embeddings? This removes all historical calibration data. Cannot be undone.")) return;
+    const db = await initDB();
+    await db.execute("DELETE FROM response_embeddings");
+    embeddingStats = await getEmbeddingStats();
+    sessionEmbeddingCounts = await getSessionEmbeddingCounts();
   }
 
   function openUrl(url: string | null) {
@@ -99,6 +124,21 @@
       <button class="clear-btn" on:click={clearHistory}>Clear History</button>
     {/if}
   </header>
+
+  {#if embeddingStats && embeddingStats.totalEmbeddings > 0}
+    <div class="vector-db-card">
+      <div class="vector-db-title">🧠 Vector Database</div>
+      <div class="vector-db-stats">
+        <span><strong>{embeddingStats.totalEmbeddings}</strong> embeddings</span>
+        <span><strong>{embeddingStats.uniqueRubrics}</strong> unique rubrics</span>
+        <span>~<strong>{embeddingStats.estimatedSizeKB}</strong> KB</span>
+        {#if embeddingStats.embeddingModels.length > 0}
+          <span class="model">{embeddingStats.embeddingModels.join(', ')}</span>
+        {/if}
+      </div>
+      <button class="clear-btn" on:click={clearAllEmbeddings}>Clear All Embeddings</button>
+    </div>
+  {/if}
 
   {#if sessions.length === 0}
     <div class="empty-state">
@@ -165,6 +205,9 @@
               {#if visibleColumns.includes("pageUrl")}
                 <th>Page URL</th>
               {/if}
+              {#if visibleColumns.includes("embeddings")}
+                <th>Embeddings</th>
+              {/if}
             </tr>
           </thead>
           <tbody>
@@ -205,6 +248,16 @@
                       </button>
                     {:else}
                       <span class="text-muted">N/A</span>
+                    {/if}
+                  </td>
+                {/if}
+                {#if visibleColumns.includes("embeddings")}
+                  <td class="numeric">
+                    {#if sessionEmbeddingCounts.get(session.id)}
+                      <span class="badge embedded">✓ {sessionEmbeddingCounts.get(session.id)} vectors</span>
+                      <button class="del-embed-btn" on:click={() => deleteSessionEmbeddings(session.id)}>✕</button>
+                    {:else}
+                      <span class="text-muted">—</span>
                     {/if}
                   </td>
                 {/if}
@@ -472,5 +525,53 @@
   strong {
     color: var(--text-color, #111);
     font-weight: 600;
+  }
+  strong {
+    color: var(--text-color, #111);
+    font-weight: 600;
+  }
+
+  .vector-db-card {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+    background: var(--bg-secondary, #f0f9ff);
+    border: 1px solid var(--border-color, #bae6fd);
+    border-radius: 8px;
+    font-size: 0.875rem;
+    flex-wrap: wrap;
+  }
+
+  .vector-db-title {
+    font-weight: 600;
+    color: var(--text-color, #0369a1);
+  }
+
+  .vector-db-stats {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    color: var(--text-muted, #555);
+    flex: 1;
+  }
+
+  .badge.embedded {
+    background: #d1fae5;
+    color: #065f46;
+  }
+
+  .del-embed-btn {
+    background: none;
+    border: none;
+    color: var(--danger-color, #ef4444);
+    cursor: pointer;
+    font-size: 0.75rem;
+    padding: 0 0.25rem;
+    opacity: 0.6;
+  }
+
+  .del-embed-btn:hover {
+    opacity: 1;
   }
 </style>
