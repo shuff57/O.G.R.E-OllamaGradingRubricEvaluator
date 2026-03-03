@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Complex Batch Grading - Multi-Column Table</title>
+</head>
+<body>
+  <!--
+    Complex layout: grading data spread across table columns.
+    Tests structural detection (table pattern vs div pattern).
+  -->
+  <h1>Assignment: Calculus Midterm Q3</h1>
+
+  <table id="grading-table" class="grade-table">
+    <thead>
+      <tr>
+        <th>Student</th>
+        <th>Response</th>
+        <th>Attempt</th>
+        <th>Score (/ 20)</th>
+        <th>Feedback</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr data-lastchange="4001" data-student="alice">
+        <td class="student-col">Alice Johnson</td>
+        <td class="response-col">
+          <div class="response-content">The limit as x→0 of sin(x)/x equals 1 by L'Hôpital's rule.</div>
+        </td>
+        <td class="attempt-col">Attempt 1 of 3</td>
+        <td class="score-col">
+          <input type="number" name="score_alice" class="score-input" min="0" max="20" step="0.5" />
+          <span class="max">/ 20</span>
+        </td>
+        <td class="feedback-col">
+          <textarea name="feedback_alice" rows="2" cols="30" placeholder="Feedback..."></textarea>
+        </td>
+        <td class="action-col">
+          <button type="button" class="save-row-btn" data-row="alice">Save</button>
+        </td>
+      </tr>
+      <tr data-lastchange="4002" data-student="bob">
+        <td class="student-col">Bob Smith</td>
+        <td class="response-col">
+          <div class="response-content">Using squeeze theorem: -1/x ≤ sin(x)/x ≤ 1/x, so limit = 1.</div>
+        </td>
+        <td class="attempt-col">Attempt 2 of 3</td>
+        <td class="score-col">
+          <input type="number" name="score_bob" class="score-input" min="0" max="20" step="0.5" />
+          <span class="max">/ 20</span>
+        </td>
+        <td class="feedback-col">
+          <textarea name="feedback_bob" rows="2" cols="30" placeholder="Feedback..."></textarea>
+        </td>
+        <td class="action-col">
+          <button type="button" class="save-row-btn" data-row="bob">Save</button>
+        </td>
+      </tr>
+      <tr data-lastchange="4003" data-student="carol">
+        <td class="student-col">Carol Davis</td>
+        <td class="response-col">
+          <div class="response-content">I'm not sure, maybe it's infinity?</div>
+        </td>
+        <td class="attempt-col">Attempt 1 of 3</td>
+        <td class="score-col">
+          <input type="number" name="score_carol" class="score-input" min="0" max="20" step="0.5" />
+          <span class="max">/ 20</span>
+        </td>
+        <td class="feedback-col">
+          <textarea name="feedback_carol" rows="2" cols="30" placeholder="Feedback..."></textarea>
+        </td>
+        <td class="action-col">
+          <button type="button" class="save-row-btn" data-row="carol">Save</button>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="bulk-actions">
+    <button type="button" id="save-all-btn">Save All Grades</button>
+    <button type="button" id="export-btn">Export CSV</button>
+  </div>
+</body>
+</html>

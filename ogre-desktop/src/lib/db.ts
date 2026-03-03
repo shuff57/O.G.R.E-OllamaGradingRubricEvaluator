@@ -52,6 +52,7 @@ export interface SiteProfile {
   feedback: string;
   save: string;
   navigation: string;
+  extraction: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -441,6 +442,7 @@ export async function saveSiteProfile(profile: {
   feedback: string;
   save: string;
   navigation: string;
+  extraction?: string | null;
 }): Promise<string> {
   const database = await initDB();
   const id = profile.id || crypto.randomUUID();
@@ -449,8 +451,8 @@ export async function saveSiteProfile(profile: {
     // Update existing profile
     await database.execute(
       `UPDATE site_profiles
-       SET name = $1, url_patterns = $2, selectors = $3, feedback = $4, save = $5, navigation = $6, updated_at = datetime('now')
-       WHERE id = $7`,
+       SET name = $1, url_patterns = $2, selectors = $3, feedback = $4, save = $5, navigation = $6, extraction = $7, updated_at = datetime('now')
+       WHERE id = $8`,
       [
         profile.name,
         profile.url_patterns,
@@ -458,6 +460,7 @@ export async function saveSiteProfile(profile: {
         profile.feedback,
         profile.save,
         profile.navigation,
+        profile.extraction ?? null,
         profile.id,
       ]
     );
@@ -465,8 +468,8 @@ export async function saveSiteProfile(profile: {
   } else {
     // Insert new profile
     await database.execute(
-      `INSERT INTO site_profiles (id, name, url_patterns, selectors, feedback, save, navigation)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      `INSERT INTO site_profiles (id, name, url_patterns, selectors, feedback, save, navigation, extraction)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         id,
         profile.name,
@@ -475,6 +478,7 @@ export async function saveSiteProfile(profile: {
         profile.feedback,
         profile.save,
         profile.navigation,
+        profile.extraction ?? null,
       ]
     );
     return id;

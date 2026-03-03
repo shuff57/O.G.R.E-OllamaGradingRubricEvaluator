@@ -270,7 +270,9 @@ function serializeProfile(profile: SiteProfile): {
   feedback: string;
   save: string;
   navigation: string;
+  extraction: string | null;
 } {
+  const ext = (profile as SiteProfileWithExtraction).extraction;
   return {
     id: profile.id,
     name: profile.name,
@@ -279,6 +281,7 @@ function serializeProfile(profile: SiteProfile): {
     feedback: JSON.stringify(profile.feedback),
     save: JSON.stringify(profile.save),
     navigation: JSON.stringify(profile.navigation),
+    extraction: ext ? JSON.stringify(ext) : null,
   };
 }
 
@@ -287,7 +290,7 @@ function serializeProfile(profile: SiteProfile): {
  * Parses JSON strings back into structured objects. DB profiles are never built-in.
  */
 function deserializeProfile(row: DbSiteProfileRow): SiteProfile {
-  return {
+  const base: SiteProfile = {
     id: row.id,
     name: row.name,
     isBuiltIn: false,
@@ -297,6 +300,10 @@ function deserializeProfile(row: DbSiteProfileRow): SiteProfile {
     save: JSON.parse(row.save),
     navigation: JSON.parse(row.navigation),
   };
+  if (row.extraction) {
+    (base as SiteProfileWithExtraction).extraction = JSON.parse(row.extraction);
+  }
+  return base;
 }
 
 // ============================================================================

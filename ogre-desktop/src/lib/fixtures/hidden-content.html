@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Hidden Content Test Fixture</title>
+  <style>
+    .hidden-display { display: none; }
+    .hidden-visibility { visibility: hidden; }
+    .off-screen { position: absolute; left: -9999px; }
+    .zero-size { width: 0; height: 0; overflow: hidden; }
+  </style>
+</head>
+<body>
+  <h1>Hidden Content Scenarios</h1>
+
+  <!-- Visible grading content -->
+  <div class="student-row visible" data-lastchange="2001">
+    <span class="student-name">Visible Student</span>
+    <input type="number" name="score_visible" />
+    <span>/ 10</span>
+  </div>
+
+  <!-- Content that should be skipped by skipHidden option -->
+  <div class="student-row hidden-display" data-lastchange="2002">
+    <span class="student-name">Display-None Student</span>
+    <input type="number" name="score_display_none" />
+    <span>/ 10</span>
+  </div>
+
+  <div class="student-row hidden-visibility" data-lastchange="2003">
+    <span class="student-name">Visibility-Hidden Student</span>
+    <input type="number" name="score_vis_hidden" />
+    <span>/ 10</span>
+  </div>
+
+  <!-- Off-screen but not display:none (some LMSes do this for "loaded" rows) -->
+  <div class="student-row off-screen" data-lastchange="2004">
+    <span class="student-name">Off-Screen Student</span>
+    <input type="number" name="score_off_screen" />
+    <span>/ 10</span>
+  </div>
+
+  <!-- Zero-size container -->
+  <div class="zero-size" data-lastchange="2005">
+    <input type="number" name="score_zero_size" />
+  </div>
+
+  <!-- Decorative hidden elements (analytics, tracking) -->
+  <div class="hidden-display">
+    <span id="analytics-data" data-session="abc123"></span>
+    <span id="csrf-token" value="tok_xyz"></span>
+  </div>
+
+  <button type="button" id="save-btn">Save Grades</button>
+</body>
+</html>

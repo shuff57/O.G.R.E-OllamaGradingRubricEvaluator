@@ -968,6 +968,13 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_rubric_hash ON response_embeddings(rub
 CREATE INDEX IF NOT EXISTS idx_embeddings_model ON response_embeddings(embedding_model);",
             kind: MigrationKind::Up,
         },
+        // Migration 11: add extraction column to site_profiles
+        Migration {
+            version: 11,
+            description: "add_extraction_column_to_site_profiles",
+            sql: "ALTER TABLE site_profiles ADD COLUMN extraction TEXT DEFAULT NULL;",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()

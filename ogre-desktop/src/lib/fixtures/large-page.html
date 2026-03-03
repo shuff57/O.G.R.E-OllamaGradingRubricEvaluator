@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Large Page - 30 Students</title>
+</head>
+<body>
+  <h1>Large Batch Grading - 30 Students</h1>
+  <p>This fixture tests that the snapshot engine handles large pages without exceeding the 12K-char budget.</p>
+
+  <!--
+    30 student rows — generated to stress-test DOM walker performance
+    and adaptive truncation. Each row has the same structure.
+  -->
+  <div class="student-row" data-lastchange="3001"><span class="name">Student 01</span><div class="resp">Response text for student 01 covering topic A in detail with multiple sentences.</div><input type="number" name="s01" /><span>/ 10</span><textarea name="f01"></textarea></div>
+  <div class="student-row" data-lastchange="3002"><span class="name">Student 02</span><div class="resp">Response text for student 02 covering topic B in detail with multiple sentences.</div><input type="number" name="s02" /><span>/ 10</span><textarea name="f02"></textarea></div>
+  <div class="student-row" data-lastchange="3003"><span class="name">Student 03</span><div class="resp">Response text for student 03 covering topic C in detail with multiple sentences.</div><input type="number" name="s03" /><span>/ 10</span><textarea name="f03"></textarea></div>
+  <div class="student-row" data-lastchange="3004"><span class="name">Student 04</span><div class="resp">Response text for student 04 covering topic D in detail with multiple sentences.</div><input type="number" name="s04" /><span>/ 10</span><textarea name="f04"></textarea></div>
+  <div class="student-row" data-lastchange="3005"><span class="name">Student 05</span><div class="resp">Response text for student 05 covering topic E in detail with multiple sentences.</div><input type="number" name="s05" /><span>/ 10</span><textarea name="f05"></textarea></div>
+  <div class="student-row" data-lastchange="3006"><span class="name">Student 06</span><div class="resp">Response text for student 06 covering topic F in detail with multiple sentences.</div><input type="number" name="s06" /><span>/ 10</span><textarea name="f06"></textarea></div>
+  <div class="student-row" data-lastchange="3007"><span class="name">Student 07</span><div class="resp">Response text for student 07 covering topic G in detail with multiple sentences.</div><input type="number" name="s07" /><span>/ 10</span><textarea name="f07"></textarea></div>
+  <div class="student-row" data-lastchange="3008"><span class="name">Student 08</span><div class="resp">Response text for student 08 covering topic H in detail with multiple sentences.</div><input type="number" name="s08" /><span>/ 10</span><textarea name="f08"></textarea></div>
+  <div class="student-row" data-lastchange="3009"><span class="name">Student 09</span><div class="resp">Response text for student 09 covering topic I in detail with multiple sentences.</div><input type="number" name="s09" /><span>/ 10</span><textarea name="f09"></textarea></div>
+  <div class="student-row" data-lastchange="3010"><span class="name">Student 10</span><div class="resp">Response text for student 10 covering topic J in detail with multiple sentences.</div><input type="number" name="s10" /><span>/ 10</span><textarea name="f10"></textarea></div>
+  <div class="student-row" data-lastchange="3011"><span class="name">Student 11</span><div class="resp">Response text for student 11 covering topic K in detail with multiple sentences.</div><input type="number" name="s11" /><span>/ 10</span><textarea name="f11"></textarea></div>
+  <div class="student-row" data-lastchange="3012"><span class="name">Student 12</span><div class="resp">Response text for student 12 covering topic L in detail with multiple sentences.</div><input type="number" name="s12" /><span>/ 10</span><textarea name="f12"></textarea></div>
+  <div class="student-row" data-lastchange="3013"><span class="name">Student 13</span><div class="resp">Response text for student 13 covering topic M in detail with multiple sentences.</div><input type="number" name="s13" /><span>/ 10</span><textarea name="f13"></textarea></div>
+  <div class="student-row" data-lastchange="3014"><span class="name">Student 14</span><div class="resp">Response text for student 14 covering topic N in detail with multiple sentences.</div><input type="number" name="s14" /><span>/ 10</span><textarea name="f14"></textarea></div>
+  <div class="student-row" data-lastchange="3015"><span class="name">Student 15</span><div class="resp">Response text for student 15 covering topic O in detail with multiple sentences.</div><input type="number" name="s15" /><span>/ 10</span><textarea name="f15"></textarea></div>
+  <div class="student-row" data-lastchange="3016"><span class="name">Student 16</span><div class="resp">Response text for student 16 covering topic P in detail with multiple sentences.</div><input type="number" name="s16" /><span>/ 10</span><textarea name="f16"></textarea></div>
+  <div class="student-row" data-lastchange="3017"><span class="name">Student 17</span><div class="resp">Response text for student 17 covering topic Q in detail with multiple sentences.</div><input type="number" name="s17" /><span>/ 10</span><textarea name="f17"></textarea></div>
+  <div class="student-row" data-lastchange="3018"><span class="name">Student 18</span><div class="resp">Response text for student 18 covering topic R in detail with multiple sentences.</div><input type="number" name="s18" /><span>/ 10</span><textarea name="f18"></textarea></div>
+  <div class="student-row" data-lastchange="3019"><span class="name">Student 19</span><div class="resp">Response text for student 19 covering topic S in detail with multiple sentences.</div><input type="number" name="s19" /><span>/ 10</span><textarea name="f19"></textarea></div>
+  <div class="student-row" data-lastchange="3020"><span class="name">Student 20</span><div class="resp">Response text for student 20 covering topic T in detail with multiple sentences.</div><input type="number" name="s20" /><span>/ 10</span><textarea name="f20"></textarea></div>
+  <div class="student-row" data-lastchange="3021"><span class="name">Student 21</span><div class="resp">Response text for student 21 covering topic U in detail with multiple sentences.</div><input type="number" name="s21" /><span>/ 10</span><textarea name="f21"></textarea></div>
+  <div class="student-row" data-lastchange="3022"><span class="name">Student 22</span><div class="resp">Response text for student 22 covering topic V in detail with multiple sentences.</div><input type="number" name="s22" /><span>/ 10</span><textarea name="f22"></textarea></div>
+  <div class="student-row" data-lastchange="3023"><span class="name">Student 23</span><div class="resp">Response text for student 23 covering topic W in detail with multiple sentences.</div><input type="number" name="s23" /><span>/ 10</span><textarea name="f23"></textarea></div>
+  <div class="student-row" data-lastchange="3024"><span class="name">Student 24</span><div class="resp">Response text for student 24 covering topic X in detail with multiple sentences.</div><input type="number" name="s24" /><span>/ 10</span><textarea name="f24"></textarea></div>
+  <div class="student-row" data-lastchange="3025"><span class="name">Student 25</span><div class="resp">Response text for student 25 covering topic Y in detail with multiple sentences.</div><input type="number" name="s25" /><span>/ 10</span><textarea name="f25"></textarea></div>
+  <div class="student-row" data-lastchange="3026"><span class="name">Student 26</span><div class="resp">Response text for student 26 covering topic Z in detail with multiple sentences.</div><input type="number" name="s26" /><span>/ 10</span><textarea name="f26"></textarea></div>
+  <div class="student-row" data-lastchange="3027"><span class="name">Student 27</span><div class="resp">Response text for student 27 covering topic AA in detail with multiple sentences.</div><input type="number" name="s27" /><span>/ 10</span><textarea name="f27"></textarea></div>
+  <div class="student-row" data-lastchange="3028"><span class="name">Student 28</span><div class="resp">Response text for student 28 covering topic BB in detail with multiple sentences.</div><input type="number" name="s28" /><span>/ 10</span><textarea name="f28"></textarea></div>
+  <div class="student-row" data-lastchange="3029"><span class="name">Student 29</span><div class="resp">Response text for student 29 covering topic CC in detail with multiple sentences.</div><input type="number" name="s29" /><span>/ 10</span><textarea name="f29"></textarea></div>
+  <div class="student-row" data-lastchange="3030"><span class="name">Student 30</span><div class="resp">Response text for student 30 covering topic DD in detail with multiple sentences.</div><input type="number" name="s30" /><span>/ 10</span><textarea name="f30"></textarea></div>
+
+  <button type="button" id="save-all">Save All</button>
+</body>
+</html>

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Unknown LMS - Generic Grading</title>
+</head>
+<body>
+  <!--
+    Simulates a completely generic, non-standard LMS.
+    No data-lastchange. Non-standard class names. Different DOM structure.
+    Tests that the snapshot engine identifies grading patterns via structure,
+    NOT via LMS-specific attributes.
+  -->
+  <div id="app">
+    <nav class="site-nav">
+      <a href="/">Home</a> | <a href="/courses">Courses</a>
+    </nav>
+
+    <div class="page-content">
+      <div class="assignment-header">
+        <h2>Assignment: Essay Question #5</h2>
+        <p class="assignment-meta">Due: 2026-01-15 | Points: 25</p>
+      </div>
+
+      <div class="submissions-list">
+        <!-- Submission 1 -->
+        <article class="submission" id="sub-9001">
+          <header class="sub-header">
+            <strong class="submitter">Emily Wilson</strong>
+            <time datetime="2026-01-14T10:30:00">Submitted Jan 14</time>
+          </header>
+          <section class="sub-body">
+            <p>The French Revolution began in 1789 and fundamentally transformed European society through the abolition of feudalism and the rise of democratic ideals.</p>
+          </section>
+          <footer class="sub-grading">
+            <div class="points-entry">
+              <input type="text" class="pts-input" placeholder="0-25" aria-label="Points out of 25" />
+              <span class="pts-label">/ 25 pts</span>
+            </div>
+            <div class="comments-entry">
+              <textarea class="comments" placeholder="Add comments..."></textarea>
+            </div>
+            <button class="grade-submit">Grade</button>
+          </footer>
+        </article>
+
+        <!-- Submission 2 -->
+        <article class="submission" id="sub-9002">
+          <header class="sub-header">
+            <strong class="submitter">Frank Martinez</strong>
+            <time datetime="2026-01-13T22:15:00">Submitted Jan 13</time>
+          </header>
+          <section class="sub-body">
+            <p>The revolution was caused by financial crisis and social inequality, leading to the storming of the Bastille in July 1789.</p>
+          </section>
+          <footer class="sub-grading">
+            <div class="points-entry">
+              <input type="text" class="pts-input" placeholder="0-25" aria-label="Points out of 25" />
+              <span class="pts-label">/ 25 pts</span>
+            </div>
+            <div class="comments-entry">
+              <textarea class="comments" placeholder="Add comments..."></textarea>
+            </div>
+            <button class="grade-submit">Grade</button>
+          </footer>
+        </article>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
