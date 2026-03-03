@@ -76,6 +76,18 @@ export interface Skill {
   created_at: string;
   updated_at: string;
 }
+
+export interface ResponseEmbedding {
+  id: number;
+  session_id: number | null;
+  rubric_hash: string;
+  student_response: string | null;
+  score: number;
+  feedback: string | null;
+  embedding: Uint8Array;
+  embedding_model: string;
+  created_at: string;
+}
 // ── Database Singleton ───────────────────────────────────────────────────
 
 let db: Database | null = null;

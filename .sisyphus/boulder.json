@@ -1,9 +1,10 @@
 {
-  "active_plan": "C:\\Users\\shuff\\OneDrive\\Documents\\GitHub\\O.G.R.E-OllamaGradingReviewEvaluator\\.sisyphus\\plans\\fix-add-item-dropdown.md",
-  "started_at": "2026-03-02T23:12:58.289Z",
+  "active_plan": "C:\\Users\\shuff\\OneDrive\\Documents\\GitHub\\O.G.R.E-OllamaGradingReviewEvaluator\\.sisyphus\\plans\\history-vector-search.md",
+  "started_at": "2026-03-03T15:53:32.895Z",
   "session_ids": [
-    "ses_34f3954d0ffeiQ1JQ0f4qN5h35"
+    "ses_34bd9f2fcffeKqAut1HVQUt3du",
+    "ses_34e6b86f7ffe3Mxul3mbpArHFx"
   ],
-  "plan_name": "fix-add-item-dropdown",
+  "plan_name": "history-vector-search",
   "agent": "atlas"
 }

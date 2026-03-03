@@ -949,6 +949,25 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_skills_source ON skills(source, source_id)
             sql: "ALTER TABLE skills ADD COLUMN url_pattern TEXT;",
             kind: MigrationKind::Up,
         },
+        // Migration 10: response_embeddings table for vector search
+        Migration {
+            version: 10,
+            description: "create_response_embeddings_table",
+            sql: "CREATE TABLE IF NOT EXISTS response_embeddings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER REFERENCES grading_sessions(id),
+    rubric_hash TEXT NOT NULL,
+    student_response TEXT,
+    score REAL NOT NULL,
+    feedback TEXT,
+    embedding BLOB NOT NULL,
+    embedding_model TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_embeddings_rubric_hash ON response_embeddings(rubric_hash);
+CREATE INDEX IF NOT EXISTS idx_embeddings_model ON response_embeddings(embedding_model);",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()

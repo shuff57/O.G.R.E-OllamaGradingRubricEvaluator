@@ -42,6 +42,7 @@ import { loadConfig, saveConfig, watchConfig } from './config.js';
 import { loadRubrics, createRubric, updateRubric, deleteRubric } from './rubric-store.js';
 import { withRetry } from './ai-retry.js';
 import { handleAgentRequest } from './agent.js';
+import { buildEmbedRequest, parseEmbedResponse } from './embedding-adapters.js';
 
 const app = new Hono();
 const PORT = 3456;
@@ -1696,6 +1697,50 @@ app.post('/api/grade', async (c) => {
       });
     }
   });
+});
+
+/**
+ * Embedding Endpoint
+ * POST /api/embed
+ * Body: { provider, model, apiKey?, apiUrl?, text }
+ * Response: { embedding: number[], dimensions: number, model: string }
+ */
+app.post('/api/embed', async (c) => {
+  let body;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+
+  const { provider, model, apiKey, apiUrl, text } = body;
+
+  if (!provider) return c.json({ error: 'Missing required field: provider' }, 400);
+  if (!model) return c.json({ error: 'Missing required field: model' }, 400);
+  if (!text) return c.json({ error: 'Missing required field: text' }, 400);
+
+  try {
+    const { url, headers, body: reqBody } = buildEmbedRequest(provider, { model, apiKey, apiUrl, text });
+
+    const responseJson = await withRetry(async () => {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(reqBody),
+      });
+      if (!res.ok) {
+        const err = new Error(`${provider} embedding API error: ${res.status}`);
+        err.status = res.status;
+        throw err;
+      }
+      return res.json();
+    });
+
+    const { embedding, dimensions } = parseEmbedResponse(provider, responseJson);
+    return c.json({ embedding, dimensions, model });
+  } catch (error) {
+    return c.json({ error: error.message }, 500);
+  }
 });
 
 /**

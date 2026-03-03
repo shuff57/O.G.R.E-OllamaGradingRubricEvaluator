@@ -41,6 +41,7 @@ import {
   type SiteCredential,
   type BatchSession,
   type Skill,
+  type ResponseEmbedding,
 } from './db';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -55,6 +56,21 @@ function makeCred(overrides: Partial<SiteCredential> = {}): SiteCredential {
     notes: null,
     created_at: '2025-01-01T00:00:00',
     updated_at: '2025-01-01T00:00:00',
+    ...overrides,
+  };
+}
+
+function makeResponseEmbedding(overrides: Partial<ResponseEmbedding> = {}): ResponseEmbedding {
+  return {
+    id: 1,
+    session_id: 1,
+    rubric_hash: 'abc123def456',
+    student_response: 'The answer is 42.',
+    score: 8.5,
+    feedback: 'Good work!',
+    embedding: new Uint8Array([0.1, 0.2, 0.3]),
+    embedding_model: 'nomic-embed-text',
+    created_at: '2025-01-01T00:00:00',
     ...overrides,
   };
 }
@@ -515,5 +531,45 @@ describe('db.ts — Skills CRUD', () => {
     expect(mockSelect).toHaveBeenCalledWith(
       expect.stringContaining('url_pattern IS NOT NULL'),
     );
+  });
+});
+
+describe('db.ts — ResponseEmbedding interface', () => {
+  it('ResponseEmbedding has all 9 required fields', () => {
+    const embedding = makeResponseEmbedding();
+    
+    // Verify all 9 fields exist
+    expect(embedding).toHaveProperty('id');
+    expect(embedding).toHaveProperty('session_id');
+    expect(embedding).toHaveProperty('rubric_hash');
+    expect(embedding).toHaveProperty('student_response');
+    expect(embedding).toHaveProperty('score');
+    expect(embedding).toHaveProperty('feedback');
+    expect(embedding).toHaveProperty('embedding');
+    expect(embedding).toHaveProperty('embedding_model');
+    expect(embedding).toHaveProperty('created_at');
+    
+    // Verify field types
+    expect(typeof embedding.id).toBe('number');
+    expect(typeof embedding.session_id).toBe('number');
+    expect(typeof embedding.rubric_hash).toBe('string');
+    expect(typeof embedding.student_response).toBe('string');
+    expect(typeof embedding.score).toBe('number');
+    expect(typeof embedding.feedback).toBe('string');
+    expect(embedding.embedding).toBeInstanceOf(Uint8Array);
+    expect(typeof embedding.embedding_model).toBe('string');
+    expect(typeof embedding.created_at).toBe('string');
+  });
+
+  it('ResponseEmbedding allows null for optional fields', () => {
+    const embedding = makeResponseEmbedding({
+      session_id: null,
+      student_response: null,
+      feedback: null,
+    });
+    
+    expect(embedding.session_id).toBeNull();
+    expect(embedding.student_response).toBeNull();
+    expect(embedding.feedback).toBeNull();
   });
 });
