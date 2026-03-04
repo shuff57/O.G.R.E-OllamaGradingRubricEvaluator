@@ -193,13 +193,12 @@
     try {
       const pickerResult = await refineSelector(currentSelector);
       const newSelector = mergeSelectorSources(currentSelector, pickerResult);
-      const updatedSelectors = { ...discoveryResult.selectors };
-      (updatedSelectors as any)[key] = newSelector;
+      const updatedSelectors: SelectorMap = { ...discoveryResult.selectors, [key]: newSelector };
       discoveryResult = { ...discoveryResult, selectors: updatedSelectors, notes: (discoveryResult.notes || '') + `\n[Refined] ${key}: ${newSelector}` };
       if (validationResults) {
         validationResults = { ...validationResults, [key]: { matchCount: 1, sampleText: '(Refined by user)', valid: true } };
       }
-    } catch (err) {}
+    } catch (_err) { /* refine picker failed — keep existing selector */ }
   }
 
   async function handleConfirmAccept() {
@@ -312,8 +311,8 @@
           <label class="checkbox"><input type="checkbox" bind:checked={formInput.hasScoreInputs}> Score Inputs Present</label>
           <label class="checkbox"><input type="checkbox" bind:checked={formInput.hasFeedbackFields}> Feedback Fields Present</label>
           <div class="input-group">
-            <label>Estimated Students</label>
-            <input type="number" bind:value={formInput.estimatedStudentCount} placeholder="e.g. 25">
+            <label for="estimated-students">Estimated Students</label>
+            <input id="estimated-students" type="number" bind:value={formInput.estimatedStudentCount} placeholder="e.g. 25">
           </div>
         </div>
       {:else if mode === 'chat'}

@@ -5,7 +5,7 @@
  * This is used by the interactive-only agent mode.
  */
 
-import { InteractiveElement } from './agent-types';
+import type { InteractiveElement } from './agent-types';
 import { evalScriptJSON } from './browser';
 
 // ============================================================================
