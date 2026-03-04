@@ -24,6 +24,7 @@ import {
   deleteSiteProfile as dbDeleteSiteProfile,
   type SiteProfile as DbSiteProfileRow,
 } from './db';
+import { syncProfileToServer } from './server';
 
 // Re-export types for consumer convenience
 export type { SiteProfile, SiteSelectors, FeedbackConfig, SaveConfig, NavigationConfig };
@@ -344,6 +345,8 @@ export class ProfileStorageImpl implements ProfileStorage {
    */
   async saveProfile(profile: SiteProfile): Promise<void> {
     await dbSaveSiteProfile(serializeProfile(profile));
+    // Fire-and-forget sync to grading server (errors silently swallowed)
+    syncProfileToServer(profile).catch(() => {});
   }
 
   /**

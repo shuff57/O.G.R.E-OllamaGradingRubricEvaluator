@@ -8,7 +8,7 @@
   import BatchPanel from '../components/grading/BatchPanel.svelte';
   import DiscoveryPanel from '../components/grading/DiscoveryPanel.svelte';
   import SkillPicker from '../components/skills/SkillPicker.svelte';
-  import { captureWebviewScreenshot, hideWebview, showWebview } from '../lib/browser';
+  import { captureWebviewScreenshot, hideWebview, showWebview, getActiveTabId } from '../lib/browser';
   import type { SavedRubric } from '../lib/rubric-api';
   import type { GradeRubric } from '../lib/grading-api';
   import type { Rubric } from '../lib/batch-grader';
@@ -133,7 +133,7 @@
       await tick(); // Wait for DOM to reflect hidden state
 
       capturedImage = await captureWebviewScreenshot();
-      await hideWebview();
+      await hideWebview(getActiveTabId());
       showScreenshotOverlay = true;
     } catch (err) {
       captureError = err instanceof Error ? err.message : 'Screenshot capture failed';
@@ -153,7 +153,7 @@
   async function closeOverlay() {
     showScreenshotOverlay = false;
     capturedImage = '';
-    try { await showWebview(); } catch { /* webview may already be visible */ }
+    try { await showWebview(getActiveTabId()); } catch { /* webview may already be visible */ }
   }
 
   function handleRemoveScreenshot(index: number) {

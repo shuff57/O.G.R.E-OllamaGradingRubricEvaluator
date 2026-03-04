@@ -13,6 +13,13 @@ import { evalScript, evalScriptJSON, captureWebviewScreenshot, getEmbeddedUrl } 
 import { getHandshakeToken } from "./provider-sync";
 import type { RubricCriterion } from "./rubric-api";
 import { withRetry } from "./ai-retry";
+import { buildSmartWalkScript } from "./dom-snapshot";
+import type { SnapshotResult } from "./dom-snapshot-types";
+import type { HeuristicDetection } from "./heuristic-detector";
+import type { DiscoveryHints } from "./discovery-intent";
+import type { DiscoveryHints } from "./discovery-intent";
+import { discoverExtractionConfig } from "./extraction-config-discovery";
+import type { ExtractionConfig } from "./site-profiles";
 
 const SERVER_BASE = "http://localhost:3456";
 
@@ -89,6 +96,8 @@ export interface DiscoveryResult {
     nodesDropped: number;
     wasTruncated: boolean;
   };
+  /** Extraction config discovered in an optional second pass */
+  extractionConfig?: ExtractionConfig;
 }
 
 /** Validation result for a single selector. */
@@ -120,7 +129,7 @@ export interface DiscoveryRequest {
 
 /** Discovery progress event. */
 export interface DiscoveryProgress {
-  stage: "capturing" | "analyzing" | "validating" | "complete" | "error";
+  stage: "capturing" | "heuristic" | "analyzing" | "validating" | "complete" | "error";
   message: string;
   progress?: number; // 0-100
   error?: string;
@@ -530,83 +539,27 @@ export interface DiscoveryOptions {
   onProgress?: (progress: DiscoveryProgress) => void;
   /** Maximum number of AI call attempts (defaults to DISCOVERY_MAX_ATTEMPTS). */
   maxAttempts?: number;
+  /** Optional hints from user interaction (form, chat, or example mode). */
+  hints?: DiscoveryHints;
+  /** When true, runs a second AI pass to discover ExtractionConfig. */
+  includeExtractionConfig?: boolean;
 }
 
 // ── DOM Snapshot Capture ────────────────────────────────────────────────
 
 /**
- * DOM snapshot script executed inside the embedded webview.
- * Mirrors the Chrome extension's capturePageSnapshot logic:
- * walks the DOM tree, captures tag names, relevant attributes, and text.
- * Capped at 500 nodes / depth 8 to fit AI context limits.
- */
-const DOM_SNAPSHOT_SCRIPT = `(function() {
-  var SKIP_TAGS = new Set(['script','style','link','meta','noscript','svg','path','br','hr']);
-  var CAPTURE_ATTRS = ['id','class','role','aria-label','name','type',
-    'contenteditable','data-lastchange','data-testid','placeholder','for','action','method'];
-  var MAX_NODES = 500;
-  var MAX_TEXT = 150;
-  var MAX_DEPTH = 8;
-  var nodes = [];
-
-  function walk(el, depth) {
-    if (nodes.length >= MAX_NODES || depth > MAX_DEPTH) return;
-    var tag = el.tagName && el.tagName.toLowerCase();
-    if (!tag || SKIP_TAGS.has(tag)) return;
-
-    var attrs = {};
-    for (var i = 0; i < CAPTURE_ATTRS.length; i++) {
-      var attr = CAPTURE_ATTRS[i];
-      if (el.hasAttribute(attr)) {
-        var val = el.getAttribute(attr);
-        if (val && val.length > 100) val = val.substring(0, 100) + '...';
-        attrs[attr] = val;
-      }
-    }
-
-    var text = '';
-    for (var j = 0; j < el.childNodes.length; j++) {
-      var child = el.childNodes[j];
-      if (child.nodeType === 3) {
-        var t = child.textContent.trim();
-        if (t) {
-          text += (text ? ' ' : '') + t;
-          if (text.length > MAX_TEXT) {
-            text = text.substring(0, MAX_TEXT) + '...';
-            break;
-          }
-        }
-      }
-    }
-
-    nodes.push({
-      depth: depth,
-      tag: tag,
-      attrs: Object.keys(attrs).length > 0 ? attrs : undefined,
-      text: text || undefined,
-      childCount: el.children.length || undefined
-    });
-
-    for (var k = 0; k < el.children.length; k++) {
-      walk(el.children[k], depth + 1);
-    }
-  }
-
-  walk(document.body, 0);
-  return nodes;
-})()`;
-
-/**
- * Capture a simplified DOM tree from the embedded webview.
+ * Capture a structured DOM snapshot from the embedded webview
+ * using the smart walk engine from dom-snapshot.ts.
  *
- * @returns Array of DOM nodes with tag, attrs, text, depth, and childCount.
+ * @returns SnapshotResult with nodes and metadata.
  */
-async function captureDomSnapshot(): Promise<DiscoveryRequest["domSnapshot"]> {
-  const parsed = await evalScriptJSON<unknown>(DOM_SNAPSHOT_SCRIPT);
-  if (!Array.isArray(parsed)) {
-    throw new Error("DOM snapshot did not return an array");
+async function captureDomSnapshot(): Promise<SnapshotResult> {
+  const script = buildSmartWalkScript();
+  const result = await evalScriptJSON<SnapshotResult>(script);
+  if (!result || !Array.isArray(result.nodes)) {
+    throw new Error("DOM snapshot did not return a valid result");
   }
-  return parsed;
+  return result;
 }
 
 // ── Provider ID Normalization ─────────────────────────────────────────────
@@ -842,20 +795,115 @@ async function validateSelectors(draft: DiscoveryResult): Promise<ValidationResu
   return parsed as ValidationResults;
 }
 
+// ── Heuristic / Hints / ExtractionConfig Helpers ────────────────────────
+
+/**
+ * Convert a HeuristicDetection into a DiscoveryResult.
+ * Fills in safe defaults for fields the heuristic cannot determine
+ * (feedback type, save button text, etc.).
+ */
+function heuristicToDiscoveryResult(
+  detection: HeuristicDetection,
+  snapshotMeta?: DiscoveryResult["snapshotMetadata"],
+): DiscoveryResult {
+  return {
+    navigation: {
+      mode: detection.mode,
+      nextButton: null,
+      prevButton: null,
+      studentIndicator: null,
+      submitButton: null,
+      waitForSelector: null,
+    },
+    selectors: {
+      studentSection: detection.candidateSelectors.studentSection ?? null,
+      studentName: detection.candidateSelectors.studentName,
+      scoreInput: detection.candidateSelectors.scoreInput,
+      feedbackBox: detection.candidateSelectors.feedbackBox ?? null,
+      feedbackHidden: detection.candidateSelectors.feedbackHidden ?? null,
+      questionRegion: detection.candidateSelectors.questionRegion ?? null,
+      fullCreditLink: detection.candidateSelectors.fullCreditLink ?? null,
+    },
+    feedback: {
+      type: "unknown",
+      requiresHiddenSync: false,
+      htmlWrap: false,
+    },
+    save: {
+      buttonText: "Save",
+      fallbackText: "Submit",
+    },
+    confidence: detection.confidence >= 0.8 ? "high" : "medium",
+    notes: `Heuristic detection: ${detection.patternName}`,
+    heuristicMatch: {
+      patternName: detection.patternName,
+      confidence: detection.confidence,
+    },
+    snapshotMetadata: snapshotMeta,
+  };
+}
+
+/**
+ * Format DiscoveryHints into a text block appended to the AI user prompt.
+ * Returns empty string when hints contain no actionable information.
+ */
+function formatHintsForPrompt(hints: DiscoveryHints): string {
+  const parts: string[] = [];
+  if (hints.promptAddendum) parts.push(hints.promptAddendum);
+  if (hints.pageDescription) parts.push(`Page description: ${hints.pageDescription}`);
+  if (hints.estimatedStudentCount != null) {
+    parts.push(`Estimated student count: ${hints.estimatedStudentCount}`);
+  }
+  if (hints.navigationMode) parts.push(`Expected navigation mode: ${hints.navigationMode}`);
+  if (hints.knownSelectors) {
+    parts.push(`Known selectors: ${JSON.stringify(hints.knownSelectors)}`);
+  }
+  if (hints.generalizedSelectors && hints.generalizedSelectors.length > 0) {
+    parts.push(`Example-based selectors: ${JSON.stringify(hints.generalizedSelectors)}`);
+  }
+  if (hints.extraContext) parts.push(`Additional context: ${hints.extraContext}`);
+  if (parts.length === 0) return "";
+  return `User hints:\n${parts.join("\n")}`;
+}
+
+/**
+ * Run the optional ExtractionConfig second pass.
+ * Errors are swallowed — ExtractionConfig is strictly opt-in and non-fatal.
+ */
+async function runExtractionConfigPass(
+  draft: DiscoveryResult,
+  snapshotResult: SnapshotResult,
+  options: Pick<DiscoveryOptions, "provider" | "model">,
+  onProgress?: (progress: DiscoveryProgress) => void,
+): Promise<void> {
+  try {
+    onProgress?.({
+      stage: "analyzing",
+      message: "Discovering extraction configuration...",
+      progress: 85,
+    });
+    const domSnapshotJson = JSON.stringify(snapshotResult.nodes);
+    draft.extractionConfig = await discoverExtractionConfig(domSnapshotJson, options);
+  } catch {
+    // ExtractionConfig is optional — swallow errors and leave field undefined
+  }
+}
+
 // ── Main Discovery Workflow ─────────────────────────────────────────────
 
 /**
- * Run the full AI-powered page structure discovery workflow.
+ * Run the full page structure discovery workflow.
  *
  * 1. Captures DOM snapshot + screenshot from the embedded webview (in parallel)
- * 2. Sends both to the AI provider via POST /api/chat with vision
- * 3. Parses the AI response into a DiscoveryResult
+ * 2. Attempts heuristic detection; if confidence > 0.7 and selectors validate, uses that
+ * 3. Otherwise sends snapshot + screenshot to AI provider for analysis
  * 4. Validates each discovered selector on the live page
- * 5. Returns the draft result, validation, and screenshot
+ * 5. Optionally runs a second AI pass for ExtractionConfig
+ * 6. Returns the draft result, validation, and screenshot
  *
  * Progress is reported via the optional onProgress callback at each stage.
  *
- * @param options - Provider/model overrides and progress callback
+ * @param options - Provider/model overrides, hints, and progress callback
  * @returns Complete discovery workflow result
  * @throws Error if any stage fails (DOM capture, AI call, parse, validation)
  */
@@ -872,14 +920,79 @@ export async function runDiscovery(
       progress: 10,
     });
 
-    const [screenshot, domSnapshot, pageUrl] = await Promise.all([
+    const [screenshot, snapshotResult, pageUrl] = await Promise.all([
       captureWebviewScreenshot(),
       captureDomSnapshot(),
       getEmbeddedUrl(),
     ]);
 
+    // Snapshot metadata for reporting
+    const snapshotMeta: DiscoveryResult["snapshotMetadata"] = snapshotResult.meta
+      ? {
+          totalVisited: snapshotResult.meta.totalVisited,
+          nodesIncluded: snapshotResult.meta.nodesIncluded,
+          nodesDropped: snapshotResult.meta.nodesDropped,
+          wasTruncated: snapshotResult.meta.wasTruncated,
+        }
+      : undefined;
+
+    // ── Stage 1.5: Heuristic detection fast-path ────────────────────────
+    onProgress?.({
+      stage: "heuristic",
+      message: "Attempting heuristic detection...",
+      progress: 20,
+    });
+
+    const heuristic = detectGradingStructure(snapshotResult);
+
+    if (heuristic && heuristic.confidence > 0.7) {
+      const heuristicDraft = heuristicToDiscoveryResult(heuristic, snapshotMeta);
+      const heuristicValidation = await validateSelectors(heuristicDraft);
+
+      // Check that the critical selectors actually matched on the live page
+      const criticalValid =
+        heuristicValidation.studentName?.valid !== false &&
+        heuristicValidation.scoreInput?.valid !== false;
+
+      if (criticalValid) {
+        onProgress?.({
+          stage: "heuristic",
+          message: `Heuristic match: ${heuristic.patternName} (confidence ${(heuristic.confidence * 100).toFixed(0)}%)`,
+          progress: 70,
+        });
+
+        // Optional ExtractionConfig second pass
+        if (options.includeExtractionConfig) {
+          await runExtractionConfigPass(heuristicDraft, snapshotResult, options, onProgress);
+        }
+
+        onProgress?.({
+          stage: "complete",
+          message: "Discovery complete (heuristic)",
+          progress: 100,
+        });
+
+        return { draft: heuristicDraft, validation: heuristicValidation, screenshot };
+      }
+
+      // Heuristic validation failed — fall through to AI
+      onProgress?.({
+        stage: "heuristic",
+        message: "Heuristic selectors did not validate; falling back to AI...",
+        progress: 25,
+      });
+    }
+
     // ── Stages 2–3: AI call + parse (with retry) ─────────────────────────
-    const userPrompt = DISCOVERY_USER_PROMPT_TEMPLATE(pageUrl, domSnapshot);
+    // Build user prompt, optionally augmented with hints
+    let userPrompt = DISCOVERY_USER_PROMPT_TEMPLATE(pageUrl, snapshotResult.nodes);
+    if (options.hints) {
+      const hintsText = formatHintsForPrompt(options.hints);
+      if (hintsText) {
+        userPrompt += `\n\n${hintsText}`;
+      }
+    }
+
     const maxAttempts = options.maxAttempts ?? DISCOVERY_MAX_ATTEMPTS;
     const attemptErrors: string[] = [];
     let draft!: DiscoveryResult;
@@ -924,6 +1037,9 @@ export async function runDiscovery(
           );
         }
 
+        // Attach snapshot metadata to the AI result
+        draft.snapshotMetadata = snapshotMeta;
+
         // Success — break out of retry loop
         break;
       } catch (err) {
@@ -951,6 +1067,11 @@ export async function runDiscovery(
     });
 
     const validation = await validateSelectors(draft);
+
+    // ── Stage 4.5: Optional ExtractionConfig second pass ────────────────
+    if (options.includeExtractionConfig) {
+      await runExtractionConfigPass(draft, snapshotResult, options, onProgress);
+    }
 
     // ── Stage 5: Complete ───────────────────────────────────────────────
     onProgress?.({

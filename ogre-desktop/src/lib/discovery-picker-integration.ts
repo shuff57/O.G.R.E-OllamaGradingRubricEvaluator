@@ -402,5 +402,5 @@ export function setSelectorValue(
   value: string,
 ): void {
   // TypeScript needs explicit handling since some keys are optional/nullable
-  (selectors as Record<string, string | null | undefined>)[key] = value;
+  (selectors as unknown as Record<string, string | null | undefined>)[key] = value;
 }

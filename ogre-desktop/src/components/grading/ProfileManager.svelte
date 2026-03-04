@@ -1,17 +1,19 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { ProfileStorageImpl, type SiteProfile, type SiteSelectors } from '../../lib/site-profiles';
+  import { testProfile, type ProfileTestReport } from '../../lib/profile-tester';
+  import { refineSelector, mergeSelectorSources } from '../../lib/discovery-picker-integration';
 
-  let profiles: SiteProfile[] = [];
-  let loading = true;
-  let error = '';
-  let editing: SiteProfile | null = null;
-  let isNew = false;
+  let profiles = $state<SiteProfile[]>([]);
+  let loading = $state(true);
+  let error = $state('');
+  let editing = $state<SiteProfile | null>(null);
+  let isNew = $state(false);
 
   // Form fields
-  let formName = '';
-  let formUrlPatterns = '';
-  let formSelectors: SiteSelectors = {
+  let formName = $state('');
+  let formUrlPatterns = $state('');
+  let formSelectors = $state<SiteSelectors>({
     studentName: '',
     studentSection: '',
     questionRegion: '',
@@ -19,8 +21,17 @@
     feedbackBox: '',
     feedbackHidden: '',
     fullCreditLink: ''
-  };
-  let formSubmitButton = '';
+  });
+  let formSubmitButton = $state('');
+
+  // Test state
+  let testReport = $state<ProfileTestReport | null>(null);
+  let isTesting = $state(false);
+
+  // Re-discovery
+  let { onRequestDiscovery = (url: string) => {} } = $props<{
+    onRequestDiscovery?: (url: string) => void;
+  }>();
 
   const storage = new ProfileStorageImpl();
 
@@ -55,6 +66,7 @@
       fullCreditLink: ''
     };
     formSubmitButton = '';
+    testReport = null;
   }
 
   function openEdit(profile: SiteProfile) {
@@ -65,12 +77,14 @@
     formUrlPatterns = profile.urlPatterns.join('\n');
     formSelectors = { ...profile.selectors };
     formSubmitButton = profile.navigation?.submitButton || '';
+    testReport = null;
   }
 
   function cancelForm() {
     editing = null;
     isNew = false;
     error = '';
+    testReport = null;
   }
 
   async function saveForm() {
@@ -122,6 +136,57 @@
       error = e instanceof Error ? e.message : 'Failed to delete profile';
     }
   }
+
+  async function handlePickSelector(key: keyof SiteSelectors) {
+    try {
+      const current = formSelectors[key] || '';
+      const result = await refineSelector(current);
+      // Merge logic: if original was empty, take new. If both exist, maybe prefer picker?
+      // mergeSelectorSources prefers picker if it's more specific.
+      const merged = mergeSelectorSources(current, result);
+      formSelectors = { ...formSelectors, [key]: merged };
+    } catch (e) {
+      // User cancelled
+    }
+  }
+
+  async function handleTestProfile() {
+    isTesting = true;
+    testReport = null;
+    try {
+      // Create temp profile from form data
+      const tempProfile: SiteProfile = {
+        id: 'temp-test',
+        name: formName,
+        isBuiltIn: false,
+        urlPatterns: [],
+        selectors: formSelectors,
+        // other fields irrelevant for selector testing
+        feedback: { type: 'textarea', requiresHiddenSync: false, htmlWrap: false },
+        save: { buttonText: 'Save', fallbackText: 'Submit' },
+        navigation: { mode: 'batch' }
+      };
+      
+      // We need current page URL. Assuming we are on the page we want to test.
+      // Ideally we'd get it from browser.ts but testProfile takes a string.
+      // We can pass empty string if testProfile handles it, or use a placeholder.
+      // But testProfile actually uses evalScript so it runs ON the current page.
+      // The pageUrl arg is mostly for reporting.
+      testReport = await testProfile(tempProfile, 'current-page');
+    } catch (e) {
+      error = "Test failed: " + e;
+    } finally {
+      isTesting = false;
+    }
+  }
+
+  function handleRediscover() {
+    // We can't easily navigate to the URL here as we might be on a different page.
+    // But we can signal the parent to switch to Discovery tab.
+    // If we have a URL pattern, we could try to navigate? 
+    // For now, let's just assume the user is on the right page and wants to re-run discovery.
+    onRequestDiscovery(formUrlPatterns.split('\n')[0] || '');
+  }
 </script>
 
 <div class="profile-manager">
@@ -138,7 +203,24 @@
 
   {#if isNew || editing}
     <div class="card form-card">
-      <h4>{isNew ? 'Create Profile' : 'Edit Profile'}</h4>
+      <div class="form-header">
+        <h4>{isNew ? 'Create Profile' : 'Edit Profile'}</h4>
+        <div class="form-tools">
+           <button class="btn-sm btn-secondary" onclick={handleRediscover} title="Start fresh discovery">
+             🔄 Re-discover
+           </button>
+           <button class="btn-sm btn-secondary" onclick={handleTestProfile} disabled={isTesting}>
+             {isTesting ? 'Testing...' : '▶ Test'}
+           </button>
+        </div>
+      </div>
+
+      {#if testReport}
+        <div class="test-report {testReport.passed ? 'pass' : 'fail'}">
+          <strong>{testReport.passed ? '✅ Passed' : '❌ Failed'}</strong>
+          <span>{testReport.selectorsFound}/{testReport.selectorResults.length} found</span>
+        </div>
+      {/if}
       
       <div class="form-group">
         <label for="pName">Name</label>
@@ -155,25 +237,30 @@
         <p class="hint">Leave empty if not applicable.</p>
         
         <div class="form-grid">
-          <div class="form-group">
-            <label for="sName">Student Name</label>
-            <input id="sName" type="text" bind:value={formSelectors.studentName} placeholder=".student-name">
-          </div>
-          <div class="form-group">
-            <label for="sSection">Question Region</label>
-            <input id="sSection" type="text" bind:value={formSelectors.questionRegion} placeholder="#questions">
-          </div>
-          <div class="form-group">
-            <label for="sScore">Score Input</label>
-            <input id="sScore" type="text" bind:value={formSelectors.scoreInput} placeholder="input.score">
-          </div>
-          <div class="form-group">
-            <label for="sFeedback">Feedback Box</label>
-            <input id="sFeedback" type="text" bind:value={formSelectors.feedbackBox} placeholder="textarea.comments">
-          </div>
-          <div class="form-group">
+          {#each Object.keys(formSelectors) as key}
+            {#if key !== 'feedbackHidden' && key !== 'fullCreditLink'} <!-- Show main ones or all? -->
+              <div class="form-group selector-group">
+                <label for={'s-'+key}>{key}</label> <!-- Should use friendly labels -->
+                <div class="input-with-action">
+                  <input id={'s-'+key} type="text" bind:value={formSelectors[key as keyof SiteSelectors]} placeholder={`.${key}`}>
+                  <button class="btn-icon" onclick={() => handlePickSelector(key as keyof SiteSelectors)} title="Pick from page">🎯</button>
+                </div>
+              </div>
+            {/if}
+          {/each}
+          <!-- Specific handling for submit button as it's separate -->
+           <div class="form-group selector-group">
             <label for="sSubmit">Submit Button</label>
-            <input id="sSubmit" type="text" bind:value={formSubmitButton} placeholder="button.submit">
+            <div class="input-with-action">
+              <input id="sSubmit" type="text" bind:value={formSubmitButton} placeholder="button.submit">
+              <!-- No picker for submit button yet in refineSelector? refineSelector takes any string -->
+               <button class="btn-icon" onclick={async () => {
+                 try {
+                   const r = await refineSelector(formSubmitButton);
+                   formSubmitButton = mergeSelectorSources(formSubmitButton, r);
+                 } catch {}
+               }} title="Pick from page">🎯</button>
+            </div>
           </div>
         </div>
       </div>
@@ -221,173 +308,47 @@
 </div>
 
 <style>
-  .profile-manager {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-4);
-  }
-
-  .header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
+  .profile-manager { display: flex; flex-direction: column; gap: var(--spacing-4); }
+  .header { display: flex; justify-content: space-between; align-items: center; }
   h3 { margin: 0; font-size: 1.1em; color: var(--color-text-primary); }
-  h4 { margin: 0 0 var(--spacing-4) 0; color: var(--color-text-primary); }
+  h4 { margin: 0; color: var(--color-text-primary); }
   h5 { margin: 0 0 var(--spacing-2) 0; font-size: 0.9em; color: var(--color-text-primary); }
-
-  .card {
-    background: var(--color-bg-card);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    padding: var(--spacing-4);
-  }
-
-  .form-card {
-    border-color: var(--color-primary);
-  }
-
+  .card { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--spacing-4); }
+  .form-card { border-color: var(--color-primary); }
+  .form-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-4); }
+  .form-tools { display: flex; gap: 8px; }
   .form-group { margin-bottom: var(--spacing-3); }
-  
-  label {
-    display: block;
-    font-size: 0.85em;
-    color: var(--color-text-secondary);
-    margin-bottom: var(--spacing-1);
-  }
-
-  input, textarea {
-    width: 100%;
-    padding: var(--spacing-2);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    background: var(--color-bg-main);
-    color: var(--color-text-primary);
-    font-family: inherit;
-    box-sizing: border-box;
-  }
-
-  input:focus, textarea:focus {
-    outline: none;
-    border-color: var(--color-primary);
-  }
-
+  label { display: block; font-size: 0.85em; color: var(--color-text-secondary); margin-bottom: var(--spacing-1); }
+  input, textarea { width: 100%; padding: var(--spacing-2); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg-main); color: var(--color-text-primary); font-family: inherit; box-sizing: border-box; }
+  input:focus, textarea:focus { outline: none; border-color: var(--color-primary); }
   .hint { color: var(--color-text-secondary); font-size: 0.8em; font-weight: normal; }
-
-  .form-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: var(--spacing-3);
-  }
-
-  .selectors-section {
-    margin-top: var(--spacing-4);
-    padding-top: var(--spacing-4);
-    border-top: 1px solid var(--color-border);
-  }
-
-  .form-actions {
-    display: flex;
-    gap: var(--spacing-2);
-    margin-top: var(--spacing-4);
-    justify-content: flex-end;
-  }
-
-  .profile-list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-2);
-  }
-
-  .profile-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: var(--spacing-3);
-  }
-
-  .profile-header {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-2);
-    margin-bottom: var(--spacing-1);
-  }
-
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--spacing-3); }
+  .selectors-section { margin-top: var(--spacing-4); padding-top: var(--spacing-4); border-top: 1px solid var(--color-border); }
+  .form-actions { display: flex; gap: var(--spacing-2); margin-top: var(--spacing-4); justify-content: flex-end; }
+  .profile-list { display: flex; flex-direction: column; gap: var(--spacing-2); }
+  .profile-item { display: flex; justify-content: space-between; align-items: center; padding: var(--spacing-3); }
+  .profile-header { display: flex; align-items: center; gap: var(--spacing-2); margin-bottom: var(--spacing-1); }
   .profile-name { font-weight: 500; color: var(--color-text-primary); }
-
-  .badge {
-    font-size: 0.7em;
-    padding: 2px 6px;
-    border-radius: var(--radius-full);
-    text-transform: uppercase;
-    font-weight: 600;
-  }
-
-  .badge.builtin {
-    background: var(--color-bg-card-hover);
-    color: var(--color-text-secondary);
-    border: 1px solid var(--color-border);
-  }
-
-  .url-patterns {
-    display: flex;
-    gap: var(--spacing-1);
-    font-size: 0.8em;
-    color: var(--color-text-secondary);
-  }
-
-  .url-tag {
-    background: var(--color-bg-main);
-    padding: 1px 6px;
-    border-radius: var(--radius-sm);
-    max-width: 200px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .btn-primary {
-    background: var(--color-primary);
-    color: white;
-    border: none;
-    padding: var(--spacing-2) var(--spacing-3);
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    font-size: 0.9em;
-  }
-
-  .btn-ghost {
-    background: transparent;
-    border: 1px solid transparent;
-    color: var(--color-text-secondary);
-    padding: var(--spacing-2) var(--spacing-3);
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    font-size: 0.9em;
-  }
-
-  .btn-ghost:hover {
-    background: var(--color-bg-card-hover);
-    color: var(--color-text-primary);
-  }
-
+  .badge { font-size: 0.7em; padding: 2px 6px; border-radius: var(--radius-full); text-transform: uppercase; font-weight: 600; }
+  .badge.builtin { background: var(--color-bg-card-hover); color: var(--color-text-secondary); border: 1px solid var(--color-border); }
+  .url-patterns { display: flex; gap: var(--spacing-1); font-size: 0.8em; color: var(--color-text-secondary); }
+  .url-tag { background: var(--color-bg-main); padding: 1px 6px; border-radius: var(--radius-sm); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .btn-primary { background: var(--color-primary); color: white; border: none; padding: var(--spacing-2) var(--spacing-3); border-radius: var(--radius-md); cursor: pointer; font-size: 0.9em; }
+  .btn-ghost { background: transparent; border: 1px solid transparent; color: var(--color-text-secondary); padding: var(--spacing-2) var(--spacing-3); border-radius: var(--radius-md); cursor: pointer; font-size: 0.9em; }
+  .btn-ghost:hover { background: var(--color-bg-card-hover); color: var(--color-text-primary); }
   .btn-sm { padding: var(--spacing-1) var(--spacing-2); font-size: 0.8em; }
-  
+  .btn-secondary { background: var(--color-bg-secondary); border: 1px solid var(--color-border); color: var(--color-text-primary); cursor: pointer; border-radius: var(--radius-sm); }
+  .btn-secondary:hover { background: var(--color-bg-card-hover); }
   .text-danger { color: var(--color-error); }
   .text-danger:hover { background: var(--color-error-bg); }
-
-  .error-banner {
-    background: var(--color-error-bg);
-    color: var(--color-error);
-    padding: var(--spacing-2);
-    border-radius: var(--radius-md);
-    font-size: 0.9em;
-  }
-
-  .loading {
-    text-align: center;
-    color: var(--color-text-secondary);
-    padding: var(--spacing-4);
-  }
+  .error-banner { background: var(--color-error-bg); color: var(--color-error); padding: var(--spacing-2); border-radius: var(--radius-md); font-size: 0.9em; margin-bottom: var(--spacing-3); }
+  .loading { text-align: center; color: var(--color-text-secondary); padding: var(--spacing-4); }
+  
+  .input-with-action { display: flex; gap: 4px; }
+  .btn-icon { background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-sm); cursor: pointer; padding: 0 8px; }
+  .btn-icon:hover { background: var(--color-bg-card-hover); }
+  
+  .test-report { margin-bottom: var(--spacing-3); padding: 8px; border-radius: var(--radius-sm); font-size: 0.9rem; display: flex; justify-content: space-between; }
+  .test-report.pass { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+  .test-report.fail { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
 </style>

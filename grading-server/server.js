@@ -53,6 +53,9 @@ let providerConfigs = initialConfig.providers;
 let handshakeToken = initialConfig.token;
 console.log(`[config] Loaded ${providerConfigs.length} provider(s), token=${handshakeToken.slice(0, 8)}...`);
 
+// ── Site profile cache (synced from desktop, read by /grade skill) ──
+/** @type {Map<string, object>} */
+const profileCache = new Map();
 
 /**
  * Call an AI provider directly from the server (bypasses extension proxy).
@@ -375,6 +378,68 @@ app.post('/api/providers/active', async (c) => {
   } catch (error) {
     return c.json({ error: 'Invalid JSON body' }, 400);
   }
+});
+
+// ── Site Profile Sync Endpoints ───────────────────────────────────────
+
+/**
+ * POST /api/profiles/sync
+ * Desktop pushes a site profile to the in-memory cache.
+ * Body: SiteProfile JSON object (must have id or name).
+ * Protected by Bearer token middleware.
+ */
+app.post('/api/profiles/sync', async (c) => {
+  let body;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+
+  const key = body.id || body.name;
+  if (!key || typeof key !== 'string') {
+    return c.json({ error: 'Profile must have an id or name (string)' }, 400);
+  }
+
+  profileCache.set(key, body);
+  console.log(`[profiles] Synced profile "${body.name || key}" (cache size: ${profileCache.size})`);
+  return c.json({ ok: true });
+});
+
+/**
+ * GET /api/profiles
+ * Returns all cached site profiles as a JSON array.
+ * Protected by Bearer token middleware.
+ */
+app.get('/api/profiles', (c) => {
+  return c.json({ profiles: Array.from(profileCache.values()) });
+});
+
+/**
+ * GET /api/profiles/match?url=
+ * Find the best matching cached profile for a given URL.
+ * Uses simple substring matching against each profile's urlPatterns.
+ * Returns the first match or null.
+ * Protected by Bearer token middleware.
+ */
+app.get('/api/profiles/match', (c) => {
+  const url = c.req.query('url');
+  if (!url) {
+    return c.json({ error: 'Missing required query parameter: url' }, 400);
+  }
+
+  for (const profile of profileCache.values()) {
+    const patterns = profile.urlPatterns;
+    if (Array.isArray(patterns)) {
+      for (const pattern of patterns) {
+        if (typeof pattern === 'string' && url.includes(pattern)) {
+          return c.json({ profile });
+        }
+      }
+    }
+  }
+
+  return c.json({ profile: null });
 });
 
 // ── Rubric Library CRUD ──────────────────────────────────────────────────

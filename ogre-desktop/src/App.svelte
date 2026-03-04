@@ -15,7 +15,7 @@
   import type { SessionCompletePayload } from './lib/server';
   import { updateActiveProvider } from './lib/db';
   import { checkForUpdates, type UpdateCheckResult } from './lib/updater';
-  import { hideWebview, showWebview } from './lib/browser';
+  import { hideWebview, showWebview, getActiveTabId } from './lib/browser';
   import type { Update } from '@tauri-apps/plugin-updater';
 
   // Webview layout constants (must match CSS variables in app.css)
@@ -43,9 +43,9 @@
   // Modal z-ordering: native webview renders ON TOP of all DOM elements,
   // so it must be hidden when modals appear to avoid covering them.
   $: if (showUpdateModal) {
-    hideWebview().catch(() => {});
+    hideWebview(getActiveTabId()).catch(() => {});
   } else if (currentPage === 'browser') {
-    showWebview().catch(() => {});
+    showWebview(getActiveTabId()).catch(() => {});
     window.dispatchEvent(new CustomEvent('ogre:sidebar-changed'));
   }
 
@@ -127,7 +127,7 @@
     } else {
       sidebarCollapsed = false;
       // Hide webview immediately when leaving browser page (preserves session)
-      hideWebview().catch(() => {});
+      hideWebview(getActiveTabId()).catch(() => {});
     }
   }
 

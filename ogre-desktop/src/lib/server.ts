@@ -1,4 +1,7 @@
 import { listen } from '@tauri-apps/api/event';
+import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
+import { getHandshakeToken } from './provider-sync';
+import type { SiteProfile } from './batch-grader';
 
 export type ServerStatus = 'running' | 'stopped' | 'crashed' | 'failed';
 
@@ -58,4 +61,33 @@ export function listenSessionComplete(callback: (session: SessionCompletePayload
  */
 export function listenProviderChanged(callback: (data: ProviderChangedPayload) => void) {
   return listen<ProviderChangedPayload>('provider-changed', (event) => callback(event.payload));
+}
+
+// ── Profile Sync (Desktop → Grading Server) ───────────────────────────
+
+const SERVER_BASE = 'http://localhost:3456';
+
+/**
+ * Sync a site profile to the grading server's in-memory cache.
+ * Fire-and-forget: errors are silently swallowed so profile saves
+ * are never blocked by server availability.
+ */
+export async function syncProfileToServer(profile: SiteProfile): Promise<void> {
+  try {
+    const token = getHandshakeToken();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    await tauriFetch(`${SERVER_BASE}/api/profiles/sync`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(profile),
+    });
+  } catch {
+    // Silently swallow — server may not be running
+  }
 }

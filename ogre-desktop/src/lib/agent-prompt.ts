@@ -20,7 +20,7 @@ export interface ToolDefinition {
   params: Record<string, string>; // param name → description
 }
 
-/** All 12 tools the browser agent can invoke. */
+/** All 15 tools the browser agent can invoke. */
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: 'click',
@@ -100,6 +100,29 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       timeoutMs: '(optional) Max ms to wait for the popup to appear. Default 8000, max 15000.'
     }
   },
+  {
+    name: 'discover_page',
+    description: 'Run AI-powered page structure discovery on the current page. Analyzes the DOM and screenshot to identify CSS selectors for student sections, score inputs, feedback areas, etc.',
+    params: {
+      hints: '(optional) Discovery hints object with fields like estimatedStudentCount, knownSelectors, pageDescription'
+    }
+  },
+  {
+    name: 'test_profile',
+    description: 'Test a saved site profile against the currently loaded page. Verifies each CSS selector finds matching elements and simulates data extraction.',
+    params: {
+      profileId: 'ID of the site profile to test (e.g. "myopenmath", "canvas-speedgrader")',
+      sampleCount: '(optional) Number of sample elements to check'
+    }
+  },
+  {
+    name: 'save_profile',
+    description: 'Save a new or updated site profile with CSS selectors for a grading page. Requires a non-empty name and at least one selector.',
+    params: {
+      profile: 'Partial SiteProfile object with selectors, urlPatterns, feedback, save, and navigation config',
+      name: 'Human-readable name for the profile (e.g. "My Canvas Course")'
+    }
+  },
 ];
 
 // ============================================================================
@@ -162,6 +185,18 @@ AVAILABLE ACTIONS AND PARAMETERS:
    Use after clicking MOM 'Quick Save and Preview'. Waits for the preview popup to appear and returns its screenshot.
    If the popup opens in a native window outside WebView2, returns an error — fall back to readText in that case.
 
+12. discover_page — Run AI-powered page structure discovery
+   {"action": "discover_page", "params": {}, "reasoning": "..."}
+   Analyzes the current page's DOM and screenshot to discover CSS selectors for grading elements.
+   Optionally pass hints: {"action": "discover_page", "params": {"hints": {"estimatedStudentCount": 25}}, "reasoning": "..."}
+
+13. test_profile — Test a site profile against the current page
+   {"action": "test_profile", "params": {"profileId": "myopenmath"}, "reasoning": "..."}
+   Loads the profile and verifies each selector matches elements on the live page. Returns a pass/fail report.
+
+14. save_profile — Save a site profile
+   {"action": "save_profile", "params": {"name": "My Course", "profile": {"selectors": {"studentName": ".name", "scoreInput": "input.score"}, "urlPatterns": ["mycourse.edu"]}}, "reasoning": "..."}
+   Validates the profile has a name and at least one selector, then persists it.
 TEXT RESPONSE FORMAT (for conversational replies without browser action):
 {"text": "Your response here"}
 

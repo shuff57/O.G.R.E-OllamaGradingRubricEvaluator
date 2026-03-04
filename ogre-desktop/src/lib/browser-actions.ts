@@ -15,11 +15,17 @@ import {
   captureWebviewScreenshot,
   navigateEmbedded,
   getActiveTabId,
+  getEmbeddedUrl,
 } from './browser';
 import { findFuzzyMatch, fuzzyMatchReason } from './agent-dom-fuzzy';
 import { captureInteractiveDom } from './agent-dom';
 import { isConnected, pwClick, pwType, pwReadText, pwWaitFor, pwScroll, pwPressKey, pwWriteCodeMirror, pwCapturePopup } from './cdp-actions';
 import { cdp } from './cdp-client';
+import { runDiscovery } from './discover';
+import { testProfile } from './profile-tester';
+import { ProfileStorageImpl } from './site-profiles';
+import type { SiteProfile } from './batch-grader';
+import type { DiscoveryHints } from './discovery-intent';
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -415,6 +421,77 @@ async function pressKeyAction(key: string): Promise<ActionResult> {
 }
 
 // ============================================================================
+// Discovery & Profile Actions
+// ============================================================================
+
+/**
+ * Run AI-powered page structure discovery on the current page.
+ * Returns a DiscoveryResult with selectors, feedback config, etc.
+ */
+async function discoverPageAction(hints?: DiscoveryHints): Promise<ActionResult> {
+  try {
+    const result = await runDiscovery({ /* hints are for future use */ });
+    return { success: true, data: result };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Test a saved site profile against the current page.
+ * Loads the profile by ID, runs selector + extraction tests, returns a report.
+ */
+async function testProfileAction(profileId: string, _sampleCount?: number): Promise<ActionResult> {
+  try {
+    const storage = new ProfileStorageImpl();
+    const profile = await storage.getProfile(profileId);
+    if (!profile) {
+      return { success: false, error: `Profile not found: ${profileId}` };
+    }
+    const pageUrl = await getEmbeddedUrl();
+    const report = await testProfile(profile, pageUrl);
+    return { success: true, data: report };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Validate and save a site profile.
+ * Requires a non-empty name and at least one selector.
+ */
+async function saveProfileAction(
+  partial: Partial<SiteProfile>,
+  name: string,
+): Promise<ActionResult> {
+  try {
+    if (!name || name.trim().length === 0) {
+      return { success: false, error: 'Profile name must not be empty' };
+    }
+    const selectors = partial.selectors;
+    if (!selectors || Object.values(selectors).every((v) => !v)) {
+      return { success: false, error: 'Profile must have at least one selector' };
+    }
+    const profileId = partial.id || `profile-${Date.now()}`;
+    const profile: SiteProfile = {
+      id: profileId,
+      name: name.trim(),
+      isBuiltIn: false,
+      urlPatterns: partial.urlPatterns || [],
+      selectors: selectors,
+      feedback: partial.feedback || { type: 'textarea', requiresHiddenSync: false, htmlWrap: false },
+      save: partial.save || { buttonText: 'Save', fallbackText: 'Submit' },
+      navigation: partial.navigation || { mode: 'batch' },
+    };
+    const storage = new ProfileStorageImpl();
+    await storage.saveProfile(profile);
+    return { success: true, data: { profileId } };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+// ============================================================================
 // Dispatcher
 // ============================================================================
 
@@ -478,6 +555,12 @@ export async function executeAction(params: ActionParams): Promise<ActionResult>
         return writeCodeMirrorAction(p.selector, p.value);
       case 'capturePopup':
         return { success: false, error: 'capturePopup requires CDP — not available in evalScript mode' };
+      case 'discover_page':
+        return discoverPageAction(p.hints);
+      case 'test_profile':
+        return testProfileAction(p.profileId, p.sampleCount);
+      case 'save_profile':
+        return saveProfileAction(p.profile, p.name);
       case 'runJS':
         return runJSAction(p.code);
       case 'done':

@@ -27,6 +27,9 @@ export type AgentAction =
   | 'pressKey'
   | 'writeCodeMirror'
   | 'capturePopup'
+  | 'discover_page'
+  | 'test_profile'
+  | 'save_profile'
   | 'done';
 
 /**
@@ -47,6 +50,9 @@ export type ActionParams =
   | { action: 'runJS'; code: string }
   | { action: 'writeCodeMirror'; selector: string; value: string }
   | { action: 'capturePopup'; timeoutMs?: number }
+  | { action: 'discover_page'; hints?: import('./discovery-intent').DiscoveryHints }
+  | { action: 'test_profile'; profileId: string; sampleCount?: number }
+  | { action: 'save_profile'; profile: Partial<import('./batch-grader').SiteProfile>; name: string }
   | { action: 'done'; success: boolean; message: string };
 
 // ============================================================================
