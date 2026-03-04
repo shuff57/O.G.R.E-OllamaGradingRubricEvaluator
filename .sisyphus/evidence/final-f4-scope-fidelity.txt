@@ -1,0 +1,193 @@
+================================================================
+F4 SCOPE FIDELITY CHECK — Smart Discovery Implementation
+================================================================
+Plan: .sisyphus/plans/smart-discovery-complete.md
+Baseline: 98aad1f
+Date: 2026-03-03
+================================================================
+
+SECTION 1: GUARDRAIL VERIFICATION (Must NOT Have)
+================================================================
+
+1. No npm dependencies in injected DOM walker script
+   STATUS: PASS
+   EVIDENCE: buildSmartWalkScript() in dom-snapshot.ts (line 232) returns a
+   self-contained IIFE string. The injected code uses only plain browser JS
+   (var declarations, for loops, DOM APIs). Module-level imports (lines 9, 16)
+   are TypeScript imports for the module itself, NOT present in the injected
+   string. Line 230 docstring explicitly states: "contains zero import /
+   require statements and no TypeScript syntax."
+
+2. No LMS-specific heuristics
+   STATUS: PASS
+   EVIDENCE: Searched heuristic-detector.ts for "moodle", "canvas",
+   "blackboard", "myopenmath", "brightspace", "d2l" — zero matches.
+   Detector uses structural patterns only (tag names, attribute presence,
+   DOM topology).
+
+3. No cross-origin iframe DOM access
+   STATUS: PASS
+   EVIDENCE: iframe-capture.ts lines 112-115 use contentDocument in a
+   try-catch to DETECT same-origin status. Cross-origin iframes receive a
+   metadata-only placeholder (lines 154-164, crossOrigin: true). No bypass
+   attempts (no document.domain, no postMessage workarounds).
+
+4. No changes to /api/chat server endpoint
+   STATUS: PASS
+   EVIDENCE: Searched grading-server/server.js for "/api/chat" — zero
+   matches. Only profile endpoints (POST /api/profiles/sync, GET /api/profiles,
+   GET /api/profiles/match) were added. /api/chat route untouched.
+
+5. No general-purpose chat UI
+   STATUS: PASS
+   EVIDENCE: DiscoveryChat.svelte imports ChatDiscoveryState from
+   discovery-intent.ts. Placeholder text reads "Describe the page structure
+   to help the AI..." — discovery-scoped only. No general assistant
+   capabilities, no arbitrary conversation.
+
+6. No ML training or pattern learning
+   STATUS: PASS
+   EVIDENCE: Searched discovery-intent.ts for "train", "learning",
+   "model.fit", "gradient", "neural", "tensorflow", "torch" — zero matches.
+   Example mode uses CSS selector generalization, not ML.
+
+7. No full REST CRUD API
+   STATUS: PASS
+   EVIDENCE: Searched grading-server/server.js for DELETE and PUT — zero
+   matches. Only endpoints added: POST /api/profiles/sync (write), GET
+   /api/profiles (read), GET /api/profiles/match (read). No DELETE, no PUT.
+
+8. No `as any` casts in new code
+   STATUS: PASS
+   EVIDENCE: Searched all .ts files in ogre-desktop/src/lib/ for "as any".
+   Found 12 matches total — ALL in pre-existing files:
+   - page-refresh.test.ts (5 occurrences, pre-existing)
+   - skills-api.test.ts (4 occurrences, pre-existing)
+   - markdown-extract.test.ts (2 occurrences, pre-existing)
+   - discover.integration.test.ts (1 occurrence — COMMENT only: "no `as any`")
+   New production files (discovery-intent.ts, extraction-config-discovery.ts,
+   discovery-ui.ts, profile-editor.ts, profile-tester.ts, type-mappers.ts,
+   browser-actions.ts additions): zero `as any`.
+
+9. DiscoveryPanel under 600 lines
+   STATUS: PASS
+   EVIDENCE: wc -l reports 433 lines. Well under the ~600 line guardrail.
+
+GUARDRAILS: 9/9 COMPLIANT
+
+================================================================
+SECTION 2: MUST HAVE DELIVERABLES
+================================================================
+
+Core Library Modules:
+  [EXISTS] src/lib/dom-snapshot-types.ts
+  [EXISTS] src/lib/dom-snapshot.ts
+  [EXISTS] src/lib/heuristic-detector.ts
+  [EXISTS] src/lib/iframe-capture.ts
+  [EXISTS] src/lib/type-mappers.ts
+  [EXISTS] src/lib/profile-tester.ts
+  [EXISTS] src/lib/extraction-config-discovery.ts
+  [EXISTS] src/lib/discovery-intent.ts
+  [EXISTS] src/lib/profile-editor.ts
+
+Sub-components (plan: 4):
+  [EXISTS] DiscoveryProgress.svelte
+  [EXISTS] DiscoveryResults.svelte
+  [EXISTS] DiscoveryConfirmation.svelte
+  [EXISTS] DiscoverySaveDialog.svelte
+
+Mode components (plan: 3 OR equivalent handling):
+  [EXISTS] DiscoveryChat.svelte (chat mode)
+  [EXISTS] DiscoveryModeSelector.svelte (mode selector with form/chat/example)
+  [EQUIV]  Form mode + Example mode handled within DiscoveryPanel orchestrator
+           (plan allows "OR equivalent mode handling in DiscoveryPanel")
+
+Config and Updated Components:
+  [EXISTS] ExtractionConfigPanel.svelte
+  [UPDATED] DiscoveryPanel.svelte (433 lines, refactored orchestrator)
+  [UPDATED] ProfileManager.svelte
+
+Agent System:
+  [CONFIRMED] agent-types.ts — 3 new actions added:
+              discover_page, test_profile, save_profile (git diff verified)
+  [CONFIRMED] browser-actions.ts — 3 action handlers + dispatcher wiring:
+              discoverPageAction, testProfileAction, saveProfileAction
+  [CONFIRMED] agent-prompt.ts — 3 tool definitions + usage examples added
+
+Server Endpoints:
+  [CONFIRMED] grading-server/server.js:
+              POST /api/profiles/sync — accepts profile JSON, caches in Map
+              GET /api/profiles — returns all cached profiles
+              GET /api/profiles/match?url= — URL-based profile matching
+  [CONFIRMED] ogre-desktop/src/lib/server.ts:
+              syncProfileToServer() — fire-and-forget POST to grading server
+
+Test Files:
+  [EXISTS] agent-discovery-actions.test.ts
+  [EXISTS] discover.integration.test.ts
+  [EXISTS] discover.regression.test.ts
+  [EXISTS] discovery-intent.test.ts
+  [EXISTS] profile-editor.test.ts
+  [EXISTS] profile-tester.test.ts
+  [EXISTS] server.test.ts
+  [EXISTS] grading-server/test/profiles.test.js
+
+DELIVERABLES: ALL PRESENT
+
+================================================================
+SECTION 3: UNACCOUNTED CHANGES
+================================================================
+
+Changed files (git diff 98aad1f HEAD --name-only): 28 files total.
+
+Files NOT explicitly listed in plan deliverables:
+
+1. ogre-desktop/src/App.svelte
+   CHANGE: Added getActiveTabId import, updated hideWebview/showWebview
+           calls to pass tab ID parameter (3 lines changed)
+   RISK: NONE — trivial refactor for browser tab management
+   SCOPE VIOLATION: NO
+
+2. ogre-desktop/src/pages/GradingPanel.svelte
+   CHANGE: Same getActiveTabId pattern (3 lines changed)
+   RISK: NONE — mirrors App.svelte change
+   SCOPE VIOLATION: NO
+
+3. ogre-desktop/src/lib/discovery-picker-integration.ts
+   CHANGE: Type cast fix: `as Record<...>` → `as unknown as Record<...>`
+           (1 line changed, safer type narrowing)
+   RISK: NONE — type safety improvement
+   SCOPE VIOLATION: NO
+
+4. ogre-desktop/src/lib/discovery-ui.ts
+   CHANGE: NEW file (54 lines). Contains SELECTOR_LABELS constant,
+           highlightSelector(), clearRefinementHighlights() helpers.
+   RISK: LOW — UI helper supporting discovery refactor
+   SCOPE VIOLATION: NO — supports planned DiscoveryPanel refactor (T13/T24)
+
+UNACCOUNTED: 4 files — all supportive infrastructure, zero scope violations
+
+================================================================
+SECTION 4: ADDITIONAL NOTES
+================================================================
+
+- 5 core module files (dom-snapshot-types.ts, dom-snapshot.ts,
+  heuristic-detector.ts, iframe-capture.ts, type-mappers.ts) exist but
+  don't appear in git diff 98aad1f..HEAD. They were created AT the
+  baseline commit (98aad1f), meaning earlier implementation waves
+  (Wave 1-2) were already committed before the baseline was established.
+  All files confirmed present via glob.
+
+- 4 sub-components (DiscoveryProgress, DiscoveryResults,
+  DiscoveryConfirmation, DiscoverySaveDialog) similarly exist but weren't
+  changed after 98aad1f. Created during the DiscoveryPanel refactor (T13).
+
+- discovery-picker-integration.ts uses `as unknown as Record<...>` — this
+  is NOT an `as any` violation. It narrows through `unknown` (type-safe
+  path) rather than bypassing type checking entirely.
+
+================================================================
+VERDICT
+================================================================
+
+Tasks [9/9 compliant] | Contamination [CLEAN] | Unaccounted [4 files - all supportive, no violations] | VERDICT: APPROVE
