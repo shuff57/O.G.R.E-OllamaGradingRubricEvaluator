@@ -1,10 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { getGradingSessions, getSetting, initDB } from "../lib/db";
+  import { getGradingSessions, getSetting, getProviderConfigs, initDB } from "../lib/db";
   import type { GradingSession } from "../lib/db";
   import { open } from "@tauri-apps/plugin-shell";
   import { deleteEmbeddingsBySessionId } from "../lib/vector-store";
   import { getEmbeddingStats, getSessionEmbeddingCounts, type EmbeddingStats } from "../lib/embedding-stats";
+  import { reEmbedAll } from "../lib/re-embed";
 
   /** Incremented by App.svelte when a new grading session is recorded */
   export let sessionVersion = 0;
@@ -12,6 +13,10 @@
   let sessions: GradingSession[] = [];
   let embeddingStats: EmbeddingStats | null = null;
   let sessionEmbeddingCounts = new Map<number, number>();
+  let reEmbedRunning = false;
+  let reEmbedDone = 0;
+  let reEmbedTotal = 0;
+  let reEmbedMessage: string | null = null;
   let visibleColumns: string[] = [];
   let sortColumn: string | null = "created_at";
   let sortAscending = false;
@@ -107,6 +112,59 @@
     sessionEmbeddingCounts = await getSessionEmbeddingCounts();
   }
 
+  async function handleReEmbed() {
+    if (reEmbedRunning) return;
+    reEmbedRunning = true;
+    reEmbedDone = 0;
+    reEmbedTotal = 0;
+    reEmbedMessage = null;
+
+    try {
+      // Determine current embedding provider
+      const useLocal = await getSetting('use_local_embedding');
+      let provider: string;
+      let model: string;
+      let apiKey: string | undefined;
+      let apiUrl: string | undefined;
+
+      if (useLocal === 'true') {
+        provider = 'local';
+        model = 'Xenova/all-MiniLM-L6-v2';
+      } else {
+        const configs = await getProviderConfigs();
+        const active = configs.find(c => c.is_active === 1);
+        if (!active) {
+          reEmbedMessage = 'No active provider configured.';
+          reEmbedRunning = false;
+          return;
+        }
+        provider = active.id;
+        model = active.model ?? '';
+        apiKey = active.api_key ?? undefined;
+        apiUrl = active.api_url ?? undefined;
+      }
+
+      const result = await reEmbedAll(
+        provider,
+        model,
+        (done, total) => {
+          reEmbedDone = done;
+          reEmbedTotal = total;
+        },
+        apiKey,
+        apiUrl,
+      );
+
+      reEmbedMessage = `Updated ${result.updated} embeddings to ${model}` +
+        (result.failed > 0 ? ` (${result.failed} failed)` : '');
+      await loadData();
+    } catch (err) {
+      reEmbedMessage = `Re-embed error: ${err instanceof Error ? err.message : String(err)}`;
+    } finally {
+      reEmbedRunning = false;
+    }
+  }
+
   function openUrl(url: string | null) {
     if (url) {
       open(url);
@@ -137,6 +195,30 @@
         {/if}
       </div>
       <button class="clear-btn" on:click={clearAllEmbeddings}>Clear All Embeddings</button>
+    </div>
+  {/if}
+
+  {#if embeddingStats && embeddingStats.totalEmbeddings > 0}
+    <div class="re-embed-card">
+      <div class="re-embed-header">
+        <span class="re-embed-title">Re-embed History</span>
+        <button
+          class="re-embed-btn"
+          disabled={reEmbedRunning || embeddingStats.totalEmbeddings === 0}
+          on:click={handleReEmbed}
+        >
+          {reEmbedRunning ? 'Re-embedding…' : 'Re-embed All'}
+        </button>
+      </div>
+      {#if reEmbedRunning}
+        <div class="re-embed-progress">
+          <progress value={reEmbedDone} max={reEmbedTotal}></progress>
+          <span class="re-embed-count">{reEmbedDone} / {reEmbedTotal}</span>
+        </div>
+      {/if}
+      {#if reEmbedMessage}
+        <div class="re-embed-result">{reEmbedMessage}</div>
+      {/if}
     </div>
   {/if}
 
@@ -573,5 +655,83 @@
 
   .del-embed-btn:hover {
     opacity: 1;
+  }
+
+  .re-embed-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: var(--bg-secondary, #fffbeb);
+    border: 1px solid var(--border-color, #fde68a);
+    border-radius: 8px;
+    font-size: 0.875rem;
+  }
+
+  .re-embed-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .re-embed-title {
+    font-weight: 600;
+    color: var(--text-color, #92400e);
+  }
+
+  .re-embed-btn {
+    padding: 0.375rem 0.75rem;
+    border: 1px solid var(--primary-color, #2563eb);
+    background: var(--primary-color, #2563eb);
+    color: white;
+    border-radius: 6px;
+    font-size: 0.8125rem;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+
+  .re-embed-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .re-embed-btn:hover:not(:disabled) {
+    opacity: 0.85;
+  }
+
+  .re-embed-progress {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .re-embed-progress progress {
+    flex: 1;
+    height: 6px;
+    border-radius: 3px;
+    appearance: none;
+  }
+
+  .re-embed-progress progress::-webkit-progress-bar {
+    background: var(--border-color, #e5e7eb);
+    border-radius: 3px;
+  }
+
+  .re-embed-progress progress::-webkit-progress-value {
+    background: var(--primary-color, #2563eb);
+    border-radius: 3px;
+  }
+
+  .re-embed-count {
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted, #6b7280);
+    font-size: 0.8125rem;
+    white-space: nowrap;
+  }
+
+  .re-embed-result {
+    color: var(--text-color, #374151);
+    font-size: 0.8125rem;
   }
 </style>

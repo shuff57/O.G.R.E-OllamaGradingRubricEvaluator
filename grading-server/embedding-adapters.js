@@ -5,7 +5,7 @@
  * Follows the same pattern as providers.js (buildXxxRequest / parseXxxResponse).
  */
 
-const SUPPORTED_EMBED_PROVIDERS = ['ollama', 'openai', 'gemini', 'github'];
+const SUPPORTED_EMBED_PROVIDERS = ['ollama', 'openai', 'gemini', 'github', 'local'];
 
 /**
  * Normalize base URL by removing trailing slash
@@ -73,6 +73,11 @@ export function buildEmbedRequest(provider, { model, apiKey, apiUrl, text }) {
       };
     }
 
+    case 'local': {
+      // Local provider bypasses HTTP — returns sentinel for server.js to handle
+      return { provider: 'local', text };
+    }
+
     case 'anthropic':
       throw new Error(
         'Anthropic does not support text embeddings. Use a different provider (Ollama, OpenAI, or Gemini).'
@@ -104,6 +109,10 @@ export function parseEmbedResponse(provider, responseJson) {
 
     case 'gemini':
       embedding = responseJson.embedding.values;
+      break;
+
+    case 'local':
+      embedding = responseJson.embedding;
       break;
 
     case 'anthropic':

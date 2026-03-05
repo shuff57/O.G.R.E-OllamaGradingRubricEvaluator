@@ -55,7 +55,13 @@ export async function findSimilarResponses(
   const k = options?.k ?? 10;
   const minSimilarity = options?.minSimilarity ?? 0.5;
 
-  const stored = await getEmbeddingsByRubricHash(rubricHash, options?.embeddingModel);
+  const embeddingModel = options?.embeddingModel;
+  if (!embeddingModel) {
+    // embeddingModel is required; graceful no-op when caller hasn't set one yet
+    return [];
+  }
+
+  const stored = await getEmbeddingsByRubricHash(rubricHash, embeddingModel);
   if (stored.length === 0) return [];
 
   const candidates = stored.map(s => ({ id: s.id, embedding: s.embedding }));
@@ -123,7 +129,13 @@ export async function findSimilarRubrics(
   const k = options?.k ?? 5;
   const minSimilarity = options?.minSimilarity ?? 0.5;
 
-  const allEmbeddings = await getAllEmbeddings(options?.embeddingModel);
+  const embeddingModel = options?.embeddingModel;
+  if (!embeddingModel) {
+    // embeddingModel is required; graceful no-op when caller hasn't set one yet
+    return [];
+  }
+
+  const allEmbeddings = await getAllEmbeddings(embeddingModel);
   if (allEmbeddings.length === 0) return [];
 
   // Group by rubric hash

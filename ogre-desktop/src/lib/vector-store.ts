@@ -92,40 +92,66 @@ export async function storeEmbedding(params: {
 
 /**
  * Retrieve all embeddings for a given rubric hash.
- * Optionally filter by embedding model for cross-model compatibility.
+ * REQUIRED: mixing vectors from different models causes dimension mismatch crashes (384d vs 1536d vs 768d).
+ * Always specify embeddingModel to ensure dimension consistency.
+ * @param rubricHash - Rubric identity hash
+ * @param embeddingModel - Embedding model name (e.g., 'nomic-embed-text', 'text-embedding-ada-002')
  */
 export async function getEmbeddingsByRubricHash(
   rubricHash: string,
-  embeddingModel?: string
+  embeddingModel: string
 ): Promise<StoredEmbedding[]> {
   const database = await initDB();
-  const rows = embeddingModel
-    ? await database.select<ResponseEmbedding[]>(
-        'SELECT * FROM response_embeddings WHERE rubric_hash = $1 AND embedding_model = $2 ORDER BY id',
-        [rubricHash, embeddingModel]
-      )
-    : await database.select<ResponseEmbedding[]>(
-        'SELECT * FROM response_embeddings WHERE rubric_hash = $1 ORDER BY id',
-        [rubricHash]
-      );
+  const rows = await database.select<ResponseEmbedding[]>(
+    'SELECT * FROM response_embeddings WHERE rubric_hash = $1 AND embedding_model = $2 ORDER BY id',
+    [rubricHash, embeddingModel]
+  );
   return rows.map(rowToStoredEmbedding);
 }
 
 /**
- * Retrieve all stored embeddings, optionally filtered by model.
+ * Retrieve all stored embeddings.
+ * REQUIRED: mixing vectors from different models causes dimension mismatch crashes (384d vs 1536d vs 768d).
+ * Always specify embeddingModel to ensure dimension consistency.
+ * @param embeddingModel - Embedding model name (e.g., 'nomic-embed-text', 'text-embedding-ada-002')
  */
-export async function getAllEmbeddings(embeddingModel?: string): Promise<StoredEmbedding[]> {
+export async function getAllEmbeddings(embeddingModel: string): Promise<StoredEmbedding[]> {
   const database = await initDB();
-  const rows = embeddingModel
-    ? await database.select<ResponseEmbedding[]>(
-        'SELECT * FROM response_embeddings WHERE embedding_model = $1 ORDER BY id',
-        [embeddingModel]
-      )
-    : await database.select<ResponseEmbedding[]>(
-        'SELECT * FROM response_embeddings ORDER BY id'
-      );
+  const rows = await database.select<ResponseEmbedding[]>(
+    'SELECT * FROM response_embeddings WHERE embedding_model = $1 ORDER BY id',
+    [embeddingModel]
+  );
   return rows.map(rowToStoredEmbedding);
 }
+
+/**
+ * Retrieve ALL stored embeddings regardless of model.
+ * Used by re-embed migration to iterate every row.
+ */
+export async function getAllEmbeddingsUnfiltered(): Promise<StoredEmbedding[]> {
+  const database = await initDB();
+  const rows = await database.select<ResponseEmbedding[]>(
+    'SELECT * FROM response_embeddings ORDER BY id'
+  );
+  return rows.map(rowToStoredEmbedding);
+}
+
+/**
+ * Update an existing embedding's vector and model in place.
+ * Used by re-embed migration — no schema changes needed.
+ */
+export async function updateEmbedding(
+  id: number,
+  embedding: Float32Array,
+  model: string
+): Promise<void> {
+  const database = await initDB();
+  await database.execute(
+    'UPDATE response_embeddings SET embedding = $1, embedding_model = $2 WHERE id = $3',
+    [float32ToBuffer(embedding), model, id]
+  );
+}
+
 
 /**
  * Delete all embeddings associated with a grading session.

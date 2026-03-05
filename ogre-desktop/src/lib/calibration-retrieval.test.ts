@@ -52,7 +52,7 @@ describe('findSimilarResponses', () => {
 
   it('returns empty array when store has no rows', async () => {
     mockGetByRubricHash.mockResolvedValue([]);
-    const result = await findSimilarResponses(QUERY, 'rubric-abc');
+    const result = await findSimilarResponses(QUERY, 'rubric-abc', { embeddingModel: 'nomic-embed-text' });
     expect(result).toEqual([]);
   });
 
@@ -63,7 +63,7 @@ describe('findSimilarResponses', () => {
       makeRow(3, 7, [0.9, 0.1, 0]),    // similarity ≈ 0.99
     ]);
 
-    const result = await findSimilarResponses(QUERY, 'rubric-abc', { minSimilarity: 0.5 });
+    const result = await findSimilarResponses(QUERY, 'rubric-abc', { minSimilarity: 0.5, embeddingModel: 'nomic-embed-text' });
     // Only ids 1 and 3 pass threshold; sorted by similarity desc
     expect(result.length).toBe(2);
     expect(result[0].id).toBe(1);
@@ -76,13 +76,13 @@ describe('findSimilarResponses', () => {
       makeRow(1, 5, [0, 1, 0]),   // orthogonal → 0.0
       makeRow(2, 5, [-1, 0, 0]),  // opposite → -1.0
     ]);
-    const result = await findSimilarResponses(QUERY, 'rubric-abc', { minSimilarity: 0.5 });
+    const result = await findSimilarResponses(QUERY, 'rubric-abc', { minSimilarity: 0.5, embeddingModel: 'nomic-embed-text' });
     expect(result).toHaveLength(0);
   });
 
   it('result objects have correct shape', async () => {
     mockGetByRubricHash.mockResolvedValue([makeRow(1, 8, [1, 0, 0])]);
-    const result = await findSimilarResponses(QUERY, 'rubric-abc');
+    const result = await findSimilarResponses(QUERY, 'rubric-abc', { embeddingModel: 'nomic-embed-text' });
     expect(result[0]).toMatchObject({
       id: 1,
       similarity: expect.any(Number),
@@ -104,7 +104,7 @@ describe('findSimilarResponses', () => {
       makeRow(2, 7, [0.95, 0.05, 0]),
       makeRow(3, 6, [0.9, 0.1, 0]),
     ]);
-    const result = await findSimilarResponses(QUERY, 'rubric-abc', { k: 2, minSimilarity: 0 });
+    const result = await findSimilarResponses(QUERY, 'rubric-abc', { k: 2, minSimilarity: 0, embeddingModel: 'nomic-embed-text' });
     expect(result.length).toBeLessThanOrEqual(2);
   });
 });
@@ -116,7 +116,7 @@ describe('getCalibrationExamples', () => {
 
   it('returns { total: 0 } when no similar responses exist', async () => {
     mockGetByRubricHash.mockResolvedValue([]);
-    const result = await getCalibrationExamples(QUERY, 'rubric-abc');
+    const result = await getCalibrationExamples(QUERY, 'rubric-abc', { embeddingModel: 'nomic-embed-text' });
     expect(result).toEqual({ total: 0 });
     expect(result.excellent).toBeUndefined();
   });
@@ -128,7 +128,7 @@ describe('getCalibrationExamples', () => {
       makeRow(3, 3, [0.9, 0.1, 0]),   // lowest score → minimal
     ]);
 
-    const result = await getCalibrationExamples(QUERY, 'rubric-abc', { minSimilarity: 0 });
+    const result = await getCalibrationExamples(QUERY, 'rubric-abc', { minSimilarity: 0, embeddingModel: 'nomic-embed-text' });
     expect(result.total).toBe(3);
     expect(result.excellent?.gradingScore).toBe(9);
     expect(result.minimal?.gradingScore).toBe(3);
@@ -137,7 +137,7 @@ describe('getCalibrationExamples', () => {
 
   it('with 1 result — only excellent is set', async () => {
     mockGetByRubricHash.mockResolvedValue([makeRow(1, 8, [1, 0, 0])]);
-    const result = await getCalibrationExamples(QUERY, 'rubric-abc', { minSimilarity: 0 });
+    const result = await getCalibrationExamples(QUERY, 'rubric-abc', { minSimilarity: 0, embeddingModel: 'nomic-embed-text' });
     expect(result.total).toBe(1);
     expect(result.excellent).toBeDefined();
     expect(result.minimal).toBeUndefined();
@@ -149,7 +149,7 @@ describe('getCalibrationExamples', () => {
       makeRow(1, 9, [1, 0, 0]),
       makeRow(2, 4, [0.9, 0.1, 0]),
     ]);
-    const result = await getCalibrationExamples(QUERY, 'rubric-abc', { minSimilarity: 0 });
+    const result = await getCalibrationExamples(QUERY, 'rubric-abc', { minSimilarity: 0, embeddingModel: 'nomic-embed-text' });
     expect(result.total).toBe(2);
     expect(result.excellent).toBeDefined();
     expect(result.minimal).toBeDefined();
@@ -164,7 +164,7 @@ describe('findSimilarRubrics', () => {
 
   it('returns empty array when no embeddings stored', async () => {
     mockGetAllEmbeddings.mockResolvedValue([]);
-    const result = await findSimilarRubrics(QUERY);
+    const result = await findSimilarRubrics(QUERY, { embeddingModel: 'nomic-embed-text' });
     expect(result).toEqual([]);
   });
 
@@ -176,7 +176,7 @@ describe('findSimilarRubrics', () => {
       makeRow(3, 5, [0, 1, 0], 'rubric-b'),  // orthogonal → 0.0, filtered
     ]);
 
-    const result = await findSimilarRubrics(QUERY, { minSimilarity: 0.5 });
+    const result = await findSimilarRubrics(QUERY, { minSimilarity: 0.5, embeddingModel: 'nomic-embed-text' });
     expect(result.length).toBe(1);
     expect(result[0].rubricHash).toBe('rubric-a');
   });
@@ -187,14 +187,14 @@ describe('findSimilarRubrics', () => {
       makeRow(2, 6, [0.9, 0.1, 0], 'rubric-a'),
     ]);
 
-    const result = await findSimilarRubrics(QUERY, { minSimilarity: 0 });
+    const result = await findSimilarRubrics(QUERY, { minSimilarity: 0, embeddingModel: 'nomic-embed-text' });
     expect(result[0].responseCount).toBe(2);
     expect(result[0].meanScore).toBeCloseTo(7, 5); // (8+6)/2
   });
 
   it('result includes rubricHash and similarity', async () => {
     mockGetAllEmbeddings.mockResolvedValue([makeRow(1, 9, [1, 0, 0], 'rubric-xyz')]);
-    const result = await findSimilarRubrics(QUERY, { minSimilarity: 0 });
+    const result = await findSimilarRubrics(QUERY, { minSimilarity: 0, embeddingModel: 'nomic-embed-text' });
     expect(result[0]).toMatchObject({
       rubricHash: 'rubric-xyz',
       similarity: expect.any(Number),

@@ -125,7 +125,7 @@ describe('storeEmbedding', () => {
 describe('getEmbeddingsByRubricHash', () => {
   it('returns empty array when no rows match', async () => {
     mockDB.select.mockResolvedValue([]);
-    const result = await getEmbeddingsByRubricHash('unknown-rubric');
+    const result = await getEmbeddingsByRubricHash('unknown-rubric', 'nomic-embed-text');
     expect(result).toEqual([]);
   });
 
@@ -133,7 +133,7 @@ describe('getEmbeddingsByRubricHash', () => {
     const row = makeRow();
     mockDB.select.mockResolvedValue([row]);
 
-    const result = await getEmbeddingsByRubricHash('rubric-abc');
+    const result = await getEmbeddingsByRubricHash('rubric-abc', 'nomic-embed-text');
     expect(result).toHaveLength(1);
     const item = result[0] as StoredEmbedding;
     expect(item.embedding).toBeInstanceOf(Float32Array);
@@ -141,30 +141,22 @@ describe('getEmbeddingsByRubricHash', () => {
     expect(item.score).toBe(8.5);
   });
 
-  it('passes model filter in query when provided', async () => {
+  it('always includes model filter (required param)', async () => {
     mockDB.select.mockResolvedValue([]);
     await getEmbeddingsByRubricHash('rubric-abc', 'nomic-embed-text');
-    const [sql, params] = mockDB.select.mock.calls[0];
-    expect(params).toContain('nomic-embed-text');
-    expect(sql).toContain('embedding_model');
-  });
-
-  it('does not include model filter when not provided', async () => {
-    mockDB.select.mockResolvedValue([]);
-    await getEmbeddingsByRubricHash('rubric-abc');
     const [sql] = mockDB.select.mock.calls[0];
-    expect(sql).not.toContain('embedding_model');
+    expect(sql).toContain('embedding_model');
   });
 });
 
 describe('getAllEmbeddings', () => {
-  it('returns all rows when no model filter', async () => {
+  it('returns rows filtered by model (model is required)', async () => {
     mockDB.select.mockResolvedValue([makeRow(), makeRow({ id: 2 })]);
-    const result = await getAllEmbeddings();
+    const result = await getAllEmbeddings('nomic-embed-text');
     expect(result).toHaveLength(2);
   });
 
-  it('passes model filter when provided', async () => {
+  it('passes model filter in query', async () => {
     mockDB.select.mockResolvedValue([]);
     await getAllEmbeddings('text-embedding-ada-002');
     const [sql, params] = mockDB.select.mock.calls[0];
@@ -174,7 +166,7 @@ describe('getAllEmbeddings', () => {
 
   it('converts embedding BLOB to Float32Array for each row', async () => {
     mockDB.select.mockResolvedValue([makeRow(), makeRow({ id: 2 })]);
-    const result = await getAllEmbeddings();
+    const result = await getAllEmbeddings('nomic-embed-text');
     for (const item of result) {
       expect(item.embedding).toBeInstanceOf(Float32Array);
     }

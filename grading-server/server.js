@@ -43,6 +43,7 @@ import { loadRubrics, createRubric, updateRubric, deleteRubric } from './rubric-
 import { withRetry } from './ai-retry.js';
 import { handleAgentRequest } from './agent.js';
 import { buildEmbedRequest, parseEmbedResponse } from './embedding-adapters.js';
+import { generateLocalEmbedding, isModelLoaded } from './local-embedder.js';
 
 const app = new Hono();
 const PORT = 3456;
@@ -248,8 +249,8 @@ app.use('/*', cors({
 
 // ── Bearer token auth middleware for /api/* (except /api/handshake) ──
 app.use('/api/*', async (c, next) => {
-  // Skip auth for handshake endpoint
-  if (c.req.path === '/api/handshake') {
+  // Skip auth for handshake and read-only status endpoints
+  if (c.req.path === '/api/handshake' || c.req.path === '/api/embed-status') {
     return next();
   }
 
@@ -441,6 +442,11 @@ app.get('/api/profiles/match', (c) => {
 
   return c.json({ profile: null });
 });
+app.get('/api/embed-status', (c) => {
+  return c.json({ modelLoaded: isModelLoaded() });
+});
+
+
 
 // ── Rubric Library CRUD ──────────────────────────────────────────────────
 
@@ -1781,10 +1787,17 @@ app.post('/api/embed', async (c) => {
   const { provider, model, apiKey, apiUrl, text } = body;
 
   if (!provider) return c.json({ error: 'Missing required field: provider' }, 400);
-  if (!model) return c.json({ error: 'Missing required field: model' }, 400);
+  if (provider !== 'local' && !model) return c.json({ error: 'Missing required field: model' }, 400);
   if (!text) return c.json({ error: 'Missing required field: text' }, 400);
 
   try {
+    // Local provider: run embedding in-process (no HTTP call)
+    if (provider === 'local') {
+      const result = await generateLocalEmbedding(text);
+      return c.json(result);
+    }
+
+    // Cloud providers: build request, call remote API
     const { url, headers, body: reqBody } = buildEmbedRequest(provider, { model, apiKey, apiUrl, text });
 
     const responseJson = await withRetry(async () => {
