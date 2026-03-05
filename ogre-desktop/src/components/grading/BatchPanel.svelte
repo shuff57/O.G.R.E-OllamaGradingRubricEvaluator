@@ -33,6 +33,7 @@
   } from '../../lib/grading-api';
   import type { SavedRubric } from '../../lib/rubric-api';
   import { getBatchSession, saveBatchSession, clearBatchSession } from '../../lib/db';
+  import { getSetting } from '../../lib/db';
   import { getEmbeddedUrl } from '../../lib/browser';
   import type { BatchLogEntry } from '../../lib/batch-grader';
   import { refreshPageData, buildBatchResetState, stopActiveBatch } from '../../lib/page-refresh';
@@ -137,6 +138,11 @@
   let pausedResultBuffer: Array<{ studentIndex: number; score: number; feedback: string }> = [];
   let isAutoStopped = false; // plain let, not $state — no reactivity needed
   let extractionCancelled = $state(false);
+
+  // ── Local Model Status ──────────────────────────────────────────────
+  let localModelLoaded = $state(true);
+  let localEmbedEnabled = $state(false);
+  let embedStatusInterval: ReturnType<typeof setInterval> | null = null;
 
   // ── Version Grouping ────────────────────────────────────────────────
   let currentVersionIndex = $state(0);
@@ -262,6 +268,43 @@
       currentPageUrl = (await getEmbeddedUrl()) || '';
     } catch {
       currentPageUrl = '';
+    }
+
+    // Check local embedding status
+    const useLocal = await getSetting('use_local_embedding');
+    if (useLocal === 'true') {
+      localEmbedEnabled = true;
+      // Initial check
+      try {
+        const res = await fetch('http://localhost:3456/api/embed-status');
+        if (res.ok) {
+          const data = await res.json();
+          localModelLoaded = data.modelLoaded;
+        }
+      } catch (e) {
+        console.error('Failed to check embed status', e);
+      }
+
+      // Start polling if not loaded
+      if (!localModelLoaded) {
+        embedStatusInterval = setInterval(async () => {
+          try {
+            const res = await fetch('http://localhost:3456/api/embed-status');
+            if (res.ok) {
+              const data = await res.json();
+              if (data.modelLoaded) {
+                localModelLoaded = true;
+                if (embedStatusInterval) {
+                  clearInterval(embedStatusInterval);
+                  embedStatusInterval = null;
+                }
+              }
+            }
+          } catch (e) {
+            console.error('Polling embed status failed', e);
+          }
+        }, 2000);
+      }
     }
 
     // Detect profile + check saved session
@@ -1065,11 +1108,19 @@
   onDestroy(() => {
     if (batchHandle) { batchHandle.cancel(); batchHandle = null; }
     if (batchGrader) { batchGrader.stop(); batchGrader = null; }
+    if (embedStatusInterval) clearInterval(embedStatusInterval);
     stopTimer();
   });
 </script>
 
 <section class="batch-panel">
+  {#if localEmbedEnabled && !localModelLoaded}
+    <div class="local-model-banner">
+      <span class="spinner">⏳</span>
+      Loading local embedding model... (first use only)
+    </div>
+  {/if}
+
   <!-- ── Site Profile Selection ──────────────────────────────────── -->
   <details class="section-details">
     <summary class="section-summary">
@@ -1461,13 +1512,6 @@
     flex: 1;
   }
 
-  h3 {
-    font-size: 0.85rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--color-text-secondary);
-    margin: 0;
-  }
 
   /* ── Dropdown Row (shared by profile + rubric) ── */
 
@@ -2325,6 +2369,21 @@
     outline: none;
     border-color: var(--color-primary);
     box-shadow: 0 0 0 2px var(--color-primary-bg);
+  }
+
+
+  /* ── Local Model Banner ── */
+  .local-model-banner {
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    color: #f59e0b;
+    padding: var(--spacing-3);
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    font-size: var(--font-size-sm);
+    margin-bottom: var(--spacing-4);
   }
 
 </style>

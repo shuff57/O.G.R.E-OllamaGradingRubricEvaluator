@@ -56,6 +56,7 @@ export function ensureTurndownLoaded(): Promise<void> {
     `\n  });` +
     `\n  window.__turndownService = service;` +
     `\n})();`;
+
   _loadedPromise = injectScript(TURNDOWN_IIFE + serviceSetup).then(() => {
   }).catch((err) => {
     _injectionFailed = true;
@@ -121,18 +122,18 @@ export function htmlToMarkdownDirect(html: string): string {
   service.use(gfm);
 
   // Preserve MathML elements
-  service.keep(['math', 'annotation']);
+  service.keep(['math', 'annotation'] as any);
 
   // Preserve class-based math wrappers (KaTeX / MathJax)
   service.addRule('mathClass', {
-    filter(node: HTMLElement) {
+    filter(node: any) {
       return !!(
         node.className &&
         (node.className.indexOf('katex') !== -1 ||
           node.className.indexOf('MathJax') !== -1)
       );
     },
-    replacement(_content: string, node: Node) {
+    replacement(_content: string, node: any) {
       return (node as HTMLElement).outerHTML;
     },
   });

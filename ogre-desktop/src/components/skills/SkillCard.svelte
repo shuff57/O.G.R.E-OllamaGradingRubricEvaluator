@@ -51,7 +51,8 @@
       {/if}
     </div>
     <div class="actions">
-      <label class="switch" onclick={(e) => e.stopPropagation()}>
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <label class="switch" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.key === 'Enter' && e.stopPropagation()}>
         <input 
           type="checkbox" 
           checked={skill.is_active === 1} 
@@ -72,7 +73,8 @@
     <p class="description">{skill.description}</p>
     
     {#if expanded}
-      <div class="preview" onclick={(e) => e.stopPropagation()}>
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <div class="preview" role="group" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.key === 'Enter' && e.stopPropagation()}>
         <div class="preview-header">Preview</div>
         {#await renderSkillPreview(skill.content)}
           <div class="loading">Loading preview...</div>
@@ -166,6 +168,7 @@
     color: var(--color-text-secondary);
     display: -webkit-box;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
     margin: 0;

@@ -1,3 +1,4 @@
+// @ts-nocheck
 (function() {
   
   // Singleton check - if drawer exists, just show it

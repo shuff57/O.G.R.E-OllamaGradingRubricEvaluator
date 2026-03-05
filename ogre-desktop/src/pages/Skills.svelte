@@ -18,7 +18,7 @@
   let skills = $state<Skill[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
-  let fileInput: HTMLInputElement;
+  let fileInput = $state<HTMLInputElement>();
   let syncing = $state(false);
   let syncMessage = $state<string | null>(null);
 

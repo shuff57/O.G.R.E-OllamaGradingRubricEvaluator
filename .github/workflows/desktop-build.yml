@@ -29,41 +29,24 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
-          cache-dependency-path: ogre-desktop/package-lock.json
+          cache-dependency-path: |
+            ogre-desktop/package-lock.json
+            grading-server/package-lock.json
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
-
-      - name: Cache Cargo dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            ogre-desktop/src-tauri/target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Install grading-server dependencies
+      - name: Install grading-server dependencies (npm for pkg build)
         run: |
           cd grading-server
-          bun install
+          npm ci
 
-      - name: Build grading-server sidecar binary
+      - name: Build grading-server sidecar binary (pkg)
         run: |
           cd grading-server
-          bun build --compile --target=bun-windows-x64 server.js --outfile ../ogre-desktop/src-tauri/binaries/grading-server-x86_64-pc-windows-msvc.exe
-      
+          node build.js windows
+          Copy-Item dist/grading-server-win.exe ../ogre-desktop/src-tauri/binaries/grading-server-x86_64-pc-windows-msvc.exe
+        shell: pwsh
+
       - name: Verify sidecar binary
         run: |
           if (!(Test-Path ogre-desktop/src-tauri/binaries/grading-server-x86_64-pc-windows-msvc.exe)) {
