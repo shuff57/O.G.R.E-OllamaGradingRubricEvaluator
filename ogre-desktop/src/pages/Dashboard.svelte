@@ -5,13 +5,16 @@
   import { pushOnStartup } from '../lib/provider-sync';
 
   /** Incremented by App.svelte when a new grading session is recorded */
-  export let sessionVersion = 0;
-  
-  let serverStatus = 'starting...';
-  let providerStatus = 'checking...';
-  let totalSessions = 0;
-  let totalStudents = 0;
-  let lastSessionDate = 'Never';
+  let { sessionVersion = 0, onnavigate = (_page: string) => {} }: {
+    sessionVersion?: number;
+    onnavigate?: (page: string) => void;
+  } = $props();
+
+  let serverStatus = $state('starting...');
+  let providerStatus = $state('checking...');
+  let totalSessions = $state(0);
+  let totalStudents = $state(0);
+  let lastSessionDate = $state('Never');
 
   // Poll server health every 5 seconds
   let healthInterval: number;
@@ -27,9 +30,11 @@
   }
 
   // Reactively reload stats when sessionVersion changes
-  $: if (sessionVersion >= 0) {
-    loadStats();
-  }
+  $effect(() => {
+    if (sessionVersion >= 0) {
+      loadStats();
+    }
+  });
 
   onMount(async () => {
     // Listen to server status events
@@ -95,6 +100,27 @@
     </div>
   </section>
 
+  <section class="quick-actions">
+    <h2>Get Started</h2>
+    <div class="actions-grid">
+      <button class="action-card primary" onclick={() => onnavigate('browser')}>
+        <span class="action-icon">🎓</span>
+        <span class="action-title">Grade Now</span>
+        <span class="action-desc">Open the grading browser and start evaluating student work</span>
+      </button>
+      <button class="action-card" onclick={() => onnavigate('history')}>
+        <span class="action-icon">📊</span>
+        <span class="action-title">View Grading History</span>
+        <span class="action-desc">Review past sessions and scores</span>
+      </button>
+      <button class="action-card" onclick={() => onnavigate('settings')}>
+        <span class="action-icon">⚙️</span>
+        <span class="action-title">Configure Settings</span>
+        <span class="action-desc">Set up your AI provider and preferences</span>
+      </button>
+    </div>
+  </section>
+
   <section class="quick-stats">
     <h2>Quick Stats</h2>
     <div class="stats-grid">
@@ -147,7 +173,7 @@
   .health-indicators {
     display: flex;
     gap: 2rem;
-    margin-bottom: 3rem;
+    margin-bottom: 2rem;
     background: var(--color-bg-card);
     padding: 1.5rem;
     border-radius: 8px;
@@ -181,13 +207,76 @@
     box-shadow: 0 0 0 2px var(--color-warning-bg);
   }
 
-  /* Quick Stats */
+  /* Quick Actions */
+  .quick-actions {
+    margin-bottom: 2rem;
+  }
+
+  .quick-actions h2,
   .quick-stats h2 {
     color: var(--color-text-primary);
     margin-bottom: 1.5rem;
     font-size: 1.5rem;
   }
 
+  .actions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+  }
+
+  .action-card {
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    padding: 1.5rem;
+    cursor: pointer;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    transition: all 0.2s;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  }
+
+  .action-card:hover {
+    background: var(--color-bg-card-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+    border-color: var(--color-primary);
+  }
+
+  .action-card.primary {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: var(--color-primary-text);
+  }
+
+  .action-card.primary:hover {
+    filter: brightness(1.1);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+  }
+
+  .action-icon {
+    font-size: 1.75rem;
+    line-height: 1;
+  }
+
+  .action-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: inherit;
+  }
+
+  .action-desc {
+    font-size: 0.82rem;
+    color: inherit;
+    opacity: 0.75;
+    line-height: 1.4;
+  }
+
+  /* Quick Stats */
   .stats-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));

@@ -3,13 +3,24 @@
   import Dashboard from './pages/Dashboard.svelte';
   import History from './pages/History.svelte';
   import Logs from './pages/Logs.svelte';
-  import Settings from './pages/Settings.svelte';
+  import Settings from './pages/settings/Settings.svelte';
   import Rubrics from './pages/Rubrics.svelte';
   import Browser from './pages/Browser.svelte';
   import Skills from './pages/Skills.svelte';
   import SiteProfiles from './pages/SiteProfiles.svelte';
   import SetupWizard from './pages/SetupWizard.svelte';
   import UpdateModal from './components/UpdateModal.svelte';
+  import {
+    CollapseIcon,
+    DashboardIcon,
+    HistoryIcon,
+    LogsIcon,
+    RubricsIcon,
+    ProfilesIcon,
+    BrowserIcon,
+    SkillsIcon,
+    SettingsIcon,
+  } from './components/icons/index';
   import { getSetting, insertGradingSession } from './lib/db';
   import { listenSessionComplete, listenProviderChanged } from './lib/server';
   import type { SessionCompletePayload } from './lib/server';
@@ -23,31 +34,33 @@
   const SIDEBAR_COLLAPSED_WIDTH = 60;
   const SIDEBAR_TRANSITION_MS = 300;
 
-  let currentPage = 'dashboard';
-  let sidebarCollapsed = false;
-  let setupComplete = false;
-  let loading = true;
+  let currentPage = $state('dashboard');
+  let sidebarCollapsed = $state(false);
+  let setupComplete = $state(false);
+  let loading = $state(true);
 
   // Update modal state
-  let showUpdateModal = false;
-  let updateVersion = '';
-  let updateNotes = '';
-  let pendingUpdate: Update | undefined = undefined;
+  let showUpdateModal = $state(false);
+  let updateVersion = $state('');
+  let updateNotes = $state('');
+  let pendingUpdate = $state<Update | undefined>(undefined);
 
   // Session-complete event: incremented each time a new session is recorded
   // Child components can react to this to refresh their data
-  let sessionVersion = 0;
-  let unlistenSession: (() => void) | undefined;
-  let unlistenProviderChange: (() => void) | undefined;
+  let sessionVersion = $state(0);
+  let unlistenSession = $state<(() => void) | undefined>(undefined);
+  let unlistenProviderChange = $state<(() => void) | undefined>(undefined);
 
   // Modal z-ordering: native webview renders ON TOP of all DOM elements,
   // so it must be hidden when modals appear to avoid covering them.
-  $: if (showUpdateModal) {
-    hideWebview(getActiveTabId()).catch(() => {});
-  } else if (currentPage === 'browser') {
-    showWebview(getActiveTabId()).catch(() => {});
-    window.dispatchEvent(new CustomEvent('ogre:sidebar-changed'));
-  }
+  $effect(() => {
+    if (showUpdateModal) {
+      hideWebview(getActiveTabId()).catch(() => {});
+    } else if (currentPage === 'browser') {
+      showWebview(getActiveTabId()).catch(() => {});
+      window.dispatchEvent(new CustomEvent('ogre:sidebar-changed'));
+    }
+  });
 
   onMount(async () => {
     try {
@@ -157,69 +170,65 @@
     <aside class="sidebar" class:collapsed={sidebarCollapsed}>
       <div class="sidebar-header">
         <div class="brand" class:hidden={sidebarCollapsed}>O.G.R.E</div>
-        <button class="toggle-btn" on:click={toggleSidebar} aria-label="Toggle Sidebar">
-          {#if sidebarCollapsed}
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 17 18 12 13 7"></polyline><polyline points="6 17 11 12 6 7"></polyline></svg>
-          {:else}
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="11 17 6 12 11 7"></polyline><polyline points="18 17 13 12 18 7"></polyline></svg>
-          {/if}
+        <button class="toggle-btn" onclick={toggleSidebar} aria-label="Toggle Sidebar">
+          <CollapseIcon collapsed={sidebarCollapsed} />
         </button>
       </div>
       <nav>
-        <button class:active={currentPage === 'dashboard'} on:click={() => navigate('dashboard')} title="Dashboard">
-          <span class="icon">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
-          </span>
+        <!-- Dashboard – standalone -->
+        <button class:active={currentPage === 'dashboard'} onclick={() => navigate('dashboard')} title="Dashboard">
+          <span class="icon"><DashboardIcon /></span>
           <span class="label">Dashboard</span>
         </button>
-        <button class:active={currentPage === 'history'} on:click={() => navigate('history')} title="History">
-          <span class="icon">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-          </span>
-          <span class="label">History</span>
-        </button>
-        <button class:active={currentPage === 'logs'} on:click={() => navigate('logs')} title="Logs">
-          <span class="icon">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-          </span>
-          <span class="label">Logs</span>
-        </button>
-        <button class:active={currentPage === 'rubrics'} on:click={() => navigate('rubrics')} title="Rubrics">
-          <span class="icon">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><path d="M9 15l2 2 4-4"></path></svg>
-          </span>
-          <span class="label">Rubrics</span>
-        </button>
-        <button class:active={currentPage === 'profiles'} on:click={() => navigate('profiles')} title="Site Profiles">
-          <span class="icon">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-          </span>
-          <span class="label">Site Profiles</span>
-        </button>
-        <button class:active={currentPage === 'browser'} on:click={() => navigate('browser')} title="Browser">
-          <span class="icon">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-          </span>
-          <span class="label">Browser</span>
-        </button>
-        <button class:active={currentPage === 'skills'} on:click={() => navigate('skills')} title="Skills">
-          <span class="icon">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
-          </span>
-          <span class="label">Skills</span>
-        </button>
-        <button class:active={currentPage === 'settings'} on:click={() => navigate('settings')} title="Settings">
-          <span class="icon">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-          </span>
-          <span class="label">Settings</span>
-        </button>
+
+        <!-- Primary group -->
+        <div class="nav-group">
+          <span class="nav-group-label">Primary</span>
+          <button class:active={currentPage === 'browser'} onclick={() => navigate('browser')} title="Grade Now">
+            <span class="icon"><BrowserIcon /></span>
+            <span class="label">Grade Now</span>
+          </button>
+          <button class:active={currentPage === 'history'} onclick={() => navigate('history')} title="Grading History">
+            <span class="icon"><HistoryIcon /></span>
+            <span class="label">Grading History</span>
+          </button>
+          <button class:active={currentPage === 'rubrics'} onclick={() => navigate('rubrics')} title="Rubrics">
+            <span class="icon"><RubricsIcon /></span>
+            <span class="label">Rubrics</span>
+          </button>
+        </div>
+
+        <!-- Tools group -->
+        <div class="nav-group">
+          <span class="nav-group-label">Tools</span>
+          <button class:active={currentPage === 'skills'} onclick={() => navigate('skills')} title="AI Skills">
+            <span class="icon"><SkillsIcon /></span>
+            <span class="label">AI Skills</span>
+          </button>
+          <button class:active={currentPage === 'profiles'} onclick={() => navigate('profiles')} title="Site Templates">
+            <span class="icon"><ProfilesIcon /></span>
+            <span class="label">Site Templates</span>
+          </button>
+        </div>
+
+        <!-- System group -->
+        <div class="nav-group">
+          <span class="nav-group-label">System</span>
+          <button class:active={currentPage === 'logs'} onclick={() => navigate('logs')} title="Activity Log">
+            <span class="icon"><LogsIcon /></span>
+            <span class="label">Activity Log</span>
+          </button>
+          <button class:active={currentPage === 'settings'} onclick={() => navigate('settings')} title="Settings">
+            <span class="icon"><SettingsIcon /></span>
+            <span class="label">Settings</span>
+          </button>
+        </div>
       </nav>
     </aside>
 
     <main class="content">
       {#if currentPage === 'dashboard'}
-        <Dashboard {sessionVersion} />
+        <Dashboard {sessionVersion} onnavigate={navigate} />
       {:else if currentPage === 'history'}
         <History {sessionVersion} />
       {:else if currentPage === 'logs'}
@@ -297,6 +306,7 @@
     padding: 1rem;
     box-shadow: 2px 0 5px rgba(0,0,0,0.1);
     transition: width var(--sidebar-transition);
+    overflow: hidden;
   }
 
   .sidebar.collapsed {
@@ -355,7 +365,36 @@
   nav {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.25rem;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  /* Nav group container */
+  .nav-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-top: 0.5rem;
+  }
+
+  /* Section label above each group */
+  .nav-group-label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    padding: 0.25rem 1rem 0.1rem;
+    white-space: nowrap;
+    overflow: hidden;
+    transition: opacity 0.2s;
+  }
+
+  .sidebar.collapsed .nav-group-label {
+    opacity: 0;
+    height: 0;
+    padding: 0;
   }
 
   nav button {
@@ -373,6 +412,7 @@
     gap: 0.75rem;
     white-space: nowrap;
     overflow: hidden;
+    width: 100%;
   }
   
   .sidebar.collapsed nav button {
@@ -407,7 +447,6 @@
     color: var(--color-primary-text);
     font-weight: 500;
   }
-
 
   .content {
     flex: 1;

@@ -1,0 +1,9 @@
+export { default as CollapseIcon } from './CollapseIcon.svelte';
+export { default as DashboardIcon } from './DashboardIcon.svelte';
+export { default as HistoryIcon } from './HistoryIcon.svelte';
+export { default as LogsIcon } from './LogsIcon.svelte';
+export { default as RubricsIcon } from './RubricsIcon.svelte';
+export { default as ProfilesIcon } from './ProfilesIcon.svelte';
+export { default as BrowserIcon } from './BrowserIcon.svelte';
+export { default as SkillsIcon } from './SkillsIcon.svelte';
+export { default as SettingsIcon } from './SettingsIcon.svelte';

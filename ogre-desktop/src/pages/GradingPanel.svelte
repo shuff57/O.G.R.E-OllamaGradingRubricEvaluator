@@ -5,7 +5,7 @@
   import RubricCard from '../components/grading/RubricCard.svelte';
   import StudentWorkCard from '../components/grading/StudentWorkCard.svelte';
   import AgentChat from '../components/grading/AgentChat.svelte';
-  import BatchPanel from '../components/grading/BatchPanel.svelte';
+  import BatchPanel from '../components/grading/batch/BatchPanel.svelte';
   import DiscoveryPanel from '../components/grading/DiscoveryPanel.svelte';
   import SkillPicker from '../components/skills/SkillPicker.svelte';
   import { captureWebviewScreenshot, hideWebview, showWebview, getActiveTabId } from '../lib/browser';
