@@ -82,6 +82,13 @@ if (_datasetArg) {
   CONFIG.inputStudents = DATASETS[_dsName].students;
 }
 
+// --chunkSize=<number> override for local/small models that need smaller batches (e.g. --chunkSize=5)
+const _chunkArg = process.argv.find(a => a.startsWith('--chunkSize='));
+if (_chunkArg) {
+  CONFIG.chunkSize = parseInt(_chunkArg.slice(12));
+  console.log(`[config] chunkSize overridden to ${CONFIG.chunkSize}`);
+}
+
 // --tolerance=<number> override (e.g. --tolerance=0.5)
 const _tolArg = process.argv.find(a => a.startsWith('--tolerance='));
 if (_tolArg) CONFIG.tolerance = parseFloat(_tolArg.slice(12));
