@@ -36,8 +36,10 @@ export function float32ToBuffer(arr: Float32Array): Uint8Array {
  * @param data - Raw bytes from SQLite
  * @returns Float32Array of embedding values
  */
-export function bufferToFloat32(data: Uint8Array): Float32Array {
-  const copy = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+export function bufferToFloat32(data: Uint8Array | number[]): Float32Array {
+  // Tauri SQL plugin returns BLOBs as plain number[] through IPC — not a real Uint8Array.
+  const uint8 = data instanceof Uint8Array ? data : new Uint8Array(data);
+  const copy = uint8.buffer.slice(uint8.byteOffset, uint8.byteOffset + uint8.byteLength);
   return new Float32Array(copy);
 }
 

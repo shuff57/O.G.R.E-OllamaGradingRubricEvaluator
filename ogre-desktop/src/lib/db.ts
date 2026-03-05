@@ -85,7 +85,7 @@ export interface ResponseEmbedding {
   student_response: string | null;
   score: number;
   feedback: string | null;
-  embedding: Uint8Array;
+  embedding: Uint8Array | number[];  // Tauri IPC deserializes BLOBs as number[]
   embedding_model: string;
   created_at: string;
 }
