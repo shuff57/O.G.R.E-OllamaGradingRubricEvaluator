@@ -65,13 +65,13 @@ Integrate Turndown HTML→Markdown conversion into ogre-desktop's extraction pip
 - All existing tests still pass
 
 ### Definition of Done
-- [ ] `cd ogre-desktop && npx vitest run` → all tests pass (existing + new)
-- [ ] `cd ogre-desktop && npm run build` → builds without errors
-- [ ] Student response extraction returns markdown with preserved tables/headings
-- [ ] Rubric essayPrompt/modelText return markdown with preserved formatting
-- [ ] Page content fallback returns markdown instead of raw textContent
-- [ ] Math content (MathML, KaTeX) preserved in extraction output
-- [ ] Graceful degradation: if Turndown injection fails, falls back to textContent
+- [x] `cd ogre-desktop && npx vitest run` → all tests pass (existing + new)
+- [x] `cd ogre-desktop && npm run build` → builds without errors
+- [x] Student response extraction returns markdown with preserved tables/headings
+- [x] Rubric essayPrompt/modelText return markdown with preserved formatting
+- [x] Page content fallback returns markdown instead of raw textContent
+- [x] Math content (MathML, KaTeX) preserved in extraction output
+- [x] Graceful degradation: if Turndown injection fails, falls back to textContent
 
 ### Must Have
 - Turndown + GFM plugin bundled as IIFE for webview injection
@@ -164,7 +164,7 @@ Max Concurrent: 4 (Wave 2)
 ## TODOs
 
 
-- [ ] 1. Install Turndown Dependencies + Create IIFE Bundle
+- [x] 1. Install Turndown Dependencies + Create IIFE Bundle
 
   **What to do**:
   - Run `npm install turndown turndown-plugin-gfm` and `npm install -D @types/turndown` in ogre-desktop/
@@ -248,7 +248,7 @@ Max Concurrent: 4 (Wave 2)
   - Files: `package.json`, `scripts/build-turndown-bundle.js`, `src/lib/turndown-bundle.ts`
   - Pre-commit: `cd ogre-desktop && npm run build`
 
-- [ ] 2. Create markdown-extract.ts Utility Module
+- [x] 2. Create markdown-extract.ts Utility Module
 
   **What to do**:
   - Create `ogre-desktop/src/lib/markdown-extract.ts` with:
@@ -358,7 +358,7 @@ Max Concurrent: 4 (Wave 2)
   - Files: `src/lib/markdown-extract.ts`, `src/lib/markdown-extract.test.ts`
   - Pre-commit: `cd ogre-desktop && npx vitest run src/lib/markdown-extract.test.ts`
 
-- [ ] 3. Unit Tests for markdown-extract.ts
+- [x] 3. Unit Tests for markdown-extract.ts
 
   **What to do**:
   - Create `ogre-desktop/src/lib/markdown-extract.test.ts` with vitest tests:
@@ -415,7 +415,7 @@ Max Concurrent: 4 (Wave 2)
   - Files: `src/lib/markdown-extract.test.ts`
   - Pre-commit: `cd ogre-desktop && npx vitest run src/lib/markdown-extract.test.ts`
 
-- [ ] 4. Enhance extractStudents() Response Field
+- [x] 4. Enhance extractStudents() Response Field
 
   **What to do**:
   - In `batch-grader.ts` `extractStudents()` (lines 240-265), modify the inline script:
@@ -487,7 +487,7 @@ Max Concurrent: 4 (Wave 2)
   - Files: `src/lib/batch-grader.ts`
   - Pre-commit: `cd ogre-desktop && npx vitest run src/lib/batch-grader.test.ts`
 
-- [ ] 5. Enhance extractRubric() essayPrompt + modelText
+- [x] 5. Enhance extractRubric() essayPrompt + modelText
 
   **What to do**:
   - In `batch-grader.ts` `extractRubric()` (lines 277-374), modify the inline script:
@@ -545,7 +545,7 @@ Max Concurrent: 4 (Wave 2)
   - Message: `feat(ogre-desktop): integrate turndown markdown extraction in batch-grader`
   - Files: `src/lib/batch-grader.ts`
 
-- [ ] 6. Enhance extractPageContent() Fallback Cascade
+- [x] 6. Enhance extractPageContent() Fallback Cascade
 
   **What to do**:
   - In `batch-grader.ts` `extractPageContent()` (lines 389-485), modify the inline script:
@@ -606,7 +606,7 @@ Max Concurrent: 4 (Wave 2)
   - Message: `feat(ogre-desktop): integrate turndown markdown extraction in batch-grader`
   - Files: `src/lib/batch-grader.ts`
 
-- [ ] 7. Regression Tests + Integration Verification
+- [x] 7. Regression Tests + Integration Verification
 
   **What to do**:
   - Run the full vitest test suite: `cd ogre-desktop && npx vitest run`
@@ -678,19 +678,19 @@ Max Concurrent: 4 (Wave 2)
 
 > 4 review agents run in PARALLEL. ALL must APPROVE. Rejection → fix → re-run.
 
-- [ ] F1. **Plan Compliance Audit** — `oracle`
+- [x] F1. **Plan Compliance Audit** — `oracle`
   Read the plan end-to-end. For each "Must Have": verify implementation exists (read file, run command). For each "Must NOT Have": search codebase for forbidden patterns — reject with file:line if found. Check evidence files exist in .sisyphus/evidence/. Compare deliverables against plan.
   Output: `Must Have [N/N] | Must NOT Have [N/N] | Tasks [N/N] | VERDICT: APPROVE/REJECT`
 
-- [ ] F2. **Code Quality Review** — `unspecified-high`
+- [x] F2. **Code Quality Review** — `unspecified-high`
   Run `npx vitest run` + `npm run build` in ogre-desktop. Review all changed files for: `as any`/`@ts-ignore`, empty catches, console.log in prod, commented-out code, unused imports. Check AI slop: excessive comments, over-abstraction, generic names. Verify ES5 convention maintained in all inline webview scripts.
   Output: `Build [PASS/FAIL] | Tests [N pass/N fail] | Files [N clean/N issues] | VERDICT`
 
-- [ ] F3. **Real Manual QA** — `unspecified-high`
+- [x] F3. **Real Manual QA** — `unspecified-high`
   Start from clean state. Execute EVERY QA scenario from EVERY task — follow exact steps, capture evidence. Test cross-task integration (Turndown injection + extraction + fallback). Test edge cases: empty HTML, math-only content, huge pages. Save to `.sisyphus/evidence/final-qa/`.
   Output: `Scenarios [N/N pass] | Integration [N/N] | Edge Cases [N tested] | VERDICT`
 
-- [ ] F4. **Scope Fidelity Check** — `deep`
+- [x] F4. **Scope Fidelity Check** — `deep`
   For each task: read "What to do", read actual diff (git log/diff). Verify 1:1. Check "Must NOT do" compliance — verify discover.ts NOT modified, browser-actions.ts NOT modified, return types NOT changed, no ES6 in inline scripts. Flag unaccounted changes.
   Output: `Tasks [N/N compliant] | Contamination [CLEAN/N issues] | Unaccounted [CLEAN/N files] | VERDICT`
 
@@ -716,9 +716,9 @@ cd ogre-desktop && npx vitest run src/lib/batch-grader.test.ts      # Expected: 
 ```
 
 ### Final Checklist
-- [ ] All "Must Have" present
-- [ ] All "Must NOT Have" absent
-- [ ] All tests pass (existing + new)
-- [ ] Build succeeds
-- [ ] Math content preserved in extraction
-- [ ] Graceful degradation verified
+- [x] All "Must Have" present
+- [x] All "Must NOT Have" absent
+- [x] All tests pass (existing + new)
+- [x] Build succeeds
+- [x] Math content preserved in extraction
+- [x] Graceful degradation verified

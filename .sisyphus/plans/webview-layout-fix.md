@@ -57,13 +57,13 @@ Eliminate the webview layout bug on tab switch by fixing the event timing race c
 - All existing tests still pass
 
 ### Definition of Done
-- [ ] Switching away from Browser tab and back: webview renders at correct bounds immediately
-- [ ] No visible flash of stale webview position on tab return
-- [ ] Toggling GradingPanel is no longer required as a workaround
-- [ ] Window resize while on another tab: correct bounds on return to Browser
-- [ ] Modal open/close while on Browser: correct bounds after modal dismissal
-- [ ] Rapid tab switching: no crashes, no orphaned listeners, no stale state
-- [ ] All vitest tests pass: `npx vitest run`
+- [x] Switching away from Browser tab and back: webview renders at correct bounds immediately
+- [x] No visible flash of stale webview position on tab return
+- [x] Toggling GradingPanel is no longer required as a workaround
+- [x] Window resize while on another tab: correct bounds on return to Browser
+- [x] Modal open/close while on Browser: correct bounds after modal dismissal
+- [x] Rapid tab switching: no crashes, no orphaned listeners, no stale state
+- [x] All vitest tests pass: `npx vitest run`
 
 ### Must Have
 - Fix the lost `ogre:sidebar-changed` event (Issue 1)
@@ -371,7 +371,7 @@ Max Concurrent: 3 (Waves 1 & 2)
 
 ---
 
-- [ ] 4. Fix Browser.svelte — self-trigger sidebar animation on mount + implement lifecycle functions (GREEN phase)
+- [x] 4. Fix Browser.svelte — self-trigger sidebar animation on mount + implement lifecycle functions (GREEN phase)
 
   **What to do**:
   This is the core fix. Three changes to Browser.svelte and one to webview-lifecycle.ts:
@@ -464,7 +464,7 @@ Max Concurrent: 3 (Waves 1 & 2)
   - Files: `src/lib/webview-lifecycle.ts`, `src/pages/Browser.svelte`
   - Pre-commit: `cd ogre-desktop && npx vitest run`
 
-- [ ] 5. Fix App.svelte — correct show/hide ordering (fixes Issue 5)
+- [x] 5. Fix App.svelte — correct show/hide ordering (fixes Issue 5)
 
   **What to do**:
   Fix the premature `showWebview()` call that causes the webview to flash at stale bounds before Browser.svelte calculates correct ones.
@@ -542,7 +542,7 @@ Max Concurrent: 3 (Waves 1 & 2)
   - Message: `fix(webview): resolve layout race condition on browser tab switch`
   - Files: `src/App.svelte`, `src/pages/Browser.svelte`
 
-- [ ] 6. Fix Browser.svelte — destroy guard for rapid tab switching (Metis finding)
+- [x] 6. Fix Browser.svelte — destroy guard for rapid tab switching (Metis finding)
 
   **What to do**:
   Prevent crashes/orphaned state when user rapidly switches tabs (Browser created, onMount starts async work, user switches away before onMount completes, Browser destroyed).
@@ -616,7 +616,7 @@ Max Concurrent: 3 (Waves 1 & 2)
   - Message: `fix(webview): resolve layout race condition on browser tab switch`
   - Files: `src/pages/Browser.svelte`
 
-- [ ] 7. Integration QA + build verification
+- [x] 7. Integration QA + build verification
 
   **What to do**:
   - Run the full test suite: `cd ogre-desktop && npx vitest run`
@@ -722,19 +722,19 @@ Max Concurrent: 3 (Waves 1 & 2)
 
 > 4 review agents run in PARALLEL. ALL must APPROVE. Rejection -> fix -> re-run.
 
-- [ ] F1. **Plan Compliance Audit** — `oracle`
+- [x] F1. **Plan Compliance Audit** — `oracle`
   Read the plan end-to-end. For each "Must Have": verify implementation exists (read file, run command). For each "Must NOT Have": search codebase for forbidden patterns — reject with file:line if found. Check evidence files exist in .sisyphus/evidence/. Compare deliverables against plan.
   Output: `Must Have [N/N] | Must NOT Have [N/N] | Tasks [N/N] | VERDICT: APPROVE/REJECT`
 
-- [ ] F2. **Code Quality Review** — `unspecified-high`
+- [x] F2. **Code Quality Review** — `unspecified-high`
   Run `npx vitest run`. Review all changed files for: `as any`/`@ts-ignore`, empty catches, console.log in prod, commented-out code, unused imports. Check AI slop: excessive comments, over-abstraction, generic names. Verify Svelte pattern consistency (`$:` in Browser.svelte, runes in GradingPanel).
   Output: `Tests [N pass/N fail] | Files [N clean/N issues] | VERDICT`
 
-- [ ] F3. **Real Manual QA** — `unspecified-high`
+- [x] F3. **Real Manual QA** — `unspecified-high`
   Start the app with `npm run tauri:dev`. Execute EVERY QA scenario from EVERY task — follow exact steps. Test rapid tab switching (5+ rapid clicks). Test window resize while on another tab. Save to `.sisyphus/evidence/final-qa/`.
   Output: `Scenarios [N/N pass] | Edge Cases [N tested] | VERDICT`
 
-- [ ] F4. **Scope Fidelity Check** — `deep`
+- [x] F4. **Scope Fidelity Check** — `deep`
   For each task: read "What to do", read actual diff (git diff). Verify 1:1 — everything in spec was built (no missing), nothing beyond spec was built (no creep). Check "Must NOT do" compliance. Detect cross-task contamination.
   Output: `Tasks [N/N compliant] | Contamination [CLEAN/N issues] | VERDICT`
 
@@ -759,10 +759,10 @@ cd ogre-desktop && npx tsc --noEmit         # Expected: no TypeScript errors
 ```
 
 ### Final Checklist
-- [ ] All "Must Have" present
-- [ ] All "Must NOT Have" absent
-- [ ] All vitest tests pass
-- [ ] Browser tab switch renders correctly (no GradingPanel toggle needed)
-- [ ] No flash of stale webview position
-- [ ] Window resize while away handled
-- [ ] Rapid tab switching doesn't crash
+- [x] All "Must Have" present
+- [x] All "Must NOT Have" absent
+- [x] All vitest tests pass
+- [x] Browser tab switch renders correctly (no GradingPanel toggle needed)
+- [x] No flash of stale webview position
+- [x] Window resize while away handled
+- [x] Rapid tab switching doesn't crash

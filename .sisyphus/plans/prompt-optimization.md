@@ -70,10 +70,10 @@ Replace the opinionated "grade generously" prompt architecture with a tiered sys
 - Decision report: Fine-tuning go/no-go based on measured improvement
 
 ### Definition of Done
-- [ ] `bun test --run` in `grading-server/` → 0 failures
-- [ ] All pairwise agreement ≥ 90% at ±1.0 across 3 target models (or documented gap for Phase 2)
-- [ ] Custom instruction "Grade very leniently" produces mean score within 0.5 of current generous baseline
-- [ ] `diff` between grading-server/ and server-bundle/ files → empty output for all modified files
+- [x] `bun test --run` in `grading-server/` → 0 failures
+- [x] All pairwise agreement ≥ 90% at ±1.0 across 3 target models (or documented gap for Phase 2)
+- [x] Custom instruction "Grade very leniently" produces mean score within 0.5 of current generous baseline
+- [x] `diff` between grading-server/ and server-bundle/ files → empty output for all modified files
 
 ### Must Have
 - Neutral philosophy with zero directional language
@@ -196,7 +196,7 @@ Max Concurrent: 5 (Wave 1)
 
 ### Wave 1 — Baseline + Foundation (Start Immediately)
 
-- [ ] 1. Capture Frozen Baseline Benchmark
+- [x] 1. Capture Frozen Baseline Benchmark
 
   **What to do**:
   - Run `run-benchmark.js` with CURRENT prompts (no modifications) on 3 target models: GPT-OSS 120B, GLM-5, Sonnet 4.6
@@ -253,7 +253,7 @@ Max Concurrent: 5 (Wave 1)
   - Files: `test-data/baseline-frozen.json`, `test-data/baseline-frozen.md`
   - Pre-commit: `ls test-data/baseline-frozen.json`
 
-- [ ] 2. Create Synthetic Test Fixtures (Biology + History)
+- [x] 2. Create Synthetic Test Fixtures (Biology + History)
 
   **What to do**:
   - Create 2 new test datasets representing diverse subject areas beyond chi-square statistics:
@@ -311,7 +311,7 @@ Max Concurrent: 5 (Wave 1)
   - Message: `test(test-data): add synthetic biology and history test fixtures`
   - Files: `test-data/test-biology-*.json`, `test-data/test-history-*.json`
 
-- [ ] 3. Rewrite GRADING_PHILOSOPHY to Neutral
+- [x] 3. Rewrite GRADING_PHILOSOPHY to Neutral
 
   **What to do**:
   - Replace the entire `GRADING_PHILOSOPHY` constant in `grading-server/grading-constants.js`
@@ -385,7 +385,7 @@ Max Concurrent: 5 (Wave 1)
   - Pre-commit: `cd grading-server && bun test --run`
 
 
-- [ ] 4. Add Temperature Parameter to All Providers
+- [x] 4. Add Temperature Parameter to All Providers
 
   **What to do**:
   - Add `temperature` parameter to ALL 5 provider request builders in `grading-server/providers.js`:
@@ -441,7 +441,7 @@ Max Concurrent: 5 (Wave 1)
   - Files: `grading-server/providers.js`
   - Pre-commit: `cd grading-server && bun test --run`
 
-- [ ] 5. Define Unified Scoring Scale Descriptors
+- [x] 5. Define Unified Scoring Scale Descriptors
 
   **What to do**:
   - Currently `buildBatchPrompt` and `buildSingleGradePrompt` have DIFFERENT scoring scale descriptors:
@@ -496,7 +496,7 @@ Max Concurrent: 5 (Wave 1)
 
 ### Wave 2 — Injection Restructure + Early Tests
 
-- [ ] 6. Restructure injectCustomInstructions for Early Positioning
+- [x] 6. Restructure injectCustomInstructions for Early Positioning
 
   **What to do**:
   - Redesign `injectCustomInstructions()` in `grading-server/grading.js` to support the tiered architecture:
@@ -571,7 +571,7 @@ Max Concurrent: 5 (Wave 1)
   - Pre-commit: `cd grading-server && bun test --run`
 
 
-- [ ] 7. Add Vitest Temperature/Provider Tests
+- [x] 7. Add Vitest Temperature/Provider Tests
 
   **What to do**:
   - Add new test file `grading-server/test/providers.test.js` with tests verifying:
@@ -606,7 +606,7 @@ Max Concurrent: 5 (Wave 1)
   - Message: `test(grading): add provider temperature and prompt structure tests`
   - Files: `grading-server/test/providers.test.js`
 
-- [ ] 8. Extend Benchmark for Prompt Variant Testing
+- [x] 8. Extend Benchmark for Prompt Variant Testing
 
   **What to do**:
   - Add support to `test-data/run-benchmark.js` for:
@@ -646,7 +646,7 @@ Max Concurrent: 5 (Wave 1)
 
 ### Wave 3 — Prompt Rewrites (MAX PARALLEL)
 
-- [ ] 9. Rewrite buildBatchPrompt with Tiered Architecture
+- [x] 9. Rewrite buildBatchPrompt with Tiered Architecture
 
   **What to do**:
   - Restructure `buildBatchPrompt()` in `grading-server/grading.js` to follow the tiered prompt layout:
@@ -712,7 +712,7 @@ Max Concurrent: 5 (Wave 1)
   - Message: `refactor(grading): apply tiered prompt architecture to all builders`
   - Files: `grading-server/grading.js`
 
-- [ ] 10. Rewrite buildSingleGradePrompt with Tiered Architecture
+- [x] 10. Rewrite buildSingleGradePrompt with Tiered Architecture
 
   **What to do**:
   - Apply same tiered architecture as Task 9 to `buildSingleGradePrompt()` in `grading-server/grading.js`
@@ -737,7 +737,7 @@ Max Concurrent: 5 (Wave 1)
   **QA Scenarios:** Same pattern as Task 9, adapted for `buildSingleGradePrompt`
   **Commit**: YES (group with T9, T11)
 
-- [ ] 11. Rewrite buildOutlierReviewPrompt with Tiered Architecture
+- [x] 11. Rewrite buildOutlierReviewPrompt with Tiered Architecture
 
   **What to do**:
   - Apply tiered architecture to `buildOutlierReviewPrompt()` in `grading-server/grading.js`
@@ -764,7 +764,7 @@ Max Concurrent: 5 (Wave 1)
 
 ### Wave 4 — Tests + Sync
 
-- [ ] 12. Add Vitest Prompt Structure Regression Tests
+- [x] 12. Add Vitest Prompt Structure Regression Tests
 
   **What to do**:
   - Add comprehensive tests to `grading-server/test/prompts.test.js` verifying:
@@ -807,7 +807,7 @@ Max Concurrent: 5 (Wave 1)
   - Message: `test(grading): add prompt structure and temperature regression tests`
   - Files: `grading-server/test/prompts.test.js`, `grading-server/test/providers.test.js`
 
-- [ ] 13. Sync Server-Bundle Copies + Verify Parity
+- [x] 13. Sync Server-Bundle Copies + Verify Parity
 
   **What to do**:
   - Copy all modified files from `grading-server/` to `ogre-desktop/src-tauri/binaries/server-bundle/`:
@@ -848,7 +848,7 @@ Max Concurrent: 5 (Wave 1)
 
 ### Wave 5 — Benchmark + Validation
 
-- [ ] 14. Run Comparison Benchmark on 3 Target Models
+- [x] 14. Run Comparison Benchmark on 3 Target Models
 
   **What to do**:
   - Run the extended benchmark (from T8) with NEW prompts on 3 models: GPT-OSS 120B, GLM-5, Sonnet 4.6
@@ -889,7 +889,7 @@ Max Concurrent: 5 (Wave 1)
   - Message: `docs(test-data): benchmark comparison report after prompt optimization`
   - Files: `test-data/benchmark-optimized.*`
 
-- [ ] 15. Custom Instruction Override Effectiveness Test
+- [x] 15. Custom Instruction Override Effectiveness Test
 
   **What to do**:
   - Run benchmark with specific custom instructions to verify override system works:
@@ -929,7 +929,7 @@ Max Concurrent: 5 (Wave 1)
 
 ### Wave 6 — Decision
 
-- [ ] 16. Fine-Tuning Decision Analysis
+- [x] 16. Fine-Tuning Decision Analysis
 
   **What to do**:
   - Analyze all benchmark results and produce a decision report:
@@ -966,19 +966,19 @@ Max Concurrent: 5 (Wave 1)
 
 > 4 review agents run in PARALLEL. ALL must APPROVE. Rejection → fix → re-run.
 
-- [ ] F1. **Plan Compliance Audit** — `oracle`
+- [x] F1. **Plan Compliance Audit** — `oracle`
   Read the plan end-to-end. For each "Must Have": verify implementation exists (read file, curl endpoint, run command). For each "Must NOT Have": search codebase for forbidden patterns — reject with file:line if found. Check evidence files exist in .sisyphus/evidence/. Compare deliverables against plan.
   Output: `Must Have [N/N] | Must NOT Have [N/N] | Tasks [N/N] | VERDICT: APPROVE/REJECT`
 
-- [ ] F2. **Code Quality Review** — `unspecified-high`
+- [x] F2. **Code Quality Review** — `unspecified-high`
   Run `bun test --run` in `grading-server/`. Review all changed files for: `as any`/`@ts-ignore`, empty catches, console.log in prod, commented-out code, unused imports. Check AI slop: excessive comments, over-abstraction, generic names. Verify prompt text has zero directional language ("generous", "lenient", "strict", "round up").
   Output: `Build [PASS/FAIL] | Tests [N pass/N fail] | Files [N clean/N issues] | VERDICT`
 
-- [ ] F3. **Real Manual QA** — `unspecified-high`
+- [x] F3. **Real Manual QA** — `unspecified-high`
   Start grading server. Send real grading request with captured-students.json + captured-rubric.json. Verify JSON response parses correctly. Send same request with "Grade very leniently" custom instructions — verify scores shift upward. Send with "Grade strictly" — verify scores shift downward. Run benchmark on 1 model to verify pairwise metrics.
   Output: `Scenarios [N/N pass] | Integration [N/N] | VERDICT`
 
-- [ ] F4. **Scope Fidelity Check** — `deep`
+- [x] F4. **Scope Fidelity Check** — `deep`
   For each task: read "What to do", read actual diff (git log/diff). Verify 1:1 — everything in spec was built, nothing beyond spec was built. Check "Must NOT do" compliance: no parsing changes, no scale changes, no sweep prompt changes. Detect cross-task contamination.
   Output: `Tasks [N/N compliant] | Contamination [CLEAN/N issues] | VERDICT`
 
@@ -1017,10 +1017,10 @@ bun run test-data/run-benchmark.js --only=GPT-OSS,GLM-5,Sonnet --tolerance=1  # 
 ```
 
 ### Final Checklist
-- [ ] All "Must Have" present
-- [ ] All "Must NOT Have" absent
-- [ ] All Vitest tests pass
-- [ ] Server-bundle synced
-- [ ] Frozen baseline captured
-- [ ] Comparison benchmark run
-- [ ] Fine-tuning decision documented
+- [x] All "Must Have" present
+- [x] All "Must NOT Have" absent
+- [x] All Vitest tests pass
+- [x] Server-bundle synced
+- [x] Frozen baseline captured
+- [x] Comparison benchmark run
+- [x] Fine-tuning decision documented

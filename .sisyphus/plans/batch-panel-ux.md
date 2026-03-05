@@ -56,11 +56,11 @@ Improve the batch grader UX by making rubric data instantly visible, grading ins
 - Modified `handleContinueGrading()`: reads instructions only from textarea (single source of truth)
 
 ### Definition of Done
-- [ ] Rubric textarea auto-populates when a grading page loads (without clicking Start Batch)
-- [ ] Grading Instructions section has toggle buttons instead of checkboxes
-- [ ] Clicking a toggle button appends/removes its preset text in the instructions textarea
-- [ ] Stop/Cancel button is visible during extracting, review, and grading phases
-- [ ] `npm run build` passes with zero errors
+- [x] Rubric textarea auto-populates when a grading page loads (without clicking Start Batch)
+- [x] Grading Instructions section has toggle buttons instead of checkboxes
+- [x] Clicking a toggle button appends/removes its preset text in the instructions textarea
+- [x] Stop/Cancel button is visible during extracting, review, and grading phases
+- [x] `npm run build` passes with zero errors
 
 ### Must Have
 - Toggle buttons must support multiple active simultaneously
@@ -606,6 +606,6 @@ cd ogre-desktop && npx svelte-check # Expected: zero errors
 ```
 
 ### Final Checklist
-- [ ] All "Must Have" present
-- [ ] All "Must NOT Have" absent
-- [ ] Build passes cleanly
+- [x] All "Must Have" present
+- [x] All "Must NOT Have" absent
+- [x] Build passes cleanly

@@ -73,12 +73,12 @@ Enable Agent Mode to automatically receive site-specific knowledge when the user
 - Unit tests for all new functions
 
 ### Definition of Done
-- [ ] `cargo build` passes with migration 9
-- [ ] `npm test` in ogre-desktop passes (all existing 688+ tests + new tests)
-- [ ] Agent Mode injects MOM profile when browsing myopenmath.com
-- [ ] Agent Mode injects Aeries profile when browsing aeries.net
-- [ ] Agent Mode works normally when no browser is open (no crash, no injection)
-- [ ] Skills with `url_pattern = null` behave exactly as before
+- [x] `cargo build` passes with migration 9
+- [x] `npm test` in ogre-desktop passes (all existing 688+ tests + new tests)
+- [x] Agent Mode injects MOM profile when browsing myopenmath.com
+- [x] Agent Mode injects Aeries profile when browsing aeries.net
+- [x] Agent Mode works normally when no browser is open (no crash, no injection)
+- [x] Skills with `url_pattern = null` behave exactly as before
 
 ### Must Have
 - URL-based auto-injection into Agent Mode
@@ -178,7 +178,7 @@ Max Concurrent: 4 (Wave 1)
 
 ## TODOs
 
-- [ ] 1. Rust migration 9: add `url_pattern` column to skills table
+- [x] 1. Rust migration 9: add `url_pattern` column to skills table
 
   **What to do**:
   - In `ogre-desktop/src-tauri/src/lib.rs`, add Migration 9 after the existing migration 8 (around line 944)
@@ -226,7 +226,7 @@ Max Concurrent: 4 (Wave 1)
   - Files: `ogre-desktop/src-tauri/src/lib.rs`
   - Pre-commit: `cargo build`
 
-- [ ] 2. skill-parser.ts: extract `urlPatterns` from frontmatter + tests
+- [x] 2. skill-parser.ts: extract `urlPatterns` from frontmatter + tests
 
   **What to do**:
   - In `ogre-desktop/src/lib/skill-parser.ts`:
@@ -273,7 +273,7 @@ Max Concurrent: 4 (Wave 1)
 
   **Commit**: YES (groups with T1, T3-T7)
 
-- [ ] 3. db.ts: update Skill interface + findSkillsByUrl + saveSkill url_pattern + tests
+- [x] 3. db.ts: update Skill interface + findSkillsByUrl + saveSkill url_pattern + tests
 
   **What to do**:
   - In `ogre-desktop/src/lib/db.ts`:
@@ -324,7 +324,7 @@ Max Concurrent: 4 (Wave 1)
 
   **Commit**: YES (groups with T1-T2, T4-T7)
 
-- [ ] 4. Define site guide profile markdown template
+- [x] 4. Define site guide profile markdown template
 
   **What to do**:
   - Create `ogre-desktop/src/assets/profile-template.md` — a template/example that future profile authors follow
@@ -395,7 +395,7 @@ Max Concurrent: 4 (Wave 1)
 
   **Commit**: YES (groups with T1-T3, T5-T7)
 
-- [ ] 5. skills-api.ts: buildSiteContextInjection(url) + tests
+- [x] 5. skills-api.ts: buildSiteContextInjection(url) + tests
 
   **What to do**:
   - In `ogre-desktop/src/lib/skills-api.ts`:
@@ -450,7 +450,7 @@ Max Concurrent: 4 (Wave 1)
 
   **Commit**: YES (groups with T1-T4, T6-T7)
 
-- [ ] 6. agent-loop.ts: URL awareness + inject site profiles into system prompt + tests
+- [x] 6. agent-loop.ts: URL awareness + inject site profiles into system prompt + tests
 
   **What to do**:
   - In `ogre-desktop/src/lib/agent-loop.ts`:
@@ -535,7 +535,7 @@ Max Concurrent: 4 (Wave 1)
 
   **Commit**: YES (groups with T1-T5, T7)
 
-- [ ] 7. SkillCard.svelte: show URL pattern badge on profile skills
+- [x] 7. SkillCard.svelte: show URL pattern badge on profile skills
 
   **What to do**:
   - In `ogre-desktop/src/components/skills/SkillCard.svelte`:
@@ -579,7 +579,7 @@ Max Concurrent: 4 (Wave 1)
 
   **Commit**: YES (groups with T1-T6)
 
-- [ ] 8. MyOpenMath knowledge profile via Playwriter crawl
+- [x] 8. MyOpenMath knowledge profile via Playwriter crawl
 
   **What to do**:
   - Use Playwriter skill to navigate MyOpenMath as a logged-in instructor
@@ -634,7 +634,7 @@ Max Concurrent: 4 (Wave 1)
   **Commit**: YES (separate commit)
   - Message: `content(profiles): add MyOpenMath and Aeries site knowledge profiles`
 
-- [ ] 9. Aeries knowledge profile via Playwriter crawl
+- [x] 9. Aeries knowledge profile via Playwriter crawl
 
   **What to do**:
   - Use Playwriter skill to navigate Aeries as a logged-in teacher
@@ -689,7 +689,7 @@ Max Concurrent: 4 (Wave 1)
 
   **Commit**: YES (groups with T8)
 
-- [ ] 10. Import profiles into skills DB + end-to-end verification
+- [x] 10. Import profiles into skills DB + end-to-end verification
 
   **What to do**:
   - Write a small import script or use the existing `syncLocalSkills` pattern to import the profile markdown files:
@@ -745,19 +745,19 @@ Max Concurrent: 4 (Wave 1)
 
 > 4 review agents run in PARALLEL. ALL must APPROVE. Rejection → fix → re-run.
 
-- [ ] F1. **Plan Compliance Audit** — `oracle`
+- [x] F1. **Plan Compliance Audit** — `oracle`
   Read the plan end-to-end. For each "Must Have": verify implementation exists (read file, run command). For each "Must NOT Have": search codebase for forbidden patterns — reject with file:line if found. Check evidence files exist in .sisyphus/evidence/. Compare deliverables against plan.
   Output: `Must Have [N/N] | Must NOT Have [N/N] | Tasks [N/N] | VERDICT: APPROVE/REJECT`
 
-- [ ] F2. **Code Quality Review** — `unspecified-high`
+- [x] F2. **Code Quality Review** — `unspecified-high`
   Run `cargo build` + `npm test`. Review all changed files for: `as any`/`@ts-ignore`, empty catches, console.log in prod, commented-out code, unused imports. Check AI slop: excessive comments, over-abstraction, generic names.
   Output: `Build [PASS/FAIL] | Tests [N pass/N fail] | Files [N clean/N issues] | VERDICT`
 
-- [ ] F3. **Real Manual QA** — `unspecified-high` (+ `playwriter` skill)
+- [x] F3. **Real Manual QA** — `unspecified-high` (+ `playwriter` skill)
   Start from clean state. Execute EVERY QA scenario from EVERY task — follow exact steps, capture evidence. Test cross-task integration (profile injection in agent mode). Save to `.sisyphus/evidence/final-qa/`.
   Output: `Scenarios [N/N pass] | Integration [N/N] | Edge Cases [N tested] | VERDICT`
 
-- [ ] F4. **Scope Fidelity Check** — `deep`
+- [x] F4. **Scope Fidelity Check** — `deep`
   For each task: read "What to do", read actual diff. Verify 1:1 — everything in spec was built, nothing beyond spec was built. Check "Must NOT do" compliance. Detect cross-task contamination. Flag unaccounted changes.
   Output: `Tasks [N/N compliant] | Contamination [CLEAN/N issues] | Unaccounted [CLEAN/N files] | VERDICT`
 
@@ -783,9 +783,9 @@ cd ogre-desktop && npm test                   # Expected: all pass (existing + n
 ```
 
 ### Final Checklist
-- [ ] All "Must Have" present
-- [ ] All "Must NOT Have" absent
-- [ ] All tests pass
-- [ ] Agent Mode injects correct profile based on URL
-- [ ] Agent Mode works normally with no browser open
-- [ ] Existing skills unaffected
+- [x] All "Must Have" present
+- [x] All "Must NOT Have" absent
+- [x] All tests pass
+- [x] Agent Mode injects correct profile based on URL
+- [x] Agent Mode works normally with no browser open
+- [x] Existing skills unaffected

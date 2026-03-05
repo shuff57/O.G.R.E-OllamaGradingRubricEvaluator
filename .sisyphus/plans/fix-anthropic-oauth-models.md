@@ -55,10 +55,10 @@ Fix Anthropic OAuth login so that: (1) model dropdown populates after sign-in, a
 - Modified `ogre-desktop/src/pages/Settings.svelte` with fixed Svelte reactivity in `fetchModels()` and `handleSignOut()`
 
 ### Definition of Done
-- [ ] Anthropic OAuth sign-in → model dropdown shows models (no 401 error)
-- [ ] "✅ Signed in" status appears after code submission
-- [ ] Sign-out clears model dropdown reactively
-- [ ] Other providers (Ollama, OpenAI, etc.) unaffected
+- [x] Anthropic OAuth sign-in → model dropdown shows models (no 401 error)
+- [x] "✅ Signed in" status appears after code submission
+- [x] Sign-out clears model dropdown reactively
+- [x] Other providers (Ollama, OpenAI, etc.) unaffected
 
 ### Must Have
 - Hardcoded Anthropic model fallback for OAuth tokens
@@ -420,9 +420,9 @@ cd ogre-desktop && npx tsc --noEmit  # Expected: no errors
 ```
 
 ### Final Checklist
-- [ ] Anthropic OAuth sign-in → model dropdown populates with known models
-- [ ] No 401 error in console after Anthropic sign-in
-- [ ] "✅ Signed in" badge appears immediately after auth
-- [ ] Sign-out clears model list from dropdown
-- [ ] Other providers still fetch models from their APIs
-- [ ] No TypeScript compilation errors
+- [x] Anthropic OAuth sign-in → model dropdown populates with known models
+- [x] No 401 error in console after Anthropic sign-in
+- [x] "✅ Signed in" badge appears immediately after auth
+- [x] Sign-out clears model list from dropdown
+- [x] Other providers still fetch models from their APIs
+- [x] No TypeScript compilation errors

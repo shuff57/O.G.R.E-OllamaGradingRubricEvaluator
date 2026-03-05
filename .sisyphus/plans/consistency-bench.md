@@ -64,9 +64,9 @@ Create a repeatable benchmarking tool that answers: "Do these 5 AI models grade 
 - Generated outputs: `benchmark-results.json` (raw data) + `benchmark-report.md` (human-readable report)
 
 ### Definition of Done
-- [ ] `bun run test-data/run-benchmark.js` completes against running server with at least 1 model configured
-- [ ] `test-data/benchmark-results.json` contains per-model, per-run, per-student score data
-- [ ] `test-data/benchmark-report.md` contains all 4 report sections (summary, matrix, agreement, disagreements)
+- [x] `bun run test-data/run-benchmark.js` completes against running server with at least 1 model configured
+- [x] `test-data/benchmark-results.json` contains per-model, per-run, per-student score data
+- [x] `test-data/benchmark-report.md` contains all 4 report sections (summary, matrix, agreement, disagreements)
 
 ### Must Have
 - Configurable model list, run count, tolerance, and delay at top of script
@@ -555,19 +555,19 @@ Max Concurrent: 2 (Wave 1)
 
 ## Final Verification Wave
 
-- [ ] F1. **Plan Compliance Audit** — `oracle`
+- [x] F1. **Plan Compliance Audit** — `oracle`
   Read the plan end-to-end. For each "Must Have": verify implementation exists (read file, run command). For each "Must NOT Have": search codebase for forbidden patterns — reject with file:line if found. Check evidence files exist in .sisyphus/evidence/. Compare deliverables against plan.
   Output: `Must Have [N/N] | Must NOT Have [N/N] | Tasks [N/N] | VERDICT: APPROVE/REJECT`
 
-- [ ] F2. **Code Quality Review** — `unspecified-high`
+- [x] F2. **Code Quality Review** — `unspecified-high`
   Review `test-data/run-benchmark.js` for: unused variables, missing error handling, hardcoded values that should be configurable, console.log formatting consistency. Check AI slop: excessive comments, over-abstraction, generic names. Verify it follows the `run-baseline.js` pattern for SSE parsing and auth.
   Output: `Lint [PASS/FAIL] | Pattern Match [PASS/FAIL] | Files [N clean/N issues] | VERDICT`
 
-- [ ] F3. **Real Manual QA** — `unspecified-high`
+- [x] F3. **Real Manual QA** — `unspecified-high`
   Start grading server. Run the benchmark script with at least 1 model configured. Verify: JSON output has correct structure, markdown report has all 4 sections, progress logging works, failure handling works (test with a non-existent model). Save evidence to `.sisyphus/evidence/final-qa/`.
   Output: `Scenarios [N/N pass] | Integration [N/N] | Edge Cases [N tested] | VERDICT`
 
-- [ ] F4. **Scope Fidelity Check** — `deep`
+- [x] F4. **Scope Fidelity Check** — `deep`
   For each task: read "What to do", read actual file. Verify 1:1 — everything in spec was built, nothing beyond spec was built. Check "Must NOT do" compliance. Flag unaccounted files or changes.
   Output: `Tasks [N/N compliant] | Unaccounted [CLEAN/N files] | VERDICT`
 
@@ -599,8 +599,8 @@ bun -e "const d=JSON.parse(require('fs').readFileSync('test-data/benchmark-resul
 ```
 
 ### Final Checklist
-- [ ] All "Must Have" present
-- [ ] All "Must NOT Have" absent
-- [ ] Script runs end-to-end against live server
-- [ ] Report contains all 4 sections
-- [ ] Tolerance is configurable
+- [x] All "Must Have" present
+- [x] All "Must NOT Have" absent
+- [x] Script runs end-to-end against live server
+- [x] Report contains all 4 sections
+- [x] Tolerance is configurable

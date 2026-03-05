@@ -50,11 +50,11 @@ Split the inline 350-line library map into a tiered folder structure where the f
 - Updated `mom-fact-finder/CLAUDE.md` Step 3
 
 ### Definition of Done
-- [ ] All `lib{N}` data-IDs from original map exist in exactly one subject file
-- [ ] Index lists all 15 subjects with root lib-ID, filename, and topic keywords
-- [ ] mom-fact-finder Step 3 references tiered files instead of inline map
-- [ ] mom-fact-finder is ≤520 lines (was 842)
-- [ ] Steps 0–2, 4–12 of mom-fact-finder are unchanged
+- [x] All `lib{N}` data-IDs from original map exist in exactly one subject file
+- [x] Index lists all 15 subjects with root lib-ID, filename, and topic keywords
+- [x] mom-fact-finder Step 3 references tiered files instead of inline map
+- [x] mom-fact-finder is ≤520 lines (was 842)
+- [x] Steps 0–2, 4–12 of mom-fact-finder are unchanged
 
 ### Must Have
 - Every `lib{N}` from the original map preserved exactly
@@ -131,7 +131,7 @@ Wave FINAL (After ALL tasks):
 
 ## TODOs
 
-- [ ] 1. Create `mom-lib-map/CLAUDE.md` index file
+- [x] 1. Create `mom-lib-map/CLAUDE.md` index file
 
   **What to do**:
   - Create `.claude/skills/mom-lib-map/CLAUDE.md`
@@ -195,7 +195,7 @@ Wave FINAL (After ALL tasks):
 
 ---
 
-- [ ] 2a. Create subject files — Batch A (arithmetic, algebra, trig, calculus, differential-equations)
+- [x] 2a. Create subject files — Batch A (arithmetic, algebra, trig, calculus, differential-equations)
 
   **What to do**:
   - Create 5 files under `.claude/skills/mom-lib-map/`:
@@ -251,7 +251,7 @@ Wave FINAL (After ALL tasks):
 
 ---
 
-- [ ] 2b. Create subject files — Batch B (linear-algebra, statistics, liberal-arts, discrete-math, finance)
+- [x] 2b. Create subject files — Batch B (linear-algebra, statistics, liberal-arts, discrete-math, finance)
 
   **What to do**:
   - Create 5 files under `.claude/skills/mom-lib-map/`:
@@ -305,7 +305,7 @@ Wave FINAL (After ALL tasks):
 
 ---
 
-- [ ] 2c. Create subject files — Batch C (accounting, chemistry, physics, geometry, astronomy)
+- [x] 2c. Create subject files — Batch C (accounting, chemistry, physics, geometry, astronomy)
 
   **What to do**:
   - Create 5 files under `.claude/skills/mom-lib-map/`:
@@ -352,7 +352,7 @@ Wave FINAL (After ALL tasks):
 
 ---
 
-- [ ] 2d. Create `elem-ed.md` (Math for Elementary School Teachers)
+- [x] 2d. Create `elem-ed.md` (Math for Elementary School Teachers)
 
   **What to do**:
   - This subject was discovered during the recon but was NOT in the original inline map (it's a top-level node lib10201 with 15 direct children)
@@ -409,7 +409,7 @@ Wave FINAL (After ALL tasks):
 
 ---
 
-- [ ] 3. Rewrite `mom-fact-finder/CLAUDE.md` Step 3 — replace inline map with tiered read
+- [x] 3. Rewrite `mom-fact-finder/CLAUDE.md` Step 3 — replace inline map with tiered read
 
   **What to do**:
   - Read `.claude/skills/mom-fact-finder/CLAUDE.md` in full
@@ -504,7 +504,7 @@ Wave FINAL (After ALL tasks):
 
 ---
 
-- [ ] 4. Data integrity verification
+- [x] 4. Data integrity verification
 
   **What to do**:
   - Run the following verification commands and capture evidence:
@@ -578,11 +578,11 @@ Wave FINAL (After ALL tasks):
 
 ## Final Verification Wave
 
-- [ ] F1. **Plan Compliance Audit** — `oracle`
+- [x] F1. **Plan Compliance Audit** — `oracle`
   Read the plan end-to-end. Verify: (1) All 17 files exist under mom-lib-map/. (2) Index CLAUDE.md has 16 subject rows with root lib-IDs and topic keywords. (3) Cross-subject topics documented. (4) mom-fact-finder Step 3 references tiered files. (5) mom-fact-finder ≤520 lines. (6) Steps 0–2 and 4–12 unchanged.
   Output: `Files [17/17] | Index [PASS/FAIL] | Fact-finder [PASS/FAIL] | VERDICT: APPROVE/REJECT`
 
-- [ ] F2. **Scope Fidelity Check** — `deep`
+- [x] F2. **Scope Fidelity Check** — `deep`
   For each task: read "What to do", read actual diff. Verify no extra files created, no unexpected edits to other skills, no data-ID invention. Check that Option B and Tree Helper are preserved in fact-finder. Flag any unaccounted changes.
   Output: `Tasks [4/4 compliant] | Unaccounted [CLEAN/N files] | VERDICT: APPROVE/REJECT`
 
@@ -616,11 +616,11 @@ cat .claude/skills/mom-lib-map/[!C]*.md | grep -oP 'lib\d+' | sort -u | wc -l  #
 ```
 
 ### Final Checklist
-- [ ] All 17 files exist in mom-lib-map/
-- [ ] Index has 16 subjects with root lib-IDs and topic keywords
-- [ ] Cross-subject topics documented in index
-- [ ] mom-fact-finder Step 3 uses tiered read pattern
-- [ ] mom-fact-finder ≤520 lines
-- [ ] Steps 0–2, 4–12 unchanged in mom-fact-finder
-- [ ] Option B and Tree Helper preserved
-- [ ] Zero lib-ID data loss
+- [x] All 17 files exist in mom-lib-map/
+- [x] Index has 16 subjects with root lib-IDs and topic keywords
+- [x] Cross-subject topics documented in index
+- [x] mom-fact-finder Step 3 uses tiered read pattern
+- [x] mom-fact-finder ≤520 lines
+- [x] Steps 0–2, 4–12 unchanged in mom-fact-finder
+- [x] Option B and Tree Helper preserved
+- [x] Zero lib-ID data loss

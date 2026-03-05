@@ -48,12 +48,12 @@ Fix GradingPanel tab layout and consolidate webview bounds management to elimina
 - Modified JS in `ogre-desktop/src/App.svelte` — delegates bounds to Browser.svelte via events
 
 ### Definition of Done
-- [ ] Mode tabs display as 2x2 grid when GradingPanel is expanded
-- [ ] Mode tabs display as single-column icons when GradingPanel is collapsed
-- [ ] Webview properly fills the area between sidebar, URL bar, and grading panel
-- [ ] Window resize correctly recalculates webview bounds
-- [ ] Navigating away from Browser and back shows webview at correct position
-- [ ] Screenshot capture flow still works (hide → overlay → show)
+- [x] Mode tabs display as 2x2 grid when GradingPanel is expanded
+- [x] Mode tabs display as single-column icons when GradingPanel is collapsed
+- [x] Webview properly fills the area between sidebar, URL bar, and grading panel
+- [x] Window resize correctly recalculates webview bounds
+- [x] Navigating away from Browser and back shows webview at correct position
+- [x] Screenshot capture flow still works (hide → overlay → show)
 
 ### Must Have
 - 2x2 grid for mode tabs in expanded state

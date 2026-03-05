@@ -62,11 +62,11 @@ Make the browser agent smarter (fuzzy matching), quieter (compact UI), and more 
 - Tests for fuzzy matching, compact UI assertions, and CDP connection
 
 ### Definition of Done
-- [ ] `vitest run` — all existing tests pass, new tests pass
-- [ ] Agent mode handles non-matching selectors without failing (fuzzy match or screenshot fallback)
-- [ ] AgentChat shows compact one-line action badges with no reasoning text
-- [ ] Playwright connects to embedded WebView2 via CDP and executes at least click, type, readText
-- [ ] Agent falls back to evalScript when CDP is unavailable
+- [x] `vitest run` — all existing tests pass, new tests pass
+- [x] Agent mode handles non-matching selectors without failing (fuzzy match or screenshot fallback)
+- [x] AgentChat shows compact one-line action badges with no reasoning text
+- [x] Playwright connects to embedded WebView2 via CDP and executes at least click, type, readText
+- [x] Agent falls back to evalScript when CDP is unavailable
 
 ### Must Have
 - Fuzzy DOM matching with at most 4 strategies before screenshot fallback
@@ -1474,11 +1474,11 @@ cd grading-server && bun test       # Expected: all server tests pass
 ```
 
 ### Final Checklist
-- [ ] All "Must Have" present
-- [ ] All "Must NOT Have" absent
-- [ ] All existing tests still pass
-- [ ] New tests cover fuzzy matching, compact UI, and CDP connection
-- [ ] Agent handles missing selectors gracefully (fuzzy match or screenshot fallback)
-- [ ] AgentChat displays compact one-line action badges
-- [ ] Playwright connects to WebView2 via CDP (when enabled)
-- [ ] evalScript fallback works when CDP is not available
+- [x] All "Must Have" present
+- [x] All "Must NOT Have" absent
+- [x] All existing tests still pass
+- [x] New tests cover fuzzy matching, compact UI, and CDP connection
+- [x] Agent handles missing selectors gracefully (fuzzy match or screenshot fallback)
+- [x] AgentChat displays compact one-line action badges
+- [x] Playwright connects to WebView2 via CDP (when enabled)
+- [x] evalScript fallback works when CDP is not available

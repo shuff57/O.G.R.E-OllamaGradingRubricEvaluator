@@ -54,11 +54,11 @@ Replace the synchronous static anchor computation in BatchPanel.svelte's `$effec
 - Import of `generateAnchors` added to `BatchPanel.svelte` imports
 
 ### Definition of Done
-- [ ] `bun run build` in `ogre-desktop` succeeds with no TypeScript errors
-- [ ] In review mode: batch reaches `'review'` phase, shows "Generating examples..." spinner, then shows AI-generated anchor text in textarea
-- [ ] In auto mode: batch reaches `'review'` phase, generates AI anchors, then auto-continues to grading without user interaction
-- [ ] On version chain: when advancing to next version, AI anchors regenerate for the new version's rubric
-- [ ] On AI failure: falls back to static `computeScoringAnchors()` output — no crash, no blank anchors
+- [x] `bun run build` in `ogre-desktop` succeeds with no TypeScript errors
+- [x] In review mode: batch reaches `'review'` phase, shows "Generating examples..." spinner, then shows AI-generated anchor text in textarea
+- [x] In auto mode: batch reaches `'review'` phase, generates AI anchors, then auto-continues to grading without user interaction
+- [x] On version chain: when advancing to next version, AI anchors regenerate for the new version's rubric
+- [x] On AI failure: falls back to static `computeScoringAnchors()` output — no crash, no blank anchors
 
 ### Must Have
 - AI-generated anchor responses shown in the Scoring Anchors textarea during review phase
@@ -145,7 +145,7 @@ Max Concurrent: 4 (Final wave)
 > Implementation + Test = ONE Task. Never separate.
 > EVERY task MUST have: Recommended Agent Profile + Parallelization info + QA Scenarios.
 
-- [ ] 1. Add `generateAnchors` import and replace `$effect` with async AI anchor generation
+- [x] 1. Add `generateAnchors` import and replace `$effect` with async AI anchor generation
 
   **What to do**:
   1. In `BatchPanel.svelte`, add `generateAnchors` to the import from `../../lib/grading-api` (line 25). The import already includes `startBatchGrading` — add `generateAnchors` alongside it, plus import the `type AnchorResponse` from the same module.
@@ -254,7 +254,7 @@ Max Concurrent: 4 (Final wave)
 
   **Commit**: NO (groups with Task 2)
 
-- [ ] 2. Add auto-mode bypass logic (auto-continue after AI anchors generate)
+- [x] 2. Add auto-mode bypass logic (auto-continue after AI anchors generate)
 
   **What to do**:
   1. Inside the `$effect` async IIFE (created in Task 1), AFTER anchors have been set (both success and fallback paths), add a check:
@@ -339,7 +339,7 @@ Max Concurrent: 4 (Final wave)
   - Files: `ogre-desktop/src/components/grading/BatchPanel.svelte`
   - Pre-commit: `cd ogre-desktop && npm run build`
 
-- [ ] 3. Add anchor regeneration in version-chaining flow
+- [x] 3. Add anchor regeneration in version-chaining flow
 
   **What to do**:
   1. In `handleSSEDone()` (line 690), find the version-chaining block at lines 703-712 where `batchGrader.advanceVersion()` is called
@@ -424,7 +424,7 @@ Max Concurrent: 4 (Final wave)
   - Files: `ogre-desktop/src/components/grading/BatchPanel.svelte`
   - Pre-commit: `cd ogre-desktop && npm run build`
 
-- [ ] 4. Full build verification and end-to-end QA
+- [x] 4. Full build verification and end-to-end QA
 
   **What to do**:
   1. Run `npm run build` in ogre-desktop and verify zero errors
@@ -523,19 +523,19 @@ Max Concurrent: 4 (Final wave)
 
 > 4 review agents run in PARALLEL. ALL must APPROVE. Rejection → fix → re-run.
 
-- [ ] F1. **Plan Compliance Audit** — `oracle`
+- [x] F1. **Plan Compliance Audit** — `oracle`
   Read the plan end-to-end. For each "Must Have": verify implementation exists (read file, check import, check function call). For each "Must NOT Have": search codebase for forbidden patterns — reject with file:line if found. Check evidence files exist in `.sisyphus/evidence/`. Compare deliverables against plan.
   Output: `Must Have [N/N] | Must NOT Have [N/N] | Tasks [N/N] | VERDICT: APPROVE/REJECT`
 
-- [ ] F2. **Code Quality Review** — `unspecified-high`
+- [x] F2. **Code Quality Review** — `unspecified-high`
   Run `npm run build` in ogre-desktop. Review all changed files for: `as any`/`@ts-ignore`, empty catches, console.log in prod, commented-out code, unused imports. Check AI slop: excessive comments, over-abstraction, generic names.
   Output: `Build [PASS/FAIL] | Files [N clean/N issues] | VERDICT`
 
-- [ ] F3. **Real Manual QA** — `unspecified-high` (+ `playwright` skill)
+- [x] F3. **Real Manual QA** — `unspecified-high` (+ `playwright` skill)
   Start from clean state. Verify: (1) Review mode shows spinner → AI anchors in textarea, (2) Auto mode generates anchors then auto-continues, (3) Version chain regenerates anchors, (4) Kill server mid-anchor-gen → falls back to static anchors. Save screenshots to `.sisyphus/evidence/final-qa/`.
   Output: `Scenarios [N/N pass] | Integration [N/N] | Edge Cases [N tested] | VERDICT`
 
-- [ ] F4. **Scope Fidelity Check** — `deep`
+- [x] F4. **Scope Fidelity Check** — `deep`
   For each task: read "What to do", read actual diff (git log/diff). Verify 1:1 — everything in spec was built, nothing beyond spec. Check "Must NOT do" compliance. Detect modifications to `grading.js`, `server.js`, or `grading-api.ts` — these are FORBIDDEN. Flag unaccounted changes.
   Output: `Tasks [N/N compliant] | Forbidden Files [CLEAN/N issues] | VERDICT`
 
@@ -556,12 +556,12 @@ cd ogre-desktop && npm run build  # Expected: Build succeeds, no TypeScript erro
 ```
 
 ### Final Checklist
-- [ ] AI-generated anchor responses appear in Scoring Anchors textarea during review
-- [ ] Spinner shows "Generating examples..." while AI anchors generate
-- [ ] Auto mode: grading starts automatically after AI anchors complete (no pause)
-- [ ] Review mode: grading pauses at review phase for user to edit anchors
-- [ ] Version chain: AI anchors regenerate when advancing to next version
-- [ ] Fallback: static anchors shown when AI generation fails
-- [ ] `isReviewMode` toggle still controls per-student approve/skip (unchanged)
-- [ ] No modifications to `grading.js`, `server.js`, or `grading-api.ts`
-- [ ] `npm run build` passes with zero errors
+- [x] AI-generated anchor responses appear in Scoring Anchors textarea during review
+- [x] Spinner shows "Generating examples..." while AI anchors generate
+- [x] Auto mode: grading starts automatically after AI anchors complete (no pause)
+- [x] Review mode: grading pauses at review phase for user to edit anchors
+- [x] Version chain: AI anchors regenerate when advancing to next version
+- [x] Fallback: static anchors shown when AI generation fails
+- [x] `isReviewMode` toggle still controls per-student approve/skip (unchanged)
+- [x] No modifications to `grading.js`, `server.js`, or `grading-api.ts`
+- [x] `npm run build` passes with zero errors

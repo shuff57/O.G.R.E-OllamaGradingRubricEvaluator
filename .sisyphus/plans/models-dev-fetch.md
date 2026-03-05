@@ -69,11 +69,11 @@ so the Anthropic model dropdown is always current without any code changes.
   - Updated `case "anthropic"` OAuth short-circuit to call it with fallback
 
 ### Definition of Done
-- [ ] Anthropic OAuth sign-in → model dropdown shows live models from models.dev
-- [ ] If models.dev is offline → dropdown still shows `ANTHROPIC_KNOWN_MODELS` fallback
-- [ ] Cache is used on second call within 1 hour (no redundant fetches)
-- [ ] Alpha and deprecated models are excluded
-- [ ] API key users still fall through to existing `/v1/models` fetch path (unchanged)
+- [x] Anthropic OAuth sign-in → model dropdown shows live models from models.dev
+- [x] If models.dev is offline → dropdown still shows `ANTHROPIC_KNOWN_MODELS` fallback
+- [x] Cache is used on second call within 1 hour (no redundant fetches)
+- [x] Alpha and deprecated models are excluded
+- [x] API key users still fall through to existing `/v1/models` fetch path (unchanged)
 
 ### Must Have
 - In-memory cache with 1-hour TTL
@@ -107,7 +107,7 @@ Single task, single wave. No parallelization needed.
 ## TODOs
 > Implementation + Test = ONE Task. Never separate.
 
-- [ ] 1. Add `fetchAnthropicModelsFromModelsDev()` with cache and update OAuth short-circuit in `oauth.ts`
+- [x] 1. Add `fetchAnthropicModelsFromModelsDev()` with cache and update OAuth short-circuit in `oauth.ts`
 
   **What to do**:
 
@@ -219,9 +219,9 @@ cd ogre-desktop && npx svelte-check 2>&1 | grep -E "oauth|Error" | grep -v "draw
 ```
 
 ### Final Checklist
-- [ ] `fetchAnthropicModelsFromModelsDev` function present in oauth.ts
-- [ ] Cache with 1-hour TTL present
-- [ ] `try/catch` fallback to `ANTHROPIC_KNOWN_MODELS` present
-- [ ] Filter excludes alpha and deprecated status models
-- [ ] Only `oauth.ts` modified
-- [ ] No TypeScript errors in changed file
+- [x] `fetchAnthropicModelsFromModelsDev` function present in oauth.ts
+- [x] Cache with 1-hour TTL present
+- [x] `try/catch` fallback to `ANTHROPIC_KNOWN_MODELS` present
+- [x] Filter excludes alpha and deprecated status models
+- [x] Only `oauth.ts` modified
+- [x] No TypeScript errors in changed file

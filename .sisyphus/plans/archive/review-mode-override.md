@@ -415,12 +415,12 @@ cd ogre-desktop && npx svelte-check  # Expected: exit 0, no errors
 ```
 
 ### Final Checklist
-- [ ] ReviewData type has autoScore field
-- [ ] Review panel shows editable score input + feedback textarea
-- [ ] "Auto: X/Y" label visible with original AI score
-- [ ] handleApprove captures edited values + clamps score
-- [ ] applyResult uses decision.score/decision.feedback
-- [ ] Auto mode (isReviewMode=false) completely unchanged
-- [ ] Skip resolves without reading score/feedback
-- [ ] No changes to batch-grader.ts
-- [ ] Build succeeds
+- [x] ReviewData type has autoScore field
+- [x] Review panel shows editable score input + feedback textarea
+- [x] "Auto: X/Y" label visible with original AI score
+- [x] handleApprove captures edited values + clamps score
+- [x] applyResult uses decision.score/decision.feedback
+- [x] Auto mode (isReviewMode=false) completely unchanged
+- [x] Skip resolves without reading score/feedback
+- [x] No changes to batch-grader.ts
+- [x] Build succeeds

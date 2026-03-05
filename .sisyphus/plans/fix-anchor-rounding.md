@@ -147,6 +147,6 @@ Wave FINAL:
 ## Success Criteria
 
 ### Final Checklist
-- [ ] `computeScoringAnchors(1, ...)` produces scores 0.9, 0.7, 0.5, 0.3 (not 1, 1, 1, 0)
-- [ ] `computeScoringAnchors(10, ...)` still produces 9, 7, 5, 3 (unchanged behavior for large maxScore)
-- [ ] No TypeScript errors
+- [x] `computeScoringAnchors(1, ...)` produces scores 0.9, 0.7, 0.5, 0.3 (not 1, 1, 1, 0)
+- [x] `computeScoringAnchors(10, ...)` still produces 9, 7, 5, 3 (unchanged behavior for large maxScore)
+- [x] No TypeScript errors

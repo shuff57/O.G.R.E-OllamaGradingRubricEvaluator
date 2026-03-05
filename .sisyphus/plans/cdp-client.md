@@ -74,14 +74,14 @@ Replace `playwright-core` with a bundleable, zero-dependency CDP WebSocket clien
 - Deleted `ogre-desktop/src/lib/playwright-executor.test.ts`
 
 ### Definition of Done
-- [ ] `npm run build` in ogre-desktop succeeds without playwright-core
-- [ ] `npm run test` in ogre-desktop passes — all existing + new tests green
-- [ ] `grep -r "playwright-executor" ogre-desktop/src/lib/` returns zero matches
-- [ ] `grep "playwright-core" ogre-desktop/package.json` returns zero matches
-- [ ] New CDP modules have zero npm dependencies (browser-native WebSocket only)
-- [ ] `cdp-client.ts` + `cdp-actions.ts` combined ≤ 400 lines
-- [ ] `captureWebviewScreenshot()` still works when CDP is not connected (html2canvas fallback)
-- [ ] `cargo check` succeeds in `ogre-desktop/src-tauri/`
+- [x] `npm run build` in ogre-desktop succeeds without playwright-core
+- [x] `npm run test` in ogre-desktop passes — all existing + new tests green
+- [x] `grep -r "playwright-executor" ogre-desktop/src/lib/` returns zero matches
+- [x] `grep "playwright-core" ogre-desktop/package.json` returns zero matches
+- [x] New CDP modules have zero npm dependencies (browser-native WebSocket only)
+- [x] `cdp-client.ts` + `cdp-actions.ts` combined ≤ 400 lines
+- [x] `captureWebviewScreenshot()` still works when CDP is not connected (html2canvas fallback)
+- [x] `cargo check` succeeds in `ogre-desktop/src-tauri/`
 
 ### Must Have
 - CDP WebSocket client with `connect`, `disconnect`, `send`, `isConnected` API
@@ -179,7 +179,7 @@ Max Concurrent: 2 per wave
 
 ### Wave 1 — Foundation (Start Immediately)
 
-- [ ] 1. Build `cdp-client.ts` — Thin CDP WebSocket Client
+- [x] 1. Build `cdp-client.ts` — Thin CDP WebSocket Client
 
   **What to do**:
   - Create `ogre-desktop/src/lib/cdp-client.ts` (~150 lines)
@@ -274,7 +274,7 @@ Max Concurrent: 2 per wave
   - Files: `ogre-desktop/src/lib/cdp-client.ts`
   - Pre-commit: `cd ogre-desktop && npx tsc --noEmit`
 
-- [ ] 2. Modify `lib.rs` — Dynamic CDP Port Allocation + Tauri Command
+- [x] 2. Modify `lib.rs` — Dynamic CDP Port Allocation + Tauri Command
 
   **What to do**:
   - Modify `ogre-desktop/src-tauri/src/lib.rs` to:
@@ -362,7 +362,7 @@ Max Concurrent: 2 per wave
 
 ### Wave 2 — Core Module + Tests (After Wave 1)
 
-- [ ] 3. Build `cdp-actions.ts` — CDP Action Implementations
+- [x] 3. Build `cdp-actions.ts` — CDP Action Implementations
 
   **What to do**:
   - Create `ogre-desktop/src/lib/cdp-actions.ts`
@@ -508,7 +508,7 @@ Max Concurrent: 2 per wave
   - Files: `ogre-desktop/src/lib/cdp-actions.ts`
   - Pre-commit: `cd ogre-desktop && npx tsc --noEmit`
 
-- [ ] 4. Tests for `cdp-client.ts` + `cdp-actions.ts`
+- [x] 4. Tests for `cdp-client.ts` + `cdp-actions.ts`
 
   **What to do**:
   - Create `ogre-desktop/src/lib/cdp-client.test.ts` — unit tests for the thin CDP client
@@ -605,7 +605,7 @@ Max Concurrent: 2 per wave
 
 ### Wave 3 — Integration + Cleanup (After Wave 2)
 
-- [ ] 5. Swap Integration — Replace Playwright with CDP in `browser-actions.ts`
+- [x] 5. Swap Integration — Replace Playwright with CDP in `browser-actions.ts`
 
   **What to do**:
   - Modify `ogre-desktop/src/lib/browser-actions.ts` line 20:
@@ -715,7 +715,7 @@ Max Concurrent: 2 per wave
   - Files: `ogre-desktop/src/lib/browser-actions.ts`, `ogre-desktop/src/lib/browser-actions.test.ts`, `ogre-desktop/vite.config.js`, `ogre-desktop/package.json`, deleted `playwright-executor.ts`, deleted `playwright-executor.test.ts`
   - Pre-commit: `cd ogre-desktop && npm run test && npm run build`
 
-- [ ] 6. CDP Screenshot Path in `browser.ts`
+- [x] 6. CDP Screenshot Path in `browser.ts`
 
   **What to do**:
   - Modify `ogre-desktop/src/lib/browser.ts` function `captureWebviewScreenshot()` (line 254):
@@ -815,19 +815,19 @@ Max Concurrent: 2 per wave
 
 > 4 review agents run in PARALLEL. ALL must APPROVE. Rejection → fix → re-run.
 
-- [ ] F1. **Plan Compliance Audit** — `oracle`
+- [x] F1. **Plan Compliance Audit** — `oracle`
   Read the plan end-to-end. For each "Must Have": verify implementation exists (read file, run command). For each "Must NOT Have": search codebase for forbidden patterns — reject with file:line if found. Check evidence files exist in .sisyphus/evidence/. Compare deliverables against plan.
   Output: `Must Have [N/N] | Must NOT Have [N/N] | Tasks [N/N] | VERDICT: APPROVE/REJECT`
 
-- [ ] F2. **Code Quality Review** — `unspecified-high`
+- [x] F2. **Code Quality Review** — `unspecified-high`
   Run `tsc --noEmit` + linter + `vitest run`. Review all changed files for: `as any`/`@ts-ignore`, empty catches, console.log in prod, commented-out code, unused imports. Check AI slop: excessive comments, over-abstraction. Verify `executeAction` signature unchanged. Verify `ActionResult` contract preserved.
   Output: `Build [PASS/FAIL] | Tests [N pass/N fail] | Files [N clean/N issues] | VERDICT`
 
-- [ ] F3. **Build + Test Verification** — `unspecified-high`
+- [x] F3. **Build + Test Verification** — `unspecified-high`
   Run `npm run build` (vite) — must succeed without playwright-core. Run `npm run test` — all tests pass. Run `cargo check` in src-tauri. Verify `grep -r "playwright-executor" ogre-desktop/src/lib/` returns zero. Verify `grep "playwright-core" ogre-desktop/package.json` returns zero.
   Output: `Build [PASS/FAIL] | Tests [N/N] | Playwright refs [N] | VERDICT`
 
-- [ ] F4. **Scope Fidelity Check** — `deep`
+- [x] F4. **Scope Fidelity Check** — `deep`
   For each task: read "What to do", read actual diff. Verify 1:1 — everything in spec was built, nothing beyond spec. Check "Must NOT do" compliance (no accessibility tree, no auto-reconnect, no batch-grader changes, html2canvas preserved). Flag unaccounted changes.
   Output: `Tasks [N/N compliant] | Scope [CLEAN/N issues] | VERDICT`
 
@@ -852,11 +852,11 @@ grep "playwright-core" ogre-desktop/package.json      # Expected: zero matches
 ```
 
 ### Final Checklist
-- [ ] All "Must Have" present
-- [ ] All "Must NOT Have" absent
-- [ ] All existing tests still pass
-- [ ] New CDP modules have zero npm dependencies
-- [ ] Agent Mode uses real input events via CDP when connected
-- [ ] Screenshots use native CDP capture when available, html2canvas fallback otherwise
-- [ ] evalScript fallback works when CDP is not connected
-- [ ] No playwright references remain in source code
+- [x] All "Must Have" present
+- [x] All "Must NOT Have" absent
+- [x] All existing tests still pass
+- [x] New CDP modules have zero npm dependencies
+- [x] Agent Mode uses real input events via CDP when connected
+- [x] Screenshots use native CDP capture when available, html2canvas fallback otherwise
+- [x] evalScript fallback works when CDP is not connected
+- [x] No playwright references remain in source code

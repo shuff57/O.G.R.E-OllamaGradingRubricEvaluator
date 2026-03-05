@@ -58,10 +58,10 @@ Add Aeries as a grading site preset and make the gb-pipeline skill suite availab
 - [x] All 4 skill files are byte-identical to their source files
 - [x] Existing tests pass (browser.test.ts, autofill.test.ts)
 - [x] TypeScript compiles without errors
-- [ ] All 4 skill files exist at their target paths
-- [ ] All 4 skill files are byte-identical to their source files
-- [ ] Existing tests pass (browser.test.ts, autofill.test.ts)
-- [ ] TypeScript compiles without errors
+- [x] All 4 skill files exist at their target paths
+- [x] All 4 skill files are byte-identical to their source files
+- [x] Existing tests pass (browser.test.ts, autofill.test.ts)
+- [x] TypeScript compiles without errors
 
 ### Must Have
 - Aeries preset with exact URL `https://chicousd.aeries.net/teacher/Login.aspx`
@@ -339,8 +339,8 @@ npx vitest run --config ogre-desktop/vitest.config.ts ogre-desktop/src/lib/autof
 - [x] No .svelte files modified
 - [x] No test files modified
 - [x] mom-frq/CLAUDE.md untouched
-- [ ] All 4 gb-* skill files present and identical to source
-- [ ] All existing tests pass
-- [ ] No .svelte files modified
-- [ ] No test files modified
-- [ ] mom-frq/CLAUDE.md untouched
+- [x] All 4 gb-* skill files present and identical to source
+- [x] All existing tests pass
+- [x] No .svelte files modified
+- [x] No test files modified
+- [x] mom-frq/CLAUDE.md untouched

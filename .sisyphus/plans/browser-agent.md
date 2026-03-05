@@ -73,14 +73,14 @@ Build a browser agent that lets users automate webview interaction through natur
 - Test files for browser-actions, agent-loop, agent-api
 
 ### Definition of Done
-- [ ] User can type a natural language instruction in the Agent tab and see the AI execute actions on the webview
-- [ ] Review mode shows each proposed action with Approve/Skip buttons before execution
-- [ ] Auto mode executes all actions automatically, reporting results in chat
-- [ ] Agent handles errors gracefully (element not found, timeout, invalid selector)
-- [ ] Agent loop terminates on: done() action, max steps (30), max time (5min), loop detection (3x same action)
-- [ ] `npm run build` succeeds with zero TypeScript errors
-- [ ] All existing tabs (Grader, Discovery) still work after changes
-- [ ] Tests pass for browser-actions, agent-loop, and agent-api
+- [x] User can type a natural language instruction in the Agent tab and see the AI execute actions on the webview
+- [x] Review mode shows each proposed action with Approve/Skip buttons before execution
+- [x] Auto mode executes all actions automatically, reporting results in chat
+- [x] Agent handles errors gracefully (element not found, timeout, invalid selector)
+- [x] Agent loop terminates on: done() action, max steps (30), max time (5min), loop detection (3x same action)
+- [x] `npm run build` succeeds with zero TypeScript errors
+- [x] All existing tabs (Grader, Discovery) still work after changes
+- [x] Tests pass for browser-actions, agent-loop, and agent-api
 
 ### Must Have
 - 9 structured browser actions: click, type, scroll, readText, screenshot, waitFor, navigate, runJS, done
@@ -189,7 +189,7 @@ Max Concurrent: 4 (Wave 1)
 
 ## TODOs
 
-- [ ] 1. Agent Types & Constants
+- [x] 1. Agent Types & Constants
 
   **What to do**:
   - Create `ogre-desktop/src/lib/agent-types.ts` with all shared TypeScript types:
@@ -259,7 +259,7 @@ Max Concurrent: 4 (Wave 1)
   - Files: `ogre-desktop/src/lib/agent-types.ts`
   - Pre-commit: `bun test`
 
-- [ ] 2. Interactive-Only DOM Snapshot
+- [x] 2. Interactive-Only DOM Snapshot
 
   **What to do**:
   - Create `ogre-desktop/src/lib/agent-dom.ts`
@@ -338,7 +338,7 @@ Max Concurrent: 4 (Wave 1)
   - Files: `ogre-desktop/src/lib/agent-dom.ts`
   - Pre-commit: `bun test`
 
-- [ ] 3. Browser Action Executor Library
+- [x] 3. Browser Action Executor Library
 
   **What to do**:
   - Create `ogre-desktop/src/lib/browser-actions.ts`
@@ -421,7 +421,7 @@ Max Concurrent: 4 (Wave 1)
   - Files: `ogre-desktop/src/lib/browser-actions.ts`
   - Pre-commit: `bun test`
 
-- [ ] 4. Agent API Client
+- [x] 4. Agent API Client
 
   **What to do**:
   - Create `ogre-desktop/src/lib/agent-api.ts`
@@ -487,7 +487,7 @@ Max Concurrent: 4 (Wave 1)
   - Files: `ogre-desktop/src/lib/agent-api.ts`
   - Pre-commit: `bun test`
 
-- [ ] 5. Server POST /api/agent Endpoint
+- [x] 5. Server POST /api/agent Endpoint
 
   **What to do**:
   - Create `grading-server/agent.js` (new) + update `grading-server/server.js` to register route
@@ -564,7 +564,7 @@ Max Concurrent: 4 (Wave 1)
   - Files: `grading-server/agent.js`, `grading-server/server.js`
   - Pre-commit: `bun test`
 
-- [ ] 6. Agent Loop with Review/Auto Modes
+- [x] 6. Agent Loop with Review/Auto Modes
 
   **What to do**:
   - Create `ogre-desktop/src/lib/agent-loop.ts`
@@ -660,7 +660,7 @@ Max Concurrent: 4 (Wave 1)
   - Files: `ogre-desktop/src/lib/agent-loop.ts`
   - Pre-commit: `bun test`
 
-- [ ] 7. System Prompt + JSON Response Parser
+- [x] 7. System Prompt + JSON Response Parser
 
   **What to do**:
   - Create `ogre-desktop/src/lib/agent-prompt.ts`
@@ -733,7 +733,7 @@ Max Concurrent: 4 (Wave 1)
   - Files: `ogre-desktop/src/lib/agent-prompt.ts`
   - Pre-commit: `bun test`
 
-- [ ] 8. AgentChat.svelte Component
+- [x] 8. AgentChat.svelte Component
 
   **What to do**:
   - Create `ogre-desktop/src/components/grading/AgentChat.svelte`
@@ -815,7 +815,7 @@ Max Concurrent: 4 (Wave 1)
   - Files: `ogre-desktop/src/components/grading/AgentChat.svelte`
   - Pre-commit: `npm run build`
 
-- [ ] 9. GradingPanel Integration
+- [x] 9. GradingPanel Integration
 
   **What to do**:
   - Update `ogre-desktop/src/pages/GradingPanel.svelte`
@@ -870,7 +870,7 @@ Max Concurrent: 4 (Wave 1)
   - Files: `ogre-desktop/src/pages/GradingPanel.svelte`
   - Pre-commit: `npm run build`
 
-- [ ] 10. Unit Tests for browser-actions + agent-loop
+- [x] 10. Unit Tests for browser-actions + agent-loop
 
   **What to do**:
   - Create `ogre-desktop/src/lib/browser-actions.test.ts`
@@ -941,7 +941,7 @@ Max Concurrent: 4 (Wave 1)
   - Files: `ogre-desktop/src/lib/browser-actions.test.ts`, `ogre-desktop/src/lib/agent-loop.test.ts`
   - Pre-commit: `bun test`
 
-- [ ] 11. Integration Tests for /api/agent
+- [x] 11. Integration Tests for /api/agent
 
   **What to do**:
   - Create `grading-server/test/agent.test.js`
@@ -997,7 +997,7 @@ Max Concurrent: 4 (Wave 1)
   - Files: `grading-server/test/agent.test.js`
   - Pre-commit: `bun test`
 
-- [ ] 12. End-to-End QA
+- [x] 12. End-to-End QA
 
   **What to do**:
   - No new files — verification task only
@@ -1074,19 +1074,19 @@ Max Concurrent: 4 (Wave 1)
 
 > 4 review agents run in PARALLEL. ALL must APPROVE. Rejection → fix → re-run.
 
-- [ ] F1. **Plan Compliance Audit** — `oracle`
+- [x] F1. **Plan Compliance Audit** — `oracle`
   Read the plan end-to-end. For each "Must Have": verify implementation exists (read file, curl endpoint, run command). For each "Must NOT Have": search codebase for forbidden patterns — reject with file:line if found. Check evidence files exist in .sisyphus/evidence/. Compare deliverables against plan.
   Output: `Must Have [N/N] | Must NOT Have [N/N] | Tasks [N/N] | VERDICT: APPROVE/REJECT`
 
-- [ ] F2. **Code Quality Review** — `unspecified-high`
+- [x] F2. **Code Quality Review** — `unspecified-high`
   Run `tsc --noEmit` (or build equivalent). Review all changed files for: `as any`/`@ts-ignore`, empty catches, console.log in prod, commented-out code, unused imports. Check AI slop: excessive comments, over-abstraction, generic names (data/result/item/temp).
   Output: `Build [PASS/FAIL] | Files [N clean/N issues] | VERDICT`
 
-- [ ] F3. **Real Manual QA** — `unspecified-high` (+ `playwright` skill if UI)
+- [x] F3. **Real Manual QA** — `unspecified-high` (+ `playwright` skill if UI)
   Start from clean state. Execute EVERY QA scenario from EVERY task — follow exact steps, capture evidence. Test cross-task integration (features working together, not isolation). Test edge cases: empty state, invalid input, rapid actions. Save to `.sisyphus/evidence/final-qa/`.
   Output: `Scenarios [N/N pass] | Integration [N/N] | Edge Cases [N tested] | VERDICT`
 
-- [ ] F4. **Scope Fidelity Check** — `deep`
+- [x] F4. **Scope Fidelity Check** — `deep`
   For each task: read "What to do", read actual diff (git log/diff). Verify 1:1 — everything in spec was built (no missing), nothing beyond spec was built (no creep). Check "Must NOT do" compliance. Detect cross-task contamination: Task N touching Task M's files. Flag unaccounted changes.
   Output: `Tasks [N/N compliant] | Contamination [CLEAN/N issues] | Unaccounted [CLEAN/N files] | VERDICT`
 
@@ -1121,13 +1121,13 @@ curl -s http://localhost:3456/health     # Expected: {"status":"ok"}
 ```
 
 ### Final Checklist
-- [ ] All "Must Have" present
-- [ ] All "Must NOT Have" absent
-- [ ] All tests pass
-- [ ] Build succeeds
-- [ ] Agent tab visible in GradingPanel
-- [ ] SolverChat no longer imported
-- [ ] Agent executes actions on webview
-- [ ] Review mode shows Approve/Skip
-- [ ] Auto mode runs without pausing
-- [ ] Safety limits enforced (max steps, time, loop detection)
+- [x] All "Must Have" present
+- [x] All "Must NOT Have" absent
+- [x] All tests pass
+- [x] Build succeeds
+- [x] Agent tab visible in GradingPanel
+- [x] SolverChat no longer imported
+- [x] Agent executes actions on webview
+- [x] Review mode shows Approve/Skip
+- [x] Auto mode runs without pausing
+- [x] Safety limits enforced (max steps, time, loop detection)

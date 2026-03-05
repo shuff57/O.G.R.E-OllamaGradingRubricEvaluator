@@ -55,9 +55,9 @@ Route the CDP `/json` discovery HTTP call through a Rust Tauri command so it byp
 - Updated test expectations in `cdp-actions.test.ts` (if they exist)
 
 ### Definition of Done
-- [ ] `cargo build` succeeds with zero errors
-- [ ] `npx vitest run` passes all tests
-- [ ] Batch grading pipeline connects to CDP without CORS errors
+- [x] `cargo build` succeeds with zero errors
+- [x] `npx vitest run` passes all tests
+- [x] Batch grading pipeline connects to CDP without CORS errors
 
 ### Must Have
 - Rust command fetches `http://127.0.0.1:{port}/json` with 3-second timeout
@@ -129,7 +129,7 @@ Wave 2 (After Wave 1 — integration):
 
 ## TODOs
 
-- [ ] 1. Add reqwest dependency and `discover_cdp_target` Rust command
+- [x] 1. Add reqwest dependency and `discover_cdp_target` Rust command
 
   **What to do**:
   - Add `reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }` to `[dependencies]` in `src-tauri/Cargo.toml`
@@ -226,7 +226,7 @@ Wave 2 (After Wave 1 — integration):
 
 ---
 
-- [ ] 2. Add `connectToUrl()` public method to CDPClient
+- [x] 2. Add `connectToUrl()` public method to CDPClient
 
   **What to do**:
   - Add a new public method `connectToUrl(wsUrl: string): Promise<boolean>` to the `CDPClient` class in `cdp-client.ts`
@@ -301,7 +301,7 @@ Wave 2 (After Wave 1 — integration):
 
 ---
 
-- [ ] 3. Rewire `connectCDP()` to use Rust discovery + update tests
+- [x] 3. Rewire `connectCDP()` to use Rust discovery + update tests
 
   **What to do**:
   - Modify `connectCDP()` in `cdp-actions.ts` (lines 51-69) to:
@@ -413,11 +413,11 @@ cd ogre-desktop && npx vitest run          # Expected: All tests pass
 ```
 
 ### Final Checklist
-- [ ] `discover_cdp_target` registered in `generate_handler![]`
-- [ ] `connectToUrl()` exported from cdp-client.ts
-- [ ] `cdp-client.ts` has zero imports from `@tauri-apps/api`
-- [ ] `cdp-client.ts::connect(port)` and `MAIN_APP_PATTERNS` unchanged
-- [ ] Rust HTTP request has timeout configured (3s)
-- [ ] Target filtering in Rust matches TypeScript exactly
-- [ ] `cargo build` succeeds
-- [ ] `npx vitest run` passes
+- [x] `discover_cdp_target` registered in `generate_handler![]`
+- [x] `connectToUrl()` exported from cdp-client.ts
+- [x] `cdp-client.ts` has zero imports from `@tauri-apps/api`
+- [x] `cdp-client.ts::connect(port)` and `MAIN_APP_PATTERNS` unchanged
+- [x] Rust HTTP request has timeout configured (3s)
+- [x] Target filtering in Rust matches TypeScript exactly
+- [x] `cargo build` succeeds
+- [x] `npx vitest run` passes

@@ -61,11 +61,11 @@ Create two skill files: a fact-finding browser automation skill that discovers q
 - `.sisyphus/evidence/task-1-recon/` — DOM reconnaissance findings
 
 ### Definition of Done
-- [ ] Fact-finder skill can be loaded via `load_skills=["mom-fact-finder"]` in a `task()` call
-- [ ] Pattern library can be loaded via `load_skills=["mom-patterns"]` in a `task()` call
-- [ ] Fact-finder instructions reference validated selectors (not assumptions from edit-page map)
-- [ ] Pattern library has defined section format, size limits, and update protocol
-- [ ] End-to-end: invoking the fact-finder for a known topic produces extracted code + synthesized pattern + library update
+- [x] Fact-finder skill can be loaded via `load_skills=["mom-fact-finder"]` in a `task()` call
+- [x] Pattern library can be loaded via `load_skills=["mom-patterns"]` in a `task()` call
+- [x] Fact-finder instructions reference validated selectors (not assumptions from edit-page map)
+- [x] Pattern library has defined section format, size limits, and update protocol
+- [x] End-to-end: invoking the fact-finder for a known topic produces extracted code + synthesized pattern + library update
 
 ### Must Have
 - READ-ONLY safety: skill ONLY uses `viewonly=1` URLs, NEVER navigates to edit mode or clicks Save/Delete
@@ -157,7 +157,7 @@ Max Concurrent: 2 (Waves 2 & 3)
 
 ## TODOs
 
-- [ ] 1. MOM Viewonly Page DOM Reconnaissance
+- [x] 1. MOM Viewonly Page DOM Reconnaissance
 
   **What to do**:
   - Navigate to MOM's Question Set Management page (`manageqset.php?cid={cid}`) using Playwriter
@@ -264,7 +264,7 @@ Max Concurrent: 2 (Waves 2 & 3)
   - Message: `feat(skills): add DOM recon evidence for MOM viewonly pages`
   - Files: `.sisyphus/evidence/task-1-recon/*`
 
-- [ ] 2. Write `mom-fact-finder/CLAUDE.md` Skill File
+- [x] 2. Write `mom-fact-finder/CLAUDE.md` Skill File
 
   **What to do**:
   - Create `.claude/skills/mom-fact-finder/CLAUDE.md` — a complete Playwriter-based skill for browsing MOM's question bank and extracting patterns
@@ -389,7 +389,7 @@ Max Concurrent: 2 (Waves 2 & 3)
   - Message: `feat(skills): add mom-fact-finder and mom-patterns skills`
   - Files: `.claude/skills/mom-fact-finder/CLAUDE.md`, `.claude/skills/mom-patterns/CLAUDE.md`
 
-- [ ] 3. Write `mom-patterns/CLAUDE.md` Initial Scaffold
+- [x] 3. Write `mom-patterns/CLAUDE.md` Initial Scaffold
 
   **What to do**:
   - Create `.claude/skills/mom-patterns/CLAUDE.md` — the persistent, growing pattern library
@@ -458,7 +458,7 @@ Max Concurrent: 2 (Waves 2 & 3)
   - Message: `feat(skills): add mom-fact-finder and mom-patterns skills`
   - Files: `.claude/skills/mom-fact-finder/CLAUDE.md`, `.claude/skills/mom-patterns/CLAUDE.md`
 
-- [ ] 4. End-to-End Live Test of Fact-Finder
+- [x] 4. End-to-End Live Test of Fact-Finder
 
   **What to do**:
   - Load the `mom-fact-finder` skill and execute it against MOM for a real topic
@@ -552,7 +552,7 @@ Max Concurrent: 2 (Waves 2 & 3)
 
   **Commit**: NO (evidence only, pattern library update is the deliverable)
 
-- [ ] 5. Pattern Library Idempotency + Load Verification
+- [x] 5. Pattern Library Idempotency + Load Verification
 
   **What to do**:
   - Verify that `mom-patterns/CLAUDE.md` can be loaded via `load_skills` in a `task()` call
@@ -632,19 +632,19 @@ Max Concurrent: 2 (Waves 2 & 3)
 
 > 4 review agents run in PARALLEL. ALL must APPROVE. Rejection → fix → re-run.
 
-- [ ] F1. **Plan Compliance Audit** — `oracle`
+- [x] F1. **Plan Compliance Audit** — `oracle`
   Read the plan end-to-end. For each "Must Have": verify implementation exists (read skill file, check content). For each "Must NOT Have": search skill files for forbidden patterns — reject with file:line if found. Check evidence files exist in `.sisyphus/evidence/`. Compare deliverables against plan.
   Output: `Must Have [N/N] | Must NOT Have [N/N] | Tasks [N/N] | VERDICT: APPROVE/REJECT`
 
-- [ ] F2. **Skill Quality Review** — `unspecified-high`
+- [x] F2. **Skill Quality Review** — `unspecified-high`
   Read both skill files. Check for: vague instructions that leave room for interpretation, missing selector references, missing error handling, inconsistent formatting vs existing skills (`mom-frq`, `mom-page-map`, `gb-pipeline`). Verify the pattern library entry format is concrete and machine-followable. Check that all MOM URLs include `{cid}` placeholder. Verify READ-ONLY safety rules are present and prominent.
   Output: `Fact-finder [PASS/FAIL] | Patterns [PASS/FAIL] | Consistency [N issues] | VERDICT`
 
-- [ ] F3. **Real Live QA with Playwriter** — `unspecified-high` (+ `playwriter` skill)
+- [x] F3. **Real Live QA with Playwriter** — `unspecified-high` (+ `playwriter` skill)
   Start from clean state. Load `mom-fact-finder` skill. Navigate to MOM. Search for a known topic (e.g., "statistics" or "hypothesis"). Verify search results appear. Open one question in viewonly mode. Verify code extraction works with the documented selectors. Capture evidence screenshots/snapshots.
   Output: `Search [PASS/FAIL] | Navigation [PASS/FAIL] | Extraction [PASS/FAIL] | VERDICT`
 
-- [ ] F4. **Scope Fidelity Check** — `deep`
+- [x] F4. **Scope Fidelity Check** — `deep`
   For each task: read "What to do", read actual deliverable. Verify 1:1 — everything in spec was built (no missing), nothing beyond spec was built (no creep). Check "Must NOT do" compliance. Detect if any existing skill files were modified (they should NOT be). Flag unaccounted changes.
   Output: `Tasks [N/N compliant] | Existing files [CLEAN/MODIFIED] | Unaccounted [CLEAN/N files] | VERDICT`
 
@@ -661,10 +661,10 @@ Max Concurrent: 2 (Waves 2 & 3)
 ## Success Criteria
 
 ### Final Checklist
-- [ ] `.claude/skills/mom-fact-finder/CLAUDE.md` exists and loads via `load_skills`
-- [ ] `.claude/skills/mom-patterns/CLAUDE.md` exists and loads via `load_skills`
-- [ ] Fact-finder skill references validated selectors from recon (not assumptions)
-- [ ] READ-ONLY safety rules present in fact-finder skill
-- [ ] Pattern library entry format is concrete (not vague)
-- [ ] End-to-end test evidence exists in `.sisyphus/evidence/`
-- [ ] No existing skill files were modified (`mom-frq`, `mom-page-map`, `gb-*`)
+- [x] `.claude/skills/mom-fact-finder/CLAUDE.md` exists and loads via `load_skills`
+- [x] `.claude/skills/mom-patterns/CLAUDE.md` exists and loads via `load_skills`
+- [x] Fact-finder skill references validated selectors from recon (not assumptions)
+- [x] READ-ONLY safety rules present in fact-finder skill
+- [x] Pattern library entry format is concrete (not vague)
+- [x] End-to-end test evidence exists in `.sisyphus/evidence/`
+- [x] No existing skill files were modified (`mom-frq`, `mom-page-map`, `gb-*`)

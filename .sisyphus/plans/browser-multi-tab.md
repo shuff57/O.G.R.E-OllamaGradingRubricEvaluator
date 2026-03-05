@@ -53,14 +53,14 @@ Allow the user to open multiple browser tabs simultaneously, each maintaining it
 - `ogre-desktop/src/pages/Browser.svelte` — tab bar UI, `tabs` state array, `activeTabId`, tab switching/creation/closing logic
 
 ### Definition of Done
-- [ ] Multiple tabs can be opened simultaneously
-- [ ] Switching tabs hides the old webview and shows the new one (page state preserved)
-- [ ] Each tab has its own URL/title/loading indicator
-- [ ] New tab button opens a blank/preset tab
-- [ ] Close button on each tab destroys that webview
-- [ ] Quick Launch presets open in the current tab (or a new tab)
-- [ ] All existing tests pass
-- [ ] No TypeScript errors
+- [x] Multiple tabs can be opened simultaneously
+- [x] Switching tabs hides the old webview and shows the new one (page state preserved)
+- [x] Each tab has its own URL/title/loading indicator
+- [x] New tab button opens a blank/preset tab
+- [x] Close button on each tab destroys that webview
+- [x] Quick Launch presets open in the current tab (or a new tab)
+- [x] All existing tests pass
+- [x] No TypeScript errors
 
 ### Must Have
 - Tab bar above the address bar showing all open tabs
@@ -124,7 +124,7 @@ Wave FINAL (Verification):
 
 ## TODOs
 
-- [ ] 1. Rust: Generalize all browser commands to accept `tab_id`
+- [x] 1. Rust: Generalize all browser commands to accept `tab_id`
 
   **What to do**:
   1. Change `WebviewState` struct: `label: Option<String>` → `tabs: HashMap<String, String>`
@@ -192,7 +192,7 @@ Wave FINAL (Verification):
 
   **Commit**: NO — commit after T4 (full feature)
 
-- [ ] 2. TypeScript: Update browser.ts — add tabId param to all functions
+- [x] 2. TypeScript: Update browser.ts — add tabId param to all functions
 
   **What to do**:
   1. Read `ogre-desktop/src/lib/browser.ts` fully first
@@ -244,7 +244,7 @@ Wave FINAL (Verification):
 
   **Commit**: NO — commit after T4
 
-- [ ] 3. Svelte: Tab bar UI component (visual only)
+- [x] 3. Svelte: Tab bar UI component (visual only)
 
   **What to do**:
   Add a tab bar UI to `Browser.svelte` ABOVE the `.nav-bar` (address bar). The tab bar is visual-only in this task — no wiring to real webviews yet.
@@ -317,7 +317,7 @@ Wave FINAL (Verification):
 
   **Commit**: NO — commit after T4
 
-- [ ] 4. Svelte: Wire tab state management to real webview commands
+- [x] 4. Svelte: Wire tab state management to real webview commands
 
   **What to do**:
   This is the main integration task. Replace all single-tab state with per-tab state.
@@ -457,7 +457,7 @@ Wave FINAL (Verification):
 
 ## Final Verification Wave
 
-- [ ] F1. **Plan Compliance Audit** — `quick`
+- [x] F1. **Plan Compliance Audit** — `quick`
   1. Verify `WebviewState` in lib.rs uses `HashMap`
   2. Verify `create_embedded_browser` creates label `embedded-browser-{tab_id}`
   3. Verify all browser commands in browser.ts have `tabId: string` param
@@ -466,7 +466,7 @@ Wave FINAL (Verification):
   6. Verify no files outside `lib.rs`, `browser.ts`, `Browser.svelte` were modified (except test files if updated)
   Output: `Deliverables [N/N] | VERDICT: APPROVE/REJECT`
 
-- [ ] F2. **Regression Test + Compile** — `quick`
+- [x] F2. **Regression Test + Compile** — `quick`
   1. `cargo build` (Rust) — exit 0
   2. `npx vitest run --config ogre-desktop/vitest.config.ts ogre-desktop/src/lib/browser.test.ts` — PASS
   3. LSP diagnostics clean on all 3 changed files
@@ -476,8 +476,8 @@ Wave FINAL (Verification):
 
 ## Success Criteria
 
-- [ ] Multi-tab UI visible with tab bar
-- [ ] Two sites can be open simultaneously without losing login state
-- [ ] Switching tabs is instant (hide/show, not reload)
-- [ ] All existing browser tests pass
-- [ ] Rust compiles clean
+- [x] Multi-tab UI visible with tab bar
+- [x] Two sites can be open simultaneously without losing login state
+- [x] Switching tabs is instant (hide/show, not reload)
+- [x] All existing browser tests pass
+- [x] Rust compiles clean

@@ -55,13 +55,13 @@ Make locally installed Claude Code skills (from `~/.claude/skills/`) visible and
 - `ogre-desktop/src/pages/Skills.svelte` — "Sync Local Skills" button + auto-sync on mount
 
 ### Definition of Done
-- [ ] `scan_claude_skills` Tauri command returns skill folders from `~/.claude/skills/`
-- [ ] `syncLocalSkills()` imports new skills into OGRE DB, skips existing ones
-- [ ] Skills page shows a "Sync Local Skills" button
-- [ ] Skills page auto-syncs on mount (silent, no UI blocking)
-- [ ] After sync, gb-pipeline, gb-compare, gb-new-assignment, gb-sync appear in "My Skills"
-- [ ] Running sync again does NOT create duplicates
-- [ ] All existing tests pass
+- [x] `scan_claude_skills` Tauri command returns skill folders from `~/.claude/skills/`
+- [x] `syncLocalSkills()` imports new skills into OGRE DB, skips existing ones
+- [x] Skills page shows a "Sync Local Skills" button
+- [x] Skills page auto-syncs on mount (silent, no UI blocking)
+- [x] After sync, gb-pipeline, gb-compare, gb-new-assignment, gb-sync appear in "My Skills"
+- [x] Running sync again does NOT create duplicates
+- [x] All existing tests pass
 
 ### Must Have
 - `scan_claude_skills` reads `SKILL.md` first, then `CLAUDE.md` from each subdirectory
@@ -101,7 +101,7 @@ Wave FINAL:
 
 ## TODOs
 
-- [ ] 1. Rust: Add `scan_claude_skills` command
+- [x] 1. Rust: Add `scan_claude_skills` command
 
   **What to do**:
 
@@ -189,7 +189,7 @@ Wave FINAL:
 
   **Commit**: NO — commit after F1/F2
 
-- [ ] 2. TypeScript: Add `syncLocalSkills()` to skills-api.ts
+- [x] 2. TypeScript: Add `syncLocalSkills()` to skills-api.ts
 
   **What to do**:
 
@@ -289,7 +289,7 @@ Wave FINAL:
 
   **Commit**: NO — commit after F1/F2
 
-- [ ] 3. Svelte: Add sync button + auto-sync to Skills.svelte
+- [x] 3. Svelte: Add sync button + auto-sync to Skills.svelte
 
   **What to do**:
 
@@ -392,7 +392,7 @@ Wave FINAL:
 
 ## Final Verification Wave
 
-- [ ] F1. **Plan Compliance Audit** — `quick`
+- [x] F1. **Plan Compliance Audit** — `quick`
   1. Verify `scan_claude_skills` in lib.rs: struct defined, function defined, registered in invoke_handler
   2. Verify `syncLocalSkills` in skills-api.ts: exported, uses correct source/source_id, calls getSkillBySource
   3. Verify Skills.svelte: button present, auto-sync in onMount, syncing state
@@ -400,7 +400,7 @@ Wave FINAL:
   5. Verify no files outside 3 target files were modified
   Output: `Deliverables [N/N] | VERDICT: APPROVE/REJECT`
 
-- [ ] F2. **Compile + Regression Tests** — `quick`
+- [x] F2. **Compile + Regression Tests** — `quick`
   1. `cargo build` — exit 0
   2. `npx vitest run --config ogre-desktop/vitest.config.ts ogre-desktop/src/lib/skills-api.test.ts` — PASS
   3. LSP diagnostics clean on all 3 changed files
@@ -410,9 +410,9 @@ Wave FINAL:
 
 ## Success Criteria
 
-- [ ] `scan_claude_skills` Rust command compiles and registered
-- [ ] `syncLocalSkills()` exported from skills-api.ts
-- [ ] Skills page has "Sync Local Skills" button
-- [ ] After sync, gb-pipeline et al appear in My Skills
-- [ ] No duplicates on repeated sync
-- [ ] All existing tests pass
+- [x] `scan_claude_skills` Rust command compiles and registered
+- [x] `syncLocalSkills()` exported from skills-api.ts
+- [x] Skills page has "Sync Local Skills" button
+- [x] After sync, gb-pipeline et al appear in My Skills
+- [x] No duplicates on repeated sync
+- [x] All existing tests pass

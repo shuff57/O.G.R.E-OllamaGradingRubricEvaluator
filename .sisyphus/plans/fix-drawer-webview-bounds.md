@@ -53,10 +53,10 @@ Fix the webview bounds calculation to account for the GradingPanel drawer width,
 - `FloatingDrawerButton.svelte` — deleted
 
 ### Definition of Done
-- [ ] `cd ogre-desktop && npm run build` succeeds with zero errors
-- [ ] `grep -r "FloatingDrawerButton" ogre-desktop/src/` returns 0 matches
-- [ ] `grep -r "hideFloatingButton" ogre-desktop/src/` returns 0 matches
-- [ ] `FloatingDrawerButton.svelte` file does not exist
+- [x] `cd ogre-desktop && npm run build` succeeds with zero errors
+- [x] `grep -r "FloatingDrawerButton" ogre-desktop/src/` returns 0 matches
+- [x] `grep -r "hideFloatingButton" ogre-desktop/src/` returns 0 matches
+- [x] `FloatingDrawerButton.svelte` file does not exist
 
 ### Must Have
 - Webview width subtracts drawer width when drawer is open/expanded
@@ -319,9 +319,9 @@ test ! -f ogre-desktop/src/components/FloatingDrawerButton.svelte  # Expected: e
 ```
 
 ### Final Checklist
-- [ ] Webview width calculation subtracts drawer width (using state variables)
-- [ ] Nav-bar toggle calls `toggleDrawer()` (persists state)
-- [ ] FloatingDrawerButton component fully removed (import, usage, file)
-- [ ] Dead callbacks cleaned up (onBeforeCapture/onAfterCapture)
-- [ ] Z-index comment updated
-- [ ] Build passes cleanly
+- [x] Webview width calculation subtracts drawer width (using state variables)
+- [x] Nav-bar toggle calls `toggleDrawer()` (persists state)
+- [x] FloatingDrawerButton component fully removed (import, usage, file)
+- [x] Dead callbacks cleaned up (onBeforeCapture/onAfterCapture)
+- [x] Z-index comment updated
+- [x] Build passes cleanly

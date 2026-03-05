@@ -53,11 +53,11 @@ Eliminate resize lag by throttling width updates to animation frame rate and rem
 - Modified `ogre-desktop/src/pages/GradingPanel.svelte` with RAF-batched resize and `.resizing` CSS class
 
 ### Definition of Done
-- [ ] `npm run build` in `ogre-desktop/` exits with code 0
-- [ ] Drawer resize updates at RAF rate (max ~60 calls/sec) instead of unbounded mousemove rate
-- [ ] CSS transition disabled during active drag via `.resizing` class
-- [ ] Final webview bounds match panel width exactly after mouseup
-- [ ] Non-drag interactions (toggle collapse, panel visibility) still trigger immediate bounds updates
+- [x] `npm run build` in `ogre-desktop/` exits with code 0
+- [x] Drawer resize updates at RAF rate (max ~60 calls/sec) instead of unbounded mousemove rate
+- [x] CSS transition disabled during active drag via `.resizing` class
+- [x] Final webview bounds match panel width exactly after mouseup
+- [x] Non-drag interactions (toggle collapse, panel visibility) still trigger immediate bounds updates
 
 ### Must Have
 - RAF batching in `handleResizeMove` so width updates only propagate at display refresh rate
@@ -309,7 +309,7 @@ git diff --name-only  # Expected: only ogre-desktop/src/pages/GradingPanel.svelt
 ```
 
 ### Final Checklist
-- [ ] All "Must Have" present (RAF batching, .resizing CSS, final flush, onDestroy cleanup, toggleCollapse guard)
-- [ ] All "Must NOT Have" absent (no Browser.svelte changes, no lib.rs changes, no Svelte 4 syntax in GradingPanel)
-- [ ] Build passes (`npm run build` exit 0)
-- [ ] Only GradingPanel.svelte modified
+- [x] All "Must Have" present (RAF batching, .resizing CSS, final flush, onDestroy cleanup, toggleCollapse guard)
+- [x] All "Must NOT Have" absent (no Browser.svelte changes, no lib.rs changes, no Svelte 4 syntax in GradingPanel)
+- [x] Build passes (`npm run build` exit 0)
+- [x] Only GradingPanel.svelte modified

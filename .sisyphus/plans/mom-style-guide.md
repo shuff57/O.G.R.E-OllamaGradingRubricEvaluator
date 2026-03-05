@@ -55,14 +55,14 @@ Create a single markdown file (`.claude/skills/mom-style-guide/CLAUDE.md`) under
 - `.claude/skills/mom-style-guide/CLAUDE.md` — the complete style guide
 
 ### Definition of Done
-- [ ] File exists at `.claude/skills/mom-style-guide/CLAUDE.md`
-- [ ] Contains all 6 required sections (voice, rubric, randomization, guardrails, visual, naming)
-- [ ] Under 300 lines
-- [ ] Zero em dashes in the file
-- [ ] Cross-references `mom-frq` by name at least 2 times
-- [ ] Contains at least 2 explicit "does NOT cover" exclusion statements
-- [ ] No verbatim CSS block duplication from `mom-frq/CLAUDE.md`
-- [ ] No code blocks longer than 5 lines
+- [x] File exists at `.claude/skills/mom-style-guide/CLAUDE.md`
+- [x] Contains all 6 required sections (voice, rubric, randomization, guardrails, visual, naming)
+- [x] Under 300 lines
+- [x] Zero em dashes in the file
+- [x] Cross-references `mom-frq` by name at least 2 times
+- [x] Contains at least 2 explicit "does NOT cover" exclusion statements
+- [x] No verbatim CSS block duplication from `mom-frq/CLAUDE.md`
+- [x] No code blocks longer than 5 lines
 
 ### Must Have
 - "Relationship to Existing Skills" section at the top mapping what each companion file covers
@@ -147,7 +147,7 @@ Max Concurrent: 4 (Wave FINAL only)
 
 ## TODOs
 
-- [ ] 1. Write the MOM Style Guide
+- [x] 1. Write the MOM Style Guide
 
   **What to do**:
   - Create the directory `.claude/skills/mom-style-guide/` if it doesn't exist
@@ -293,7 +293,7 @@ Max Concurrent: 4 (Wave FINAL only)
 
 ---
 
-- [ ] 2. Run Full QA Verification Suite
+- [x] 2. Run Full QA Verification Suite
 
   **What to do**:
   - Run all 6 QA acceptance scenarios from Task 1 independently (re-verify, don't trust Task 1's self-check)
@@ -361,19 +361,19 @@ Max Concurrent: 4 (Wave FINAL only)
 
 > 4 review agents run in PARALLEL. ALL must APPROVE. Rejection → fix → re-run.
 
-- [ ] F1. **Plan Compliance Audit** — `oracle`
+- [x] F1. **Plan Compliance Audit** — `oracle`
   Read the plan end-to-end. For each "Must Have": verify implementation exists in the style guide file. For each "Must NOT Have": search the file for forbidden patterns — reject with line reference if found. Check evidence files exist in `.sisyphus/evidence/`. Compare deliverables against plan.
   Output: `Must Have [N/N] | Must NOT Have [N/N] | Tasks [N/N] | VERDICT: APPROVE/REJECT`
 
-- [ ] F2. **Content Quality Review** — `unspecified-high`
+- [x] F2. **Content Quality Review** — `unspecified-high`
   Read the style guide file end-to-end. Check for: vague instructions that leave room for interpretation, missing cross-references to companion skills, internal contradictions (e.g., "be concise" alongside verbose prose), tone consistency (does the guide itself follow its own voice rules?). Verify each of the 6 sections contains actionable rules, not just vague principles.
   Output: `Sections [N/6 actionable] | Cross-refs [N found] | Contradictions [N found] | Tone [PASS/FAIL] | VERDICT`
 
-- [ ] F3. **Duplication and Consistency Check** — `unspecified-high`
+- [x] F3. **Duplication and Consistency Check** — `unspecified-high`
   Compare the style guide against `mom-frq/CLAUDE.md`, `mom-frq/SKILL.md`, and `mom-matrix-inverse/SKILL.md`. Identify any content that appears in BOTH the style guide AND a companion file (duplication). Verify the style guide's rules don't contradict companion file rules. Check that the hierarchy (philosophy > workflow > reference) is maintained.
   Output: `Duplicated content [N instances] | Contradictions [N found] | Hierarchy [MAINTAINED/BROKEN] | VERDICT`
 
-- [ ] F4. **Scope Fidelity Check** — `deep`
+- [x] F4. **Scope Fidelity Check** — `deep`
   Verify the guide covers ONLY what was agreed (voice, rubric, randomization, guardrails, visual, naming) and nothing beyond. Check for scope creep: syntax reference material, workflow instructions, assessment-level design, DOM selectors. Verify no existing skill files were modified. Check that exclusion statements exist for out-of-scope areas.
   Output: `In-scope [N/6 sections] | Scope creep [CLEAN/N issues] | Existing files [UNMODIFIED/N changed] | VERDICT`
 
@@ -395,13 +395,13 @@ grep -c "mom-frq" ".claude/skills/mom-style-guide/CLAUDE.md"  # Expected: >= 2
 ```
 
 ### Final Checklist
-- [ ] `.claude/skills/mom-style-guide/CLAUDE.md` exists
-- [ ] All 6 sections present (voice, rubric, randomization, guardrails, visual, naming)
-- [ ] Under 300 lines
-- [ ] Zero em dashes
-- [ ] Cross-references companion skills
-- [ ] Contains exclusion statements
-- [ ] No verbatim CSS duplication
-- [ ] No code blocks > 5 lines
-- [ ] No existing skill files modified
-- [ ] Guide follows its own voice rules (warm, concise, no hedging)
+- [x] `.claude/skills/mom-style-guide/CLAUDE.md` exists
+- [x] All 6 sections present (voice, rubric, randomization, guardrails, visual, naming)
+- [x] Under 300 lines
+- [x] Zero em dashes
+- [x] Cross-references companion skills
+- [x] Contains exclusion statements
+- [x] No verbatim CSS duplication
+- [x] No code blocks > 5 lines
+- [x] No existing skill files modified
+- [x] Guide follows its own voice rules (warm, concise, no hedging)

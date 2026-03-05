@@ -59,11 +59,11 @@ Shift AI grading scores ~2 points higher across all prompt layers and fix MathJa
 - `SETUP.md` — updated documentation (60% floor)
 
 ### Definition of Done
-- [ ] `bun test` in grading-server/ passes (0 failures)
-- [ ] `grep "at least 40%" grading-server/grading-constants.js` returns 0 matches
-- [ ] `grep "backticks" grading-server/grading.js` returns 0 matches
-- [ ] Source and bundle copies are byte-identical (fc/diff shows no differences)
-- [ ] `MathJax.typeset` appears in batch-grader.ts
+- [x] `bun test` in grading-server/ passes (0 failures)
+- [x] `grep "at least 40%" grading-server/grading-constants.js` returns 0 matches
+- [x] `grep "backticks" grading-server/grading.js` returns 0 matches
+- [x] Source and bundle copies are byte-identical (fc/diff shows no differences)
+- [x] `MathJax.typeset` appears in batch-grader.ts
 
 ### Must Have
 - GRADING_PHILOSOPHY floor raised from 40% to 60%
@@ -148,7 +148,7 @@ Max Concurrent: 3 (Wave 1)
 
 ## TODOs
 
-- [ ] 1. Update GRADING_PHILOSOPHY constant + /grade command philosophy
+- [x] 1. Update GRADING_PHILOSOPHY constant + /grade command philosophy
 
   **What to do**:
   - In `grading-server/grading-constants.js`, rewrite the `GRADING_PHILOSOPHY` constant:
@@ -209,7 +209,7 @@ Max Concurrent: 3 (Wave 1)
   - Message: `fix(grading): shift scoring 2 points more generous + fix MathJax rendering`
   - Files: `grading-server/grading-constants.js`, `.claude/commands/grade.md`
 
-- [ ] 2. Update SCORING SCALE descriptions + anchor percentages + MathJax instruction in grading.js
+- [x] 2. Update SCORING SCALE descriptions + anchor percentages + MathJax instruction in grading.js
 
   **What to do**:
   - In `grading-server/grading.js`, make these changes:
@@ -347,7 +347,7 @@ Max Concurrent: 3 (Wave 1)
   **Commit**: YES (groups with all tasks)
   - Files: `grading-server/grading.js`
 
-- [ ] 3. Add MathJax.typeset() call in batch-grader.ts fillGrade()
+- [x] 3. Add MathJax.typeset() call in batch-grader.ts fillGrade()
 
   **What to do**:
   - In `ogre-desktop/src/lib/batch-grader.ts`, in the `fillGrade()` function
@@ -406,7 +406,7 @@ Max Concurrent: 3 (Wave 1)
   **Commit**: YES (groups with all tasks)
   - Files: `ogre-desktop/src/lib/batch-grader.ts`
 
-- [ ] 4. Copy source files to bundle + verify parity
+- [x] 4. Copy source files to bundle + verify parity
 
   **What to do**:
   - Copy `grading-server/grading-constants.js` → `ogre-desktop/src-tauri/binaries/server-bundle/grading-constants.js`
@@ -452,7 +452,7 @@ Max Concurrent: 3 (Wave 1)
   **Commit**: YES (groups with all tasks)
   - Files: `ogre-desktop/src-tauri/binaries/server-bundle/grading-constants.js`, `ogre-desktop/src-tauri/binaries/server-bundle/grading.js`
 
-- [ ] 5. Update SETUP.md documentation
+- [x] 5. Update SETUP.md documentation
 
   **What to do**:
   - In `SETUP.md` line 147, change "Minimum 40% for substantive attempts" to "Minimum 60% for substantive attempts"
@@ -498,19 +498,19 @@ Max Concurrent: 3 (Wave 1)
 
 > 4 review agents run in PARALLEL. ALL must APPROVE. Rejection → fix → re-run.
 
-- [ ] F1. **Plan Compliance Audit** — `oracle`
+- [x] F1. **Plan Compliance Audit** — `oracle`
   Read the plan end-to-end. For each "Must Have": verify implementation exists (grep for expected strings, read changed files). For each "Must NOT Have": search codebase for forbidden patterns — reject with file:line if found. Check evidence files exist in .sisyphus/evidence/. Compare deliverables against plan.
   Output: `Must Have [N/N] | Must NOT Have [N/N] | Tasks [N/N] | VERDICT: APPROVE/REJECT`
 
-- [ ] F2. **Code Quality Review** — `unspecified-high`
+- [x] F2. **Code Quality Review** — `unspecified-high`
   Run `cd grading-server && bun test`. Review all changed files for: broken template literals, unescaped backslashes in LaTeX, mismatched quotes, syntax errors. Verify no changes leaked into parser functions (snapScore, getScaleInfo, parseBatchResponse, parseSingleGradeResponse, validateBatchResults, clampSingleResult).
   Output: `Tests [PASS/FAIL] | Files [N clean/N issues] | Parser Integrity [CLEAN/TAINTED] | VERDICT`
 
-- [ ] F3. **Grep-based QA Verification** — `unspecified-high`
+- [x] F3. **Grep-based QA Verification** — `unspecified-high`
   Run all QA grep commands from the plan: verify "40%" removed from philosophy files, "backticks" removed from grading.js, `\(` present in feedback format instructions, MathJax.typeset in batch-grader.ts, source/bundle parity via diff. Capture all output as evidence.
   Output: `Checks [N/N pass] | VERDICT`
 
-- [ ] F4. **Scope Fidelity Check** — `deep`
+- [x] F4. **Scope Fidelity Check** — `deep`
   For each task: read "What to do", read actual diff (git log/diff). Verify 1:1 — everything in spec was built (no missing), nothing beyond spec was built (no creep). Check "Must NOT do" compliance. Flag unaccounted changes.
   Output: `Tasks [N/N compliant] | Unaccounted [CLEAN/N files] | VERDICT`
 
@@ -537,7 +537,7 @@ diff grading-server/grading-constants.js ogre-desktop/src-tauri/binaries/server-
 ```
 
 ### Final Checklist
-- [ ] All "Must Have" present
-- [ ] All "Must NOT Have" absent
-- [ ] All tests pass
-- [ ] Source/bundle parity confirmed
+- [x] All "Must Have" present
+- [x] All "Must NOT Have" absent
+- [x] All tests pass
+- [x] Source/bundle parity confirmed

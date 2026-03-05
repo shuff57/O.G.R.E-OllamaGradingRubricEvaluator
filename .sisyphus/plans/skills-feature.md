@@ -69,13 +69,13 @@ Build a complete Skills management system that lets educators discover, create, 
 - Tests: `skills-db.test.ts`, `skills-api.test.ts`, `skill-parser.test.ts`
 
 ### Definition of Done
-- [ ] `cd ogre-desktop && npx vitest run` — ALL tests pass (existing + new)
-- [ ] `npm run dev` — Skills tab visible in sidebar, all 3 sub-views functional
-- [ ] Install skill from marketplace → appears in My Skills list
-- [ ] Create skill via chatbot → appears in My Skills list
-- [ ] Upload .md file → appears in My Skills list
-- [ ] Activate skill → content appears in grading/solver AI prompts
-- [ ] Deactivate skill → content removed from subsequent AI calls
+- [x] `cd ogre-desktop && npx vitest run` — ALL tests pass (existing + new)
+- [x] `npm run dev` — Skills tab visible in sidebar, all 3 sub-views functional
+- [x] Install skill from marketplace → appears in My Skills list
+- [x] Create skill via chatbot → appears in My Skills list
+- [x] Upload .md file → appears in My Skills list
+- [x] Activate skill → content appears in grading/solver AI prompts
+- [x] Deactivate skill → content removed from subsequent AI calls
 
 ### Must Have
 - Skills sidebar tab with icon
@@ -178,7 +178,7 @@ Max Concurrent: 3 (Waves 1 & 2)
 
 ## TODOs
 
-- [ ] 1. Spike: Validate skills.sh Content URL Pattern
+- [x] 1. Spike: Validate skills.sh Content URL Pattern
 
   **What to do**:
   - Search skills.sh API for 3 known skills (e.g., "react", "typescript", "testing")
@@ -281,7 +281,7 @@ Max Concurrent: 3 (Waves 1 & 2)
   - Files: `src/lib/skills-api.ts`, `src/lib/skills-api.test.ts`
   - Pre-commit: `cd ogre-desktop && npx vitest run src/lib/skills-api.test.ts`
 
-- [ ] 2. Database Migration v8 + Skills CRUD + TDD Tests
+- [x] 2. Database Migration v8 + Skills CRUD + TDD Tests
 
   **What to do**:
   - **TDD First**: Write failing tests in `ogre-desktop/src/lib/db.test.ts` (or new `skills-db.test.ts`) for all CRUD operations before implementing
@@ -410,7 +410,7 @@ Max Concurrent: 3 (Waves 1 & 2)
   - Files: `src-tauri/src/lib.rs`, `src/lib/db.ts`, `src/lib/db.test.ts`
   - Pre-commit: `cd ogre-desktop && npx vitest run src/lib/db.test.ts`
 
-- [ ] 3. Skills Page Skeleton + Sidebar Navigation
+- [x] 3. Skills Page Skeleton + Sidebar Navigation
 
   **What to do**:
   - Create `ogre-desktop/src/pages/Skills.svelte` with:
@@ -502,7 +502,7 @@ Max Concurrent: 3 (Waves 1 & 2)
   - Files: `src/App.svelte`, `src/pages/Skills.svelte`
   - Pre-commit: `cd ogre-desktop && npm run build`
 
-- [ ] 4. My Skills Sub-View — Card List, Upload, Preview, Toggle, Delete
+- [x] 4. My Skills Sub-View — Card List, Upload, Preview, Toggle, Delete
 
   **What to do**:
   - Install npm dependencies: `gray-matter` (YAML frontmatter parsing) and `marked` (markdown rendering) in `ogre-desktop/package.json`
@@ -639,7 +639,7 @@ Max Concurrent: 3 (Waves 1 & 2)
   - Pre-commit: `cd ogre-desktop && npx vitest run && npm run build`
 
 
-- [ ] 5. Find Skills Sub-View — Marketplace Search, Preview, Install
+- [x] 5. Find Skills Sub-View — Marketplace Search, Preview, Install
 
   **What to do**:
   - Create `src/components/skills/SkillSearch.svelte`:
@@ -780,7 +780,7 @@ Max Concurrent: 3 (Waves 1 & 2)
   - Pre-commit: `cd ogre-desktop && npx vitest run && npm run build`
 
 
-- [ ] 6. Skill Injection into Grading and Solver Chat
+- [x] 6. Skill Injection into Grading and Solver Chat
 
   **What to do**:
   - **TDD First**: Write failing tests for `buildSkillInjection()` before implementing
@@ -931,7 +931,7 @@ Max Concurrent: 3 (Waves 1 & 2)
   - Pre-commit: `cd ogre-desktop && npx vitest run && npm run build`
 
 
-- [ ] 7. Create Skill AI Chatbot Sub-View
+- [x] 7. Create Skill AI Chatbot Sub-View
 
   **What to do**:
   - Create `src/components/skills/SkillCreator.svelte`:
@@ -1089,7 +1089,7 @@ Max Concurrent: 3 (Waves 1 & 2)
   - Files: `src/components/skills/SkillCreator.svelte`, `src/lib/skill-creation-prompt.ts`
   - Pre-commit: `cd ogre-desktop && npm run build`
 
-- [ ] 8. Integration Testing + Polish
+- [x] 8. Integration Testing + Polish
 
   **What to do**:
   - Run all vitest tests across the entire ogre-desktop project: `npx vitest run`
@@ -1235,19 +1235,19 @@ Max Concurrent: 3 (Waves 1 & 2)
 
 > 4 review agents run in PARALLEL. ALL must APPROVE. Rejection → fix → re-run.
 
-- [ ] F1. **Plan Compliance Audit** — `oracle`
+- [x] F1. **Plan Compliance Audit** — `oracle`
   Read the plan end-to-end. For each "Must Have": verify implementation exists (read file, run vitest, check exports). For each "Must NOT Have": search codebase for forbidden patterns (skill versioning code, grading-server modifications, rich editors, per-student selection) — reject with file:line if found. Check evidence files exist in `.sisyphus/evidence/`. Compare deliverables against plan list.
   Output: `Must Have [N/N] | Must NOT Have [N/N] | Tasks [N/N] | VERDICT: APPROVE/REJECT`
 
-- [ ] F2. **Code Quality Review** — `unspecified-high`
+- [x] F2. **Code Quality Review** — `unspecified-high`
   Run `npx vitest run` (ogre-desktop). Review all changed/new files for: `as any`/`@ts-ignore`, empty catches, console.log in production code, commented-out code, unused imports. Check AI slop: excessive comments, over-abstraction, generic variable names. Verify all new files follow existing CSS variable patterns (`--color-*`, `--spacing-*`, `--radius-*`). Verify Svelte 5 runes used correctly (`$state`, `$effect`, not legacy `$:`).
   Output: `Tests [N pass/N fail] | Files [N clean/N issues] | Svelte5 [PASS/FAIL] | VERDICT`
 
-- [ ] F3. **Real Manual QA** — `unspecified-high` (+ `playwright` skill)
+- [x] F3. **Real Manual QA** — `unspecified-high` (+ `playwright` skill)
   Start `npm run dev` in ogre-desktop. Use Playwright to: (1) Click Skills tab in sidebar, (2) Verify My Skills shows empty state, (3) Upload a test .md skill file, (4) Verify skill appears in list, (5) Toggle skill active, (6) Navigate to Find Skills, (7) Search for "react", (8) Preview a result, (9) Install a skill, (10) Navigate to Create Skill, (11) Send a message to chatbot, (12) Verify chatbot responds. Save screenshots to `.sisyphus/evidence/final-qa/`.
   Output: `Scenarios [N/N pass] | Screenshots [N captured] | VERDICT`
 
-- [ ] F4. **Scope Fidelity Check** — `deep`
+- [x] F4. **Scope Fidelity Check** — `deep`
   For each task: read "What to do", read actual diff (`git diff`). Verify 1:1 — everything in spec was built (no missing), nothing beyond spec was built (no creep). Check "Must NOT do" compliance: search for `grading-server/package.json` changes, skill versioning fields, rich text editor components, per-student selection UI. Flag unaccounted changes. Verify no modifications to `grading-server/` directory at all.
   Output: `Tasks [N/N compliant] | Server Changes [CLEAN/N issues] | Unaccounted [CLEAN/N files] | VERDICT`
 
@@ -1275,13 +1275,13 @@ cd ogre-desktop && npm run build   # Expected: Production build succeeds with no
 ```
 
 ### Final Checklist
-- [ ] All "Must Have" features present and functional
-- [ ] All "Must NOT Have" patterns absent from codebase
-- [ ] All vitest tests pass
-- [ ] Production build succeeds
-- [ ] No modifications to grading-server/ directory
-- [ ] Migration v8 creates skills table correctly
-- [ ] Skills tab appears in sidebar with correct icon
-- [ ] Marketplace search returns results from skills.sh
-- [ ] Create Skill chatbot produces valid SKILL.md
-- [ ] Skill injection verified in both grading and solver modes
+- [x] All "Must Have" features present and functional
+- [x] All "Must NOT Have" patterns absent from codebase
+- [x] All vitest tests pass
+- [x] Production build succeeds
+- [x] No modifications to grading-server/ directory
+- [x] Migration v8 creates skills table correctly
+- [x] Skills tab appears in sidebar with correct icon
+- [x] Marketplace search returns results from skills.sh
+- [x] Create Skill chatbot produces valid SKILL.md
+- [x] Skill injection verified in both grading and solver modes
