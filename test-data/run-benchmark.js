@@ -38,6 +38,8 @@ const CONFIG = {
     { provider: 'ollama',     model: 'qwen3.5:397b-cloud',         label: 'Qwen 3.5 397B'    },
     { provider: 'ollama',     model: 'mistral-large-3:675b-cloud', label: 'Mistral Large 3'  },
     { provider: 'ollama',     model: 'gpt-oss:120b-cloud',         label: 'GPT-OSS 120B'     },
+    { provider: 'ollama',     model: 'qwen3.5:9b',                 label: 'Qwen35-9B'        },
+    { provider: 'ollama',     model: 'qwen3:14b',                  label: 'Qwen314B'         },
     { provider: 'anthropic',  model: 'claude-haiku-4-5',           label: 'Haiku 4.5'        },
     { provider: 'anthropic',  model: 'claude-sonnet-4-6',          label: 'Sonnet 4.6'       },
   ],
