@@ -393,7 +393,8 @@ function validateBatchResults(parsed, students, maxScore) {
     // Snap to appropriate granularity
     score = snapScore(score, maxScore);
     console.log('[grade] batch ai_raw=' + item.score + ' factor=' + _parseFactor.toFixed(2) + ' final=' + score + ' (max=' + maxScore + ')');
-    const feedback = (item.feedback || '').trim() || 'Graded by AI.';
+    const rawFeedback = Array.isArray(item.feedback) ? item.feedback.join('\n') : (item.feedback || '');
+    const feedback = String(rawFeedback).trim() || 'Graded by AI.';
 
     // Use the actual student index from the chunk, not the AI's studentIndex
     const studentIndex = idx < students.length
