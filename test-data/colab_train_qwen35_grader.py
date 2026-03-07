@@ -7,8 +7,7 @@ Steps:
   1. Run Cell 1: Install dependencies
   2. Run Cell 2: Load model
   3. Run Cell 3: Upload training data (finetune-grading.jsonl)
-  4. Run Cell 4: Train (saves checkpoint to Google Drive on completion)
-  4b. [RECOVERY] Cell 4b: Load from checkpoint if runtime disconnected
+  4. Run Cell 4: Train (auto-recovers from Google Drive if runtime disconnected)
   5. Run Cell 5: Export GGUF
   6. Run Cell 6: Download GGUF to your machine
 
@@ -155,85 +154,73 @@ print(f"Dataset ready. Sample:\n{dataset[0]['text'][:300]}...")
 
 # ============================================================
 # CELL 4 — Train (2 epochs, ~30-45 min on A100)
+#           Auto-recovers from Google Drive if runtime disconnected
 # ============================================================
 # %%
+import os, glob, shutil
+from google.colab import drive
+from peft import PeftModel
 from trl import SFTTrainer, SFTConfig
 from unsloth.chat_templates import train_on_responses_only
 
-# Only compute loss on assistant responses (not the full prompt)
-trainer = SFTTrainer(
-    model=model,
-    tokenizer=tokenizer,
-    train_dataset=dataset,
-    args=SFTConfig(
-        dataset_text_field="text",
-        max_seq_length=MAX_SEQ_LENGTH,
-        per_device_train_batch_size=1,
-        gradient_accumulation_steps=4,
-        num_train_epochs=2,
-        learning_rate=2e-5,
-        warmup_ratio=0.1,
-        lr_scheduler_type="cosine",
-        fp16=not torch.cuda.is_bf16_supported(),
-        bf16=torch.cuda.is_bf16_supported(),
-        optim="adamw_8bit",
-        logging_steps=5,
-        save_steps=50,
-        output_dir="/content/outputs_qwen35_grader",
-        seed=42,
-        dataset_num_proc=1,
-        report_to="none",  # disable wandb
-    ),
-)
-
-# Train on responses only — model learns assistant outputs, not prompts
-trainer = train_on_responses_only(
-    trainer,
-    instruction_part="<|im_start|>user\n",
-    response_part="<|im_start|>assistant\n",
-)
-
-print("Starting training...")
-train_result = trainer.train()
-print("Training complete!")
-print(f"  Final loss: {train_result.training_loss:.4f}")
-print(f"  Steps: {train_result.global_step}")
-
-# Save checkpoint to Google Drive to survive runtime disconnects
-from google.colab import drive
-import shutil
-
-drive.mount("/content/drive")
-DRIVE_CHECKPOINT_DIR = "/content/drive/MyDrive/qwen35-grader-checkpoint"
-print(f"Saving checkpoint to Drive: {DRIVE_CHECKPOINT_DIR}")
-shutil.copytree(
-    "/content/outputs_qwen35_grader", DRIVE_CHECKPOINT_DIR, dirs_exist_ok=True
-)
-print("Checkpoint saved to Drive — safe to continue even if runtime disconnects.")
-
-
-# ============================================================
-# CELL 4b — RECOVERY: Load from checkpoint (run if runtime disconnected)
-# ============================================================
-# %% [Skip this cell if Cell 4 completed successfully]
-# Run Cells 1 & 2 first to reload the environment, then run this cell
-# instead of Cell 4 to restore training without retraining.
-
-from google.colab import drive
-from peft import PeftModel
-
-drive.mount("/content/drive")
+CHECKPOINT_DIR = "/content/outputs_qwen35_grader"
 DRIVE_CHECKPOINT_DIR = "/content/drive/MyDrive/qwen35-grader-checkpoint"
 
-# Find latest checkpoint
-import os, glob
+# Mount Drive — used for both saving and recovery
+drive.mount("/content/drive")
 
-checkpoints = sorted(glob.glob(f"{DRIVE_CHECKPOINT_DIR}/checkpoint-*"))
-latest = checkpoints[-1] if checkpoints else DRIVE_CHECKPOINT_DIR
-print(f"Loading from: {latest}")
+# Check if a completed checkpoint exists on Drive (runtime recovery)
+drive_checkpoints = sorted(glob.glob(f"{DRIVE_CHECKPOINT_DIR}/checkpoint-*"))
+if drive_checkpoints:
+    latest = drive_checkpoints[-1]
+    print(f"Found Drive checkpoint: {latest}")
+    print("Skipping training — loading from checkpoint instead.")
+    model = PeftModel.from_pretrained(model, latest)
+    print("Model restored. Proceed to Cell 5.")
+else:
+    # No checkpoint — train from scratch
+    trainer = SFTTrainer(
+        model=model,
+        tokenizer=tokenizer,
+        train_dataset=dataset,
+        args=SFTConfig(
+            dataset_text_field="text",
+            max_seq_length=MAX_SEQ_LENGTH,
+            per_device_train_batch_size=1,
+            gradient_accumulation_steps=4,
+            num_train_epochs=2,
+            learning_rate=2e-5,
+            warmup_ratio=0.1,
+            lr_scheduler_type="cosine",
+            fp16=not torch.cuda.is_bf16_supported(),
+            bf16=torch.cuda.is_bf16_supported(),
+            optim="adamw_8bit",
+            logging_steps=5,
+            save_steps=50,
+            output_dir=CHECKPOINT_DIR,
+            seed=42,
+            dataset_num_proc=1,
+            report_to="none",  # disable wandb
+        ),
+    )
 
-model = PeftModel.from_pretrained(model, latest)
-print("Model restored from checkpoint — proceed to Cell 5.")
+    # Train on responses only — model learns assistant outputs, not prompts
+    trainer = train_on_responses_only(
+        trainer,
+        instruction_part="<|im_start|>user\n",
+        response_part="<|im_start|>assistant\n",
+    )
+
+    print("Starting training...")
+    train_result = trainer.train()
+    print("Training complete!")
+    print(f"  Final loss: {train_result.training_loss:.4f}")
+    print(f"  Steps: {train_result.global_step}")
+
+    # Save to Google Drive so runtime disconnects don't lose progress
+    print(f"Saving checkpoint to Drive: {DRIVE_CHECKPOINT_DIR}")
+    shutil.copytree(CHECKPOINT_DIR, DRIVE_CHECKPOINT_DIR, dirs_exist_ok=True)
+    print("Checkpoint saved to Drive.")
 
 
 # ============================================================
@@ -278,13 +265,13 @@ print("""
 Next steps (run locally after download):
 
 1. Move the downloaded .gguf to:
-   O.G.R.E-OllamaGradingRubricEvaluator/fine-tuned-model/qwen3-math-grader.gguf
+   O.G.R.E-OllamaGradingRubricEvaluator/fine-tuned-model/qwen3.5-math-grader.gguf
 
 2. Register in Ollama:
    ollama create qwen3.5-math-grader -f fine-tuned-model/Modelfile-qwen3.5-math-grader
 
 3. Verify:
-   ollama run qwen3.5-math-grader "Grade this: ..."
+   ollama run qwen3.5-math-grader "test"
 
 4. Run benchmark:
    bun run test-data/run-benchmark.js --only=Qwen35-FT --timeout=900000
