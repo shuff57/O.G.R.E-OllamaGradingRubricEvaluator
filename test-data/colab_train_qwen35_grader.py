@@ -226,6 +226,7 @@ else:
 # ============================================================
 # %%
 GGUF_OUTPUT_DIR = "/content/qwen3-math-grader-gguf"
+GGUF_ACTUAL_DIR = "/content/qwen3-math-grader-gguf_gguf"  # Unsloth appends _gguf
 
 print("Exporting to GGUF Q4_K_M...")
 model.save_pretrained_gguf(
@@ -234,12 +235,15 @@ model.save_pretrained_gguf(
     quantization_method="q4_k_m",
 )
 
-import os
+import os, glob
 
-gguf_files = [f for f in os.listdir(GGUF_OUTPUT_DIR) if f.endswith(".gguf")]
-print(f"GGUF files created: {gguf_files}")
+# Unsloth saves to <dir>_gguf — search both locations
+gguf_files = glob.glob(f"{GGUF_ACTUAL_DIR}/*.Q4_K_M.gguf") or glob.glob(
+    f"{GGUF_OUTPUT_DIR}/*.gguf"
+)
+print(f"GGUF files found: {gguf_files}")
 for f in gguf_files:
-    size_gb = os.path.getsize(os.path.join(GGUF_OUTPUT_DIR, f)) / 1024**3
+    size_gb = os.path.getsize(f) / 1024**3
     print(f"  {f}: {size_gb:.2f} GB")
 
 
@@ -253,8 +257,10 @@ for f in gguf_files:
 import os
 from google.colab import files as colab_files
 
-gguf_path = os.path.join(GGUF_OUTPUT_DIR, gguf_files[0])
-print(f"Downloading: {gguf_path}")
+# Unsloth saves to <dir>_gguf — use the known output path directly
+gguf_path = "/content/qwen3-math-grader-gguf_gguf/Qwen3.5-9B.Q4_K_M.gguf"
+size_gb = os.path.getsize(gguf_path) / 1024**3
+print(f"Downloading: {gguf_path} ({size_gb:.2f} GB)")
 print("Save to your local: fine-tuned-model/qwen3.5-math-grader.gguf")
 colab_files.download(gguf_path)
 
