@@ -21,12 +21,6 @@ After download, run in terminal:
 # %%
 import subprocess, sys
 
-# Fix Pillow version conflict with Unsloth (remove _Ink import error)
-subprocess.run(
-    [sys.executable, "-m", "pip", "install", "pillow<10", "-q"],
-    check=True,
-)
-
 subprocess.run(
     [
         sys.executable,
@@ -55,6 +49,12 @@ subprocess.run(
         "sentencepiece",
         "protobuf",
     ],
+    check=True,
+)
+
+# Pin Pillow AFTER unsloth — unsloth upgrades it as a dependency, breaking _Ink import
+subprocess.run(
+    [sys.executable, "-m", "pip", "install", "pillow<10", "-q"],
     check=True,
 )
 
