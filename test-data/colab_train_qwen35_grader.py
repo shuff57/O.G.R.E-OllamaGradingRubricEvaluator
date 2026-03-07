@@ -28,8 +28,6 @@ subprocess.run(
         "pip",
         "install",
         "--upgrade",
-        "--force-reinstall",
-        "--no-cache-dir",
         "unsloth",
         "unsloth_zoo",
     ],
