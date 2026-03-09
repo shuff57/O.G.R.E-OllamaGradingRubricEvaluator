@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>SpeedGrader: Calculus Quiz (Tier 3 - No Rubric, No Description)</title>
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Lato', 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #fff; color: #2d3b45; font-size: 14px; }
+
+    /* === HEADER BAR === */
+    .sg-header {
+      background: #394b58; color: #fff; height: 36px; display: flex; align-items: center;
+      padding: 0 12px; font-size: 12px; position: relative; z-index: 10;
+    }
+    .sg-header-left { display: flex; align-items: center; gap: 10px; }
+    .sg-header-left .icon-btn {
+      background: none; border: none; color: #fff; font-size: 16px; cursor: pointer; opacity: 0.7;
+      width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+    }
+    .sg-header-left .icon-btn:hover { opacity: 1; }
+    .sg-header-center { flex: 1; text-align: center; }
+    .sg-header-center .assignment-title { font-weight: 600; font-size: 13px; }
+    .sg-header-center .assignment-meta { font-size: 11px; color: #a0b0bc; margin-top: 1px; }
+    .sg-header-center .assignment-meta a { color: #8ecaed; text-decoration: none; }
+    .sg-header-right { display: flex; align-items: center; gap: 16px; font-size: 11px; color: #a0b0bc; }
+    .sg-header-right .stat { text-align: center; line-height: 1.3; }
+    .sg-header-right .stat-value { color: #fff; font-size: 12px; }
+    .sg-header-right .stat-label { font-size: 10px; }
+
+    /* === STUDENT NAV BAR === */
+    .sg-student-bar {
+      background: #f5f5f5; border-bottom: 1px solid #c7cdd1; height: 40px;
+      display: flex; align-items: center; justify-content: flex-end; padding: 0 16px; gap: 8px;
+    }
+    .sg-student-bar .nav-arrow {
+      background: none; border: 1px solid #c7cdd1; border-radius: 3px; width: 30px; height: 28px;
+      cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; color: #555;
+    }
+    .sg-student-bar .nav-arrow:hover { background: #e0e0e0; }
+    .sg-student-bar .student-name-display { font-size: 13px; color: #2d3b45; display: flex; align-items: center; gap: 4px; }
+    .sg-student-bar .student-name-display .checkmark { color: #0b874b; font-size: 14px; }
+    .sg-student-bar select {
+      padding: 4px 8px; border: 1px solid #c7cdd1; border-radius: 3px; font-size: 12px;
+      background: #fff; color: #2d3b45; max-width: 200px;
+    }
+
+    /* === MAIN LAYOUT === */
+    .sg-main { display: flex; height: calc(100vh - 76px); }
+
+    /* === LEFT PANEL === */
+    .sg-left {
+      flex: 1; overflow-y: auto; background: #fff; display: flex; flex-direction: column;
+      border-right: 1px solid #c7cdd1;
+    }
+    .iframe-wrapper { flex: 1; position: relative; }
+    .iframe-wrapper iframe { width: 100%; height: 100%; border: none; }
+
+    /* === RIGHT PANEL === */
+    .sg-right {
+      width: 340px; min-width: 340px; overflow-y: auto; background: #f5f5f5;
+      border-left: 1px solid #c7cdd1; padding: 0;
+    }
+    .sg-right-section { padding: 12px 16px; border-bottom: 1px solid #ddd; }
+    .sg-right-section:last-child { border-bottom: none; }
+    .submitted-info { font-size: 12px; color: #8b969e; }
+    .submitted-info strong { color: #2d3b45; }
+    .assessment-title { font-weight: 600; font-size: 14px; color: #2d3b45; margin-bottom: 8px; }
+    .grade-row { display: flex; align-items: center; gap: 12px; }
+    .grade-label { font-size: 11px; color: #8b969e; }
+    .grade-input-wrap { display: flex; align-items: center; gap: 4px; }
+    .grade-input-wrap input {
+      width: 56px; padding: 5px 6px; border: 1px solid #c7cdd1; border-radius: 3px;
+      font-size: 14px; text-align: center; color: #2d3b45;
+    }
+    .status-wrap { display: flex; flex-direction: column; gap: 2px; }
+    .status-wrap label { font-size: 11px; color: #8b969e; }
+    .status-wrap select { padding: 4px 8px; border: 1px solid #c7cdd1; border-radius: 3px; font-size: 12px; }
+    .comments-title { font-weight: 600; font-size: 13px; color: #2d3b45; margin-bottom: 8px; }
+    .comment-count { float: right; font-size: 11px; color: #8b969e; font-weight: 400; }
+    .comment-editor-toolbar {
+      display: flex; align-items: center; gap: 2px; padding: 4px 8px;
+      border: 1px solid #c7cdd1; border-bottom: none; border-radius: 3px 3px 0 0; background: #fafafa;
+    }
+    .comment-editor-toolbar button {
+      background: none; border: none; font-size: 13px; cursor: pointer; padding: 2px 6px;
+      color: #555; border-radius: 2px;
+    }
+    .comment-editor-toolbar button:hover { background: #e0e0e0; }
+    .comment-editor-toolbar select { font-size: 11px; border: 1px solid #c7cdd1; border-radius: 2px; padding: 1px 4px; }
+    .comment-textarea {
+      width: 100%; min-height: 120px; border: 1px solid #c7cdd1; border-radius: 0 0 3px 3px;
+      padding: 8px; font-family: inherit; font-size: 13px; resize: vertical;
+    }
+    .comment-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
+    .comment-footer-left { font-size: 11px; color: #8b969e; }
+    .comment-actions { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+    .comment-actions button {
+      background: none; border: none; font-size: 16px; cursor: pointer; color: #8b969e; padding: 2px;
+    }
+    .comment-actions button:hover { color: #2d3b45; }
+    .btn-submit-comment {
+      background: #2d3b45; color: #fff; border: none; padding: 6px 16px; border-radius: 3px;
+      font-size: 13px; cursor: pointer; font-weight: 600;
+    }
+    .btn-submit-comment:hover { background: #1a2730; }
+    .download-link { font-size: 12px; color: #0770a3; text-decoration: none; display: block; margin-top: 8px; }
+    .download-link:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="sg-header">
+  <div class="sg-header-left">
+    <button class="icon-btn" title="Sidebar">&#9776;</button>
+    <button class="icon-btn" title="Preview">&#128065;</button>
+    <button class="icon-btn" title="Settings">&#9881;</button>
+  </div>
+  <div class="sg-header-center">
+    <div class="assignment-title">Calculus I - Derivatives Exam</div>
+    <div class="assignment-meta">Due Feb 14 at 11:59 PM &middot; <a href="#">MATH-1510 - A2201 (SP26)</a></div>
+  </div>
+  <div class="sg-header-right">
+    <div class="stat"><span class="stat-value">0/12</span><br><span class="stat-label">Graded</span></div>
+    <div class="stat"><span class="stat-value">0 / 20 (0%)</span><br><span class="stat-label">Average</span></div>
+    <div class="stat"><span class="stat-value">1/12</span><br><span class="stat-label">Students</span></div>
+  </div>
+</div>
+
+<!-- STUDENT BAR -->
+<div class="sg-student-bar">
+  <button class="nav-arrow" id="prevStudent" data-testid="previous-student-button">&larr;</button>
+  <span class="student-name-display">
+    <span class="checkmark">&#10003;</span>
+    <select id="students_selectmenu" data-testid="student-select-trigger" aria-label="Select a student">
+      <option data-testid="student-option-0" selected>Anderson, Tyler</option>
+      <option data-testid="student-option-1">Baker, Sophia</option>
+      <option data-testid="student-option-2">Chen, Marcus</option>
+      <option data-testid="student-option-3">Davis, Aaliyah</option>
+      <option data-testid="student-option-4">Garcia, Luis</option>
+      <option data-testid="student-option-5">Harris, Brittany</option>
+      <option data-testid="student-option-6">Jackson, DeShawn</option>
+      <option data-testid="student-option-7">Kim, Sarah</option>
+      <option data-testid="student-option-8">Lopez, Maria</option>
+      <option data-testid="student-option-9">Martinez, Diego</option>
+      <option data-testid="student-option-10">Nguyen, Kevin</option>
+      <option data-testid="student-option-11">Patel, Priya</option>
+    </select>
+  </span>
+  <button class="nav-arrow" id="nextStudent" data-testid="next-student-button">&rarr;</button>
+</div>
+
+<!-- MAIN -->
+<div class="sg-main">
+  <!-- LEFT: Content area — NO description for Tier 3 -->
+  <div class="sg-left">
+    <div class="iframe-wrapper">
+      <iframe id="submission-preview-iframe" srcdoc=""></iframe>
+    </div>
+  </div>
+
+  <!-- RIGHT: Grading sidebar — NO RUBRIC -->
+  <div class="sg-right">
+    <div class="sg-right-section">
+      <div class="submitted-info"><strong>Submitted:</strong> <span id="submit-date">Feb 12 at 9:14 PM</span></div>
+    </div>
+
+    <div class="sg-right-section">
+      <div class="assessment-title">Assessment</div>
+      <div class="grade-row">
+        <div>
+          <div class="grade-label">Grade out of 20</div>
+          <div class="grade-input-wrap">
+            <input type="text" id="grade_input" data-testid="grade-input" aria-label="Grade out of 20" value="">
+          </div>
+        </div>
+        <div class="status-wrap">
+          <label>Status</label>
+          <select><option>None</option><option>Late</option><option>Missing</option><option>Excused</option></select>
+        </div>
+      </div>
+    </div>
+
+    <div class="sg-right-section">
+      <div class="comments-title">Comments for this Attempt <span class="comment-count">0</span></div>
+      <div class="comment-editor-toolbar">
+        <select><option>Paragraph</option></select>
+        <button><b>B</b></button>
+        <button><i>I</i></button>
+        <button style="text-decoration:underline">U</button>
+        <button>A<span style="font-size:8px;">&#9660;</span></button>
+        <button>&#8942;</button>
+      </div>
+      <!-- TinyMCE Rich Content Editor (simulated) -->
+      <div style="border: 1px solid #c7cdd1; border-radius: 0 0 3px 3px; min-height: 120px;">
+        <iframe id="speed_grader_comment_rce_ifr" title="Rich Text Area"
+          style="width: 100%; min-height: 120px; border: none;"
+          srcdoc="<html><head><style>body{font-family:'Lato',sans-serif;font-size:13px;color:#2d3b45;padding:8px;margin:0;min-height:100px;}body:empty:before{content:'Type a comment...';color:#8b969e;}</style></head><body contenteditable='true'></body></html>">
+        </iframe>
+      </div>
+      <div class="comment-footer">
+        <div class="comment-footer-left">p &nbsp;&nbsp; | &nbsp;&nbsp; 0 words</div>
+      </div>
+      <div class="comment-actions">
+        <button title="Thumbs up">&#128077;</button>
+        <button title="Clap">&#128079;</button>
+        <button title="Smiley">&#128522;</button>
+        <span style="flex:1"></span>
+        <button title="Attach">&#128206;</button>
+        <button title="Media">&#127909;</button>
+        <button title="Audio">&#128266;</button>
+        <span style="flex:1"></span>
+        <button class="btn-submit-comment" id="comment_submit_button" data-testid="submit-comment-button">Submit</button>
+      </div>
+      <a href="#" class="download-link">Download Submission Comments</a>
+    </div>
+    <!-- NO RUBRIC for Tier 3 -->
+  </div>
+</div>
+
+<script>
+// Same student data as other tiers
+const students = [
+  {
+    name: 'Anderson, Tyler', date: 'Feb 12 at 9:14 PM',
+    q1: "f(x) = 3x^4 + 2x^3 - 5x + 7\nf'(x) = 12x^3 + 6x^2 - 5\nUsing the power rule: bring down the exponent and reduce by 1.\nThe constant 7 has derivative 0.",
+    q2: "h(x) = (2x + 1)(x^2 - 3)\nUsing product rule: f'g + fg'\nf = 2x + 1, f' = 2\ng = x^2 - 3, g' = 2x\nh'(x) = 2(x^2 - 3) + (2x + 1)(2x)\n= 2x^2 - 6 + 4x^2 + 2x\n= 6x^2 + 2x - 6",
+    q3: "g(x) = (3x^2 + 1)^4\nUsing the chain rule:\nOuter: u^4, inner: u = 3x^2 + 1\ng'(x) = 4(3x^2 + 1)^3 * 6x\n= 24x(3x^2 + 1)^3",
+    q4mc: 'cos(x)', q4correct: true
+  },
+  {
+    name: 'Baker, Sophia', date: 'Feb 11 at 10:33 PM',
+    q1: "f'(x) = 12x^3 + 6x^2 - 5\nI used the power rule on each term.",
+    q2: "h'(x) = (2)(x^2 - 3) + (2x+1)(2x)\n= 2x^2 - 6 + 4x^2 + 2x\n= 6x^2 + 2x - 6",
+    q3: "g'(x) = 4(3x^2 + 1)^3 * 6x = 24x(3x^2 + 1)^3",
+    q4mc: 'cos(x)', q4correct: true
+  },
+  {
+    name: 'Chen, Marcus', date: 'Feb 12 at 3:45 PM',
+    q1: "f(x) = 3x^4 + 2x^3 - 5x + 7\nf'(x) = 12x^3 + 6x^2 - 5 + 0\nPower rule applied to each term. Derivative of constant is 0.",
+    q2: "Using product rule (fg)' = f'g + fg'\nf = 2x+1, g = x^2-3\nf' = 2, g' = 2x\nh'(x) = 2(x^2 - 3) + (2x+1)(2x)\n= 2x^2 - 6 + 4x^2 + 2x\n= 6x^2 + 2x - 6",
+    q3: "Let u = 3x^2 + 1\ng(x) = u^4\ng'(x) = 4u^3 * du/dx = 4(3x^2+1)^3 * 6x\n= 24x(3x^2 + 1)^3",
+    q4mc: '-sin(x)', q4correct: false
+  },
+  {
+    name: 'Davis, Aaliyah', date: 'Feb 13 at 7:22 PM',
+    q1: "f'(x) = 12x^3 + 6x^2 - 5\nPower rule: multiply by exponent, subtract 1 from exponent",
+    q2: "h(x) = (2x + 1)(x^2 - 3)\nI multiplied it out first: 2x^3 - 6x + x^2 - 3\nThen took derivative: 6x^2 + 2x - 6\nSame as product rule but easier to see",
+    q3: "g'(x) = 4(3x^2 + 1)^3 * 6x\n= 24x(3x^2+1)^3\nChain rule: derivative of outside times derivative of inside",
+    q4mc: 'cos(x)', q4correct: true
+  },
+  {
+    name: 'Garcia, Luis', date: 'Feb 12 at 5:58 PM',
+    q1: "f'(x) = 12x^3 + 6x^2 - 5",
+    q2: "h'(x) = (2)(2x) = 4x\nI multiplied the derivatives together.",
+    q3: "g'(x) = 4(3x^2 + 1)^3\nI forgot to multiply by the inside derivative.",
+    q4mc: 'cos(x)', q4correct: true
+  },
+  {
+    name: 'Harris, Brittany', date: 'Feb 13 at 1:12 PM',
+    q1: "f(x) = 3x^4 + 2x^3 - 5x + 7\nf'(x) = 12x^3 + 6x^2 - 5 + 7\nPower rule on each term.",
+    q2: "h(x) = (2x+1)(x^2-3)\nUsing product rule:\nh'(x) = 2(x^2-3) + (2x+1)(2x)\n= 2x^2 - 6 + 4x^2 + 2x\n= 6x^2 + 2x - 6",
+    q3: "g(x) = (3x^2+1)^4\ng'(x) = 4(3x^2+1)^3 * 6x\n= 24x(3x^2+1)^3",
+    q4mc: 'cos(x)', q4correct: true
+  },
+  {
+    name: 'Jackson, DeShawn', date: 'Feb 14 at 11:47 PM',
+    q1: "12x^3 + 6x^2 - 5",
+    q2: "I don't remember the product rule. Is it f*g?",
+    q3: "",
+    q4mc: 'cos(x)', q4correct: true
+  },
+  {
+    name: 'Kim, Sarah', date: 'Feb 12 at 8:30 PM',
+    q1: "f(x) = 3x^4 + 2x^3 - 5x + 7\n\nApplying the power rule to each term:\nd/dx(3x^4) = 4*3x^(4-1) = 12x^3\nd/dx(2x^3) = 3*2x^(3-1) = 6x^2\nd/dx(-5x) = -5x^(1-1) = -5\nd/dx(7) = 0\n\nf'(x) = 12x^3 + 6x^2 - 5",
+    q2: "h(x) = (2x + 1)(x^2 - 3)\n\nLet f(x) = 2x + 1 and g(x) = x^2 - 3\nf'(x) = 2 and g'(x) = 2x\n\nProduct rule: h'(x) = f'(x)g(x) + f(x)g'(x)\n= 2(x^2 - 3) + (2x + 1)(2x)\n= 2x^2 - 6 + 4x^2 + 2x\n= 6x^2 + 2x - 6",
+    q3: "g(x) = (3x^2 + 1)^4\n\nLet u = 3x^2 + 1 (inner function)\nThen g(x) = u^4 (outer function)\n\nChain rule: g'(x) = d/du(u^4) * du/dx\n= 4u^3 * 6x\n= 4(3x^2 + 1)^3 * 6x\n= 24x(3x^2 + 1)^3",
+    q4mc: 'cos(x)', q4correct: true
+  },
+  {
+    name: 'Lopez, Maria', date: 'Feb 13 at 4:02 PM',
+    q1: "f'(x) = 12x^3 + 6x^2 - 5\nUsed power rule.",
+    q2: "Product rule: (fg)' = f'g + fg'\n= 2(x^2-3) + (2x+1)(2x)\n= 2x^2 - 6 + 4x^2 + 2x\n= 6x^2 + 2x - 6",
+    q3: "g'(x) = 4(3x^2 + 1)^3 * d/dx(3x^2 + 1)\n= 4(3x^2 + 1)^3 * 6x\n= 24x(3x^2 + 1)^3",
+    q4mc: '-cos(x)', q4correct: false
+  },
+  {
+    name: 'Martinez, Diego', date: '', q1: '', q2: '', q3: '', q4mc: '', q4correct: false
+  },
+  {
+    name: 'Nguyen, Kevin', date: 'Feb 11 at 9:55 PM',
+    q1: "f'(x) = 3*4x^3 + 2*3x^2 - 5*1\n= 12x^3 + 6x^2 - 5",
+    q2: "h'(x) = 2(x^2-3) + (2x+1)(2x)\n= 2x^2 - 6 + 4x^2 + 2x\n= 6x^2 + 2x - 6\nProduct rule: derivative of first times second plus first times derivative of second",
+    q3: "Chain rule:\ng'(x) = 4(3x^2+1)^3 * 6x = 24x(3x^2+1)^3",
+    q4mc: 'cos(x)', q4correct: true
+  },
+  {
+    name: 'Patel, Priya', date: 'Feb 12 at 6:40 PM',
+    q1: "f(x) = 3x^4 + 2x^3 - 5x + 7\nUsing power rule:\nf'(x) = 4(3)x^3 + 3(2)x^2 - 5\n= 12x^3 + 6x^2 - 5\nNote: derivative of constant 7 = 0",
+    q2: "h(x) = (2x + 1)(x^2 - 3)\nProduct rule: (fg)' = f'g + fg'\nLet f = 2x+1, g = x^2-3\nf' = 2, g' = 2x\nh'(x) = 2(x^2 - 3) + (2x + 1)(2x)\n= 2x^2 - 6 + 4x^2 + 2x\nh'(x) = 6x^2 + 2x - 6",
+    q3: "g(x) = (3x^2 + 1)^4\nChain rule: outer derivative * inner derivative\ng'(x) = 4(3x^2 + 1)^3 * (6x)\n= 24x(3x^2 + 1)^3",
+    q4mc: 'cos(x)', q4correct: true
+  },
+];
+
+function buildQuizIframeHTML(s) {
+  if (!s.date) {
+    return '<html><body style="font-family: sans-serif; padding: 20px; color: #8b969e;"><em>This student has not submitted the quiz.</em></body></html>';
+  }
+  return `<html>
+<head>
+<style>
+  body { font-family: 'Lato', sans-serif; padding: 16px; color: #2d3b45; font-size: 14px; }
+  .quiz_score { font-size: 16px; font-weight: 600; margin-bottom: 16px; padding: 10px; background: #f5f5f5; border-radius: 4px; }
+  .display_question { border: 1px solid #e0e0e0; border-radius: 4px; margin-bottom: 16px; padding: 16px; background: #fafbfc; }
+  .question_type { font-size: 11px; color: #8b969e; text-transform: uppercase; margin-bottom: 4px; }
+  .question_text { font-size: 14px; font-weight: 600; color: #2d3b45; margin-bottom: 12px; line-height: 1.5; }
+  .quiz_response_text { font-size: 14px; line-height: 1.6; color: #2d3b45; padding: 10px; background: #fff; border: 1px solid #e5e5e5; border-radius: 3px; white-space: pre-wrap; }
+  .question_points { font-size: 12px; color: #8b969e; margin-top: 8px; }
+  .question_input { width: 50px; padding: 4px; border: 1px solid #c7cdd1; border-radius: 3px; text-align: center; font-size: 14px; }
+  .question_comment { width: 100%; min-height: 60px; border: 1px solid #c7cdd1; border-radius: 3px; padding: 6px; font-size: 13px; margin-top: 6px; font-family: inherit; }
+  .question_comment_label { font-size: 11px; color: #8b969e; margin-top: 8px; }
+  .mc-answer { padding: 8px 12px; background: #fff; border: 1px solid #e5e5e5; border-radius: 3px; margin-top: 4px; }
+  .mc-answer.correct { border-color: #0b874b; background: #e8f5e9; }
+  .mc-answer.incorrect { border-color: #d32f2f; background: #ffebee; }
+  .update-scores-wrap { text-align: center; margin: 16px 0; }
+  button.update-scores { padding: 8px 24px; background: #2d3b45; color: #fff; border: none; border-radius: 3px; font-size: 14px; cursor: pointer; font-weight: 600; }
+  button.update-scores:hover { background: #1a2730; }
+</style>
+</head>
+<body>
+  <div class="quiz_score">Score: <span id="current-score">--</span> out of 20</div>
+  <div class="display_question" id="question_101">
+    <div class="question_type">essay_question</div>
+    <div class="question_text">Find the derivative of f(x) = 3x&#8308; + 2x&#179; - 5x + 7. Show your work and state which differentiation rule(s) you used.</div>
+    <div class="quiz_response_text">${escapeHTML(s.q1)}</div>
+    <div class="question_points">5 pts</div>
+    <div style="margin-top: 8px;">Score: <input type="text" class="question_input" value=""> / 5</div>
+    <div class="question_comment_label">Comment:</div>
+    <textarea class="question_comment" id="question_comment_101" name="question_comment_101"></textarea>
+  </div>
+  <div class="display_question" id="question_102">
+    <div class="question_type">essay_question</div>
+    <div class="question_text">Use the product rule to find h'(x) where h(x) = (2x + 1)(x&#178; - 3). Show all steps clearly.</div>
+    <div class="quiz_response_text">${escapeHTML(s.q2)}</div>
+    <div class="question_points">5 pts</div>
+    <div style="margin-top: 8px;">Score: <input type="text" class="question_input" value=""> / 5</div>
+    <div class="question_comment_label">Comment:</div>
+    <textarea class="question_comment" id="question_comment_102" name="question_comment_102"></textarea>
+  </div>
+  <div class="display_question" id="question_103">
+    <div class="question_type">essay_question</div>
+    <div class="question_text">Differentiate g(x) = (3x&#178; + 1)&#8308; using the chain rule. Identify the inner and outer functions and show your work.</div>
+    <div class="quiz_response_text">${escapeHTML(s.q3)}</div>
+    <div class="question_points">5 pts</div>
+    <div style="margin-top: 8px;">Score: <input type="text" class="question_input" value=""> / 5</div>
+    <div class="question_comment_label">Comment:</div>
+    <textarea class="question_comment" id="question_comment_103" name="question_comment_103"></textarea>
+  </div>
+  <div class="display_question" id="question_104">
+    <div class="question_type">multiple_choice_question</div>
+    <div class="question_text">What is the derivative of sin(x)?</div>
+    <div class="mc-answer ${s.q4correct ? 'correct' : 'incorrect'}">${escapeHTML(s.q4mc || '(no answer)')}</div>
+    <div class="question_points">5 pts</div>
+    <div style="margin-top: 8px;">Score: <input type="text" class="question_input" value="${s.q4correct ? '5' : '0'}"> / 5</div>
+  </div>
+  <div class="update-scores-wrap"><button class="update-scores">Update Scores</button></div>
+</body></html>`;
+}
+
+function escapeHTML(str) {
+  if (!str) return '<em style="color: #8b969e;">(no response)</em>';
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+let currentIdx = 0;
+function renderStudent(idx) {
+  const s = students[idx];
+  currentIdx = idx;
+  document.getElementById('students_selectmenu').selectedIndex = idx;
+  document.getElementById('submit-date').textContent = s.date || 'Not submitted';
+  const statEls = document.querySelectorAll('.sg-header-right .stat-value');
+  if (statEls[2]) statEls[2].textContent = `${idx + 1}/${students.length}`;
+  document.getElementById('grade_input').value = '';
+  try { document.getElementById('speed_grader_comment_rce_ifr').contentDocument.body.textContent = ''; } catch(e) {}
+  const iframe = document.getElementById('submission-preview-iframe');
+  iframe.srcdoc = buildQuizIframeHTML(s);
+  iframe.onload = function() {
+    try {
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+      const updateBtn = iframeDoc.querySelector('button.update-scores');
+      if (updateBtn) {
+        updateBtn.addEventListener('click', function() {
+          const inputs = iframeDoc.querySelectorAll('.question_input');
+          let total = 0;
+          inputs.forEach(inp => { const v = parseFloat(inp.value); if (!isNaN(v)) total += v; });
+          const scoreEl = iframeDoc.getElementById('current-score');
+          if (scoreEl) scoreEl.textContent = total;
+          document.getElementById('grade_input').value = total;
+          updateBtn.textContent = 'Scores Updated!';
+          updateBtn.style.background = '#0b874b';
+          setTimeout(() => { updateBtn.textContent = 'Update Scores'; updateBtn.style.background = '#2d3b45'; }, 1500);
+        });
+      }
+    } catch(e) {}
+  };
+}
+
+document.getElementById('students_selectmenu').addEventListener('change', function() { renderStudent(this.selectedIndex); });
+document.getElementById('prevStudent').addEventListener('click', function() { if (currentIdx > 0) renderStudent(currentIdx - 1); });
+document.getElementById('nextStudent').addEventListener('click', function() { if (currentIdx < students.length - 1) renderStudent(currentIdx + 1); });
+document.getElementById('comment_submit_button').addEventListener('click', function() {
+  const rceIframe = document.getElementById('speed_grader_comment_rce_ifr');
+  const hasContent = rceIframe && rceIframe.contentDocument?.body?.textContent?.trim();
+  if (hasContent) {
+    this.textContent = 'Submitted!';
+    this.style.background = '#0b874b';
+    setTimeout(() => { this.textContent = 'Submit'; this.style.background = '#2d3b45'; }, 1500);
+  }
+});
+renderStudent(0);
+</script>
+</body>
+</html>

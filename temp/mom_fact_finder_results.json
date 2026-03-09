@@ -1,0 +1,47 @@
+{
+  "topic": "regression",
+  "searchDate": "2026-03-01",
+  "source": "browser",
+  "library": "lib476 (Correlation and Regression, Statistics)",
+  "examples": [
+    {
+      "qid": "860343",
+      "type": "essay",
+      "timesUsed": 48,
+      "description": "Regression Analysis (hours studied and GPA)",
+      "control": "",
+      "questionText": "<p>Suppose a study was done to look at the relationship between the number of hours per week online statistics students put into the class and their GPA.</p><table border=\"1\"><tbody><tr><td>Hours</td><td>18</td><td>4</td><td>14</td><td>8</td><td>10</td><td>20</td><td>15</td><td>6</td><td>2</td></tr><tr><td>GPA</td><td>3.9</td><td>2.1</td><td>3.3</td><td>2.7</td><td>2.9</td><td>3.5</td><td>3.4</td><td>2.2</td><td>1.3</td></tr></tbody></table><p>a. Write down the null and alternative hypothesis.</p><p>b. Write down the test statistic and the p-value.</p><p>c. State the conclusion of the hypothesis test in the context of the study</p><p>d. Write down the equation of the regression line.</p><p>e. Interpret the slope of the regression line in the context of the study.</p><p>f. Interpret the y-intercept of the regression line in the context of the study or explain why it is not relevant.</p><p>g. Use the regression line to predict the GPA of a student who puts in 13 hours a week.</p><p>h. Interpret `r^2` in the context of the study.</p>"
+    },
+    {
+      "qid": "860461",
+      "type": "essay",
+      "timesUsed": 48,
+      "description": "Regression Analysis (crime rate and monthly rent)",
+      "control": "",
+      "questionText": "<p>A researcher is looking at the relationship between the crime rate per 100,000 people and the median monthly cost of a one bedroom apartment for neighborhoods throughout the US.</p><table border=\"1\"><tbody><tr><td>Crime</td><td>47</td><td>32</td><td>81</td><td>55</td><td>40</td><td>68</td><td>24</td><td>90</td><td>36</td></tr><tr><td>Cost</td><td>1234</td><td>977</td><td>835</td><td>1125</td><td>1367</td><td>943</td><td>1709</td><td>756</td><td>1573</td></tr></tbody></table><p>a-h: same 8-part structure (H0/Ha, test stat, conclusion, equation, slope, y-intercept, prediction, r^2)</p>"
+    },
+    {
+      "qid": "860481",
+      "type": "essay",
+      "timesUsed": 48,
+      "description": "Regression Analysis (hours at work vs screen time outside work)",
+      "control": "",
+      "questionText": "<p>A researcher is looking at the relationship between the number of hours in a day people work in front of a screen and the number of hours in front of a screen when not at work.</p><table border=\"1\"><tbody><tr><td>At Work</td><td>6</td><td>1</td><td>8</td><td>0</td><td>2</td><td>4</td><td>1</td><td>0</td><td>7</td></tr><tr><td>Not at Work</td><td>3</td><td>4</td><td>0</td><td>5</td><td>4</td><td>4</td><td>5</td><td>7</td><td>2</td></tr></tbody></table><p>a-h: same 8-part structure</p>"
+    }
+  ],
+  "patternSummary": {
+    "keyPatterns": [
+      "NO PHP control code — regression essay questions live entirely in qtext (pure HTML)",
+      "Data presented as HTML <table border='1'> with 2 rows: variable name + 9 numeric values",
+      "Standard 8-part structure: (a) H0/Ha → (b) test stat + p-value → (c) conclusion in context → (d) regression equation → (e) slope interpretation → (f) y-intercept interpretation or why irrelevant → (g) prediction → (h) r^2 interpretation",
+      "Real-world context: uses relatable paired variables (hours vs GPA, crime vs rent, screen time at work vs not)",
+      "Not Randomized — fixed datasets, not PHP-randomized",
+      "Empty answer field and empty scoremethod — pure manual grading",
+      "Backtick math for r^2: `r^2`",
+      "9 data points is the standard dataset size for this question type"
+    ],
+    "functionCalls": [],
+    "suggestedApproach": "Write qtext-only (no control code needed). Use <table border='1'> for data. Follow 8-part a-h structure. Pick real-world paired quantitative variables. Use exactly 9 data pairs. Include a specific prediction value in part g and r^2 interpretation in part h. No loadlibrary calls needed."
+  },
+  "libraryUpdated": true
+}

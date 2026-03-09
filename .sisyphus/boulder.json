@@ -1,9 +1,10 @@
 {
-  "active_plan": "C:\\Users\\shuff\\Documents\\GitHub\\O.G.R.E-OllamaGradingRubricEvaluator\\.sisyphus\\plans\\review-mode-override.md",
-  "started_at": "2026-03-02T15:45:00.000Z",
-  "session_ids": ["ses_current"],
-  "plan_name": "review-mode-override",
-  "worktree_path": "C:\\Users\\shuff\\Documents\\GitHub\\O.G.R.E-OllamaGradingRubricEvaluator",
+  "active_plan": "C:\\Users\\shuff\\Documents\\GitHub\\O.G.R.E-OllamaGradingRubricEvaluator\\.sisyphus\\plans\\qwen3-fine-tuning.md",
+  "started_at": "2026-03-05T16:58:35.263Z",
+  "session_ids": [
+    "ses_3411028b2ffeKCpH4AqKJVR4uY"
+  ],
+  "plan_name": "qwen3-fine-tuning",
   "agent": "atlas",
-  "model_preference": "claude-sonnet-4-6"
+  "worktree_path": "C:\\Users\\shuff\\Documents\\GitHub\\O.G.R.E-OllamaGradingRubricEvaluator"
 }
