@@ -605,6 +605,42 @@ R_POWER = {
     ],
 }
 
+R_REGRESSION = {
+    "question": (
+        "Fit y-hat=52+4.3x (hours studied vs exam score), R^2=0.61. "
+        "Interpret slope, intercept, R^2. Predict for x=8. Give one limitation."
+    ),
+    "checklist": [
+        "Slope (3 pts): +4.3 predicted points per additional hour studied on avg; includes direction+units",
+        "Intercept and R^2 (3 pts): intercept 52=predicted score at 0 hrs (may lack meaning); R^2=0.61 means 61% variability explained",
+        "Prediction and Limitation (4 pts): y-hat=52+4.3(8)=86.4; limitation: no causation / lurking variables / extrapolation",
+    ],
+}
+
+R_OUTLIERS = {
+    "question": (
+        "CEO has 5 years experience, salary $850K (far above others). "
+        "Define leverage vs influence. How does this point affect regression line?"
+    ),
+    "checklist": [
+        "Leverage (3 pts): how far x-value is from mean x; CEO may be high leverage if x=5 is extreme",
+        "Influence (3 pts): actual regression change when point included/excluded; measured by Cook's distance",
+        "Effect on Line (4 pts): extreme y=$850K pulls slope up and inflates intercept; check same population; maybe exclude",
+    ],
+}
+
+R_SLOPE_INF = {
+    "question": (
+        "Regression of exam score on sleep hours: b1=3.2, SE=1.1, t=2.91, "
+        "p=0.007. Interpret slope, test H0:b1=0, and find 95% CI (t*=2.048, df=28)."
+    ),
+    "checklist": [
+        "Slope Interpretation (2 pts): +3.2 predicted exam points per additional sleep hour on avg",
+        "Hypotheses and Test (4 pts): H0:b1=0, H1:b1!=0; t=3.2/1.1=2.91; df=28; p=0.007<0.05 reject H0",
+        "95% CI (4 pts): CI=3.2+/-2.048(1.1)=(0.95,5.45); 95% confident true slope is 0.95 to 5.45 pts/hr",
+    ],
+}
+
 
 # ── Student responses ─────────────────────────────────────────────────────────
 # 8 responses across 4 stats topics, 2 quality bands each (weak / partial / strong).
@@ -1302,6 +1338,113 @@ RESPONSES = [
             "Larger a -> easier reject H0 -> more power.\n"
             "Larger effect size -> more separation -> power.\n"
             "Target power >=0.80 to avoid missing benefits."
+        ),
+    },
+    {
+        "id": "regression_weak",
+        "rubric": R_REGRESSION,
+        "score": 3,
+        "text": (
+            "Slope 4.3 means more study gives higher score.\n"
+            "R^2=0.61 means model is 61% accurate.\n"
+            "y-hat=52+4.3(8)=86.4.\n"
+            "Limit: students differ a lot."
+        ),
+    },
+    {
+        "id": "regression_partial",
+        "rubric": R_REGRESSION,
+        "score": 6,
+        "text": (
+            "Each extra hour predicts +4.3 exam points avg.\n"
+            "Intercept 52 = predicted score at 0 hours.\n"
+            "R^2=0.61 => 61% score variation explained.\n"
+            "y-hat=52+4.3(8)=86.4.\n"
+            "Limitation: correlation, not causation."
+        ),
+    },
+    {
+        "id": "regression_strong",
+        "rubric": R_REGRESSION,
+        "score": 9,
+        "text": (
+            "Slope: +4.3 predicted points per extra hour.\n"
+            "Units: exam points per hour studied, avg trend.\n"
+            "Intercept 52 at x=0 hrs; may be outside data.\n"
+            "R^2=0.61 means 61% variation explained by x.\n"
+            "y-hat=52+4.3(8)=86.4 predicted score.\n"
+            "Limitation: lurking vars; model not causal."
+        ),
+    },
+    {
+        "id": "outliers_weak",
+        "rubric": R_OUTLIERS,
+        "score": 4,
+        "text": (
+            "Leverage and influence both mean outlier point.\n"
+            "CEO is far off so it is high leverage/influence.\n"
+            "This point makes slope steeper and line go up.\n"
+            "Probably remove it since very unusual."
+        ),
+    },
+    {
+        "id": "outliers_partial",
+        "rubric": R_OUTLIERS,
+        "score": 7,
+        "text": (
+            "Leverage: x far from x-bar (extreme x position).\n"
+            "Influence: changes fit if removed; use Cook D.\n"
+            "CEO y=$850K is extreme and pulls line upward.\n"
+            "Slope and intercept both get inflated.\n"
+            "Check if CEO is same population first."
+        ),
+    },
+    {
+        "id": "outliers_strong",
+        "rubric": R_OUTLIERS,
+        "score": 8,
+        "text": (
+            "Leverage = distance of x from x-bar.\n"
+            "If most workers have higher x, CEO at x=5 is far.\n"
+            "Influence = actual fit change; measured by Cook D.\n"
+            "CEO y=$850K pulls line up; slope/intercept rise.\n"
+            "Model then overpredicts typical salaries.\n"
+            "Investigate group; maybe separate exec model."
+        ),
+    },
+    {
+        "id": "slope_inf_weak",
+        "rubric": R_SLOPE_INF,
+        "score": 3,
+        "text": (
+            "H0:b1=0 and p=0.007 so reject H0 at 0.05.\n"
+            "Sleep significantly predicts exam scores.\n"
+            "t=2.91 from output supports this result."
+        ),
+    },
+    {
+        "id": "slope_inf_partial",
+        "rubric": R_SLOPE_INF,
+        "score": 6,
+        "text": (
+            "Slope: +3.2 predicted points per sleep hour avg.\n"
+            "H0:b1=0 vs H1:b1!=0.\n"
+            "t=3.2/1.1=2.91, df=28, p=0.007<0.05 reject H0.\n"
+            "95% CI: 3.2+/-2.048(1.1)=(0.95,5.45).\n"
+            "True slope likely 0.95 to 5.45 pts/hr."
+        ),
+    },
+    {
+        "id": "slope_inf_strong",
+        "rubric": R_SLOPE_INF,
+        "score": 9,
+        "text": (
+            "Slope: each +1 sleep hour predicts +3.2 exam pts.\n"
+            "H0:b1=0 (no linear prediction), H1:b1!=0.\n"
+            "Verify t=3.2/1.1=2.91, df=30-2=28.\n"
+            "p=0.007<0.05 so reject H0.\n"
+            "95% CI: 3.2+/-2.048(1.1)=(0.95,5.45).\n"
+            "95% conf true slope is 0.95 to 5.45 pts/hr."
         ),
     },
 ]
