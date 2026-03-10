@@ -483,34 +483,88 @@ RESPONSES = [
             "Makes sense: z=1 is 1 SD above mean."
         ),
     },
-    # ── confidence interval ──────────────────────────────────────────────────
-    {
-        "id": "ci_partial",
-        "rubric": R_CONF_INT,
-        "score": 5,
-        "text": (
-            "p^ = 118/200 = 0.59\n"
-            "np^ = 118 >= 10, n(1-p^) = 82 >= 10 ok\n"
-            "SE = sqrt(0.59x0.41/200) ~= 0.035\n"
-            "CI = 0.59 +/- 1.96(0.035) = (0.52, 0.66)\n"
-            "95% confident the interval captures\n"
-            "the true proportion."
-        ),
-    },
-    # ── binomial ─────────────────────────────────────────────────────────────
-    {
-        "id": "binomial_partial",
-        "rubric": R_BINOMIAL,
-        "score": 6,
-        "text": (
-            "Conditions: fixed n=8, make/miss binary,\n"
-            "independent shots, constant p=0.70. All met.\n"
-            "P(X=5) = C(8,5)(0.70)^5(0.30)^3\n"
-            "= 56 x 0.168 x 0.027 ~= 0.254\n"
-            "About 25% chance she makes exactly 5 of 8."
-        ),
-    },
+     # ── confidence interval ──────────────────────────────────────────────────
+     {
+         "id": "ci_weak",
+         "rubric": R_CONF_INT,
+         "score": 3,
+         "text": (
+             "p^ = 118/200 = 0.59\n"
+             "SE = sqrt(0.59/200) = 0.054  (WRONG)\n"
+             "CI = 0.59 +/- 1.96(0.054)\n"
+             "95% probability interval is (0.484, 0.696)"
+         ),
+     },
+     {
+         "id": "ci_partial",
+         "rubric": R_CONF_INT,
+         "score": 5,
+         "text": (
+             "p^ = 118/200 = 0.59\n"
+             "np^ = 118 >= 10, n(1-p^) = 82 >= 10 ok\n"
+             "SE = sqrt(0.59x0.41/200) ~= 0.035\n"
+             "CI = 0.59 +/- 1.96(0.035) = (0.52, 0.66)\n"
+             "95% confident the interval captures\n"
+             "the true proportion."
+         ),
+     },
+     {
+         "id": "ci_strong",
+         "rubric": R_CONF_INT,
+         "score": 9,
+         "text": (
+             "Conditions: random, np^=118>=10, n(1-p^)=82>=10\n"
+             "independence (200 < 10% of popn). All ok.\n"
+             "p^ = 118/200 = 0.59\n"
+             "SE = sqrt(0.59*0.41/200) = 0.0348\n"
+             "CI = 0.59 +/- 1.96(0.035) = (0.522, 0.658)\n"
+             "95% confident true proportion in (52.2%, 65.8%)"
+         ),
+     },
+     # ── binomial ─────────────────────────────────────────────────────────────
+     {
+         "id": "binomial_weak",
+         "rubric": R_BINOMIAL,
+         "score": 3,
+         "text": (
+             "P(X=5) = p*n = 0.70*8 = 5.6 ?? no\n"
+             "P(X=5) = 0.70^5 = 0.168\n"
+             "About 16.8% probability."
+         ),
+     },
+     {
+         "id": "binomial_partial",
+         "rubric": R_BINOMIAL,
+         "score": 6,
+         "text": (
+             "Conditions: fixed n=8, make/miss binary,\n"
+             "independent shots, constant p=0.70. All met.\n"
+             "P(X=5) = C(8,5)(0.70)^5(0.30)^3\n"
+             "= 56 x 0.168 x 0.027 ~= 0.254\n"
+             "About 25% chance she makes exactly 5 of 8."
+         ),
+     },
+     {
+         "id": "binomial_strong",
+         "rubric": R_BINOMIAL,
+         "score": 9,
+         "text": (
+             "Conditions: n=8 fixed, make/miss binary,\n"
+             "independent shots, p=0.70 constant. All met.\n"
+             "P(X=5) = C(8,5)(0.70)^5(0.30)^3\n"
+             "= 56 x 0.168 x 0.027 = 0.254\n"
+             "About 25.4% she makes exactly 5 of 8."
+         ),
+     },
 ]
+
+# Validate response text constraints
+for resp in RESPONSES:
+    lines = to_render_text(resp["text"]).split("\n")
+    for i, line in enumerate(lines):
+        assert len(line) <= 50, f"{resp['id']} line {i+1} is {len(line)} chars: '{line[:60]}'"
+    assert len(lines) <= 10, f"{resp['id']} has {len(lines)} lines (max 10)"
+print(f"All {len(RESPONSES)} responses pass length validation.")
 
 QUALITIES = ["good", "medium", "bad"]
 FONTS = ["Caveat-Regular.ttf", "Kalam-Regular.ttf"]  # alternate for visual variety
