@@ -498,6 +498,113 @@ R_CLT = {
     ],
 }
 
+R_ONE_PROP_Z = {
+    "question": (
+        "A poll surveys 100 voters; 54 support Proposition A. "
+        "Test H0: p = 0.50 vs H1: p > 0.50 at a = 0.05. Show all steps."
+    ),
+    "steps": (
+        "Step 1: p^ = 54/100 = 0.54\n"
+        "Step 2: SE0 = sqrt(0.50x0.50/100) = 0.05\n"
+        "Step 3: z = (0.54 - 0.50)/0.05 = 0.80\n"
+        "Step 4: p-value = P(z > 0.80) = 1 - 0.7881 = 0.2119\n"
+        "Step 5: 0.2119 > 0.05 -> fail to reject H0"
+    ),
+}
+
+R_TWO_PROP_Z = {
+    "question": (
+        "Group 1 (n=100) has 40 successes; Group 2 (n=100) has 55 successes. "
+        "Test H0: p1 = p2 vs H1: p1 != p2 at a = 0.05. Show all steps."
+    ),
+    "steps": (
+        "Step 1: p1^ = 40/100 = 0.40, p2^ = 55/100 = 0.55\n"
+        "Step 2: pooled p^ = (40+55)/(100+100) = 0.475\n"
+        "Step 3: SE = sqrt(0.475x0.525/100 + 0.475x0.525/100) = 0.0706\n"
+        "Step 4: z = (0.40 - 0.55)/0.0706 = -2.12\n"
+        "Step 5: two-tail p ~= 0.034 < 0.05 -> reject H0"
+    ),
+}
+
+R_CHI_GOF = {
+    "question": (
+        "60 people taste 4 ice cream flavors. Observed counts: Vanilla=12, "
+        "Chocolate=18, Strawberry=14, Mint=16. Test whether flavors are equally "
+        "preferred using chi-square GOF at a=0.05. Show all steps."
+    ),
+    "checklist": [
+        "Hypotheses (2 pts): H0 all flavors equally preferred; H1 at least one differs",
+        "Expected counts (3 pts): E=60/4=15 each; all expected counts >=5",
+        "Chi-square statistic (3 pts): chi^2=1.333 from sum((O-E)^2/E)",
+        "Decision (2 pts): df=3, critical=7.815; 1.333<7.815 fail to reject H0",
+    ],
+}
+
+R_CHI_INDEP = {
+    "question": (
+        "Smokers (n=100): 70 with disease, 30 without. Non-smokers (n=200): "
+        "80 with disease, 120 without. Test independence at a=0.05."
+    ),
+    "checklist": [
+        "Hypotheses (2 pts): H0 smoking and disease are independent; H1 not independent",
+        "Expected counts (3 pts): E(S,D)=50, E(S,ND)=50, E(NS,D)=100, E(NS,ND)=100",
+        "Chi-square statistic (3 pts): chi^2=24 from sum((O-E)^2/E across 4 cells)",
+        "Decision (2 pts): df=1, critical=3.841; 24>3.841 reject H0",
+    ],
+}
+
+R_TWO_SAMPLE_T = {
+    "question": (
+        "Group A (n=20, x-bar=78, s=8) vs Group B (n=25, x-bar=72, s=10). "
+        "Conduct a two-sample t-test at a=0.05 (one-tailed, H1: u_A > u_B)."
+    ),
+    "checklist": [
+        "Hypotheses (2 pts): H0: uA=uB; H1: uA>uB (one-tailed; tutoring scores higher)",
+        "Conditions (2 pts): random, independent samples; both groups large enough",
+        "Test Statistic and df (4 pts): t=(78-72)/sqrt(64/20+100/25)=6/sqrt(7.2)~=2.24; df=min(19,24)=19",
+        "Conclusion (2 pts): t*~=1.729 at df=19 one-tail; 2.24>1.729 reject H0",
+    ],
+}
+
+R_PAIRED_T = {
+    "question": (
+        "15 runners measured before/after training. d-bar=1.2 min, s_d=0.9. "
+        "Explain WHY paired (not two-sample). Test H0: u_d=0 at a=0.05."
+    ),
+    "checklist": [
+        "Why Paired (3 pts): same runners measured twice; pairing removes between-runner variability",
+        "Hypotheses (2 pts): H0: u_d=0; H1: u_d>0 (training reduces time; d=before-after)",
+        "Test Statistic and df (3 pts): t=d-bar/(s_d/sqrt(n))=1.2/(0.9/sqrt(15))~=5.16; df=14",
+        "Conclusion (2 pts): t*~=1.761 df=14 one-tail; 5.16>1.761 reject H0",
+    ],
+}
+
+R_ANOVA = {
+    "question": (
+        "Compare exam scores in 3 course sections (morning/afternoon/evening). "
+        "Explain what ANOVA tests, why not multiple t-tests (Type I error), "
+        "what F-statistic means, and ANOVA conditions."
+    ),
+    "checklist": [
+        "What ANOVA Tests (3 pts): tests if >=1 group mean differs; avoids Type I inflation from multiple t-tests",
+        "F-statistic (3 pts): F=between-group variability/within-group variability; large F means groups differ",
+        "Conditions (2 pts): independence, normality within each group, equal variances across groups",
+        "Conclusion Context (2 pts): significant F=at least one section differs; need post-hoc tests to identify which",
+    ],
+}
+
+R_POWER = {
+    "question": (
+        "Vaccine study. Explain power (= 1-b), Type II error, and 3 factors "
+        "that affect power."
+    ),
+    "checklist": [
+        "Definition (3 pts): Power=P(reject H0|H0 false)=1-beta; Type II error=failing to detect real effect",
+        "Three Factors (5 pts): sample size (larger n -> more power); alpha (larger alpha -> more power); effect size (larger true difference -> more power)",
+        "Why High Power Matters (2 pts): missing real vaccine effect costs lives; target power>=0.80",
+    ],
+}
+
 
 # ── Student responses ─────────────────────────────────────────────────────────
 # 8 responses across 4 stats topics, 2 quality bands each (weak / partial / strong).
@@ -897,7 +1004,307 @@ RESPONSES = [
              "So chance sample mean exceeds 96 is 11.5%."
          ),
      },
- ]
+     {
+         "id": "one_prop_z_weak",
+         "rubric": R_ONE_PROP_Z,
+         "score": 2,
+         "text": (
+             "H0 and H1 were not written.\n"
+             "p^=54/100=0.54, SE0=sqrt(0.5x0.5/100)=0.05.\n"
+             "z=(0.54-0.50)/0.05=0.80.\n"
+             "p-value=0.7881 so reject H0."
+         ),
+     },
+     {
+         "id": "one_prop_z_partial",
+         "rubric": R_ONE_PROP_Z,
+         "score": 6,
+         "text": (
+             "H0:p=0.50, H1:p>0.50.\n"
+             "p^=54/100=0.54.\n"
+             "SE0=sqrt(0.50x0.50/100)=0.05.\n"
+             "z=(0.54-0.50)/0.05=0.80, p=0.212.\n"
+             "0.212>0.05 so fail to reject H0."
+         ),
+     },
+     {
+         "id": "one_prop_z_strong",
+         "rubric": R_ONE_PROP_Z,
+         "score": 9,
+         "text": (
+             "Step1 H0:p=0.50, H1:p>0.50.\n"
+             "Step2 p^=54/100=0.54.\n"
+             "Step3 SE0=sqrt(0.5x0.5/100)=0.05.\n"
+             "Step4 z=(0.54-0.50)/0.05=0.80.\n"
+             "Step5 p=1-Phi(0.80)=1-0.7881=0.2119.\n"
+             "Step6 0.212>0.05 -> fail to reject H0.\n"
+             "Data do not show majority support for Prop A."
+         ),
+     },
+     {
+         "id": "two_prop_z_weak",
+         "rubric": R_TWO_PROP_Z,
+         "score": 3,
+         "text": (
+             "p1^=0.40, p2^=0.55.\n"
+             "SE=sqrt(0.40x0.60/100+0.55x0.45/100)=0.070.\n"
+             "z=(0.40-0.55)/0.070=-2.15.\n"
+             "No pooled p^ used; hypotheses missing."
+         ),
+     },
+     {
+         "id": "two_prop_z_partial",
+         "rubric": R_TWO_PROP_Z,
+         "score": 6,
+         "text": (
+             "H0:p1=p2, H1:p1!=p2.\n"
+             "p1^=0.40, p2^=0.55, pooled p^=0.475.\n"
+             "SE=sqrt(0.475x0.525/100+0.475x0.525/100)\n"
+             "=0.0706, z=(0.40-0.55)/0.0706=-2.12.\n"
+             "two-tail p=0.034<0.05, reject H0."
+         ),
+     },
+     {
+         "id": "two_prop_z_strong",
+         "rubric": R_TWO_PROP_Z,
+         "score": 9,
+         "text": (
+             "Step1 H0:p1=p2, H1:p1!=p2.\n"
+             "Step2 p1^=40/100=0.40, p2^=55/100=0.55.\n"
+             "Step3 pooled p^=(40+55)/200=0.475.\n"
+             "Step4 SE=sqrt(0.475x0.525/100+0.475x0.525/100)\n"
+             "=0.0706.\n"
+             "Step5 z=(0.40-0.55)/0.0706=-2.124.\n"
+             "Step6 p=0.034<0.05 -> reject H0.\n"
+             "Groups differ in success rates."
+         ),
+     },
+     {
+         "id": "chi_gof_weak",
+         "rubric": R_CHI_GOF,
+         "score": 3,
+         "text": (
+             "Expected counts are E=60/4=15 each.\n"
+             "chi^2=1.333 from sum((O-E)^2/E).\n"
+             "I used df=4 and critical 9.488 (wrong).\n"
+             "So I fail to reject H0."
+         ),
+     },
+     {
+         "id": "chi_gof_partial",
+         "rubric": R_CHI_GOF,
+         "score": 6,
+         "text": (
+             "H0: all 4 flavor probs are equal.\n"
+             "H1: at least one flavor prob differs.\n"
+             "Expected counts: E=15 each.\n"
+             "chi^2=1.333, df=3.\n"
+             "1.333<7.815 so fail to reject H0."
+         ),
+     },
+     {
+         "id": "chi_gof_strong",
+         "rubric": R_CHI_GOF,
+         "score": 9,
+         "text": (
+             "H0: pV=pC=pS=pM=0.25; H1: not all equal.\n"
+             "E values: 60/4=15,15,15,15.\n"
+             "chi^2=(12-15)^2/15+(18-15)^2/15\n"
+             "+(14-15)^2/15+(16-15)^2/15=1.333.\n"
+             "df=k-1=4-1=3.\n"
+             "critical chi^2(3,0.05)=7.815, so 1.333<7.815.\n"
+             "Fail to reject: prefs look roughly equal."
+         ),
+     },
+     {
+         "id": "chi_indep_weak",
+         "rubric": R_CHI_INDEP,
+         "score": 3,
+         "text": (
+             "E(smoker,disease)=100x150/300=50.\n"
+             "chi^2 using one cell: (70-50)^2/50=8.\n"
+             "I used df=2 (wrong).\n"
+             "Conclusion uncertain from my work."
+         ),
+     },
+     {
+         "id": "chi_indep_partial",
+         "rubric": R_CHI_INDEP,
+         "score": 6,
+         "text": (
+             "H0: smoking and disease are independent.\n"
+             "H1: smoking and disease are not independent.\n"
+             "Expected: 50, 50, 100, 100.\n"
+             "chi^2=8+8+4+4=24.\n"
+             "df=(2-1)(2-1)=1, critical=3.841.\n"
+             "24>3.841 so reject H0."
+         ),
+     },
+    {
+        "id": "chi_indep_strong",
+        "rubric": R_CHI_INDEP,
+        "score": 9,
+         "text": (
+             "Step1 H0: smoking indep disease; H1: associated.\n"
+             "Step2 Totals: row 100,200; col 150,150; N=300.\n"
+             "Step3 Expected: E11=50, E12=50.\n"
+             "E21=100, E22=100.\n"
+             "Step4 chi^2=(70-50)^2/50+(30-50)^2/50\n"
+             "+(80-100)^2/100+(120-100)^2/100=24.\n"
+             "Step5 df=(2-1)(2-1)=1, crit=3.841.\n"
+             "Step6 24>3.841 -> reject H0; not independent.\n"
+            "Smoking status is linked to disease in sample."
+        ),
+    },
+    {
+        "id": "two_sample_t_weak",
+        "rubric": R_TWO_SAMPLE_T,
+        "score": 3,
+        "text": (
+            "H0: uA=uB. H1 maybe uA!=uB.\n"
+            "Used pooled SD avg=9 so t=(78-72)/9=0.67.\n"
+            "Compared to t*=1.729, 0.67<1.729.\n"
+            "Fail reject H0; no evidence A>B."
+        ),
+    },
+    {
+        "id": "two_sample_t_partial",
+        "rubric": R_TWO_SAMPLE_T,
+        "score": 6,
+        "text": (
+            "H0:uA=uB, H1:uA>uB (one-tail).\n"
+            "t=(78-72)/sqrt(64/20+100/25)\n"
+            "=6/sqrt(7.2)=2.24.\n"
+            "df=min(19,24)=19, t*=1.729.\n"
+            "2.24>1.729 -> reject H0, A mean higher."
+        ),
+    },
+    {
+        "id": "two_sample_t_strong",
+        "rubric": R_TWO_SAMPLE_T,
+        "score": 9,
+        "text": (
+            "H0:uA=uB vs H1:uA>uB (tutoring higher).\n"
+            "Cond: random indep groups; n=20,25 large ok.\n"
+            "SE=sqrt(8^2/20+10^2/25)=sqrt(7.2).\n"
+            "t=(78-72)/SE=6/sqrt(7.2)=2.24.\n"
+            "Use conservative df=min(19,24)=19.\n"
+            "t*=1.729 at a=0.05 one-tail.\n"
+            "2.24>1.729 -> reject H0; Group A higher."
+        ),
+    },
+    {
+        "id": "paired_t_weak",
+        "rubric": R_PAIRED_T,
+        "score": 3,
+        "text": (
+            "Treated before/after as 2 independent samples.\n"
+            "Did two-sample idea, not paired differences.\n"
+            "t=d-bar/sd=1.2/0.9=1.33.\n"
+            "Without pairing reason, fail reject H0."
+        ),
+    },
+    {
+        "id": "paired_t_partial",
+        "rubric": R_PAIRED_T,
+        "score": 6,
+        "text": (
+            "Paired b/c same runners measured twice.\n"
+            "Each runner is own control.\n"
+            "H0: u_d=0, H1: u_d>0 where d=before-after.\n"
+            "t=1.2/(0.9/sqrt(15))=5.16, df=14.\n"
+            "t*=1.761, so reject H0; training helps."
+        ),
+    },
+    {
+        "id": "paired_t_strong",
+        "rubric": R_PAIRED_T,
+        "score": 9,
+        "text": (
+            "Use paired t: same runners pre/post training.\n"
+            "Pairing removes between-runner variability.\n"
+            "Each runner serves as own control.\n"
+            "H0:u_d=0 vs H1:u_d>0, d=before-after.\n"
+            "t=d-bar/(sd/sqrt(n))=1.2/(0.9/sqrt(15))=5.16.\n"
+            "df=14, t*=1.761 at a=0.05 one-tail.\n"
+            "5.16>1.761 -> reject H0; mean time reduced."
+        ),
+    },
+    {
+        "id": "anova_weak",
+        "rubric": R_ANOVA,
+        "score": 3,
+        "text": (
+            "ANOVA F tests if groups are different.\n"
+            "Kind of like a t-test but for 3 sections.\n"
+            "Need normal and independent data.\n"
+            "Big F means maybe reject, then groups differ."
+        ),
+    },
+    {
+        "id": "anova_partial",
+        "rubric": R_ANOVA,
+        "score": 6,
+        "text": (
+            "ANOVA tests whether >=1 section mean differs.\n"
+            "It avoids Type I inflation from many t-tests.\n"
+            "F=between-group variance/within-group variance.\n"
+            "Conds: independence, normal each group, equal var.\n"
+            "Sig F => at least one differs; do post-hoc tests."
+        ),
+    },
+    {
+        "id": "anova_strong",
+        "rubric": R_ANOVA,
+        "score": 9,
+        "text": (
+            "ANOVA compares 3 means with one overall F test.\n"
+            "Doing 3 t-tests inflates Type I: \n"
+            "1-(0.95)^3 ~= 0.143 chance false positive.\n"
+            "F=MSG/MSE = between-group / within-group.\n"
+            "Large F means section means differ vs noise.\n"
+            "Conds: indep, normal in groups, equal variances.\n"
+            "Sig F => >=1 differs; post-hoc finds which pair."
+        ),
+    },
+    {
+        "id": "power_weak",
+        "rubric": R_POWER,
+        "score": 3,
+        "text": (
+            "Power is tied to Type II error (missed effect).\n"
+            "Power=1-b, higher power means fewer misses.\n"
+            "Increase power with bigger n or smaller a.\n"
+            "That is why choose very low alpha."
+        ),
+    },
+    {
+        "id": "power_partial",
+        "rubric": R_POWER,
+        "score": 6,
+        "text": (
+            "Power=P(reject H0 | H0 false)=1-b.\n"
+            "Type II error: miss a real vaccine effect.\n"
+            "Power up with larger n.\n"
+            "Power up with larger a and larger effect size.\n"
+            "High power matters in medicine; target >=0.80."
+        ),
+    },
+    {
+        "id": "power_strong",
+        "rubric": R_POWER,
+        "score": 9,
+        "text": (
+            "Power=1-b=P(reject H0 when false H0).\n"
+            "Type II error (b): failing to detect real effect.\n"
+            "Vaccine benefit can exist, but test may miss it.\n"
+            "Larger n -> smaller SE -> more power.\n"
+            "Larger a -> easier reject H0 -> more power.\n"
+            "Larger effect size -> more separation -> power.\n"
+            "Target power >=0.80 to avoid missing benefits."
+        ),
+    },
+]
 
 # Validate response text constraints
 for resp in RESPONSES:
@@ -912,7 +1319,7 @@ FONTS = ["Caveat-Regular.ttf", "Kalam-Regular.ttf"]  # alternate for visual vari
 
 n_images = len(RESPONSES) * len(QUALITIES)
 print(
-    f"Defined {len(RESPONSES)} responses x {len(QUALITIES)} quality levels = {n_images} images"
+    f"{len(RESPONSES)} responses x {len(QUALITIES)} quality levels = {n_images} images"
 )
 
 
