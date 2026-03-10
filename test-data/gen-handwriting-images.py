@@ -20,9 +20,9 @@ Run locally:  pip install Pillow fonttools requests  →  python gen-handwriting
 Run in Colab: just paste cells into Colab — %%markers are cell boundaries.
 
 Outputs (all relative to the working directory):
-  handwriting-images/        24 PNG files (8 responses × 3 quality levels)
-  finetune-grading-vision.jsonl   24 vision training entries (base64 images)
-  image-benchmark-cases.json      benchmark metadata for post-training eval
+  handwriting-images/        198 PNG files (66 responses × 3 quality levels)
+  finetune-grading-vision.jsonl   198 vision training entries (base64 images)
+  image-benchmark-cases.json      198 benchmark cases for post-training eval
 """
 
 # ============================================================
