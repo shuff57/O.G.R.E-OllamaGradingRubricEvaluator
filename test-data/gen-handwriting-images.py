@@ -407,6 +407,97 @@ R_BINOMIAL = {
     ],
 }
 
+R_EXPER_DESIGN = {
+    "question": (
+        "Researchers test a new study app by letting students CHOOSE whether to use it, "
+        "then compare exam scores. Identify whether this is an experiment or observational "
+        "study. Name a confounding variable. Explain how random assignment would improve it."
+    ),
+    "checklist": [
+        "Study Type (3 pts): observational study (self-selection, no random assignment)",
+        "Confounding Variable (3 pts): motivation — affects both app use and exam scores",
+        "Random Assignment (4 pts): would distribute confounders equally; isolates app effect",
+    ],
+}
+
+R_BASIC_PROB = {
+    "question": (
+        "A box has 10 marbles: 4 red, 3 blue, 3 green. Find P(not red) using complement. "
+        "Then from another box with 6 red and 4 blue, draw two WITHOUT replacement and "
+        "find P(both red). Explain the rule used and why those events are dependent."
+    ),
+    "checklist": [
+        "Complement Rule (3 pts): P(not red)=1-P(red)=1-4/10=6/10=0.60; states P(A^c)=1-P(A)",
+        "General Multiplication Rule (4 pts): P(both red)=(6/10)(5/9)=30/90=1/3~=0.333",
+        "Why Dependent (3 pts): without replacement changes counts, so 2nd draw depends on 1st",
+    ],
+}
+
+R_COND_PROB = {
+    "question": (
+        "A disease has 1% prevalence. Test sensitivity is 90% and specificity is 85%. "
+        "Using a 10,000-person setup, find P(disease | positive test). "
+        "Show setup, calculation, and interpretation."
+    ),
+    "checklist": [
+        "Setup (3 pts): from 10,000 -> diseased=100, healthy=9900, TP=90, FP=1485",
+        "Calculation (4 pts): P(disease|+)=90/(90+1485)=90/1575~=5.7%",
+        "Interpretation (3 pts): low posterior chance despite positive due to low base rate",
+    ],
+}
+
+R_RANDOM_VAR = {
+    "question": (
+        "A carnival game costs $3. Net outcomes: -$2 with P=3/5, +$2 with P=1/5, +$7 with P=1/5. "
+        "Find E[X], Var(X), and SD(X). Based on E[X], should a rational player play?"
+    ),
+    "checklist": [
+        "Probability Distribution (2 pts): X=-2 (3/5), X=+2 (1/5), X=+7 (1/5); probs sum to 1",
+        "E[X] Calculation (3 pts): E[X]=(-2)(3/5)+(2)(1/5)+(7)(1/5)=0.60",
+        "Var(X) and SD(X) (3 pts): Var=12.64, SD=sqrt(12.64)~=3.56",
+        "Decision (2 pts): E[X]>0 so yes in long run",
+    ],
+}
+
+R_GEOMETRIC = {
+    "question": (
+        "A free-throw shooter makes 75% of attempts. "
+        "She shoots until first success. X = number of shots needed. "
+        "State the 4 geometric conditions. Calculate P(X=3). Find E[X] and interpret."
+    ),
+    "checklist": [
+        "Geometric Conditions (4 pts): binary (make/miss), independent shots, constant p=0.75, no fixed n",
+        "P(X=3) (3 pts): P(X=k)=(1-p)^(k-1)*p; P(X=3)=(0.25)^2*0.75=0.0469",
+        "E[X] (3 pts): E[X]=1/p=1/0.75~=1.33 shots on average",
+    ],
+}
+
+R_NORM_APPROX = {
+    "question": (
+        "In a class of 120 students, pass rate is 65%. X = number who pass. "
+        "Verify success-failure. Find μ and σ. Use normal approximation with "
+        "continuity correction to estimate P(X ≥ 85)."
+    ),
+    "checklist": [
+        "Success-Failure (2 pts): np=78>=10 and n(1-p)=42>=10",
+        "Mean and SD (3 pts): μ=np=78, σ=sqrt(npq)=sqrt(27.3)~=5.225",
+        "Continuity and P (5 pts): P(X>=85)~=P(Y>=84.5), z=6.5/5.225~=1.245, P~=0.107",
+    ],
+}
+
+R_CLT = {
+    "question": (
+        "Homework times are normal with μ=90 min and σ=25 min. "
+        "For random sample n=25, describe sampling distribution of x̄ "
+        "(shape, mean, SE). Then find P(x̄ > 96)."
+    ),
+    "checklist": [
+        "Shape and Justification (2 pts): sampling distribution is normal because population is normal",
+        "Mean and SE (4 pts): μ_x̄=90 and SE=σ/sqrt(n)=25/sqrt(25)=5",
+        "Probability (4 pts): z=(96-90)/5=1.20 and P(x̄>96)=1-0.8849=0.1151",
+    ],
+}
+
 
 # ── Student responses ─────────────────────────────────────────────────────────
 # 8 responses across 4 stats topics, 2 quality bands each (weak / partial / strong).
@@ -556,7 +647,257 @@ RESPONSES = [
              "About 25.4% she makes exactly 5 of 8."
          ),
      },
-]
+     {
+         "id": "exper_design_weak",
+         "rubric": R_EXPER_DESIGN,
+         "score": 3,
+         "text": (
+             "This is an experiment (two groups compared).\n"
+             "But students self-select, so confounding exists.\n"
+             "Motivation could raise both app use and scores.\n"
+             "Random assignment would make groups more fair."
+         ),
+     },
+     {
+         "id": "exper_design_partial",
+         "rubric": R_EXPER_DESIGN,
+         "score": 6,
+         "text": (
+             "This is observational: no random assignment.\n"
+             "Students choose app use (self-selection).\n"
+             "Confounder: motivation affects use and score.\n"
+             "Random assignment balances motivation by chance."
+         ),
+     },
+     {
+         "id": "exper_design_strong",
+         "rubric": R_EXPER_DESIGN,
+         "score": 9,
+         "text": (
+             "Observational study, not a true experiment.\n"
+             "Reason: students self-select app vs no-app.\n"
+             "Confounder: motivation -> more app use,\n"
+             "and independently more study + higher scores.\n"
+             "Random assignment spreads confounders across\n"
+             "groups, isolating app causal effect."
+         ),
+     },
+     {
+         "id": "basic_prob_weak",
+         "rubric": R_BASIC_PROB,
+         "score": 3,
+         "text": (
+             "P(not red)=1-4/10=6/10=0.60 (complement).\n"
+             "For both red: (6/10)(6/10)=0.36.\n"
+             "I used 0.60 twice for the two draws.\n"
+             "Dependent because no replacement."
+         ),
+     },
+     {
+         "id": "basic_prob_partial",
+         "rubric": R_BASIC_PROB,
+         "score": 6,
+         "text": (
+             "Complement: P(not red)=1-P(red)=1-4/10=0.60.\n"
+             "Both red: P=(6/10)(5/9)=30/90=1/3~=0.333.\n"
+             "Used multiplication rule with conditional term.\n"
+             "No replacement changes 2nd-draw probability."
+         ),
+     },
+     {
+         "id": "basic_prob_strong",
+         "rubric": R_BASIC_PROB,
+         "score": 8,
+         "text": (
+             "Complement rule: P(A^c)=1-P(A).\n"
+             "So P(not red)=1-4/10=6/10=0.60.\n"
+             "Without replacement: P(both red)=\n"
+             "P(1st red)P(2nd red|1st red)\n"
+             "=(6/10)(5/9)=30/90=1/3~=0.333.\n"
+             "Dependent: after red first draw, box is 5/9 red."
+         ),
+     },
+     {
+         "id": "cond_prob_weak",
+         "rubric": R_COND_PROB,
+         "score": 2,
+         "text": (
+             "It is 90% because sensitivity is 90%.\n"
+             "So a positive test means 90% sick."
+         ),
+     },
+     {
+         "id": "cond_prob_partial",
+         "rubric": R_COND_PROB,
+         "score": 5,
+         "text": (
+             "Use 10,000 people: diseased=100, healthy=9900.\n"
+             "TP=90. FP=0.15x9900=1485.\n"
+             "P(disease|+)=90/(90+1485)=90/1575=0.057.\n"
+             "So about 5.7% with a positive test."
+         ),
+     },
+     {
+         "id": "cond_prob_strong",
+         "rubric": R_COND_PROB,
+         "score": 9,
+         "text": (
+             "Start with 10,000: diseased 100, healthy 9900.\n"
+             "Sensitivity 90% -> TP=90, FN=10.\n"
+             "Specificity 85% -> FP=1485, TN=8415.\n"
+             "Total positives = 90+1485 = 1575.\n"
+             "P(disease|+) = 90/1575 ~= 0.057 = 5.7%.\n"
+             "Low base rate (1%) means false positives\n"
+             "greatly outnumber true positives."
+         ),
+     },
+     {
+         "id": "random_var_weak",
+         "rubric": R_RANDOM_VAR,
+         "score": 3,
+         "text": (
+             "Outcomes: -2, +2, +7 with probs 3/5,1/5,1/5.\n"
+             "E[X]=(-2+2+7)/3=2.33 (used plain average).\n"
+             "So player should play since EV is positive."
+         ),
+     },
+     {
+         "id": "random_var_partial",
+         "rubric": R_RANDOM_VAR,
+         "score": 6,
+         "text": (
+             "P(X=-2)=3/5, P(X=2)=1/5, P(X=7)=1/5.\n"
+             "E[X]=(-2)(3/5)+(2)(1/5)+(7)(1/5)=0.60.\n"
+             "Var=(-2-0.6)^2(0.6)+(2-0.6)^2(0.2)\n"
+             "+(7-0.6)^2(0.2)=12.64, SD=sqrt(12.64)~=3.56.\n"
+             "E[X]>0, so rational player should play."
+         ),
+     },
+     {
+         "id": "random_var_strong",
+         "rubric": R_RANDOM_VAR,
+         "score": 9,
+         "text": (
+             "Distribution: X=-2 (0.60), X=2 (0.20), X=7 (0.20).\n"
+             "Check probs: 0.60+0.20+0.20=1.\n"
+             "E[X]=sum xP(x)=(-2)(0.60)+(2)(0.20)+(7)(0.20)\n"
+             "= -1.2+0.4+1.4 = 0.60 per play.\n"
+             "Var(X)=sum (x-0.6)^2P(x)=12.64.\n"
+             "SD(X)=sqrt(12.64)~=3.56 dollars.\n"
+             "Since E[X]>0, LLN says long-run average gain."
+         ),
+     },
+     {
+         "id": "geometric_weak",
+         "rubric": R_GEOMETRIC,
+         "score": 3,
+         "text": (
+             "X counts shots until first make.\n"
+             "This is similar to binomial, repeated tries.\n"
+             "I did P(X=3)=0.75^3=0.422 (three makes).\n"
+             "E[X]=1/p=1/0.75=1.33 shots."
+         ),
+     },
+     {
+         "id": "geometric_partial",
+         "rubric": R_GEOMETRIC,
+         "score": 6,
+         "text": (
+             "Geometric: shots until first success.\n"
+             "Conds: binary, indep, constant p, no fixed n.\n"
+             "P(X=k)=(1-p)^(k-1)*p.\n"
+             "P(X=3)=(0.25)^2*0.75=0.0469.\n"
+             "E[X]=1/0.75=1.33 shots avg."
+         ),
+     },
+     {
+         "id": "geometric_strong",
+         "rubric": R_GEOMETRIC,
+         "score": 9,
+         "text": (
+             "X=trial of first make; geometric model.\n"
+             "1) Binary: make or miss each shot.\n"
+             "2) Independent shots.\n"
+             "3) Constant p=0.75 every trial.\n"
+             "4) No fixed n: stop at first success.\n"
+             "P(X=3)=(1-0.75)^(2)*0.75=0.0469.\n"
+             "E[X]=1/p=1.33, so ~1.33 shots to first make."
+         ),
+     },
+     {
+         "id": "norm_approx_weak",
+         "rubric": R_NORM_APPROX,
+         "score": 3,
+         "text": (
+             "Check: np=78 and n(1-p)=42, so approx ok.\n"
+             "Mean u=np=78.\n"
+             "s=sqrt(npq)=sqrt(27.3)~=5.2.\n"
+             "z=(85-78)/5.2=1.35 so upper tail is small."
+         ),
+     },
+     {
+         "id": "norm_approx_partial",
+         "rubric": R_NORM_APPROX,
+         "score": 6,
+         "text": (
+             "np=78>=10 and n(1-p)=42>=10, normal is valid.\n"
+             "u=np=78, s=sqrt(120*0.65*0.35)=5.225.\n"
+             "Use CC: P(X>=85) ~= P(Y>=84.5).\n"
+             "z=(84.5-78)/5.225=1.245.\n"
+             "P(Z>=1.245)=1-0.893~=0.107."
+         ),
+     },
+     {
+         "id": "norm_approx_strong",
+         "rubric": R_NORM_APPROX,
+         "score": 9,
+         "text": (
+             "Success-failure: np=78, n(1-p)=42, both >=10.\n"
+             "So normal approx to binomial is justified.\n"
+             "u=np=78; s=sqrt(npq)=sqrt(27.3)=5.225.\n"
+             "Continuity correction for >=85 uses 84.5.\n"
+             "P(X>=85) ~= P(Y>=84.5), Y~N(78,5.225).\n"
+             "z=(84.5-78)/5.225=1.245.\n"
+             "P(z>=1.245)=0.107, about 10.7% pass >=85."
+         ),
+     },
+     {
+         "id": "clt_weak",
+         "rubric": R_CLT,
+         "score": 2,
+         "text": (
+             "x-bar sampling dist is normal.\n"
+             "Mean is 90 and I used SE=s=25.\n"
+             "z=(96-90)/25=0.24.\n"
+             "P(x-bar>96) is about 0.40."
+         ),
+     },
+     {
+         "id": "clt_partial",
+         "rubric": R_CLT,
+         "score": 5,
+         "text": (
+             "Population is normal, so x-bar is normal.\n"
+             "Mean of x-bar is 90; SE=25/sqrt(25)=5.\n"
+             "z=(96-90)/5=1.20.\n"
+             "P(x-bar>96)=P(z>1.20)=1-0.8849=0.1151."
+         ),
+     },
+     {
+         "id": "clt_strong",
+         "rubric": R_CLT,
+         "score": 9,
+         "text": (
+             "Because population is normal, x-bar is normal.\n"
+             "No CLT approximation is needed here.\n"
+             "Mean of x-bar: u_x-bar = 90 min.\n"
+             "SE = s/sqrt(n)=25/sqrt(25)=5 min.\n"
+             "z=(96-90)/5=1.20.\n"
+             "P(x-bar>96)=P(z>1.20)=1-0.8849=0.1151.\n"
+             "So chance sample mean exceeds 96 is 11.5%."
+         ),
+     },
+ ]
 
 # Validate response text constraints
 for resp in RESPONSES:
