@@ -1,8 +1,8 @@
 # Modelfile for qwen3.5-9B-stat-grader
-# Fine-tuned from Qwen3.5-9B on 52 intro-stats rubric grading examples (diverse topics)
+# Fine-tuned from Qwen3.5-9B on 481 examples (283 text + 198 vision, 22 stats topics)
 # Exported from Unsloth as Q4_K_M GGUF
 
-FROM C:\Users\shuff\Documents\GitHub\O.G.R.E-OllamaGradingRubricEvaluator\fine-tuned-model\Qwen3.5-9B.Q4_K_M.gguf
+FROM ./Qwen3.5-9B.Q4_K_M.gguf
 
 # Disable thinking mode — same as production qwen35-nothink
 SYSTEM /no_think

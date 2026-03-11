@@ -1,10 +1,10 @@
 {
-  "active_plan": "C:\\Users\\shuff\\Documents\\GitHub\\O.G.R.E-OllamaGradingRubricEvaluator\\.sisyphus\\plans\\qwen3-fine-tuning.md",
-  "started_at": "2026-03-05T16:58:35.263Z",
+  "active_plan": "/home/shuff57/Documents/GitHub/O.G.R.E-OllamaGradingRubricEvaluator/.sisyphus/plans/qwen35-9b-grading-finetune.md",
+  "started_at": "2026-03-11T00:48:33.170Z",
   "session_ids": [
-    "ses_3411028b2ffeKCpH4AqKJVR4uY"
+    "ses_3267b54c1ffec2Bdw405k3G4bs"
   ],
-  "plan_name": "qwen3-fine-tuning",
+  "plan_name": "qwen35-9b-grading-finetune",
   "agent": "atlas",
-  "worktree_path": "C:\\Users\\shuff\\Documents\\GitHub\\O.G.R.E-OllamaGradingRubricEvaluator"
+  "worktree_path": "/home/shuff57/Documents/GitHub/O.G.R.E-OllamaGradingRubricEvaluator"
 }
