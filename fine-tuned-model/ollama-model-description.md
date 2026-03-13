@@ -130,3 +130,67 @@ Shows individual scores from 3 independent grading runs. Lower variance = more c
 - **Score calibration** — FT model trends ~0.3 points higher than cloud models on average, which reflects the training data's tendency toward partial credit
 - **Perfect agreement on clear cases** — Students at score extremes (2-3 or 9-10) get identical scores across all models
 - Runs entirely locally with no API costs or data leaving your machine
+
+---
+
+## Inference Performance
+
+Benchmarked on a Ryzen 9 AI HX370 laptop with Radeon 890M iGPU (63 GiB UMA VRAM) via Vulkan.
+
+| Metric | Value |
+|---|---|
+| **Generation speed** | ~9-10 tok/s |
+| **Prefill speed** | ~100-150 tok/s |
+| **GPU offload** | 33/33 layers (100% GPU) |
+| **Model size in memory** | ~5.6 GB (Q4_K_M) |
+
+### Batch Grading Throughput
+
+| Batch Size | Input Tokens | Output Tokens | Wall Time |
+|---|---|---|---|
+| 5 students | ~600 | ~350 | ~35 sec |
+| 9 students | ~2,100 | ~2,150 | ~4 min |
+| 15 students | ~3,500 | ~3,500 | ~7 min |
+
+### Architecture Notes
+
+- **Qwen3.5-9B is a dense model** — all 9B parameters are active for every token, requiring ~5 GB of memory bandwidth per token generated
+- **DeltaNet hybrid architecture** — 24 of 32 layers use linear-attention DeltaNet (O(1) state size), only 8 layers use standard KV-cache attention. This means **context length (`num_ctx`) has negligible effect on generation speed** — reducing `num_ctx` from 8192 to 4096 does not improve tok/s
+- **`num_ctx` is set to 8192** to accommodate 15-student batch prompts (~3,500 tokens input + output headroom)
+- **Flash Attention** (`OLLAMA_FLASH_ATTENTION=1`) provided no measurable improvement on this model/hardware combination
+
+### GPU & Vulkan Setup
+
+This model requires Vulkan GPU acceleration for acceptable performance. Ollama must be configured with:
+
+```
+# /etc/systemd/system/ollama.service.d/override.conf
+[Service]
+Environment="OLLAMA_VULKAN=1"
+```
+
+Verify GPU offload after loading the model:
+```bash
+ollama ps
+# Should show "100% GPU" in the processor column
+```
+
+### Known Limitations
+
+- **No vision capability** — The base Qwen3.5-9B supports vision (image input), but the Unsloth LoRA export process strips the vision encoder from the GGUF. The fine-tuned model can only process text input despite being trained on 176 handwriting/vision examples. To restore vision, the model would need to be re-exported with the vision encoder included, or restructured to use `FROM qwen3.5:9b` with a separate `ADAPTER` file
+- **Speed ceiling** — ~10 tok/s is the hardware limit for a dense 9B Q4_K_M model on the 890M iGPU. This is memory-bandwidth bound (9B params × 0.5625 bytes/param = ~5 GB read per token). No software tuning can exceed this
+
+### Faster Alternative: Qwen3.5-35B-A3B
+
+For higher throughput, consider fine-tuning **Qwen3.5-35B-A3B** instead:
+
+| | 9B (dense) | 35B-A3B (MoE) |
+|---|---|---|
+| Total parameters | 9B | 35B |
+| Active parameters per token | 9B | **3B** |
+| Memory read per token | ~5 GB | **~1.7 GB** |
+| Generation speed (890M) | ~10 tok/s | **~16.5 tok/s** |
+| Architecture | Dense + DeltaNet | MoE (256 experts, 9 active) |
+| Model size (Q4_K_M) | ~5.6 GB | ~21 GB |
+
+The MoE model is **1.65x faster** because it only activates 3B of its 35B parameters per token, dramatically reducing memory bandwidth requirements. The tradeoff is a larger model file (~21 GB vs ~5.6 GB), though the 890M's 63 GiB UMA VRAM can accommodate it easily.
