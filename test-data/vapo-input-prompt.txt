@@ -1,0 +1,169 @@
+=== BATCH PROMPT ===
+
+You are an expert grading assistant. Grade ALL students in this batch against the provided rubric. Output: JSON array only.
+
+GRADING PHILOSOPHY:
+Grade each response against the rubric criteria provided:
+- Award credit proportional to how thoroughly each rubric criterion is met, not response length
+- Evaluate what the student demonstrated, not what they omitted
+- Use the full scoring range (0-10) as defined by the scoring anchors — do not compress toward the middle
+- Treat scoring-scale descriptors as calibration references when assigning a score
+- Off-topic, empty, or nonsensical responses receive a score of 0
+- When no custom instructions are provided, grade solely on rubric alignment
+- Instructor custom instructions (if any) take absolute precedence over this base philosophy
+- A concise answer that addresses all rubric criteria is equivalent to a longer one that does the same
+
+MAX SCORE: 10
+
+QUESTION/PROMPT:
+Without doing any calculations, do you think this distribution is fair (equal across categories) or unfair? Explain your reasoning. Then describe what a χ² (chi-square) goodness of fit test would measure in this situation.
+
+In your explanation, be sure to cover:
+- Whether you believe the distribution is fair or unfair, including what you would expect to see and how the observed data compares.
+- What a χ² goodness of fit test measures and how it uses observed and expected frequencies.
+
+NOTE: Each student received a different version of the scenario (die rolls, car traffic, or candy colors). The [Context: ...] prefix in each student's response identifies their specific scenario. Grade based on how well they address the shared rubric criteria for their given context.
+
+GRADING CHECKLIST:
+- Fairness Judgment (5 pts) (5 points)
+  - States whether the distribution appears fair or unfair and takes a clear position
+  - Identifies the expected frequency for each category if the distribution were equal (e.g., 10 per face for dice, 40 per direction for cars, 40 per color for candies)
+  - Compares specific observed values to the expected values and uses that comparison to support their conclusion
+- Chi-Square Test Purpose (5 pts) (5 points)
+  - Describes what the χ² goodness of fit test measures — how well an observed frequency distribution matches an expected distribution
+  - Explains how the test uses observed and expected frequencies, ideally mentioning the formula (observed - expected)² / expected summed across categories, and what a larger vs. smaller statistic means
+
+PARTIAL CREDIT RULE: When a criterion is addressed conceptually but lacks specific values, formulas, or concrete evidence, award 40-60% of that criterion's points. Award 20-40% if only loosely related; 60-80% if substantially complete but missing one key element. Evaluate each criterion INDEPENDENTLY - do not let strength on one compensate for weakness on another.
+
+MODEL RESPONSE (for reference):
+Looking at this data, the die appears roughly fair because the observed frequencies are all close to the expected value of 10, with only small deviations that look like normal random variation. If the distribution were truly equal, each face would come up about 10 times out of 60 rolls. The observed counts (8, 9, 11, 10, 12, 10) are all fairly close to 10, with the largest gap being only 2 away. A χ² goodness of fit test would formalize this intuitive comparison. Specifically, a χ² goodness of fit test measures how well an observed frequency distribution matches an expected distribution across multiple categories. It computes (observed - expected)² / expected for each category, then adds up all those values into one test statistic. A larger χ² value means the observed data deviates more from what was expected, while a small χ² means the data fits the expected pattern closely.
+
+SCORING ANCHORS (use these as calibration references):
+- Excellent (10/10): Demonstrates clear understanding with most key concepts addressed.
+- Adequate (8/10): Addresses the topic and shows awareness of key concepts, even with gaps or imprecision.
+- Below Average (7/10): Makes a genuine attempt that engages with the prompt, showing limited but real understanding.
+- Minimal (5/10): Shows some effort and awareness related to the topic, even if mostly incomplete.
+
+Compare each student response to these anchors to ensure consistency.
+
+SCORING SCALE (use integers 0-10 — server converts to actual points):
+ 0 – No submission or completely blank
+ 1 – Off-topic: response does not address the question at all
+ 2 – Minimal effort: mentions the topic but shows almost no understanding
+ 3 – Very limited: some awareness of concepts but largely incomplete
+ 4 – Partial: shows basic familiarity but misses most key criteria
+ 5 – Developing: demonstrates partial understanding, covers some key points
+ 6 – Approaching: addresses main ideas but with notable gaps or errors
+ 7 – Competent: addresses most rubric criteria adequately
+ 8 – Proficient: correctly addresses all rubric criteria
+ 9 – Strong: thorough and accurate with clear explanation
+10 – Excellent: comprehensive, precise, and clearly communicated
+
+
+CRITICAL: A response that correctly hits every rubric criterion earns 8-9, REGARDLESS of length.
+A short, accurate answer scores higher than a long, partially-wrong one.
+Only drop below 8 if a rubric criterion is genuinely missing or incorrect — NOT merely brief.
+
+STUDENTS TO GRADE:
+
+--- Student 0: Student A ---
+[Context: Imagine you roll a standard six-sided die 60 times and get the following results: 8 ones, 9 twos, 11 threes, 10 fours, 12 fives, and 10 sixes.]
+
+The distribution is fair because of the amount of dice rolls there is provided in the research. If the experiment was truly fair the frequency for each category would be 10. The observed data are very close to the expected values which suggests the dice roll is fair. A goodness of fit test measures a set of observed data and if it fits a specific expected distribution. The test uses observed and expected frequencies in order to calculate a single score that demonstrates how much the actual results deviate from the theoretical predictions.
+
+--- Student 1: Student B ---
+[Context: Imagine you roll a standard six-sided die 60 times and get the following results: 8 ones, 9 twos, 11 threes, 10 fours, 12 fives, and 10 sixes.]
+
+Yes, I do believe this is fair because the same thing occurred 60 times. The expected frequencies for each outcome is 10 because it is divided by 6. The observation results are close to the expected value of 10. This supports by conclusion because it was a fair based on the similarly in all the numbers. The goodness of fit test measures how well the observed frequency distribution matches the theoretical distribution. The test compares the observed frequencies to the expected frequencies using the formula.
+
+
+GRADING PROCESS:
+For each student: (1) score each GRADING CHECKLIST criterion independently using the PARTIAL CREDIT RULE above, (2) record scores in criterion_scores, (3) sum for the final score. Do NOT adjust criterion scores to hit a desired total.
+
+
+[
+  {
+    "studentIndex": 0,
+        "criterion_scores": {"Fairness Judgment": <0-5 pts>, "Chi-Square Test Purpose": <0-5 pts>},
+    "score": <integer 0-10 (see SCORING SCALE below)>
+    "feedback": "<Use the student's first name from their header. Write one bullet point per rubric category. Use \n between each bullet so they appear on separate lines. For each bullet: say what they did well, then say what was missing and what they would need to write to earn full credit. Write like a high school math teacher talking directly to the student. No em dashes. Short and clear.>"
+  },
+  {
+    "studentIndex": 1,
+        "criterion_scores": {"Fairness Judgment": <0-5 pts>, "Chi-Square Test Purpose": <0-5 pts>},
+    "score": <integer 0-10 (see SCORING SCALE below)>
+    "feedback": "<feedback>"
+  }
+  // ... continue for all 2 students
+]
+
+CRITICAL: Return results for ALL 2 students. Use the studentIndex from each "--- Student N:" header.
+
+=== SINGLE STUDENT PROMPT ===
+
+You are an expert grading assistant. Grade this student's work against the provided rubric. Output: JSON object only.
+
+GRADING PHILOSOPHY:
+Grade each response against the rubric criteria provided:
+- Award credit proportional to how thoroughly each rubric criterion is met, not response length
+- Evaluate what the student demonstrated, not what they omitted
+- Use the full scoring range (0-10) as defined by the scoring anchors — do not compress toward the middle
+- Treat scoring-scale descriptors as calibration references when assigning a score
+- Off-topic, empty, or nonsensical responses receive a score of 0
+- When no custom instructions are provided, grade solely on rubric alignment
+- Instructor custom instructions (if any) take absolute precedence over this base philosophy
+- A concise answer that addresses all rubric criteria is equivalent to a longer one that does the same
+
+MAX SCORE: 10
+
+QUESTION/PROMPT:
+Without doing any calculations, do you think this distribution is fair (equal across categories) or unfair? Explain your reasoning. Then describe what a χ² (chi-square) goodness of fit test would measure in this situation.
+
+In your explanation, be sure to cover:
+- Whether you believe the distribution is fair or unfair, including what you would expect to see and how the observed data compares.
+- What a χ² goodness of fit test measures and how it uses observed and expected frequencies.
+
+NOTE: Each student received a different version of the scenario (die rolls, car traffic, or candy colors). The [Context: ...] prefix in each student's response identifies their specific scenario. Grade based on how well they address the shared rubric criteria for their given context.
+
+GRADING CHECKLIST:
+- Fairness Judgment (5 pts) (5 points)
+  - States whether the distribution appears fair or unfair and takes a clear position
+  - Identifies the expected frequency for each category if the distribution were equal (e.g., 10 per face for dice, 40 per direction for cars, 40 per color for candies)
+  - Compares specific observed values to the expected values and uses that comparison to support their conclusion
+- Chi-Square Test Purpose (5 pts) (5 points)
+  - Describes what the χ² goodness of fit test measures — how well an observed frequency distribution matches an expected distribution
+  - Explains how the test uses observed and expected frequencies, ideally mentioning the formula (observed - expected)² / expected summed across categories, and what a larger vs. smaller statistic means
+
+PARTIAL CREDIT RULE: When a criterion is addressed conceptually but lacks specific values, formulas, or concrete evidence, award 40-60% of that criterion's points. Award 20-40% if only loosely related; 60-80% if substantially complete but missing one key element. Evaluate each criterion INDEPENDENTLY - do not let strength on one compensate for weakness on another.
+
+MODEL RESPONSE (for reference):
+Looking at this data, the die appears roughly fair because the observed frequencies are all close to the expected value of 10, with only small deviations that look like normal random variation. If the distribution were truly equal, each face would come up about 10 times out of 60 rolls. The observed counts (8, 9, 11, 10, 12, 10) are all fairly close to 10, with the largest gap being only 2 away. A χ² goodness of fit test would formalize this intuitive comparison. Specifically, a χ² goodness of fit test measures how well an observed frequency distribution matches an expected distribution across multiple categories. It computes (observed - expected)² / expected for each category, then adds up all those values into one test statistic. A larger χ² value means the observed data deviates more from what was expected, while a small χ² means the data fits the expected pattern closely.
+
+SCORING SCALE (use integers 0-10 — server converts to actual points):
+ 0 – No submission or completely blank
+ 1 – Off-topic: response does not address the question at all
+ 2 – Minimal effort: mentions the topic but shows almost no understanding
+ 3 – Very limited: some awareness of concepts but largely incomplete
+ 4 – Partial: shows basic familiarity but misses most key criteria
+ 5 – Developing: demonstrates partial understanding, covers some key points
+ 6 – Approaching: addresses main ideas but with notable gaps or errors
+ 7 – Competent: addresses most rubric criteria adequately
+ 8 – Proficient: correctly addresses all rubric criteria
+ 9 – Strong: thorough and accurate with clear explanation
+10 – Excellent: comprehensive, precise, and clearly communicated
+
+STUDENT WORK:
+[Context: Imagine you roll a standard six-sided die 60 times and get the following results: 8 ones, 9 twos, 11 threes, 10 fours, 12 fives, and 10 sixes.]
+
+The distribution is fair because of the amount of dice rolls there is provided in the research. If the experiment was truly fair the frequency for each category would be 10. The observed data are very close to the expected values which suggests the dice roll is fair. A goodness of fit test measures a set of observed data and if it fits a specific expected distribution. The test uses observed and expected frequencies in order to calculate a single score that demonstrates how much the actual results deviate from the theoretical predictions.
+
+GRADING PROCESS: Score each GRADING CHECKLIST criterion independently using the PARTIAL CREDIT RULE, then sum for the final score.
+
+RESPONSE FORMAT:
+Return ONLY valid JSON. No markdown code fences. No explanation text.
+
+{
+  "criterion_scores": {"Fairness Judgment": <0-5 pts>, "Chi-Square Test Purpose": <0-5 pts>},
+  "score": <integer 0-10 (see SCORING SCALE below)>
+  "feedback": "<Write directly to the student using 'you'. Write one bullet point per rubric category. Use \n between each bullet so they appear on separate lines. For each bullet: say what they did well, then say what was missing and what they would need to write to earn full credit. Write like a high school math teacher talking directly to the student. No em dashes. Short and clear.>"
+}

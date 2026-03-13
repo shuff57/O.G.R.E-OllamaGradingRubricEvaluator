@@ -1,10 +1,10 @@
 # Modelfile for qwen3.5-9B-stat-grader
-# Fine-tuned from Qwen3.5-9B on 481 examples (283 text + 198 vision, 22 stats topics)
-# Exported from Unsloth as Q4_K_M GGUF
+# Fine-tuned from Qwen3.5-9B on 415 examples (239 text + 176 vision)
+# Exported from Unsloth as Q4_K_M GGUF — 1 epoch, LoRA rank 16
 
-FROM ./Qwen3.5-9B.Q4_K_M.gguf
+FROM ./qwen3.5-9B-stat-grader-Q4_K_M.gguf
 
-# Disable thinking mode — same as production qwen35-nothink
+# Disable thinking mode — output JSON directly
 SYSTEM /no_think
 RENDERER qwen3.5
 PARSER qwen3.5
