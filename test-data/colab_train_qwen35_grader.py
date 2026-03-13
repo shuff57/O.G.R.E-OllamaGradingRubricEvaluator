@@ -1,3 +1,13 @@
+# ============================================================
+# DEPRECATED — Use OGRE_Finetune_Qwen35_9B.ipynb instead.
+#
+# This script has a buggy rotary embedding monkey-patch that
+# crashes at epoch 2. The notebook version uses transformers
+# from git HEAD (which has the correct rotary implementation)
+# and does not need the patch.
+# Kept for historical reference only.
+# ============================================================
+
 # pyright: reportMissingImports=false, reportMissingTypeStubs=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportAny=false, reportUnknownLambdaType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnusedCallResult=false, reportDuplicateImport=false, reportUnusedImport=false, reportAttributeAccessIssue=false, reportArgumentType=false
 """
 O.G.R.E Qwen3.5-9B Stat Grader — Colab Training Script

@@ -1,10 +1,10 @@
 {
-  "active_plan": "/home/shuff57/Documents/GitHub/O.G.R.E-OllamaGradingRubricEvaluator/.sisyphus/plans/prompt-optimization-v2.md",
-  "started_at": "2026-03-13T00:00:43.973Z",
+  "active_plan": "/home/shuff57/Documents/GitHub/O.G.R.E-OllamaGradingRubricEvaluator/.sisyphus/plans/qwen35-finetune-notebooks.md",
+  "started_at": "2026-03-13T16:46:49.312Z",
   "session_ids": [
-    "ses_31bb6445bffe3QURwljl4ollIB"
+    "ses_3182a6092ffe92WASV2IF12vAE"
   ],
-  "plan_name": "prompt-optimization-v2",
+  "plan_name": "qwen35-finetune-notebooks",
   "agent": "atlas",
   "worktree_path": "/home/shuff57/Documents/GitHub/O.G.R.E-OllamaGradingRubricEvaluator"
 }
