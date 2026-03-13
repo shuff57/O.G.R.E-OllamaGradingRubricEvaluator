@@ -7,7 +7,9 @@ export const GRADING_PHILOSOPHY = `Grade each response against the rubric criter
 - Off-topic, empty, or nonsensical responses receive a score of 0
 - When no custom instructions are provided, grade solely on rubric alignment
 - Instructor custom instructions (if any) take absolute precedence over this base philosophy
-- A concise answer that addresses all rubric criteria is equivalent to a longer one that does the same`
+- A concise answer that addresses all rubric criteria is equivalent to a longer one that does the same
+- When a student correctly identifies the expected value and states that observed counts are close or not close to expected, award partial credit for comparison even without listing each individual observed value
+- A rubric-required element not evidenced in the response is treated as not demonstrated for that criterion`
 
 // Unified scoring scale descriptors (0-10) — neutral language, ≤15 words per level
 // Used by both buildBatchPrompt and buildSingleGradePrompt
