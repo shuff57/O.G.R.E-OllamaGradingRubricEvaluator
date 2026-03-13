@@ -50,6 +50,8 @@ Options:
   --output=<path>        Output JSON path (default: ${DEFAULTS.output})
   --help                 Show this help`;
 
+const WARMUP_PROMPT = 'Warm-up request. Reply with [] only.';
+
 function parseArgs(argv) {
   const config = structuredClone(DEFAULTS);
 
@@ -238,6 +240,7 @@ async function callOllama({ url, model, promptText, ctx, seed, timeoutMs }) {
       method: 'POST',
       headers: request.headers,
       body: JSON.stringify(request.body),
+      keepalive: false,
       signal: controller.signal,
     });
 
@@ -328,15 +331,12 @@ async function main() {
   let previousCtx = null;
 
   for (const ctx of orderedCtxValues) {
-    const warmupStudents = buildStudents(sourceStudents, 1);
-    const warmupPrompt = buildBatchPrompt(TEST_RUBRIC, warmupStudents, anchors);
-
     if (previousCtx !== ctx) {
       for (let warmupIndex = 0; warmupIndex < config.warmup; warmupIndex += 1) {
         await callOllama({
           url: config.url,
           model: config.model,
-          promptText: warmupPrompt,
+          promptText: WARMUP_PROMPT,
           ctx,
           seed: config.seed,
           timeoutMs: config.timeoutMs,
