@@ -73,3 +73,49 @@
 - Updated training cell `SFTConfig` to `num_train_epochs=2` with rationale comment tied to rotary fix.
 - Added explicit `packing=False` inside `SFTConfig` after `remove_unused_columns=False` to prevent known Qwen3.5 NaN gradient issue (Unsloth #4160).
 - Verified notebook JSON validity after each edit and final state (`Cells: 22`).
+
+
+## 2026-03-13T17:24:12Z Task 4 Dual Vision Export Cells (9B Notebook)
+
+- Patched `test-data/OGRE_Finetune_Qwen35_9B.ipynb` via Python JSON script (`/tmp/patch_notebook.py`) to avoid unsafe raw JSON text edits.
+- Kept existing Cell 5 `model.save_pretrained_gguf(...)` export and added explicit note that this GGUF is text-only (vision encoder stripped).
+- Inserted new Cell 5a markdown + code:
+  - `model.save_pretrained_merged(..., save_method="merged_16bit")`
+  - writes merged model to `MERGED_OUTPUT_DIR = /content/qwen35-9b-grader-merged-f16`
+- Inserted new Cell 5b markdown + code:
+  - clones/builds `llama.cpp` with CMake
+  - extracts mmproj via `python3 llama.cpp/convert_hf_to_gguf.py ... --mmproj`
+  - defines `MMPROJ_OUTPUT = /content/qwen3.5-9B-stat-grader-mmproj-F16.gguf`
+- Renamed old 5b to `## 5c. Save Both Files to Google Drive` and updated code to copy BOTH GGUF and mmproj to Drive.
+- Updated Cell 6 markdown to `## 6. Download Files` and code now downloads both `gguf_path` and `MMPROJ_OUTPUT`.
+- Added new markdown cell `## After Download: Using Your Model` (Ollama text flow + llama-server vision flow with required `--no-jinja`).
+- Left Cell 7 HF push code unchanged.
+- Updated final `## Next Steps (Local Machine)` markdown to include dual-file workflow and llama-server mmproj usage.
+
+Validation snapshot:
+- JSON parse: PASS
+- Cells: 27
+- `save_pretrained_gguf`: 3
+- `save_pretrained_merged`: 1
+- `mmproj`: 32
+- `llama.cpp`: 10
+- `convert_hf_to_gguf`: 1
+- `no-jinja`: 3
+
+Evidence files created:
+- `.sisyphus/evidence/task-4-dual-export.txt`
+- `.sisyphus/evidence/task-4-llamacpp-build.txt`
+- `.sisyphus/evidence/task-4-no-jinja.txt`
+- `.sisyphus/evidence/task-4-valid-json.txt`
+
+
+## Task 5 — Qwen3.5-35B-A3B (MoE) notebook generation
+
+- Created `test-data/OGRE_Finetune_Qwen35_MoE.ipynb` via scripted JSON transform from `OGRE_Finetune_Qwen35_9B.ipynb` using deep copy (`copy.deepcopy`).
+- Replaced header with MoE-specific A100/VRAM, architecture, and 21GB GGUF guidance; updated local run commands to `35B-A3B` artifacts.
+- Replaced model-loading code to use `FastModel.from_pretrained(...)` with `load_in_4bit=False`, `load_in_16bit=True`, bf16, VRAM assertion (`vram_gb >= 70`), then `FastVisionModel.get_peft_model(...)` with `target_modules="all-linear"` and `modules_to_save=["lm_head", "embed_tokens"]`.
+- Updated processor model to `unsloth/Qwen3.5-35B-A3B`; updated export/merged/mmproj/drive/hf names to `35B-A3B` variants and HF repo to `qwen3.5-35b-a3b-math-grader`.
+- Updated Drive backup markdown with explicit 21GB quota warning; updated HF markdown to primary-backup language for MoE.
+- Added final cell: `## TODO: Thinking-On Variant (Future Work)` (informational only, no functional thinking-on training changes).
+- Preserved training hyperparameters (`num_train_epochs=2`, `packing=False`) and retained `enable_thinking=False` behavior in training pipeline.
+- Evidence files created: `task-5-model-name.txt`, `task-5-no-4bit.txt`, `task-5-vram-assert.txt`, `task-5-loader-api.txt`, `task-5-moe-export.txt`, `task-5-thinking-todo.txt`, `task-5-valid-json.txt`.

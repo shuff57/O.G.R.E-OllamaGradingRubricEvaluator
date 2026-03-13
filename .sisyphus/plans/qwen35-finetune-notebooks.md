@@ -434,7 +434,7 @@ Max Concurrent: 3 (Wave 1)
   - Files: `test-data/colab_train_qwen35_grader.py`
   - Pre-commit: `head -3 test-data/colab_train_qwen35_grader.py | grep -q DEPRECATED`
 
-- [ ] 4. Add Dual Vision Export Cells to 9B Notebook
+- [x] 4. Add Dual Vision Export Cells to 9B Notebook
 
   **What to do**:
   - **Replace existing Cell 5** (GGUF-only export) with a new dual-export cell sequence:
@@ -596,7 +596,7 @@ Max Concurrent: 3 (Wave 1)
   - Files: `test-data/OGRE_Finetune_Qwen35_9B.ipynb`
   - Pre-commit: `python3 -c "import json; json.load(open('test-data/OGRE_Finetune_Qwen35_9B.ipynb'))"`
 
-- [ ] 5. Create MoE Notebook
+- [x] 5. Create MoE Notebook
 
   **What to do**:
   - Create `test-data/OGRE_Finetune_Qwen35_MoE.ipynb` by adapting the FIXED 9B notebook (after Tasks 1 + 4)
