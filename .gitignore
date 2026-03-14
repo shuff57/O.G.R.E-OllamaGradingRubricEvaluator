@@ -39,3 +39,15 @@ ogre-desktop/.sisyphus/
 
 # Tauri build artifacts
 ogre-desktop/src-tauri/target/
+
+# Large model files (pull via Ollama instead)
+*.gguf
+
+# Python cache
+__pycache__/
+
+# Local agent/tooling config
+.agents/
+.claude/skills/
+skills-lock.json
+.sisyphus/run-continuation/

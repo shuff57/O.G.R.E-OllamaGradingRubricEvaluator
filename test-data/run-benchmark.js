@@ -30,16 +30,9 @@
 
 const CONFIG = {
   models: [
-    { provider: 'ollama',     model: 'glm-5:cloud',                label: 'GLM-5'/*,           customInstructions: 'When a student demonstrates partial understanding or addresses most criteria with minor gaps, give proportional partial credit for what they got right. In the 4-7 range especially, do not penalize incompleteness too harshly — a response that covers most criteria reasonably well should receive credit for what is addressed. Err slightly toward recognizing demonstrated understanding rather than penalizing for what is missing.' */},
-    { provider: 'ollama',     model: 'kimi-k2.5:cloud',            label: 'Kimi-K2.5'        },
-    { provider: 'ollama',     model: 'minimax-m2.5:cloud',         label: 'Minimax-M2.5'/*,    customInstructions: 'Be strict with partial credit. Only award points when a criterion is clearly and explicitly addressed. Vague or incomplete responses in the 2-5 range should NOT be rounded up — if the student barely addresses a criterion, give half credit or less. Truly excellent responses that address all criteria thoroughly deserve 9-10. Do not compress scores toward the middle — let weak responses score low and strong responses score high.' */},
-    { provider: 'ollama',     model: 'gemini-3-flash-preview:cloud', label: 'Gemini 3 Flash'  },
-    { provider: 'ollama',     model: 'deepseek-v3.2:cloud',        label: 'DeepSeek 3.2'     },
-    { provider: 'ollama',     model: 'qwen3.5:397b-cloud',         label: 'Qwen 3.5 397B'    },
-    { provider: 'ollama',     model: 'mistral-large-3:675b-cloud', label: 'Mistral Large 3'  },
-    { provider: 'ollama',     model: 'gpt-oss:120b-cloud',         label: 'GPT-OSS 120B'     },
-    { provider: 'anthropic',  model: 'claude-haiku-4-5',           label: 'Haiku 4.5'        },
-    { provider: 'anthropic',  model: 'claude-sonnet-4-6',          label: 'Sonnet 4.6'       },
+    { provider: 'ollama',       model: 'glm-5:cloud',                       label: 'GLM-5'      },
+    { provider: 'ollama-local', model: 'shuff57/qwen3.5-9B-stat-grader',    label: 'Qwen35-FT'  },
+    { provider: 'anthropic',    model: 'claude-sonnet-4-6',                 label: 'Sonnet 4.6'  },
   ],
   runsPerModel: 3,
   tolerance: 1,        // ±1 point for "agreement"
@@ -78,6 +71,20 @@ if (_datasetArg) {
   }
   CONFIG.inputRubric   = DATASETS[_dsName].rubric;
   CONFIG.inputStudents = DATASETS[_dsName].students;
+}
+
+// --chunkSize=<number> override for local/small models that need smaller batches (e.g. --chunkSize=5)
+const _chunkArg = process.argv.find(a => a.startsWith('--chunkSize='));
+if (_chunkArg) {
+  CONFIG.chunkSize = parseInt(_chunkArg.slice(12));
+  console.log(`[config] chunkSize overridden to ${CONFIG.chunkSize}`);
+}
+
+// --runs=<number> override for number of runs per model (e.g. --runs=1 for quick benchmarks)
+const _runsArg = process.argv.find(a => a.startsWith('--runs='));
+if (_runsArg) {
+  CONFIG.runsPerModel = parseInt(_runsArg.slice(7));
+  console.log(`[config] runsPerModel overridden to ${CONFIG.runsPerModel}`);
 }
 
 // --tolerance=<number> override (e.g. --tolerance=0.5)

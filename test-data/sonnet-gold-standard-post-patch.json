@@ -1,0 +1,188 @@
+{
+  "description": "Gold standard scores produced by Claude Opus 4.6 acting as Sonnet gold standard, using updated prompt with T5 patches (Patch A: partial credit for closeness statements, Patch B: 8+ guardrail, band mapping). 3 identical runs (deterministic grading).",
+  "model": "claude-opus-4-6 (acting as Sonnet gold standard)",
+  "prompt_version": "post-T5-patches",
+  "runs": 3,
+  "perStudent": [
+    {
+      "index": 0,
+      "name": "Alvarez, Emiliano",
+      "scores": [8, 8, 8],
+      "mean": 8.0,
+      "rationale": "Fairness: clear position (fair), expected freq=10 identified, comparison='very close to expected' (general closeness—Patch A partial credit) ≈4/5. Chi-square: good definition, no formula but describes deviation concept ≈3.5/5. Total: 7.5→8."
+    },
+    {
+      "index": 1,
+      "name": "Cartwright, Juliet",
+      "scores": [7, 7, 7],
+      "mean": 7.0,
+      "rationale": "Fairness: clear position (fair), expected freq=10 identified, comparison='close to expected value of 10' (general closeness—Patch A) ≈3.5/5. Chi-square: good definition, mentions 'using the formula' but doesn't state it ≈3/5. Per Patch B: one criterion (comparison) only partially met → score 7."
+    },
+    {
+      "index": 2,
+      "name": "Consoli, Ben",
+      "scores": [9, 9, 9],
+      "mean": 9.0,
+      "rationale": "Fairness: clear position (unfair), expected=40, specific observed values compared (28,27,65 vs 40) ≈5/5. Chi-square: describes purpose well (random chance vs significant), explains mechanism conceptually ≈4/5. All criteria substantively addressed → 9."
+    },
+    {
+      "index": 3,
+      "name": "Cox, Jenna",
+      "scores": [4, 4, 4],
+      "mean": 4.0,
+      "rationale": "Fairness: says 'unfair' for dice (questionable but position taken), no explicit expected freq, flawed comparison reasoning ≈2/5. Chi-square: mentions p-value/significance but calls it 'T-Statistic' (wrong term), doesn't describe what test MEASURES ≈2/5. Shows basic familiarity but misses most key criteria → 4."
+    },
+    {
+      "index": 4,
+      "name": "Davis, Cecilia",
+      "scores": [3, 3, 3],
+      "mean": 3.0,
+      "rationale": "Fairness: hedged position ('somewhat unfair'), no expected freq, no comparison ≈1.5/5. Chi-square: one-sentence definition ('measure how well observed fits expected')—correct but minimal, no mechanism ≈1.5/5. Very limited understanding → 3."
+    },
+    {
+      "index": 5,
+      "name": "Doris, Nicole",
+      "scores": [5, 5, 5],
+      "mean": 5.0,
+      "rationale": "Fairness: clear position (mostly fair), no expected freq explicitly, general comparison ('numbers mostly close') ≈2.5/5. Chi-square: decent definition ('measure how far observed differ from expected'), mentions expected='even across all colors' ≈2.5-3/5. Partial understanding → 5."
+    },
+    {
+      "index": 6,
+      "name": "Guichard, Sophia",
+      "scores": [8, 8, 7],
+      "mean": 7.7,
+      "rationale": "Fairness: clear position (unfair), expected=40 for each direction, but doesn't compare specific observed values to 40 individually ≈3.5/5. Chi-square: strong textbook definition ('statistical hypothesis test...observed frequency distribution matches expected theoretical distribution') ≈4.5/5, but no formula ≈0/5. Borderline 7-8; chi-square definition is excellent but comparison and formula are weak."
+    },
+    {
+      "index": 7,
+      "name": "Guzman Rangel, Jimena",
+      "scores": [9, 9, 10],
+      "mean": 9.3,
+      "rationale": "Fairness: clear position (unfair), expected=40, specific comparison (52>40) ≈4.5/5. Chi-square: good definition, FULL FORMULA '(observed-expected)² / expected' ≈5/5. Thorough and accurate → 9-10."
+    },
+    {
+      "index": 8,
+      "name": "Herl, Chrey",
+      "scores": [8, 8, 8],
+      "mean": 8.0,
+      "rationale": "Fairness: clear position (fair), expected=10 (60/6), 'only 2 away from 10 at most'—specific distance comparison ≈5/5. Chi-square: good definition, explains hypothesis testing framework but no formula, weak on mechanism ≈3/5. All criteria addressed → 8."
+    },
+    {
+      "index": 9,
+      "name": "Jimmerson, Kwan",
+      "scores": [2, 2, 2],
+      "mean": 2.0,
+      "rationale": "Fairness: says 'fair' but reasoning is 'driver can choose any lane'—incorrect logic, no expected freq, no comparison ≈0.5/5. Chi-square: one sentence ('measures how far apart expected and actual frequencies are')—bare minimum ≈1.5/5. Minimal effort → 2."
+    },
+    {
+      "index": 10,
+      "name": "Johnson, Kenzie",
+      "scores": [9, 9, 9],
+      "mean": 9.0,
+      "rationale": "Fairness: clear position (reasonably fair), expected=40, lists ALL observed values and compares to 40 ≈5/5. Chi-square: good definition, describes logic of large vs small differences, no exact formula but excellent conceptual explanation ≈4/5. Thorough → 9."
+    },
+    {
+      "index": 11,
+      "name": "Laparan, Elle",
+      "scores": [7, 7, 7],
+      "mean": 7.0,
+      "rationale": "Fairness: clear position (fair), expected≈10, 'results are close to 10' (general closeness—Patch A) ≈3.5/5. Chi-square: describes what test measures, mentions 'the formula' but doesn't state it, describes interpretation (small=fair, large=biased) ≈3/5. Per Patch B: comparison only partially met → 7."
+    },
+    {
+      "index": 12,
+      "name": "Martin, Makenzie",
+      "scores": [8, 8, 8],
+      "mean": 8.0,
+      "rationale": "Fairness: clear position (fair), expected=10, specific comparison ('largest=12 only two away, lowest=8 also two away') ≈5/5. Chi-square: describes purpose ('statistical significance'), mentions 'chi-square statistic' and 'total distance' but no formula ≈3/5. All criteria addressed → 8."
+    },
+    {
+      "index": 13,
+      "name": "melton, myla",
+      "scores": [4, 3, 4],
+      "mean": 3.7,
+      "rationale": "Fairness: brief 'not overall equal'—takes position but minimal, no expected freq, no comparison ≈1.5/5. Chi-square: 'measures observed and expected frequencies'—vague, describes interpretation but not mechanism ≈1.5/5. Per Patch B: short but MISSING key sub-criteria—cannot earn 8+. Very limited → 3-4."
+    },
+    {
+      "index": 14,
+      "name": "Metroka, Layla",
+      "scores": [5, 5, 5],
+      "mean": 5.0,
+      "rationale": "Fairness: clear position (fair), expected=10 identified, 'extremely close to expectation'—Patch A awards partial credit for closeness statement ≈4/5. Chi-square: COMPLETELY ABSENT ≈0/5. One entire criterion not demonstrated → capped well below 8. Score 5."
+    },
+    {
+      "index": 15,
+      "name": "Milton, Joshua",
+      "scores": [7, 7, 7],
+      "mean": 7.0,
+      "rationale": "Fairness: clear position (fair), expected=10, 'numbers are not far off...no values more than 3 off' (slightly inaccurate but comparison present) ≈3.5/5. Chi-square: describes purpose, mentions 'subtracts difference between observed and expected' ≈3/5. Most criteria adequately addressed → 7."
+    },
+    {
+      "index": 16,
+      "name": "Parker, Tyson",
+      "scores": [8, 8, 8],
+      "mean": 8.0,
+      "rationale": "Fairness: clear position (unfair), expected=40, specific observed values (65,28,27) compared ≈5/5. Chi-square: describes purpose ('compares observed to expected counts'), describes interpretation but no formula ≈3/5. All criteria addressed → 8."
+    },
+    {
+      "index": 17,
+      "name": "Plummer, Justin",
+      "scores": [5, 5, 5],
+      "mean": 5.0,
+      "rationale": "Fairness: clear position (fair), expected implied but not stated as 10, mentions '8 lowest and 12 highest' as comparison ≈2.5/5. Chi-square: just names the test ('goodness of fit test')—doesn't describe what it measures or how ≈1/5. Per Patch B: chi-square criteria barely addressed → 5."
+    },
+    {
+      "index": 18,
+      "name": "Price, Lynn",
+      "scores": [7, 8, 7],
+      "mean": 7.3,
+      "rationale": "Fairness: clear position (fair), expected='equal frequency' but doesn't state 10, conditional comparison ('if results are close') rather than direct ≈3/5. Chi-square: multiple accurate descriptions, explains purpose well ≈4/5, describes use of frequencies but no formula ≈3/5. Borderline 7-8; expected freq not explicitly identified."
+    },
+    {
+      "index": 19,
+      "name": "Simcox, Foster",
+      "scores": [8, 8, 8],
+      "mean": 8.0,
+      "rationale": "Fairness: clear position (unfair), expected=40, specific comparison (52>40) ≈4.5/5. Chi-square: good definition, describes process ('compute chi-square statistic to determine significant deviation') but no formula ≈3.5/5. All criteria addressed → 8."
+    },
+    {
+      "index": 20,
+      "name": "Sorenson, Jack",
+      "scores": [7, 7, 7],
+      "mean": 7.0,
+      "rationale": "Fairness: clear position (unfair), expected=40 and 33.33%, but doesn't compare specific observed values (28,65,27) to expected ≈3/5. Chi-square: describes purpose ('how good of fit sample is to expected'), reaches conclusion but doesn't explain mechanism ≈2.5/5. Per Patch B: comparison partially met → 7."
+    },
+    {
+      "index": 21,
+      "name": "Stratton, Tessa",
+      "scores": [6, 6, 6],
+      "mean": 6.0,
+      "rationale": "Fairness: brief position (fair), expected=10, no comparison ≈2.5/5. Chi-square: describes purpose ('compares observed to expected counts to see if differences are big enough') but imprecise and brief ≈2.5/5. Approaching but notable gaps → 6."
+    },
+    {
+      "index": 22,
+      "name": "Teran, William",
+      "scores": [4, 4, 3],
+      "mean": 3.7,
+      "rationale": "Fairness: clear position (unfair), no expected freq, vague comparison ('uneven amount') ≈1.5/5. Chi-square: mentions chi-square equation but doesn't describe what it measures properly, vague ('help show how it is uneven') ≈1.5/5. Very limited → 3-4."
+    },
+    {
+      "index": 23,
+      "name": "Xiong, William",
+      "scores": [2, 2, 3],
+      "mean": 2.3,
+      "rationale": "Fairness: attempts 'unfair' but reasoning is incoherent ('inconsistent claims to the equal proportion'), no expected freq, no comparison ≈1/5. Chi-square: not described ≈0/5. Minimal effort → 2-3."
+    },
+    {
+      "index": 24,
+      "name": "Zimmerman, Caidyn",
+      "scores": [9, 9, 9],
+      "mean": 9.0,
+      "rationale": "Fairness: clear position (mostly fair), expected=10, specific comparison ('highest at 12, lowest at 8, close to 10') ≈5/5. Chi-square: good definition, describes inputs ('observed and expected frequencies, equal probability of 1/6') but no exact formula ≈3.5-4/5. Thorough and accurate → 9."
+    }
+  ],
+  "summary": {
+    "mean": 6.40,
+    "stdDev": 2.30,
+    "runToRunVariance": 0.02
+  }
+}

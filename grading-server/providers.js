@@ -59,6 +59,8 @@ export function buildOllamaRequest(config, messages) {
     model: config.model,
     messages: ollamaMessages,
     stream: false,
+    think: false,
+    keep_alive: '60m',
     options: {
       temperature: config.temperature ?? 0.2,
     },

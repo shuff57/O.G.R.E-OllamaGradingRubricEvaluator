@@ -134,7 +134,7 @@ ${essayPrompt}
         }
       }
     }
-    prompt += `\nPARTIAL CREDIT RULE: When a criterion is addressed conceptually but lacks specific values, formulas, or concrete evidence, award 40-60% of that criterion's points. Award 20-40% if only loosely related; 60-80% if substantially complete but missing one key element. Evaluate each criterion INDEPENDENTLY - do not let strength on one compensate for weakness on another.\n`;
+    prompt += `\nPARTIAL CREDIT RULE: When a criterion is addressed conceptually but lacks specific values, formulas, or concrete evidence, award 40-60% of that criterion's points. Award 20-40% if only loosely related; 60-80% if substantially complete but missing one key element. Evaluate each criterion INDEPENDENTLY - do not let strength on one compensate for weakness on another. For 5-point criteria, map bands roughly as: 1-2 pts (20-40%), 2-3 pts (40-60%), 3-4 pts (60-80%); reserve 4-5 pts for essentially complete/correct coverage.\n`;
   }
 
   // Add rubric targets if present
@@ -171,6 +171,8 @@ ${getScoringScaleString()}
 CRITICAL: A response that correctly hits every rubric criterion earns 8-9, REGARDLESS of length.
 A short, accurate answer scores higher than a long, partially-wrong one.
 Only drop below 8 if a rubric criterion is genuinely missing or incorrect — NOT merely brief.
+This 8+ rule applies only when ALL rubric criteria are substantively addressed — brevity cannot compensate for missing sub-criteria.
+Score 8 requires all rubric criteria to be substantively correct; score 7 when one criterion is only partially met or missing a key element.
 `;
   if (calibration) {
     prompt += `\nSCORING CALIBRATION EXAMPLES (use to calibrate score levels only \u2014 grade against rubric criteria and SCORING SCALE above, not these examples):\n${calibration}\n`;
@@ -242,7 +244,7 @@ ${_corItems.length > 0 ? `GRADING PROCESS:\nFor each student: (1) score each GRA
   {
     "studentIndex": ${firstIdx},
     ${_corField}    "score": <${_scoreHint}>
-    "feedback": "<Use the student's first name from their header. Write one bullet point per rubric category. Use \\n between each bullet so they appear on separate lines. For each bullet: say what they did well, then say what was missing and what they would need to write to earn full credit. Write like a high school math teacher talking directly to the student. No em dashes. Short and clear.>"
+    "feedback": "<Use the student's first name from their header. For each rubric criterion, write one section using this structure: (1) state the criterion name, (2) write 'You said ...' quoting or paraphrasing what the student said about that criterion, (3) explain whether what they said was correct, incorrect, or incomplete — and what they would need to add for full credit. If the student's statements conflict with each other, note gently: 'Note: this seems inconsistent with your earlier statement that...'. Use \\n between each section. Write like a high school math teacher talking directly to the student. No em dashes. Short and clear.>"
   },
   {
     "studentIndex": ${secondIdx},
@@ -405,7 +407,8 @@ function validateBatchResults(parsed, students, maxScore) {
     // Snap to appropriate granularity
     score = snapScore(score, maxScore);
     console.log('[grade] batch ai_raw=' + item.score + ' factor=' + _parseFactor.toFixed(2) + ' final=' + score + ' (max=' + maxScore + ')');
-    const feedback = (item.feedback || '').trim() || 'Graded by AI.';
+    const rawFeedback = Array.isArray(item.feedback) ? item.feedback.join('\n') : (item.feedback || '');
+    const feedback = String(rawFeedback).trim() || 'Graded by AI.';
 
     // Use the actual student index from the chunk, not the AI's studentIndex
     const studentIndex = idx < students.length
@@ -608,7 +611,7 @@ You MUST respond with a valid JSON array ONLY. No markdown, no code fences, no e
   {
     "studentIndex": <original student index>,
     "score": <${scoreFormatHint(maxScore)}>
-    "feedback": "<Use the student's first name from their header. Write one bullet point per rubric category. Use \\n between each bullet so they appear on separate lines. For each bullet: say what they did well, then say what was missing and what they would need to write to earn full credit. Write like a high school math teacher talking directly to the student. No em dashes. Short and clear.",
+    "feedback": "<Use the student's first name from their header. For each rubric criterion, write one section using this structure: (1) state the criterion name, (2) write 'You said ...' quoting or paraphrasing what the student said about that criterion, (3) explain whether what they said was correct, incorrect, or incomplete — and what they would need to add for full credit. If the student's statements conflict with each other, note gently: 'Note: this seems inconsistent with your earlier statement that...'. Use \\n between each section. Write like a high school math teacher talking directly to the student. No em dashes. Short and clear.",
     "adjusted": <true if score changed, false if kept same>
   }
 ]
@@ -836,7 +839,7 @@ Return ONLY valid JSON. No markdown code fences. No explanation text.
 
 {
 ${_sCorField}  "score": <${_sScoreHint}>
-  "feedback": "<Write directly to the student using 'you'. Write one bullet point per rubric category. Use \\n between each bullet so they appear on separate lines. For each bullet: say what they did well, then say what was missing and what they would need to write to earn full credit. Write like a high school math teacher talking directly to the student. No em dashes. Short and clear.>"
+  "feedback": "<Write directly to the student using 'you'. For each rubric criterion, write one section using this structure: (1) state the criterion name, (2) write 'You said ...' quoting or paraphrasing what the student said about that criterion, (3) explain whether what they said was correct, incorrect, or incomplete — and what they would need to add for full credit. If your statements conflict with each other, note gently: 'Note: this seems inconsistent with what you said earlier about...'. Use \\n between each section. Write like a high school math teacher talking directly to the student. No em dashes. Short and clear.>"
 }`;
 
   return prompt;
