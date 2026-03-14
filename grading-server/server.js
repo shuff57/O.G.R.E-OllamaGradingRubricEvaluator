@@ -43,7 +43,7 @@ import { loadRubrics, createRubric, updateRubric, deleteRubric } from './rubric-
 import { withRetry } from './ai-retry.js';
 import { handleAgentRequest } from './agent.js';
 import { buildEmbedRequest, parseEmbedResponse } from './embedding-adapters.js';
-import { generateLocalEmbedding, isModelLoaded } from './local-embedder.js';
+import { generateLocalEmbedding, initLocalEmbedder, isModelLoaded } from './local-embedder.js';
 
 const app = new Hono();
 const PORT = 3456;
@@ -444,6 +444,13 @@ app.get('/api/profiles/match', (c) => {
 });
 app.get('/api/embed-status', (c) => {
   return c.json({ modelLoaded: isModelLoaded() });
+});
+
+app.post('/api/warm-embed', async (c) => {
+  // Fire-and-forget: start loading the model in the background.
+  // Returns immediately; poll /api/embed-status to track readiness.
+  initLocalEmbedder().catch(() => {});
+  return c.json({ ok: true });
 });
 
 

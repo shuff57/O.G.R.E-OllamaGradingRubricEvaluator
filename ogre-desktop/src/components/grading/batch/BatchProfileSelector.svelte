@@ -159,6 +159,9 @@
       }
 
       if (!localModelLoaded) {
+        // Kick off background warm-up so the model loads while the user sets up grading
+        fetch('http://localhost:3456/api/warm-embed', { method: 'POST' }).catch(() => {});
+
         embedStatusInterval = setInterval(async () => {
           try {
             const res = await fetch('http://localhost:3456/api/embed-status');
