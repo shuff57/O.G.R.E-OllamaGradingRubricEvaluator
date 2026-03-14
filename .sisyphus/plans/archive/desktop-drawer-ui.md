@@ -1,3 +1,8 @@
+> **SUPERSEDED** — The underlying problem (drawer visibility alongside webview) was solved via
+> the webview bounds approach in `fix-drawer-webview-bounds` and `drawer-resize-perf` plans.
+> The overlay-drawer design proposed here was never implemented; instead, the GradingPanel
+> adjusts webview bounds when opened/closed. Archived March 2026.
+
 # Desktop Drawer UI — Convert Grading Panel to Overlay Drawer with Floating Button
 
 ## TL;DR

@@ -1,3 +1,9 @@
+> **SUPERSEDED** — All 3 deliverables were addressed by separate plans:
+> 1. Fuzzy DOM matching: `agent-dom-fuzzy.ts` shipped via `browser-agent` plan
+> 2. CDP integration: Native `cdp-client.ts` replaced the Playwright-core approach (see `cdp-client` plan)
+> 3. Compact UI: AgentChat shows action badges natively
+> Archived March 2026.
+
 # Agent Mode Enhancement: Fuzzy Matching, Compact UI, Playwright CDP
 
 ## TL;DR
