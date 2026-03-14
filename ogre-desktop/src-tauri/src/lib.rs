@@ -3,12 +3,19 @@ use std::collections::HashMap;
 use tauri::{Emitter, Manager};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, MenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton};
+#[cfg(not(target_os = "linux"))]
 use tauri::webview::WebviewBuilder;
+#[cfg(not(target_os = "linux"))]
 use tauri::WebviewUrl;
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::CommandEvent;
 use tauri_plugin_sql::{Migration, MigrationKind};
 use tokio::sync::oneshot;
+
+#[cfg(target_os = "linux")]
+use gtk::prelude::*;
+#[cfg(target_os = "linux")]
+use wry::WebViewBuilderExtUnix;
 
 /// Holds the sidecar child process handle so we can kill it on exit.
 struct SidecarState {
@@ -213,6 +220,7 @@ fn spawn_sidecar(app_handle: &tauri::AppHandle, restart_count: Arc<Mutex<u32>>) 
 
 // ── Embedded Browser Commands ────────────────────────────────────────────
 
+#[cfg(not(target_os = "linux"))]
 #[tauri::command]
 async fn create_embedded_browser(app: tauri::AppHandle, tab_id: String, url: String) -> Result<(), String> {
     let parsed: url::Url = url.parse().map_err(|e| format!("Invalid URL: {}", e))?;
@@ -294,6 +302,7 @@ async fn create_embedded_browser(app: tauri::AppHandle, tab_id: String, url: Str
     Ok(())
 }
 
+#[cfg(not(target_os = "linux"))]
 #[tauri::command]
 async fn navigate_embedded(app: tauri::AppHandle, tab_id: String, url: String) -> Result<(), String> {
     let label = {
@@ -307,6 +316,7 @@ async fn navigate_embedded(app: tauri::AppHandle, tab_id: String, url: String) -
     Ok(())
 }
 
+#[cfg(not(target_os = "linux"))]
 #[tauri::command]
 async fn go_back(app: tauri::AppHandle, tab_id: String) -> Result<(), String> {
     let label = {
@@ -320,6 +330,7 @@ async fn go_back(app: tauri::AppHandle, tab_id: String) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(not(target_os = "linux"))]
 #[tauri::command]
 async fn go_forward(app: tauri::AppHandle, tab_id: String) -> Result<(), String> {
     let label = {
@@ -333,6 +344,7 @@ async fn go_forward(app: tauri::AppHandle, tab_id: String) -> Result<(), String>
     Ok(())
 }
 
+#[cfg(not(target_os = "linux"))]
 #[tauri::command]
 async fn reload_browser(app: tauri::AppHandle, tab_id: String) -> Result<(), String> {
     let label = {
@@ -346,6 +358,7 @@ async fn reload_browser(app: tauri::AppHandle, tab_id: String) -> Result<(), Str
     Ok(())
 }
 
+#[cfg(not(target_os = "linux"))]
 #[tauri::command]
 async fn set_webview_bounds(
     app: tauri::AppHandle,
@@ -436,6 +449,7 @@ async fn inject_autofill(app: tauri::AppHandle, tab_id: String, script: String) 
 /// 
 /// Uses message passing: injects wrapper script that executes code and calls back with result.
 /// Timeout: 120 seconds. Returns JSON-serialized result.
+#[cfg(not(target_os = "linux"))]
 #[tauri::command]
 async fn eval_webview_script(
     app: tauri::AppHandle,
@@ -580,6 +594,7 @@ async fn scan_claude_skills(app: tauri::AppHandle) -> Result<Vec<LocalSkillFile>
 
 /// Internal callback handler for eval results.
 /// Called by injected JavaScript wrapper via invoke().
+#[cfg(not(target_os = "linux"))]
 #[tauri::command]
 async fn _eval_callback(
     app: tauri::AppHandle,
@@ -979,18 +994,26 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_model ON response_embeddings(embedding
 
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
+            #[cfg(not(target_os = "linux"))]
             create_embedded_browser,
+            #[cfg(not(target_os = "linux"))]
             navigate_embedded,
+            #[cfg(not(target_os = "linux"))]
             go_back,
+            #[cfg(not(target_os = "linux"))]
             go_forward,
+            #[cfg(not(target_os = "linux"))]
             reload_browser,
+            #[cfg(not(target_os = "linux"))]
             set_webview_bounds,
             hide_webview,
             show_webview,
             get_embedded_url,
             destroy_webview,
             inject_autofill,
+            #[cfg(not(target_os = "linux"))]
             eval_webview_script,
+            #[cfg(not(target_os = "linux"))]
             _eval_callback,
             inject_webview_script,
             scan_claude_skills,
