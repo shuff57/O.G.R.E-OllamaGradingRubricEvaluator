@@ -17,6 +17,21 @@ use gtk::prelude::*;
 #[cfg(target_os = "linux")]
 use wry::WebViewBuilderExtUnix;
 
+/// Linux-only: thread-local storage for wry WebView handles and GTK state.
+/// These must be on the main thread (GTK widgets are !Send).
+#[cfg(target_os = "linux")]
+use std::cell::RefCell;
+
+#[cfg(target_os = "linux")]
+thread_local! {
+    /// Maps webview label → wry WebView handle (main thread only)
+    static LINUX_WEBVIEWS: RefCell<HashMap<String, wry::WebView>> = RefCell::new(HashMap::new());
+    /// The single shared GtkFixed container for all embedded webviews
+    static GTK_FIXED: RefCell<Option<gtk::Fixed>> = RefCell::new(None);
+    /// Maps webview label → current URL (since wry has no url() getter)
+    static WEBVIEW_URLS: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+}
+
 /// Holds the sidecar child process handle so we can kill it on exit.
 struct SidecarState {
     child: Option<tauri_plugin_shell::process::CommandChild>,
@@ -1140,6 +1155,23 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_model ON response_embeddings(embedding
 
              let restart_count = Arc::new(Mutex::new(0u32));
             spawn_sidecar(&handle, restart_count);
+
+            // Linux: initialize shared GtkFixed container for embedded browser webviews.
+            // ALL wry webviews must share this single GtkFixed instance (per wry PR #1504).
+            #[cfg(target_os = "linux")]
+            {
+                let window = app.get_webview_window("main")
+                    .ok_or("Main window not found for GtkFixed setup")?;
+                let vbox = window.default_vbox()
+                    .map_err(|e| format!("Failed to get default vbox: {}", e))?;
+                let fixed = gtk::Fixed::new();
+                vbox.pack_start(&fixed, true, true, 0);
+                fixed.show_all();
+                GTK_FIXED.with(|f| {
+                    *f.borrow_mut() = Some(fixed);
+                });
+            }
+
             Ok(())
         })
         .build(tauri::generate_context!())
