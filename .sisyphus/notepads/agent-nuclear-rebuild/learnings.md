@@ -71,6 +71,24 @@
 - Rewrote `.claude/commands/grade-selectors.md` as a frontmatter-free reference with consistent tables while preserving all original DOM selectors and TinyMCE writeback guidance.
 - Captured verification evidence in `.sisyphus/evidence/task-7-grade-command.txt`; markdown LSP diagnostics were not available in this environment because no `.md` server is configured.
 
+## [2026-03-15] Task 12 Complete — gb-sync gold-standard rewrite
+- Rebuilt `.agents/skills/gb-sync/SKILL.md` in gold-standard format and kept the main file concise at 206 lines by moving operational detail into `.agents/skills/gb-sync/references/phase-details.md`.
+- Preserved the full seven-phase structure: Setup, Student Discovery, MOM Score Collection, Dry-Run Report, Live Score Entry, Halt Detection, and Verification.
+- Kept the safety-critical dry-run -> explicit approval -> live mode sequence non-negotiable.
+- Preserved resumability with per-student temp files named `gb-sync-student-{name}.json` / `gb-sync-student-{safe-name}.json` plus a main session state file.
+- Preserved both Aeries write strategies (`ScoresByAssignment` default, `ScoresByStudent` fallback), single-assignment mode, version-pair notes, and fresh Phase 7 Aeries re-scrape verification.
+- Updated the workflow to align with current repository safety rules by protecting existing non-zero Aeries scores unless the user explicitly authorizes an overwrite.
+- Captured verification evidence in `.sisyphus/evidence/task-12-gb-sync.txt`; markdown LSP diagnostics remain unavailable in this environment because no `.md` server is configured.
+
+## [2026-03-15] Task 11 Complete — gb-new-assignment gold standard rewrite
+- Created `.agents/skills/gb-new-assignment/SKILL.md` in gold-standard format with required frontmatter, Guardrails-before-Workflow ordering, Quick Start, phased workflow, Error Handling, Common Mistakes, State Management, and Selectors / References.
+- Preserved legacy temp-file paths exactly: `C:\Users\shuff\grade-cloning\temp\gb_compare_{gradebookNum}.json` input and `C:\Users\shuff\grade-cloning\temp\gb_new_assignment_{gradebookNum}.json` output.
+- Preserved critical Aeries workflow mechanics: `#subHeaderAddAssignment`, Kendo category/date widgets, span-based save controls, and modal-state verification after each save.
+- Upgraded the archived skill's implicit confirmation note into an explicit preflight approval gate with create/skip preview.
+- Added real idempotency guidance: scrape existing Aeries assignments first, skip normalized name matches, and record `skippedExisting` separately from `created` and `failed`.
+- Clarified field mapping so MOM `pts` is written to `#Assignment_MaxScore` exactly while `#Assignment_MaxNumberCorrect` stays `100` for Stage 3 percentage sync.
+- Evidence recorded in `.sisyphus/evidence/task-11-gb-new-assignment.txt`.
+
 ## [2026-03-15] Task 13 Complete — gb-pipeline gold standard rewrite
 - Created `.agents/skills/gb-pipeline/SKILL.md` in the gold-standard format with Guardrails before Workflow, explicit stage IO, Error Handling table, Common Mistakes table, and State Management.
 - Preserved the orchestrator role and all three stages in order: `gb-compare` → `gb-new-assignment` → `gb-sync`.
