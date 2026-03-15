@@ -1,6 +1,8 @@
 ---
 name: "MyOpenMath — Knowledge Profile"
 description: "Teaches AI agent how to navigate and operate MyOpenMath as an instructor"
+baseUrl: "https://www.myopenmath.com"
+role: "instructor"
 urlPatterns:
   - "myopenmath.com"
 ---

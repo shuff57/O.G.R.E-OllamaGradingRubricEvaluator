@@ -1,6 +1,8 @@
 ---
 name: "Site Name — Knowledge Profile"
 description: "Teaches AI agent how to navigate and operate Site Name"
+baseUrl: "https://site-domain.com"
+role: "teacher"
 urlPatterns:
   - "site-domain.com"
   - "alt-domain.com"

@@ -1,6 +1,8 @@
 ---
 name: "Aeries — Knowledge Profile"
 description: "Teaches AI agent how to navigate and operate Aeries SIS as a teacher"
+baseUrl: "https://{district}.aeries.net/teacher"
+role: "teacher"
 urlPatterns:
   - "aeries.net"
 ---
