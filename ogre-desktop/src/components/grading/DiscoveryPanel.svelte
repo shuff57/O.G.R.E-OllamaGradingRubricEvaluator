@@ -29,6 +29,10 @@
     runChatDiscovery,
     intentToDiscoveryHints,
   } from '../../lib/discovery-intent';
+  import { getSkillsWithUrlPattern } from '../../lib/db';
+  import { findMatchingProfiles } from '../../lib/skills-api';
+  import { selectBestProfile } from '../../lib/profile-precedence';
+  import { convertProfileToJSON } from '../../lib/profile-json-converter';
   import {
     testProfile,
     type ProfileTestReport
@@ -129,7 +133,34 @@
     testReport = null;
 
     try {
-      const hints = intentToDiscoveryHints(mode, mode === 'form' ? formInput : mode === 'chat' ? chatState.messages : exampleSelections);
+      const intentHints = intentToDiscoveryHints(mode, mode === 'form' ? formInput : mode === 'chat' ? chatState.messages : exampleSelections);
+
+      // Check for existing knowledge profile to use as hints
+      let knownSelectors: Record<string, string> | undefined;
+      let pageDescription: string | undefined;
+      try {
+        const allWithPattern = await getSkillsWithUrlPattern();
+        const matches = findMatchingProfiles(pageLoadedUrl || '', allWithPattern);
+        const best = selectBestProfile(matches);
+        if (best) {
+          const guide = convertProfileToJSON(best.content);
+          if (Object.keys(guide.selectors).length > 0) {
+            knownSelectors = guide.selectors;
+          }
+          if (guide.site) {
+            pageDescription = guide.site;
+          }
+        }
+      } catch {
+        // If lookup fails, discovery proceeds without hints
+      }
+
+      const hints = {
+        ...intentHints,
+        ...(knownSelectors ? { knownSelectors } : {}),
+        ...(pageDescription ? { pageDescription } : {})
+      };
+
       const workflow = await runDiscovery({
         provider: provider || undefined,
         model: model || undefined,
