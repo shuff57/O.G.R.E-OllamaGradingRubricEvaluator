@@ -27,7 +27,7 @@ thread_local! {
     /// Maps webview label → wry WebView handle (main thread only)
     static LINUX_WEBVIEWS: RefCell<HashMap<String, wry::WebView>> = RefCell::new(HashMap::new());
     /// The single shared GtkFixed container for all embedded webviews
-    static GTK_FIXED: RefCell<Option<gtk::Fixed>> = RefCell::new(None);
+    static GTK_FIXED: RefCell<Option<gtk::Fixed>> = const { RefCell::new(None) };
     /// Maps webview label → current URL (since wry has no url() getter)
     static WEBVIEW_URLS: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
 }
@@ -640,7 +640,7 @@ async fn hide_webview(app: tauri::AppHandle, tab_id: String) -> Result<(), Strin
             });
         }).map_err(|_| "Failed to run on main thread".to_string())?;
 
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(target_os = "linux"))]
@@ -671,7 +671,7 @@ async fn show_webview(app: tauri::AppHandle, tab_id: String) -> Result<(), Strin
             });
         }).map_err(|_| "Failed to run on main thread".to_string())?;
 
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(target_os = "linux"))]
@@ -700,7 +700,7 @@ async fn get_embedded_url(app: tauri::AppHandle, tab_id: String) -> Result<Strin
             let _ = tx.send(url);
         }).map_err(|_| "Failed to run on main thread".to_string())?;
         let url = rx.await.map_err(|_| "Channel closed".to_string())?;
-        return Ok(url);
+        Ok(url)
     }
 
     #[cfg(not(target_os = "linux"))]
@@ -765,7 +765,7 @@ async fn inject_autofill(app: tauri::AppHandle, tab_id: String, script: String) 
                 }
             });
         }).map_err(|_| "Failed to run on main thread".to_string())?;
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(target_os = "linux"))]
@@ -910,7 +910,7 @@ async fn inject_webview_script(
                 }
             });
         }).map_err(|_| "Failed to run on main thread".to_string())?;
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(target_os = "linux"))]
