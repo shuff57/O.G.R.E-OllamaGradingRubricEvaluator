@@ -5,7 +5,7 @@ description: Use when comparing MyOpenMath gradebook assignments against an Aeri
 
 # Grade Compare
 
-> Compare assignments between MyOpenMath (MOM) and Aeries without modifying either system. This skill expands MOM categories, extracts assignment names/points/dates, reads existing Aeries assignments, applies number-anchored matching, and writes both a markdown report and the temp `gb_compare_{gradebookNum}.json` artifact consumed by later gradebook-sync stages.
+> Compare assignments between MyOpenMath (MOM) and Aeries without modifying either system. This skill expands MOM categories, extracts assignment names/points/dates, reads existing Aeries assignments, applies number-anchored matching, and produces both a markdown report and the temp `gb_compare_{gradebookNum}.json` artifact consumed by later gradebook-sync stages.
 
 ## Overview
 - Stage order: `gb-compare` always runs before `gb-new-assignment` or `gb-pipeline`
