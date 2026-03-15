@@ -2,7 +2,7 @@
 
 Shared behavioral rules for every agent working in this repository.
 This file defines **how agents should behave**.
-`CLAUDE.md` and command/skill files define routing and task-specific workflows.
+Skill routing and project conventions live in `.agents/routing.md` — read it for capability routing, skill names, and directory layout.
 
 ## 1) Agent Identity
 

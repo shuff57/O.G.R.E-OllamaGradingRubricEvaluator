@@ -86,7 +86,7 @@
     "SessionEnd": [
       {
         "type": "prompt",
-        "prompt": "You are ending this session. Please run the session-reflector skill to capture key learnings in .agents/memory/pending/."
+        "prompt": "The session is ending. Please do the following in order:\n\n1. Review what happened this session and draft a brief reflection (what was done, patterns noticed, corrections received, skill suggestions).\n\n2. Ask the user: 'Want me to save these learnings to .agents/memory/pending/? [y/n/edit]' — only write if they confirm.\n\n3. Check if .claude/session.md has any notes below the header template comment block. If it does, ask: 'Found notes in session.md — include them in the reflection and clear the file? [y/n]' — only merge and clear if they confirm.\n\n4. If the user confirmed step 2, write the reflection to .agents/memory/pending/{YYYY-MM-DD}-{3-5-word-slug}.md (≤50 lines).\n\n5. If the user confirmed step 3, restore .claude/session.md to just its original header template (remove everything below the last comment line).\n\nIf the user says no to everything, end cleanly with no changes."
       }
     ]
   }

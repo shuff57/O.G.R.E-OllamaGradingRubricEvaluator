@@ -88,8 +88,20 @@ Pattern suggestion directive (required behavior):
 
 Session memory protocol:
 - At session start, check `.agents/memory/pending/` for unreviewed reflections.
-- Before significant work, review `.agents/memory/approved/` for relevant prior learnings.
+- Before significant work, run `query_memory.py` for relevant prior learnings.
 - At session end, use `session-reflector` to record new insights into `.agents/memory/pending/`.
+- Memory writes always require explicit user confirmation [y/n] — never auto-write.
+
+Session scratch (Claude Code only):
+- `.claude/session.md` is a per-session scratch file — append ad-hoc observations during the session.
+- At session end, `session-reflector` offers to flush it to `.agents/memory/pending/` and then clears it.
+- All other tools: use `.agents/memory/pending/` directly for session notes.
+
+Question hook standard (per tool):
+- **OpenCode**: use the native `question` tool — triggers real UI dialog. Permission set to `"ask"` in `opencode.json`. Invoke via `/session-end` command.
+- **Claude Code**: `SessionEnd` hook in `.claude/settings.local.json` auto-fires at session end.
+- **Other tools**: use `[QUESTION] <text> / Options: y / n / edit` text format.
+- Never auto-write to memory without explicit user confirmation regardless of tool.
 
 Learning quality rules:
 - Capture reusable patterns, not one-off noise.

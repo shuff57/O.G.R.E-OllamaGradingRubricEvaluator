@@ -35,6 +35,9 @@ tests/
 
 # Sisyphus evidence (local only)
 .sisyphus/evidence/
+
+# Claude Code per-session scratch (transient — flushed to .agents/memory/ at session end)
+.claude/session.md
 ogre-desktop/.sisyphus/
 
 # Tauri build artifacts
