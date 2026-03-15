@@ -1518,15 +1518,38 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_model ON response_embeddings(embedding
 
             // Linux: initialize shared GtkFixed container for embedded browser webviews.
             // ALL wry webviews must share this single GtkFixed instance (per wry PR #1504).
+            //
+            // IMPORTANT: We use GtkOverlay so the GtkFixed is layered ON TOP of the main
+            // webview, not beside it in the vbox. Using vbox.pack_start() would split
+            // the window vertically, compressing the main Svelte UI.
             #[cfg(target_os = "linux")]
             {
                 let window = app.get_webview_window("main")
                     .ok_or("Main window not found for GtkFixed setup")?;
                 let vbox = window.default_vbox()
                     .map_err(|e| format!("Failed to get default vbox: {}", e))?;
+
+                // Create an overlay container: main webview = background, GtkFixed = foreground
+                let overlay = gtk::Overlay::new();
+
+                // Reparent existing vbox children (the main webview) into the overlay
+                let children: Vec<gtk::Widget> = vbox.children();
+                for child in &children {
+                    vbox.remove(child);
+                    overlay.add(child);  // First child becomes the "main" child
+                    break; // Only reparent the first child (the main webview)
+                }
+
+                // Create the GtkFixed for embedded browser webviews
                 let fixed = gtk::Fixed::new();
-                vbox.pack_start(&fixed, true, true, 0);
-                fixed.show_all();
+                overlay.add_overlay(&fixed);
+                // Pass input through to the main webview where the GtkFixed has no children
+                overlay.set_overlay_pass_through(&fixed, true);
+
+                // Add the overlay to the vbox in place of the original webview
+                vbox.pack_start(&overlay, true, true, 0);
+                overlay.show_all();
+
                 GTK_FIXED.with(|f| {
                     *f.borrow_mut() = Some(fixed);
                 });
