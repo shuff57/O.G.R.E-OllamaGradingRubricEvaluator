@@ -30,3 +30,20 @@
 - Added `knowledge.md` guidance and `references/` guidance for scalable skill packages.
 - Kept file concise: 155 lines (`<=200` task constraint).
 - Validation evidence recorded in `.sisyphus/evidence/task-2-skill-creator.txt`.
+
+## [2026-03-15] Task 4 Complete — project-root CLAUDE.md routing brain
+- Created `/CLAUDE.md` at project root (Layer 1 routing brain) with five required sections: Project Identity, Skill Routing Guide, Conventions, Learning Protocol, Scope Boundaries.
+- Anchored project identity to repository reality from `README.md`: dual product model (desktop app + autonomous `/grade`) and stack surfaces (Tauri/Rust, Node.js, Python assets, Playwriter automation).
+- Routing guide intentionally stays high-level and name-based (no workflow internals), including grading, gradebook sync, MOM authoring/research, and meta utility capabilities.
+- Enforced path convention in routing policy: `.agents/skills/` authoritative, `.claude/commands/` for commands, explicit prohibition on `.claude/skills/` routing.
+- Embedded exact pattern-suggestion directive sentence for repeat workflow detection and skill-creation prompts.
+- Added session memory loop: check `.agents/memory/pending/` at start, `.agents/memory/approved/` before significant work, record via `session-reflector` at end.
+- Added hard scope boundary to prevent autonomous `.rs/.ts/.js/.py` edits without explicit user instruction.
+- Validation checks passed: line count 107 (`<=200`), `##` headers 9 (`>=4`), `.agents/skills/` references 2 (`>0`), learning/pattern keywords 9 (`>0`).
+
+## [2026-03-15] Task 6 Complete — LightRAG-powered agent memory scaffold
+- Created `.agents/memory/` with required structure: `README.md`, `pending/.gitkeep`, `scripts/`, `.gitignore`, and empty `lightrag_workdir/`.
+- Implemented `scripts/setup.sh` exactly with LightRAG install, Ollama connectivity check, and local workdir creation.
+- Added `scripts/index_reflection.py` and `scripts/query_memory.py` with LightRAG + Ollama imports and graceful-degradation behavior when dependencies are unavailable.
+- Marked `lightrag_workdir/` as untracked via `.agents/memory/.gitignore` to prevent generated graph state from being committed.
+- Wrote verification evidence to `.sisyphus/evidence/task-6-memory-lightrag.txt` including structure checks and script usage outputs.
