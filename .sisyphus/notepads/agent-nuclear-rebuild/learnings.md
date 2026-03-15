@@ -127,3 +127,10 @@
 - Replaced legacy path instructions with name-based cross-skill loading only: `load_skills=["mom-patterns"]` for cache/writeback and `load_skills=["mom-page-map"]` for navigation/search-scope guidance.
 - Preserved the critical safety rules: never edit, never click save/preview/delete, stay in the active course `cid`, require `View:` heading verification, and rate-limit to 8 question pages with 1000 ms pauses.
 - Evidence recorded in `.sisyphus/evidence/task-15-mom-fact-finder.txt`.
+
+## [2026-03-15] Task 18 Complete — mom-patterns knowledge base split
+- Rebuilt `mom-patterns` as a two-file package: `.agents/skills/mom-patterns/SKILL.md` for operating rules and `.agents/skills/mom-patterns/knowledge.md` for the living pattern library.
+- Preserved the archive’s core lifecycle rules explicitly: `mom-fact-finder` appends/refreshes entries, `mom-frq` reads the library before drafting, and updates happen through named skill loading (`load_skills=["mom-patterns"]`).
+- Kept the long-term growth controls intact: 800-line hard cap, oldest/least-used compression to summary form, stable entry template, and maintained Topic Index.
+- Porting archived knowledge works best when `knowledge.md` keeps the real entries verbatim-enough while `SKILL.md` only defines policy, workflow, and guardrails; blending the two invites future overwrite or drift.
+- Added explicit guardrails against freehand topic edits without `mom-fact-finder` evidence so the shared library stays source-backed instead of turning into informal notes.
