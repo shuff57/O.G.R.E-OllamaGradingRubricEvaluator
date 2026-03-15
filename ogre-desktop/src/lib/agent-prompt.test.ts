@@ -10,12 +10,12 @@ describe('AGENT_SYSTEM_PROMPT: site guide priority (Rule 11)', () => {
     expect(AGENT_SYSTEM_PROMPT).toContain('SITE GUIDE');
   });
 
-  test('instructs agent to consult SITE GUIDE first', () => {
-    expect(AGENT_SYSTEM_PROMPT).toMatch(/ALWAYS consult the SITE GUIDE first/i);
+  test('instructs agent to parse SITE GUIDE as JSON', () => {
+    expect(AGENT_SYSTEM_PROMPT).toMatch(/parse it as structured JSON/i);
   });
 
-  test('instructs agent to match guide descriptions to DOM list selectors', () => {
-    expect(AGENT_SYSTEM_PROMPT).toMatch(/Match these descriptions to elements in the DOM element list/i);
+  test('instructs agent to use selectors object for CSS selectors', () => {
+    expect(AGENT_SYSTEM_PROMPT).toMatch(/Use the "selectors" object for CSS selectors directly/i);
   });
 
   test('warns against inventing selectors', () => {
@@ -45,24 +45,3 @@ describe('AGENT_SYSTEM_PROMPT: task decomposition (Rule 12)', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Rule 13: Selector Translation
-// ---------------------------------------------------------------------------
-
-describe('AGENT_SYSTEM_PROMPT: selector notation translation (Rule 13)', () => {
-  test('contains SELECTOR TRANSLATION instruction', () => {
-    expect(AGENT_SYSTEM_PROMPT).toContain('SELECTOR TRANSLATION');
-  });
-
-  test('explains role= notation is DESCRIPTIVE not literal CSS', () => {
-    expect(AGENT_SYSTEM_PROMPT).toMatch(/DESCRIPTIVE, not literal CSS/i);
-  });
-
-  test('contains example of role= notation', () => {
-    expect(AGENT_SYSTEM_PROMPT).toContain('role=link[name=');
-  });
-
-  test('instructs agent to find element in DOM list and use its CSS selector', () => {
-    expect(AGENT_SYSTEM_PROMPT).toMatch(/find the matching element in the DOM element list/i);
-  });
-});

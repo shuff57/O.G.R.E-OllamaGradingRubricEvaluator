@@ -1,0 +1,1 @@
+- 2026-03-15: `lsp_diagnostics` in this workspace does not resolve Node built-in typings for test files (`fs`/`node:fs`), so test fixtures were switched to Vite `?raw` markdown imports and guarded with `@ts-expect-error` for current tooling mismatch.
