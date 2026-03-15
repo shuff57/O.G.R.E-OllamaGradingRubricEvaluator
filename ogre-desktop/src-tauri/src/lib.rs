@@ -323,105 +323,113 @@ async fn create_embedded_browser(app: tauri::AppHandle, tab_id: String, url: Str
     let url_str = url.clone();
     let app_clone = app.clone();
     let tab_id_clone = tab_id.clone();
+    let (tx, rx) = oneshot::channel::<Result<(), String>>();
 
     app.run_on_main_thread(move || {
-        let label = format!("embedded-browser-{}", tab_id_clone);
+        let result = (|| -> Result<(), String> {
+            let label = format!("embedded-browser-{}", tab_id_clone);
 
-        let has_fixed = GTK_FIXED.with(|f| f.borrow().is_some());
-        if !has_fixed {
-            eprintln!("GtkFixed not initialized — setup() may not have run");
-            let _ = app_clone.emit("browser-status", "error");
-            return;
-        }
+            let has_fixed = GTK_FIXED.with(|f| f.borrow().is_some());
+            if !has_fixed {
+                let _ = app_clone.emit("browser-status", "error");
+                return Err("GtkFixed not initialized — setup() may not have run".to_string());
+            }
 
-        let app_nav = app_clone.clone();
-        let app_load = app_clone.clone();
-        let app_newwin = app_clone.clone();
-        let label_nav = label.clone();
-        let label_load = label.clone();
-        let label_newwin = label.clone();
-        let tab_id_nav = tab_id.clone();
-        let tab_id_load = tab_id.clone();
+            let app_nav = app_clone.clone();
+            let app_load = app_clone.clone();
+            let app_newwin = app_clone.clone();
+            let label_nav = label.clone();
+            let label_load = label.clone();
+            let label_newwin = label.clone();
+            let tab_id_nav = tab_id.clone();
+            let tab_id_load = tab_id.clone();
 
-        let builder = wry::WebViewBuilder::new()
-            .with_url(&url_str)
-            .with_bounds(wry::Rect {
-                position: wry::dpi::LogicalPosition::new(0.0_f64, 60.0_f64).into(),
-                size: wry::dpi::LogicalSize::new(800.0_f64, 600.0_f64).into(),
-            })
-            .with_navigation_handler(move |url| {
-                let url_s = url.to_string();
-                WEBVIEW_URLS.with(|urls| {
-                    urls.borrow_mut().insert(label_nav.clone(), url_s.clone());
-                });
-                let _ = app_nav.emit("browser-url-changed", serde_json::json!({
-                    "tabId": tab_id_nav,
-                    "url": url_s
-                }));
-                true
-            })
-            .with_on_page_load_handler(move |event, url| {
-                use wry::PageLoadEvent;
-                if matches!(event, PageLoadEvent::Finished) {
+            let builder = wry::WebViewBuilder::new()
+                .with_url(&url_str)
+                .with_bounds(wry::Rect {
+                    position: wry::dpi::LogicalPosition::new(0.0_f64, 60.0_f64).into(),
+                    size: wry::dpi::LogicalSize::new(800.0_f64, 600.0_f64).into(),
+                })
+                .with_navigation_handler(move |url| {
                     let url_s = url.to_string();
                     WEBVIEW_URLS.with(|urls| {
-                        urls.borrow_mut().insert(label_load.clone(), url_s.clone());
+                        urls.borrow_mut().insert(label_nav.clone(), url_s.clone());
                     });
-                    let _ = app_load.emit("browser-page-loaded", serde_json::json!({
-                        "tabId": tab_id_load,
+                    let _ = app_nav.emit("browser-url-changed", serde_json::json!({
+                        "tabId": tab_id_nav,
                         "url": url_s
                     }));
-                }
-            })
-            .with_new_window_req_handler(move |url, _features| {
-                let url_s = url.to_string();
-
-                LINUX_WEBVIEWS.with(|webviews| {
-                    if let Some(wv) = webviews.borrow().get(&label_newwin) {
-                        let _ = wv.load_url(&url_s);
+                    true
+                })
+                .with_on_page_load_handler(move |event, url| {
+                    use wry::PageLoadEvent;
+                    if matches!(event, PageLoadEvent::Finished) {
+                        let url_s = url.to_string();
+                        WEBVIEW_URLS.with(|urls| {
+                            urls.borrow_mut().insert(label_load.clone(), url_s.clone());
+                        });
+                        let _ = app_load.emit("browser-page-loaded", serde_json::json!({
+                            "tabId": tab_id_load,
+                            "url": url_s
+                        }));
                     }
+                })
+                .with_new_window_req_handler(move |url, _features| {
+                    let url_s = url.to_string();
+
+                    LINUX_WEBVIEWS.with(|webviews| {
+                        if let Some(wv) = webviews.borrow().get(&label_newwin) {
+                            let _ = wv.load_url(&url_s);
+                        }
+                    });
+
+                    WEBVIEW_URLS.with(|urls| {
+                        urls.borrow_mut().insert(label_newwin.clone(), url_s.clone());
+                    });
+
+                    let _ = app_newwin.emit("browser-url-changed", serde_json::json!({
+                        "tabId": tab_id_clone,
+                        "url": url_s
+                    }));
+
+                    wry::NewWindowResponse::Deny
                 });
 
-                WEBVIEW_URLS.with(|urls| {
-                    urls.borrow_mut().insert(label_newwin.clone(), url_s.clone());
-                });
-
-                let _ = app_newwin.emit("browser-url-changed", serde_json::json!({
-                    "tabId": tab_id_clone,
-                    "url": url_s
-                }));
-
-                wry::NewWindowResponse::Deny
+            let webview_result = GTK_FIXED.with(|f| {
+                let fixed_ref = f.borrow();
+                let fixed = fixed_ref.as_ref().expect("GTK_FIXED checked above");
+                builder.build_gtk(fixed)
             });
 
-        let webview_result = GTK_FIXED.with(|f| {
-            let fixed_ref = f.borrow();
-            let fixed = fixed_ref.as_ref().expect("GTK_FIXED checked above");
-            builder.build_gtk(fixed)
-        });
-
-        match webview_result {
-            Ok(wv) => {
-                LINUX_WEBVIEWS.with(|webviews| {
-                    webviews.borrow_mut().insert(label.clone(), wv);
-                });
-                WEBVIEW_URLS.with(|urls| {
-                    urls.borrow_mut().insert(label.clone(), url_str.clone());
-                });
-                {
-                    let state = app_clone.state::<Mutex<WebviewState>>();
-                    let mut guard = state.lock().unwrap();
-                    guard.tabs.insert(tab_id.clone(), label.clone());
+            match webview_result {
+                Ok(wv) => {
+                    LINUX_WEBVIEWS.with(|webviews| {
+                        webviews.borrow_mut().insert(label.clone(), wv);
+                    });
+                    WEBVIEW_URLS.with(|urls| {
+                        urls.borrow_mut().insert(label.clone(), url_str.clone());
+                    });
+                    {
+                        let state = app_clone.state::<Mutex<WebviewState>>();
+                        let mut guard = state.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
+                        guard.tabs.insert(tab_id.clone(), label.clone());
+                    }
+                    let _ = app_clone.emit("browser-status", "embedded-open");
+                    Ok(())
                 }
-                let _ = app_clone.emit("browser-status", "embedded-open");
+                Err(e) => {
+                    let _ = app_clone.emit("browser-status", "error");
+                    Err(format!("Failed to create Linux embedded browser: {}", e))
+                }
             }
-            Err(e) => {
-                eprintln!("Failed to create Linux embedded browser: {}", e);
-                let _ = app_clone.emit("browser-status", "error");
-            }
-        }
+        })();
+
+        let _ = tx.send(result);
     })
     .map_err(|_| "Failed to run on main thread".to_string())?;
+
+    rx.await
+        .map_err(|_| "Main thread response channel closed".to_string())??;
 
     Ok(())
 }
@@ -445,7 +453,7 @@ async fn navigate_embedded(app: tauri::AppHandle, tab_id: String, url: String) -
 async fn navigate_embedded(app: tauri::AppHandle, tab_id: String, url: String) -> Result<(), String> {
     let label = {
         let state = app.state::<Mutex<WebviewState>>();
-        let guard = state.lock().unwrap();
+        let guard = state.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
     };
     let label_clone = label.clone();
@@ -484,7 +492,7 @@ async fn go_back(app: tauri::AppHandle, tab_id: String) -> Result<(), String> {
 async fn go_back(app: tauri::AppHandle, tab_id: String) -> Result<(), String> {
     let label = {
         let state = app.state::<Mutex<WebviewState>>();
-        let guard = state.lock().unwrap();
+        let guard = state.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
     };
     app.run_on_main_thread(move || {
@@ -518,7 +526,7 @@ async fn go_forward(app: tauri::AppHandle, tab_id: String) -> Result<(), String>
 async fn go_forward(app: tauri::AppHandle, tab_id: String) -> Result<(), String> {
     let label = {
         let state = app.state::<Mutex<WebviewState>>();
-        let guard = state.lock().unwrap();
+        let guard = state.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
     };
     app.run_on_main_thread(move || {
@@ -552,7 +560,7 @@ async fn reload_browser(app: tauri::AppHandle, tab_id: String) -> Result<(), Str
 async fn reload_browser(app: tauri::AppHandle, tab_id: String) -> Result<(), String> {
     let label = {
         let state = app.state::<Mutex<WebviewState>>();
-        let guard = state.lock().unwrap();
+        let guard = state.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
     };
     app.run_on_main_thread(move || {
@@ -599,7 +607,7 @@ async fn set_webview_bounds(
 ) -> Result<(), String> {
     let label = {
         let state = app.state::<Mutex<WebviewState>>();
-        let guard = state.lock().unwrap();
+        let guard = state.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
     };
 
@@ -686,7 +694,7 @@ async fn show_webview(app: tauri::AppHandle, tab_id: String) -> Result<(), Strin
 async fn get_embedded_url(app: tauri::AppHandle, tab_id: String) -> Result<String, String> {
     let label = {
         let state = app.state::<Mutex<WebviewState>>();
-        let guard = state.lock().unwrap();
+        let guard = state.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
     };
 
@@ -750,7 +758,7 @@ async fn destroy_webview(app: tauri::AppHandle, tab_id: String) -> Result<(), St
 async fn inject_autofill(app: tauri::AppHandle, tab_id: String, script: String) -> Result<(), String> {
     let label = {
         let state = app.state::<Mutex<WebviewState>>();
-        let guard = state.lock().unwrap();
+        let guard = state.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
     };
 
@@ -866,7 +874,7 @@ async fn eval_webview_script(
 ) -> Result<String, String> {
     let label = {
         let state = app.state::<Mutex<WebviewState>>();
-        let guard = state.lock().unwrap();
+        let guard = state.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
     };
     app.run_on_main_thread(move || {
@@ -895,7 +903,7 @@ async fn inject_webview_script(
 ) -> Result<(), String> {
     let label = {
         let state = app.state::<Mutex<WebviewState>>();
-        let guard = state.lock().unwrap();
+        let guard = state.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
     };
 
