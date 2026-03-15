@@ -44,6 +44,11 @@ import { withRetry } from './ai-retry.js';
 import { handleAgentRequest } from './agent.js';
 import { buildEmbedRequest, parseEmbedResponse } from './embedding-adapters.js';
 import { generateLocalEmbedding, initLocalEmbedder, isModelLoaded } from './local-embedder.js';
+import {
+  buildKnowledgeProfilePrompts,
+  extractKnowledgeProfileSiteName,
+  loadKnowledgeProfileTemplate,
+} from './knowledge-profile.js';
 
 const app = new Hono();
 const PORT = 3456;
@@ -1366,6 +1371,72 @@ app.post('/api/generate-anchors', async (c) => {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[${timestamp()}] [anchors] Error: ${message}`);
     return c.json({ error: message }, 500);
+  }
+});
+
+app.post('/api/generate-knowledge-profile', async (c) => {
+  let body;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+
+  const { pageSnapshot, url, existingSelectors, provider, model } = body;
+
+  if (!pageSnapshot || !pageSnapshot.trim()) {
+    return c.json({ error: 'pageSnapshot is required' }, 400);
+  }
+
+  let providerId = provider;
+  let effectiveModel = model;
+
+  if (!providerId) {
+    const activeProvider = providerConfigs.find(p => p.is_active);
+    if (!activeProvider) {
+      return c.json({ error: 'No active provider configured. Set a provider or pass provider in request.' }, 400);
+    }
+    providerId = activeProvider.id;
+    if (!effectiveModel) effectiveModel = activeProvider.model;
+  }
+
+  if (!effectiveModel) {
+    const configuredProvider = providerConfigs.find(p => p.id === providerId);
+    effectiveModel = configuredProvider?.model;
+    if (!effectiveModel) {
+      return c.json({ error: 'No model specified and no default model for provider' }, 400);
+    }
+  }
+
+  const template = loadKnowledgeProfileTemplate();
+  const { systemPrompt, userMessage } = buildKnowledgeProfilePrompts({
+    pageSnapshot,
+    url,
+    existingSelectors,
+    template,
+  });
+  const timestamp = () => new Date().toLocaleTimeString();
+
+  try {
+    const providerConfig = resolveProviderConfig(providerId, effectiveModel);
+    console.log(`[${timestamp()}] [knowledge-profile] Generating | provider=${providerId} model=${effectiveModel}`);
+    const markdown = await withRetry(
+      () => callProviderDirect(providerId, providerConfig, [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage },
+      ], timestamp()),
+      { maxRetries: 3 }
+    );
+
+    return c.json({
+      markdown,
+      metadata: {
+        site: extractKnowledgeProfileSiteName(markdown, url),
+        pagesAnalyzed: 1,
+      },
+    });
+  } catch (error) {
+    return c.json({ error: error.message || 'Generation failed' }, 500);
   }
 });
 
