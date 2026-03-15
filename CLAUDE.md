@@ -19,7 +19,8 @@ Key directories agents should recognize:
 - `grading-server/` - grading APIs and orchestration
 - `mom/` - MyOpenMath-related artifacts
 - `.agents/skills/` - project skills (authoritative skill location)
-- `.claude/commands/` - command entrypoints (for slash-style workflows)
+- `.agents/commands/` - canonical command content (tool-agnostic)
+- `.claude/commands/` - Claude Code command pointers (thin bridges to `.agents/commands/`)
 - `.agents/memory/` - cross-session learnings and reflections
 
 Routing intent:
@@ -63,7 +64,8 @@ Routing preference rules:
 
 Authoritative conventions for Layer 1 routing:
 - Skills live in `.agents/skills/`.
-- Commands live in `.claude/commands/`.
+- Canonical commands live in `.agents/commands/`.
+- Claude Code command pointers live in `.claude/commands/` (thin bridges only).
 - Never route to `.claude/skills/` paths.
 
 Documentation and invocation conventions:
