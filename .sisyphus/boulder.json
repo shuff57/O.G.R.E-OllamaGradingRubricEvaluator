@@ -1,10 +1,11 @@
 {
   "active_plan": "/home/shuff57/Documents/GitHub/O.G.R.E-OllamaGradingRubricEvaluator/.sisyphus/plans/linux-embedded-browser.md",
   "started_at": "2026-03-14T23:43:42.655Z",
+  "completed_at": "2026-03-15T15:00:00.000Z",
   "session_ids": [
     "ses_3116b57e4ffe30PAofQORrQEwd"
   ],
   "plan_name": "linux-embedded-browser",
   "agent": "atlas",
-  "worktree_path": "/tmp/ogre-linux-browser"
+  "status": "completed"
 }

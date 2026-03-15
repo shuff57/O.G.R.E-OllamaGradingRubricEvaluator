@@ -154,7 +154,7 @@ Max Concurrent: 3 (Wave 2)
 
 ## TODOs
 
-- [ ] 1. Add Linux-Only Dependencies + Validate wry Re-export
+- [x] 1. Add Linux-Only Dependencies + Validate wry Re-export
 
   **What to do**:
   - Add `gtk` crate as a Linux-only dependency in `Cargo.toml`:
@@ -248,7 +248,7 @@ Max Concurrent: 3 (Wave 2)
   - Files: `ogre-desktop/src-tauri/Cargo.toml`, `ogre-desktop/src-tauri/src/lib.rs`
   - Pre-commit: `cargo check` in ogre-desktop/src-tauri
 
-- [ ] 2. Create GtkFixed Container in setup() + Restructure Linux State
+- [x] 2. Create GtkFixed Container in setup() + Restructure Linux State
 
   **What to do**:
   - Create a new state struct for Linux webview handles. Since `wry::WebView` is `!Send` on Linux (GTK widgets are main-thread-only), use a main-thread-only storage pattern:
@@ -347,7 +347,7 @@ Max Concurrent: 3 (Wave 2)
   - Files: `ogre-desktop/src-tauri/src/lib.rs`
   - Pre-commit: `cargo build` in ogre-desktop/src-tauri
 
-- [ ] 3. Rewrite create_embedded_browser Linux Path to Use wry build_gtk
+- [x] 3. Rewrite create_embedded_browser Linux Path to Use wry build_gtk
 
   **What to do**:
   - Replace the Linux `#[cfg(target_os = "linux")]` block in `create_embedded_browser` (lines 232-288) to use wry's `build_gtk()` instead of `WebviewWindowBuilder`
@@ -438,7 +438,7 @@ Max Concurrent: 3 (Wave 2)
   - Files: `ogre-desktop/src-tauri/src/lib.rs`
   - Pre-commit: `cargo build`
 
-- [ ] 4. Rewrite set_webview_bounds Linux Path Using wry set_bounds
+- [x] 4. Rewrite set_webview_bounds Linux Path Using wry set_bounds
 
   **What to do**:
   - Replace the Linux no-op in `set_webview_bounds` (lines 417-421) with actual bounds management:
@@ -522,7 +522,7 @@ Max Concurrent: 3 (Wave 2)
   - Files: `ogre-desktop/src-tauri/src/lib.rs`
   - Pre-commit: `cargo check`
 
-- [ ] 5. Rewrite show/hide/destroy Linux Paths with wry WebView Handles
+- [x] 5. Rewrite show/hide/destroy Linux Paths with wry WebView Handles
 
   **What to do**:
   - **`hide_webview`** (lines 439-462): Replace the Linux block. Instead of `app.get_webview_window(&label)?.hide()`, use:
@@ -629,7 +629,7 @@ Max Concurrent: 3 (Wave 2)
   - Files: `ogre-desktop/src-tauri/src/lib.rs`
   - Pre-commit: `cargo check`
 
-- [ ] 6. Rewrite Navigation Commands Linux Paths via wry API
+- [x] 6. Rewrite Navigation Commands Linux Paths via wry API
 
   **What to do**:
   - **`navigate_embedded`** (line 366): Replace the Linux block. Instead of `app.get_webview(&label)?.navigate(url)`, use:
@@ -722,7 +722,7 @@ Max Concurrent: 3 (Wave 2)
   - Files: `ogre-desktop/src-tauri/src/lib.rs`
   - Pre-commit: `cargo check`
 
-- [ ] 7. Rewrite URL Tracking + Script Injection Linux Paths
+- [x] 7. Rewrite URL Tracking + Script Injection Linux Paths
 
   **What to do**:
   - **`get_embedded_url`** (line 492): On Linux, wry has no `url()` getter. Read from `WEBVIEW_URLS` thread_local instead:
@@ -850,7 +850,7 @@ Max Concurrent: 3 (Wave 2)
   - Files: `ogre-desktop/src-tauri/src/lib.rs`
   - Pre-commit: `cargo check`
 
-- [ ] 8. End-to-End Integration Test on Linux
+- [x] 8. End-to-End Integration Test on Linux
 
   **What to do**:
   - Build the complete app: `cargo build` in ogre-desktop/src-tauri
@@ -935,19 +935,19 @@ Max Concurrent: 3 (Wave 2)
 
 > 4 review agents run in PARALLEL. ALL must APPROVE. Rejection → fix → re-run.
 
-- [ ] F1. **Plan Compliance Audit** — `oracle`
+- [x] F1. **Plan Compliance Audit** — `oracle`
   Read the plan end-to-end. For each "Must Have": verify implementation exists (read file, run command). For each "Must NOT Have": search codebase for forbidden patterns — reject with file:line if found. Check evidence files exist in .sisyphus/evidence/. Compare deliverables against plan.
   Output: `Must Have [N/N] | Must NOT Have [N/N] | Tasks [N/N] | VERDICT: APPROVE/REJECT`
 
-- [ ] F2. **Code Quality Review** — `unspecified-high`
+- [x] F2. **Code Quality Review** — `unspecified-high`
   Run `cargo clippy --all-targets` + `cargo build`. Review all changed files for: `unsafe` blocks, empty error handlers, `unwrap()` in command handlers, dead code behind `#[cfg]`. Verify no Windows code was modified (`git diff` of `#[cfg(not(target_os = "linux"))]` blocks must be empty).
   Output: `Build [PASS/FAIL] | Clippy [PASS/FAIL] | Windows unchanged [YES/NO] | VERDICT`
 
-- [ ] F3. **Real Manual QA** — `unspecified-high`
+- [x] F3. **Real Manual QA** — `unspecified-high`
   Start from clean state. Run `cargo build` then launch the app. Execute EVERY QA scenario from EVERY task — follow exact steps, capture evidence. Test multi-tab create/switch/destroy. Test window resize → webview follows. Test navigation. Save to `.sisyphus/evidence/final-qa/`.
   Output: `Scenarios [N/N pass] | Integration [N/N] | Edge Cases [N tested] | VERDICT`
 
-- [ ] F4. **Scope Fidelity Check** — `deep`
+- [x] F4. **Scope Fidelity Check** — `deep`
   For each task: read "What to do", read actual diff (`git diff`). Verify 1:1 — everything in spec was built (no missing), nothing beyond spec was built (no creep). Check "Must NOT do" compliance. Verify no frontend files were modified. Flag unaccounted changes.
   Output: `Tasks [N/N compliant] | Frontend files [CLEAN/N modified] | Unaccounted [CLEAN/N files] | VERDICT`
 
