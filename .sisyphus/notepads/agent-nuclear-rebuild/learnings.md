@@ -71,6 +71,12 @@
 - Rewrote `.claude/commands/grade-selectors.md` as a frontmatter-free reference with consistent tables while preserving all original DOM selectors and TinyMCE writeback guidance.
 - Captured verification evidence in `.sisyphus/evidence/task-7-grade-command.txt`; markdown LSP diagnostics were not available in this environment because no `.md` server is configured.
 
+## [2026-03-15] Task 10 Complete — gb-compare gold-standard rewrite
+- Created `.agents/skills/gb-compare/SKILL.md` in the gold-standard structure with frontmatter, Overview, Guardrails-before-Workflow, Quick Start, workflow phases, Error Handling, Common Mistakes, Selectors / References, and Cleanup.
+- Preserved the mature archived workflow details that downstream stages depend on: MOM category expansion via `span.cattothdr` and `[Expand]`, MOM assignment extraction via `th[data-pts]` + `childNodes[0].textContent`, Aeries listing via `th[data-an]`, and MOM date parsing from `sdate` / `edate` in `moasettings.php`.
+- Kept the exact temp artifact contract and naming expectations visible: `gb_compare_{gradebookNum}.json` with top-level keys `metadata`, `catMap`, `momAssignments`, `aeriesAssignments`, `matched`, and `missing`; `missing` must contain full assignment objects for `gb-new-assignment`.
+- Re-emphasized that `gb-compare` is always Stage 1, read-only, and idempotent: it may produce local report/temp artifacts but must never mutate MOM or Aeries.
+
 ## [2026-03-15] Task 12 Complete — gb-sync gold-standard rewrite
 - Rebuilt `.agents/skills/gb-sync/SKILL.md` in gold-standard format and kept the main file concise at 206 lines by moving operational detail into `.agents/skills/gb-sync/references/phase-details.md`.
 - Preserved the full seven-phase structure: Setup, Student Discovery, MOM Score Collection, Dry-Run Report, Live Score Entry, Halt Detection, and Verification.
@@ -97,6 +103,23 @@
 - Preserved the single-assignment Stage 3 variant and its `partial-verified` reporting rule so it is never reported as full pipeline success.
 - Kept downstream skill invocation name-based only with `load_skills=["gb-compare"]`, `load_skills=["gb-new-assignment"]`, and `load_skills=["gb-sync"]`.
 - Captured verification evidence in `.sisyphus/evidence/task-13-gb-pipeline.txt`; markdown LSP diagnostics were not available in this environment because no `.md` server is configured.
+
+## [2026-03-15] Task 16 Complete — mom-lib-map router + passive references
+- Replaced the archived multi-file `mom-lib-map` skill layout with a single discoverable router at `.agents/skills/mom-lib-map/SKILL.md` plus 16 plain-markdown subject references under `.agents/skills/mom-lib-map/references/`.
+- Stripping YAML frontmatter from the subject files is enough to keep them out of the skill catalog while preserving the actual topic-map content verbatim.
+- Router skills for large reference packs should keep subject routing, cross-subject notes, and relative `references/{subject}.md` links in the main SKILL file while leaving detailed lookup tables in passive reference docs.
+- Verification for markdown-only skill tasks should explicitly record both the positive checks (reference count, frontmatter absence, path references) and any environment limitation such as missing Markdown LSP support.
+
+## [2026-03-15] Task 19 In Progress — mom-style-guide gold-standard rewrite
+- Reference/philosophy skills cannot be converted cleanly by forcing them into a pure workflow template; preserve their role boundaries with companion-skill tables and lightweight review/apply/verify workflow instead.
+- For MOM style guidance, the high-risk losses during rewrite are usually defaults and constraints, not prose details: auto-graded-by-default, neutral student rubric wording, meaningful randomization, visual layout rules, and pseudo-PHP safety rules all need explicit sections.
+
+## [2026-03-15] Task 17 Complete — mom-page-map gold standard rewrite
+- For large archived navigation skills, keep `SKILL.md` as a concise router and move exact URL/selector/AJAX details into `references/navigation-patterns.md`.
+- Preserve MOM route variants exactly, especially `addassessment2.php?id={aid}&cid={cid}&from=gb` and the URL-only `gradeallq2.php?cid={cid}&aid={aid}` path.
+- Preserve the dual block-id model explicitly: DOM `blockh{bid}` vs URL `path` like `0-1` extracted from `toggleblock(...)`.
+- Preserve native-widget caveats verbatim enough to keep behavior safe: Add An Item `<option>` clicks cause CDP `-32000`; use direct URLs or `selectOption()` with a pre-captured navigation wait.
+- Preserve instructor-vs-student distinctions explicitly: `testquestion2.php` is an instructor validation page, while `assess2/?cid={cid}&aid={aid}` is the student view.
 
 ## [2026-03-15] Task 15 Complete — mom-fact-finder gold standard rewrite
 - Created `.agents/skills/mom-fact-finder/SKILL.md` in gold-standard format with Guardrails before Workflow, Inputs, Quick Start, phased workflow, Error Handling table, Common Mistakes table, State Management, and Selectors / References.

@@ -1,0 +1,44 @@
+Task 16: Rewrite mom-lib-map as router skill + passive references
+
+Status: Complete
+
+Artifacts created
+- `.agents/skills/mom-lib-map/SKILL.md`
+- `.agents/skills/mom-lib-map/references/accounting.md`
+- `.agents/skills/mom-lib-map/references/algebra.md`
+- `.agents/skills/mom-lib-map/references/arithmetic.md`
+- `.agents/skills/mom-lib-map/references/astronomy.md`
+- `.agents/skills/mom-lib-map/references/calculus.md`
+- `.agents/skills/mom-lib-map/references/chemistry.md`
+- `.agents/skills/mom-lib-map/references/differential-equations.md`
+- `.agents/skills/mom-lib-map/references/discrete-math.md`
+- `.agents/skills/mom-lib-map/references/elem-ed.md`
+- `.agents/skills/mom-lib-map/references/finance.md`
+- `.agents/skills/mom-lib-map/references/geometry.md`
+- `.agents/skills/mom-lib-map/references/liberal-arts.md`
+- `.agents/skills/mom-lib-map/references/linear-algebra.md`
+- `.agents/skills/mom-lib-map/references/physics.md`
+- `.agents/skills/mom-lib-map/references/statistics.md`
+- `.agents/skills/mom-lib-map/references/trig.md`
+
+Source review
+- Read archived index: `.sisyphus/archive/skills/mom-lib-map/CLAUDE.md`
+- Read archived subject files: accounting, algebra, arithmetic, astronomy, calculus, chemistry, differential-equations, discrete-math, elem-ed, finance, geometry, liberal-arts, linear-algebra, physics, statistics, trig
+
+Verification
+1. Router file exists and uses gold-standard skill structure with YAML frontmatter, Guardrails before Workflow, Error Handling table, Common Mistakes table, and relative `references/{subject}.md` links.
+2. Reference file count command:
+   - `ls .agents/skills/mom-lib-map/references/ | wc -l`
+   - Output: `16`
+3. Frontmatter removal check:
+   - Searched `^---$` across `.agents/skills/mom-lib-map/references/*.md`
+   - Result: no matches
+4. Sample content check:
+   - Verified `.agents/skills/mom-lib-map/references/accounting.md` contains preserved topic-map table and no frontmatter
+5. Markdown LSP diagnostics:
+   - `lsp_diagnostics` attempted on `.agents/skills/mom-lib-map/SKILL.md`
+   - Environment result: `No LSP server configured for extension: .md`
+
+Notes
+- Reference files were intentionally kept as plain markdown only so they are not discoverable as standalone skills.
+- Archived subject content was preserved while removing the trailing `---` skill/frontmatter-style delimiter lines.
