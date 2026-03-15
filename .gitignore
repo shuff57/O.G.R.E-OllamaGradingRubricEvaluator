@@ -46,8 +46,7 @@ ogre-desktop/src-tauri/target/
 # Python cache
 __pycache__/
 
-# Local agent/tooling config
-.agents/
+# Local agent/tooling config (removed .agents/ — skills now tracked in .agents/skills/)
 .claude/skills/
 skills-lock.json
 .sisyphus/run-continuation/
