@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as profileJsonConverter from './profile-json-converter';
+import { AGENT_SYSTEM_PROMPT } from './agent-prompt';
 
 // ── Mock @tauri-apps/plugin-http ──────────────────────────────────────────
 const { mockFetch } = vi.hoisted(() => ({
@@ -517,6 +518,70 @@ describe('buildSiteContextInjection', () => {
     const output = await buildSiteContextInjection('https://www.myopenmath.com/course/123');
     expect(output.length).toBeLessThan(best.content.length);
   });
+
+  it('JSON injection contains all required SiteGuideJSON keys', async () => {
+    const markdown = [
+      '---',
+      'name: "MOM Guide"',
+      'baseUrl: "https://www.myopenmath.com"',
+      'role: "teacher"',
+      'urlPatterns:',
+      '  - "myopenmath.com"',
+      '---',
+      '# MyOpenMath — Agent Navigation Guide',
+      '## Selectors',
+      '| Assignment link | `a[href*="assess2"]` |',
+      '## Navigation',
+      '- `https://www.myopenmath.com/course/123`',
+      '## Workflows',
+      '1. Open gradebook',
+      '## Gotchas & Tips',
+      '- Use teacher account',
+    ].join('\n');
+
+    mockGetSkillsWithUrlPattern.mockResolvedValue([makeProfileSkill({ content: markdown })]);
+    const result = await buildSiteContextInjection('https://www.myopenmath.com/course/123');
+
+    const match = result.match(/--- SITE GUIDE \(JSON\):[^\n]*---\n([\s\S]*?)\n--- END SITE GUIDE ---/);
+    expect(match?.[1]).toBeTruthy();
+    const guide = JSON.parse(match![1]);
+
+    expect(guide).toHaveProperty('site');
+    expect(guide).toHaveProperty('baseUrl');
+    expect(guide).toHaveProperty('selectors');
+    expect(guide).toHaveProperty('navigation');
+    expect(guide).toHaveProperty('workflows');
+    expect(guide).toHaveProperty('gotchas');
+  });
+
+  it('JSON injection is smaller than raw markdown content', async () => {
+    const markdown = [
+      '---',
+      'name: "MOM Guide"',
+      'baseUrl: "https://www.myopenmath.com"',
+      'role: "teacher"',
+      'urlPatterns:',
+      '  - "myopenmath.com"',
+      '---',
+      '# MyOpenMath — Agent Navigation Guide',
+      '## Selectors',
+      '| Assignment link | `a[href*="assess2"]` | This is a detailed explanation of how to use this selector in various contexts |',
+      '## Navigation',
+      '- `https://www.myopenmath.com/course/123`',
+      '- `/assess2/teacher/gb-view.php?cid={cid}`',
+      '## Workflows',
+      '1. Open gradebook and review all assignments before making changes',
+      '## Gotchas & Tips',
+      '- Use teacher account for all operations',
+      '- Save frequently to avoid session timeout',
+    ].join('\n');
+
+    const profile = makeProfileSkill({ content: markdown });
+    mockGetSkillsWithUrlPattern.mockResolvedValue([profile]);
+
+    const result = await buildSiteContextInjection('https://www.myopenmath.com/course/123');
+    expect(result.length).toBeLessThan(profile.content.length);
+  });
 });
 
 // ── syncSiteProfiles tests ─────────────────────────────────────────────
@@ -584,5 +649,29 @@ describe('syncSiteProfiles', () => {
     expect(BUNDLED_PROFILES).toHaveLength(2);
     expect(BUNDLED_PROFILES[0]).toContain('myopenmath.com');
     expect(BUNDLED_PROFILES[1]).toContain('aeries.net');
+  });
+});
+
+// ── AGENT_SYSTEM_PROMPT tests ─────────────────────────────────────────────
+
+describe('AGENT_SYSTEM_PROMPT', () => {
+  it('references JSON site guide format in rule 11', () => {
+    expect(AGENT_SYSTEM_PROMPT).toContain('SITE GUIDE (JSON)');
+  });
+
+  it('instructs agent to parse JSON as structured data', () => {
+    expect(AGENT_SYSTEM_PROMPT).toContain('parse it as structured JSON');
+  });
+
+  it('does not reference old SELECTOR TRANSLATION format', () => {
+    expect(AGENT_SYSTEM_PROMPT).not.toContain('SELECTOR TRANSLATION');
+  });
+
+  it('includes rule 11 for site guide priority', () => {
+    expect(AGENT_SYSTEM_PROMPT).toContain('11. SITE GUIDE PRIORITY');
+  });
+
+  it('instructs agent to use selectors object from JSON guide', () => {
+    expect(AGENT_SYSTEM_PROMPT).toContain('Use the "selectors" object for CSS selectors directly');
   });
 });
