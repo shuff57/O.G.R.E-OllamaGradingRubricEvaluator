@@ -689,9 +689,26 @@ async fn get_embedded_url(app: tauri::AppHandle, tab_id: String) -> Result<Strin
         let guard = state.lock().unwrap();
         guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
     };
-    let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
-    let url = wv.url().map_err(|e| format!("Failed to get URL: {}", e))?;
-    Ok(url.to_string())
+
+    #[cfg(target_os = "linux")]
+    {
+        let (tx, rx) = oneshot::channel::<String>();
+        app.run_on_main_thread(move || {
+            let url = WEBVIEW_URLS.with(|urls| {
+                urls.borrow().get(&label).cloned().unwrap_or_default()
+            });
+            let _ = tx.send(url);
+        }).map_err(|_| "Failed to run on main thread".to_string())?;
+        let url = rx.await.map_err(|_| "Channel closed".to_string())?;
+        return Ok(url);
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
+        let url = wv.url().map_err(|e| format!("Failed to get URL: {}", e))?;
+        Ok(url.to_string())
+    }
 }
 
 #[tauri::command]
@@ -736,10 +753,28 @@ async fn inject_autofill(app: tauri::AppHandle, tab_id: String, script: String) 
         let guard = state.lock().unwrap();
         guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
     };
-    let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
-    wv.eval(&script)
-        .map_err(|e| format!("Failed to inject autofill script: {}", e))?;
-    Ok(())
+
+    #[cfg(target_os = "linux")]
+    {
+        app.run_on_main_thread(move || {
+            LINUX_WEBVIEWS.with(|webviews| {
+                if let Some(wv) = webviews.borrow().get(&label) {
+                    if let Err(e) = wv.evaluate_script(&script) {
+                        eprintln!("inject_autofill failed: {}", e);
+                    }
+                }
+            });
+        }).map_err(|_| "Failed to run on main thread".to_string())?;
+        return Ok(());
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
+        wv.eval(&script)
+            .map_err(|e| format!("Failed to inject autofill script: {}", e))?;
+        Ok(())
+    }
 }
 
 /// Execute JavaScript in the embedded browser and return the result.
@@ -822,6 +857,30 @@ async fn eval_webview_script(
     }
 }
 
+#[cfg(target_os = "linux")]
+#[tauri::command]
+async fn eval_webview_script(
+    app: tauri::AppHandle,
+    tab_id: String,
+    script: String,
+) -> Result<String, String> {
+    let label = {
+        let state = app.state::<Mutex<WebviewState>>();
+        let guard = state.lock().unwrap();
+        guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
+    };
+    app.run_on_main_thread(move || {
+        LINUX_WEBVIEWS.with(|webviews| {
+            if let Some(wv) = webviews.borrow().get(&label) {
+                if let Err(e) = wv.evaluate_script(&script) {
+                    eprintln!("eval_webview_script (fire-and-forget) failed: {}", e);
+                }
+            }
+        });
+    }).map_err(|_| "Failed to run on main thread".to_string())?;
+    Ok("null".to_string())
+}
+
 /// Inject JavaScript into the embedded browser without waiting for a return value.
 ///
 /// Unlike eval_webview_script, this does NOT wrap the script in the callback
@@ -839,8 +898,26 @@ async fn inject_webview_script(
         let guard = state.lock().unwrap();
         guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
     };
-    let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
-    wv.eval(&script).map_err(|e| format!("Failed to inject script: {}", e))
+
+    #[cfg(target_os = "linux")]
+    {
+        app.run_on_main_thread(move || {
+            LINUX_WEBVIEWS.with(|webviews| {
+                if let Some(wv) = webviews.borrow().get(&label) {
+                    if let Err(e) = wv.evaluate_script(&script) {
+                        eprintln!("inject_webview_script failed: {}", e);
+                    }
+                }
+            });
+        }).map_err(|_| "Failed to run on main thread".to_string())?;
+        return Ok(());
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
+        wv.eval(&script).map_err(|e| format!("Failed to inject script: {}", e))
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -1302,7 +1379,6 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_model ON response_embeddings(embedding
             get_embedded_url,
             destroy_webview,
             inject_autofill,
-            #[cfg(not(target_os = "linux"))]
             eval_webview_script,
             #[cfg(not(target_os = "linux"))]
             _eval_callback,
