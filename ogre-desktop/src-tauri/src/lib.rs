@@ -3,12 +3,34 @@ use std::collections::HashMap;
 use tauri::{Emitter, Manager};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, MenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton};
+#[cfg(not(target_os = "linux"))]
 use tauri::webview::WebviewBuilder;
+#[cfg(not(target_os = "linux"))]
 use tauri::WebviewUrl;
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::CommandEvent;
 use tauri_plugin_sql::{Migration, MigrationKind};
 use tokio::sync::oneshot;
+
+#[cfg(target_os = "linux")]
+use gtk::prelude::*;
+#[cfg(target_os = "linux")]
+use wry::WebViewBuilderExtUnix;
+
+/// Linux-only: thread-local storage for wry WebView handles and GTK state.
+/// These must be on the main thread (GTK widgets are !Send).
+#[cfg(target_os = "linux")]
+use std::cell::RefCell;
+
+#[cfg(target_os = "linux")]
+thread_local! {
+    /// Maps webview label → wry WebView handle (main thread only)
+    static LINUX_WEBVIEWS: RefCell<HashMap<String, wry::WebView>> = RefCell::new(HashMap::new());
+    /// The single shared GtkFixed container for all embedded webviews
+    static GTK_FIXED: RefCell<Option<gtk::Fixed>> = const { RefCell::new(None) };
+    /// Maps webview label → current URL (since wry has no url() getter)
+    static WEBVIEW_URLS: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+}
 
 /// Holds the sidecar child process handle so we can kill it on exit.
 struct SidecarState {
@@ -213,6 +235,7 @@ fn spawn_sidecar(app_handle: &tauri::AppHandle, restart_count: Arc<Mutex<u32>>) 
 
 // ── Embedded Browser Commands ────────────────────────────────────────────
 
+#[cfg(not(target_os = "linux"))]
 #[tauri::command]
 async fn create_embedded_browser(app: tauri::AppHandle, tab_id: String, url: String) -> Result<(), String> {
     let parsed: url::Url = url.parse().map_err(|e| format!("Invalid URL: {}", e))?;
@@ -294,6 +317,124 @@ async fn create_embedded_browser(app: tauri::AppHandle, tab_id: String, url: Str
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+#[tauri::command]
+async fn create_embedded_browser(app: tauri::AppHandle, tab_id: String, url: String) -> Result<(), String> {
+    let url_str = url.clone();
+    let app_clone = app.clone();
+    let tab_id_clone = tab_id.clone();
+    let (tx, rx) = oneshot::channel::<Result<(), String>>();
+
+    app.run_on_main_thread(move || {
+        let result = (|| -> Result<(), String> {
+            let label = format!("embedded-browser-{}", tab_id_clone);
+
+            let has_fixed = GTK_FIXED.with(|f| f.borrow().is_some());
+            if !has_fixed {
+                let _ = app_clone.emit("browser-status", "error");
+                return Err("GtkFixed not initialized — setup() may not have run".to_string());
+            }
+
+            let app_nav = app_clone.clone();
+            let app_load = app_clone.clone();
+            let app_newwin = app_clone.clone();
+            let label_nav = label.clone();
+            let label_load = label.clone();
+            let label_newwin = label.clone();
+            let tab_id_nav = tab_id.clone();
+            let tab_id_load = tab_id.clone();
+
+            let builder = wry::WebViewBuilder::new()
+                .with_url(&url_str)
+                .with_bounds(wry::Rect {
+                    position: wry::dpi::LogicalPosition::new(0.0_f64, 60.0_f64).into(),
+                    size: wry::dpi::LogicalSize::new(800.0_f64, 600.0_f64).into(),
+                })
+                .with_navigation_handler(move |url| {
+                    let url_s = url.to_string();
+                    WEBVIEW_URLS.with(|urls| {
+                        urls.borrow_mut().insert(label_nav.clone(), url_s.clone());
+                    });
+                    let _ = app_nav.emit("browser-url-changed", serde_json::json!({
+                        "tabId": tab_id_nav,
+                        "url": url_s
+                    }));
+                    true
+                })
+                .with_on_page_load_handler(move |event, url| {
+                    use wry::PageLoadEvent;
+                    if matches!(event, PageLoadEvent::Finished) {
+                        let url_s = url.to_string();
+                        WEBVIEW_URLS.with(|urls| {
+                            urls.borrow_mut().insert(label_load.clone(), url_s.clone());
+                        });
+                        let _ = app_load.emit("browser-page-loaded", serde_json::json!({
+                            "tabId": tab_id_load,
+                            "url": url_s
+                        }));
+                    }
+                })
+                .with_new_window_req_handler(move |url, _features| {
+                    let url_s = url.to_string();
+
+                    LINUX_WEBVIEWS.with(|webviews| {
+                        if let Some(wv) = webviews.borrow().get(&label_newwin) {
+                            let _ = wv.load_url(&url_s);
+                        }
+                    });
+
+                    WEBVIEW_URLS.with(|urls| {
+                        urls.borrow_mut().insert(label_newwin.clone(), url_s.clone());
+                    });
+
+                    let _ = app_newwin.emit("browser-url-changed", serde_json::json!({
+                        "tabId": tab_id_clone,
+                        "url": url_s
+                    }));
+
+                    wry::NewWindowResponse::Deny
+                });
+
+            let webview_result = GTK_FIXED.with(|f| {
+                let fixed_ref = f.borrow();
+                let fixed = fixed_ref.as_ref().expect("GTK_FIXED checked above");
+                builder.build_gtk(fixed)
+            });
+
+            match webview_result {
+                Ok(wv) => {
+                    LINUX_WEBVIEWS.with(|webviews| {
+                        webviews.borrow_mut().insert(label.clone(), wv);
+                    });
+                    WEBVIEW_URLS.with(|urls| {
+                        urls.borrow_mut().insert(label.clone(), url_str.clone());
+                    });
+                    {
+                        let state = app_clone.state::<Mutex<WebviewState>>();
+                        let mut guard = state.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
+                        guard.tabs.insert(tab_id.clone(), label.clone());
+                    }
+                    let _ = app_clone.emit("browser-status", "embedded-open");
+                    Ok(())
+                }
+                Err(e) => {
+                    let _ = app_clone.emit("browser-status", "error");
+                    Err(format!("Failed to create Linux embedded browser: {}", e))
+                }
+            }
+        })();
+
+        let _ = tx.send(result);
+    })
+    .map_err(|_| "Failed to run on main thread".to_string())?;
+
+    rx.await
+        .map_err(|_| "Main thread response channel closed".to_string())??;
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
 #[tauri::command]
 async fn navigate_embedded(app: tauri::AppHandle, tab_id: String, url: String) -> Result<(), String> {
     let label = {
@@ -307,6 +448,32 @@ async fn navigate_embedded(app: tauri::AppHandle, tab_id: String, url: String) -
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+#[tauri::command]
+async fn navigate_embedded(app: tauri::AppHandle, tab_id: String, url: String) -> Result<(), String> {
+    let label = {
+        let state = app.state::<Mutex<WebviewState>>();
+        let guard = state.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
+        guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
+    };
+    let label_clone = label.clone();
+    let url_str_clone = url.clone();
+    app.run_on_main_thread(move || {
+        LINUX_WEBVIEWS.with(|webviews| {
+            if let Some(wv) = webviews.borrow().get(&label_clone) {
+                if let Err(e) = wv.load_url(&url_str_clone) {
+                    eprintln!("Navigate failed: {}", e);
+                }
+            }
+        });
+        WEBVIEW_URLS.with(|urls| {
+            urls.borrow_mut().insert(label_clone.clone(), url_str_clone.clone());
+        });
+    }).map_err(|_| "Failed to run on main thread".to_string())?;
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
 #[tauri::command]
 async fn go_back(app: tauri::AppHandle, tab_id: String) -> Result<(), String> {
     let label = {
@@ -320,6 +487,27 @@ async fn go_back(app: tauri::AppHandle, tab_id: String) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+#[tauri::command]
+async fn go_back(app: tauri::AppHandle, tab_id: String) -> Result<(), String> {
+    let label = {
+        let state = app.state::<Mutex<WebviewState>>();
+        let guard = state.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
+        guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
+    };
+    app.run_on_main_thread(move || {
+        LINUX_WEBVIEWS.with(|webviews| {
+            if let Some(wv) = webviews.borrow().get(&label) {
+                if let Err(e) = wv.evaluate_script("history.back()") {
+                    eprintln!("go_back failed: {}", e);
+                }
+            }
+        });
+    }).map_err(|_| "Failed to run on main thread".to_string())?;
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
 #[tauri::command]
 async fn go_forward(app: tauri::AppHandle, tab_id: String) -> Result<(), String> {
     let label = {
@@ -333,6 +521,27 @@ async fn go_forward(app: tauri::AppHandle, tab_id: String) -> Result<(), String>
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+#[tauri::command]
+async fn go_forward(app: tauri::AppHandle, tab_id: String) -> Result<(), String> {
+    let label = {
+        let state = app.state::<Mutex<WebviewState>>();
+        let guard = state.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
+        guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
+    };
+    app.run_on_main_thread(move || {
+        LINUX_WEBVIEWS.with(|webviews| {
+            if let Some(wv) = webviews.borrow().get(&label) {
+                if let Err(e) = wv.evaluate_script("history.forward()") {
+                    eprintln!("go_forward failed: {}", e);
+                }
+            }
+        });
+    }).map_err(|_| "Failed to run on main thread".to_string())?;
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
 #[tauri::command]
 async fn reload_browser(app: tauri::AppHandle, tab_id: String) -> Result<(), String> {
     let label = {
@@ -346,6 +555,27 @@ async fn reload_browser(app: tauri::AppHandle, tab_id: String) -> Result<(), Str
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+#[tauri::command]
+async fn reload_browser(app: tauri::AppHandle, tab_id: String) -> Result<(), String> {
+    let label = {
+        let state = app.state::<Mutex<WebviewState>>();
+        let guard = state.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
+        guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
+    };
+    app.run_on_main_thread(move || {
+        LINUX_WEBVIEWS.with(|webviews| {
+            if let Some(wv) = webviews.borrow().get(&label) {
+                if let Err(e) = wv.evaluate_script("location.reload()") {
+                    eprintln!("reload_browser failed: {}", e);
+                }
+            }
+        });
+    }).map_err(|_| "Failed to run on main thread".to_string())?;
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
 #[tauri::command]
 async fn set_webview_bounds(
     app: tauri::AppHandle,
@@ -365,6 +595,39 @@ async fn set_webview_bounds(
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+#[tauri::command]
+async fn set_webview_bounds(
+    app: tauri::AppHandle,
+    tab_id: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
+    let label = {
+        let state = app.state::<Mutex<WebviewState>>();
+        let guard = state.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
+        guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
+    };
+
+    app.run_on_main_thread(move || {
+        LINUX_WEBVIEWS.with(|webviews| {
+            if let Some(wv) = webviews.borrow().get(&label) {
+                let rect = wry::Rect {
+                    position: wry::dpi::LogicalPosition::new(x, y).into(),
+                    size: wry::dpi::LogicalSize::new(width, height).into(),
+                };
+                if let Err(e) = wv.set_bounds(rect) {
+                    eprintln!("Failed to set bounds: {}", e);
+                }
+            }
+        });
+    }).map_err(|_| "Failed to run on main thread".to_string())?;
+
+    Ok(())
+}
+
 #[tauri::command]
 async fn hide_webview(app: tauri::AppHandle, tab_id: String) -> Result<(), String> {
     let label = {
@@ -372,9 +635,28 @@ async fn hide_webview(app: tauri::AppHandle, tab_id: String) -> Result<(), Strin
         let guard = state.lock().unwrap();
         guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
     };
-    let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
-    wv.hide().map_err(|e| format!("Failed to hide: {}", e))?;
-    Ok(())
+
+    #[cfg(target_os = "linux")]
+    {
+        app.run_on_main_thread(move || {
+            LINUX_WEBVIEWS.with(|webviews| {
+                if let Some(wv) = webviews.borrow().get(&label) {
+                    if let Err(e) = wv.set_visible(false) {
+                        eprintln!("Failed to hide Linux webview: {}", e);
+                    }
+                }
+            });
+        }).map_err(|_| "Failed to run on main thread".to_string())?;
+
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
+        wv.hide().map_err(|e| format!("Failed to hide: {}", e))?;
+        Ok(())
+    }
 }
 
 #[tauri::command]
@@ -384,21 +666,57 @@ async fn show_webview(app: tauri::AppHandle, tab_id: String) -> Result<(), Strin
         let guard = state.lock().unwrap();
         guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
     };
-    let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
-    wv.show().map_err(|e| format!("Failed to show: {}", e))?;
-    Ok(())
+
+    #[cfg(target_os = "linux")]
+    {
+        app.run_on_main_thread(move || {
+            LINUX_WEBVIEWS.with(|webviews| {
+                if let Some(wv) = webviews.borrow().get(&label) {
+                    if let Err(e) = wv.set_visible(true) {
+                        eprintln!("Failed to show Linux webview: {}", e);
+                    }
+                }
+            });
+        }).map_err(|_| "Failed to run on main thread".to_string())?;
+
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
+        wv.show().map_err(|e| format!("Failed to show: {}", e))?;
+        Ok(())
+    }
 }
 
 #[tauri::command]
 async fn get_embedded_url(app: tauri::AppHandle, tab_id: String) -> Result<String, String> {
     let label = {
         let state = app.state::<Mutex<WebviewState>>();
-        let guard = state.lock().unwrap();
+        let guard = state.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
     };
-    let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
-    let url = wv.url().map_err(|e| format!("Failed to get URL: {}", e))?;
-    Ok(url.to_string())
+
+    #[cfg(target_os = "linux")]
+    {
+        let (tx, rx) = oneshot::channel::<String>();
+        app.run_on_main_thread(move || {
+            let url = WEBVIEW_URLS.with(|urls| {
+                urls.borrow().get(&label).cloned().unwrap_or_default()
+            });
+            let _ = tx.send(url);
+        }).map_err(|_| "Failed to run on main thread".to_string())?;
+        let url = rx.await.map_err(|_| "Channel closed".to_string())?;
+        Ok(url)
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
+        let url = wv.url().map_err(|e| format!("Failed to get URL: {}", e))?;
+        Ok(url.to_string())
+    }
 }
 
 #[tauri::command]
@@ -408,10 +726,27 @@ async fn destroy_webview(app: tauri::AppHandle, tab_id: String) -> Result<(), St
         let guard = state.lock().unwrap();
         guard.tabs.get(&tab_id).cloned()
     };
-    if let Some(label) = label {
-        if let Some(wv) = app.get_webview(&label) {
-            wv.close().map_err(|e| format!("Failed to close: {}", e))?;
+    if let Some(label) = label.clone() {
+        #[cfg(target_os = "linux")]
+        {
+            let label_clone = label.clone();
+            app.run_on_main_thread(move || {
+                LINUX_WEBVIEWS.with(|webviews| {
+                    webviews.borrow_mut().remove(&label_clone);
+                });
+                WEBVIEW_URLS.with(|urls| {
+                    urls.borrow_mut().remove(&label_clone);
+                });
+            }).map_err(|_| "Failed to run on main thread".to_string())?;
         }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            if let Some(wv) = app.get_webview(&label) {
+                wv.close().map_err(|e| format!("Failed to close: {}", e))?;
+            }
+        }
+
         let state = app.state::<Mutex<WebviewState>>();
         let mut guard = state.lock().unwrap();
         guard.tabs.remove(&tab_id);
@@ -423,19 +758,38 @@ async fn destroy_webview(app: tauri::AppHandle, tab_id: String) -> Result<(), St
 async fn inject_autofill(app: tauri::AppHandle, tab_id: String, script: String) -> Result<(), String> {
     let label = {
         let state = app.state::<Mutex<WebviewState>>();
-        let guard = state.lock().unwrap();
+        let guard = state.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
     };
-    let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
-    wv.eval(&script)
-        .map_err(|e| format!("Failed to inject autofill script: {}", e))?;
-    Ok(())
+
+    #[cfg(target_os = "linux")]
+    {
+        app.run_on_main_thread(move || {
+            LINUX_WEBVIEWS.with(|webviews| {
+                if let Some(wv) = webviews.borrow().get(&label) {
+                    if let Err(e) = wv.evaluate_script(&script) {
+                        eprintln!("inject_autofill failed: {}", e);
+                    }
+                }
+            });
+        }).map_err(|_| "Failed to run on main thread".to_string())?;
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
+        wv.eval(&script)
+            .map_err(|e| format!("Failed to inject autofill script: {}", e))?;
+        Ok(())
+    }
 }
 
 /// Execute JavaScript in the embedded browser and return the result.
 /// 
 /// Uses message passing: injects wrapper script that executes code and calls back with result.
 /// Timeout: 120 seconds. Returns JSON-serialized result.
+#[cfg(not(target_os = "linux"))]
 #[tauri::command]
 async fn eval_webview_script(
     app: tauri::AppHandle,
@@ -511,6 +865,30 @@ async fn eval_webview_script(
     }
 }
 
+#[cfg(target_os = "linux")]
+#[tauri::command]
+async fn eval_webview_script(
+    app: tauri::AppHandle,
+    tab_id: String,
+    script: String,
+) -> Result<String, String> {
+    let label = {
+        let state = app.state::<Mutex<WebviewState>>();
+        let guard = state.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
+        guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
+    };
+    app.run_on_main_thread(move || {
+        LINUX_WEBVIEWS.with(|webviews| {
+            if let Some(wv) = webviews.borrow().get(&label) {
+                if let Err(e) = wv.evaluate_script(&script) {
+                    eprintln!("eval_webview_script (fire-and-forget) failed: {}", e);
+                }
+            }
+        });
+    }).map_err(|_| "Failed to run on main thread".to_string())?;
+    Ok("null".to_string())
+}
+
 /// Inject JavaScript into the embedded browser without waiting for a return value.
 ///
 /// Unlike eval_webview_script, this does NOT wrap the script in the callback
@@ -525,11 +903,29 @@ async fn inject_webview_script(
 ) -> Result<(), String> {
     let label = {
         let state = app.state::<Mutex<WebviewState>>();
-        let guard = state.lock().unwrap();
+        let guard = state.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
     };
-    let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
-    wv.eval(&script).map_err(|e| format!("Failed to inject script: {}", e))
+
+    #[cfg(target_os = "linux")]
+    {
+        app.run_on_main_thread(move || {
+            LINUX_WEBVIEWS.with(|webviews| {
+                if let Some(wv) = webviews.borrow().get(&label) {
+                    if let Err(e) = wv.evaluate_script(&script) {
+                        eprintln!("inject_webview_script failed: {}", e);
+                    }
+                }
+            });
+        }).map_err(|_| "Failed to run on main thread".to_string())?;
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
+        wv.eval(&script).map_err(|e| format!("Failed to inject script: {}", e))
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -580,6 +976,7 @@ async fn scan_claude_skills(app: tauri::AppHandle) -> Result<Vec<LocalSkillFile>
 
 /// Internal callback handler for eval results.
 /// Called by injected JavaScript wrapper via invoke().
+#[cfg(not(target_os = "linux"))]
 #[tauri::command]
 async fn _eval_callback(
     app: tauri::AppHandle,
@@ -991,6 +1388,7 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_model ON response_embeddings(embedding
             destroy_webview,
             inject_autofill,
             eval_webview_script,
+            #[cfg(not(target_os = "linux"))]
             _eval_callback,
             inject_webview_script,
             scan_claude_skills,
@@ -1117,6 +1515,23 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_model ON response_embeddings(embedding
 
              let restart_count = Arc::new(Mutex::new(0u32));
             spawn_sidecar(&handle, restart_count);
+
+            // Linux: initialize shared GtkFixed container for embedded browser webviews.
+            // ALL wry webviews must share this single GtkFixed instance (per wry PR #1504).
+            #[cfg(target_os = "linux")]
+            {
+                let window = app.get_webview_window("main")
+                    .ok_or("Main window not found for GtkFixed setup")?;
+                let vbox = window.default_vbox()
+                    .map_err(|e| format!("Failed to get default vbox: {}", e))?;
+                let fixed = gtk::Fixed::new();
+                vbox.pack_start(&fixed, true, true, 0);
+                fixed.show_all();
+                GTK_FIXED.with(|f| {
+                    *f.borrow_mut() = Some(fixed);
+                });
+            }
+
             Ok(())
         })
         .build(tauri::generate_context!())

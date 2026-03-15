@@ -1,0 +1,6 @@
+linux_get_embedded_url_uses_webview_urls: True
+linux_inject_autofill_uses_evaluate_script: True
+linux_inject_webview_script_uses_evaluate_script: True
+linux_eval_returns_null: True
+invoke_registers_eval_webview_script: True
+cargo check: Finished dev profile [from prior command]
