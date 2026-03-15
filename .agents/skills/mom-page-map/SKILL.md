@@ -87,6 +87,8 @@ Common examples:
 | Isolate assignment gradebook | `course/isolateassessgrade.php?cid={cid}&aid={aid}` |
 | Grade all FRQ | `course/gradeallq2.php?cid={cid}&aid={aid}` |
 
+For assessment settings reached from the course page, `block={block}` uses the hierarchical block path (`0`, `0-1`, `0-2`, ...) rather than the DOM `bid` / `blockh{bid}` id.
+
 ### Phase 3: Use Page-Specific Navigation Patterns
 - **INPUT:** Loaded MOM page plus target action
 - **ACTION:**

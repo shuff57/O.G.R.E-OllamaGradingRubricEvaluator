@@ -1,0 +1,53 @@
+Task 17 — mom-page-map gold-standard rewrite
+Date: 2026-03-15
+
+Files changed:
+- .agents/skills/mom-page-map/SKILL.md
+- .agents/skills/mom-page-map/references/navigation-patterns.md
+- .sisyphus/notepads/agent-nuclear-rebuild/learnings.md
+
+Sources reviewed:
+- .sisyphus/archive/skills/mom-page-map/CLAUDE.md (read in full, 786 lines)
+- .agents/skills/skill-creator/SKILL.md (gold-standard template)
+- .agents/skills/gb-new-assignment/SKILL.md
+- .agents/skills/gb-sync/SKILL.md
+- .agents/skills/grade-show-work/SKILL.md
+
+Baseline gaps captured before rewrite:
+- Archived skill had no YAML frontmatter, no gold-standard routing sections, and no Guardrails-before-Workflow ordering.
+- The archived file was too large for a single gold-standard skill file and needed a router/reference split.
+- Critical MOM route and selector knowledge was present but buried inside a flat 786-line reference.
+
+Preserved domain knowledge:
+- Exact MOM URL patterns for course, question, assessment, gradebook, grading, and student-view pages.
+- `from=gb` assessment-settings variant.
+- URL-only access pattern for `course/gradeallq2.php?cid={cid}&aid={aid}`.
+- Native `<select>` Add An Item behavior, including CDP `-32000` risk and safe direct-URL / `selectOption()` alternatives.
+- Dual block-id model: DOM `blockh{bid}` vs URL `path` extracted from `toggleblock(event,'{bid}','{path}')`.
+- Block modify controls preserved: Hide / Show Always / Show by Dates radios plus Modify Block / Save flow.
+- Block options trigger selector: `getByRole('button', { name: 'Options for {Block Name}' })`.
+- Question/assessment editor selector maps, including hidden-field caveats for `#qtype` and `#libs`.
+- TinyMCE caveat for `textarea#summary` and `textarea#intro`.
+- Teacher vs student distinction: `testquestion2.php` vs `assess2/?cid={cid}&aid={aid}`.
+- Draw-question canvas rules, dynamic `canvas[id^="canvas"]`, `gridToPixel()`, and implicit-coefficient note.
+- Required preview validation rule: submit and confirm **Correct** before declaring success.
+
+Verification checklist:
+- [x] `.agents/skills/mom-page-map/SKILL.md` exists
+- [x] YAML frontmatter includes `name: mom-page-map`
+- [x] Description starts with `Use when...`
+- [x] `## Guardrails` appears before `## Workflow`
+- [x] Main SKILL.md line count is 163 (`<=500`)
+- [x] Main SKILL.md kept as concise router; overflow moved to `references/navigation-patterns.md`
+- [x] Reference file has no YAML frontmatter
+- [x] Exact MOM route variants preserved, including `from=gb` and direct `gradeallq2.php`
+- [x] Teacher vs student page distinction preserved
+- [x] Native-select AJAX / CDP `-32000` caveat preserved
+- [x] Block DOM id vs URL path distinction preserved
+- [x] Evidence written to `.sisyphus/evidence/task-17-mom-page-map.txt`
+
+Diagnostics / verification notes:
+- Markdown LSP diagnostics are unavailable in this environment (`No LSP server configured for extension: .md`), so structural verification was done by direct file inspection plus targeted content checks.
+
+Planned commit message:
+- feat(skills): rewrite mom-page-map in gold standard format

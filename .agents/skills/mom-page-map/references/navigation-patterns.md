@@ -122,6 +122,7 @@ await navPromise;
 - Extract `bid` and `path` from `toggleblock(event,'{bid}','{path}')`.
 - Open a block menu with `getByRole('button', { name: 'Options for {Block Name}' })`.
 - Hidden blocks show `<b><i>` wrapping and/or `.instrdates` text `Hidden`.
+- For block-linked assessment and folder routes, the URL-side block id is the hierarchical `path` (`0`, `0-1`, `0-2`, ...), not `bid` and not `blockh{bid}`.
 
 | State | Title style | `instrdates` text |
 |-------|-------------|-------------------|
@@ -133,6 +134,23 @@ Direct URLs:
 - Isolate block: `course/course.php?cid={cid}&folder={path}`
 - Modify block: `course/addblock.php?cid={cid}&id={path}`
 - Delete confirmation: `course/deleteblock.php?cid={cid}&id={path}&bid={bid}&remove=ask`
+
+### Block modify page (`addblock.php`)
+- Open with `course/addblock.php?cid={cid}&id={path}`.
+- Availability controls preserved from the archive:
+  - Hide: `getByRole('radio', { name: /Hide.*hide all items/ })`
+  - Show always: `getByRole('radio', { name: 'Show Always' })`
+  - Show by dates: `getByRole('radio', { name: 'Show by Dates' })`
+  - Save: `getByRole('button', { name: /Modify Block|Save/i })`
+
+```javascript
+await state.page.goto(
+  `https://www.myopenmath.com/course/addblock.php?cid=${cid}&id=${path}`,
+  { waitUntil: 'domcontentloaded' }
+);
+await state.page.getByRole('radio', { name: /Hide.*hide all items/ }).click();
+await state.page.getByRole('button', { name: /Modify Block|Save/i }).click();
+```
 
 ## Question Set Management (`manageqset.php`)
 

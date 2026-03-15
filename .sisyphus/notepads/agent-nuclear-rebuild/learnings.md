@@ -134,3 +134,10 @@
 - Kept the long-term growth controls intact: 800-line hard cap, oldest/least-used compression to summary form, stable entry template, and maintained Topic Index.
 - Porting archived knowledge works best when `knowledge.md` keeps the real entries verbatim-enough while `SKILL.md` only defines policy, workflow, and guardrails; blending the two invites future overwrite or drift.
 - Added explicit guardrails against freehand topic edits without `mom-fact-finder` evidence so the shared library stays source-backed instead of turning into informal notes.
+
+## [2026-03-15] Task 17 Complete — mom-page-map gold standard rewrite
+- For large archived navigation skills, keep `SKILL.md` as a concise router and move exact URL/selector/AJAX details into `references/navigation-patterns.md`.
+- Preserve MOM route variants exactly, especially `addassessment2.php?id={aid}&cid={cid}&from=gb` and the URL-only `gradeallq2.php?cid={cid}&aid={aid}` path.
+- Preserve the dual block-id model explicitly: DOM `blockh{bid}` vs URL `path` like `0-1` extracted from `toggleblock(...)`.
+- Preserve native-widget caveats verbatim enough to keep behavior safe: Add An Item `<option>` clicks cause CDP `-32000`; use direct URLs or `selectOption()` with a pre-captured navigation wait.
+- Preserve instructor-vs-student distinctions explicitly: `testquestion2.php` is an instructor validation page, while `assess2/?cid={cid}&aid={aid}` is the student view.
