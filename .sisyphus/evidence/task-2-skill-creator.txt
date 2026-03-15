@@ -1,0 +1,38 @@
+Task: 2 — Create `.agents/skills/skill-creator/SKILL.md`
+Date: 2026-03-15
+
+Result: PASS
+
+Created Files
+- `.agents/skills/skill-creator/SKILL.md`
+
+Validation Evidence
+1) Line count (must be <=200)
+   Command: `wc -l .agents/skills/skill-creator/SKILL.md`
+   Output: `155 .agents/skills/skill-creator/SKILL.md`
+
+2) YAML frontmatter check (must include `Use when...`)
+   Command: `head -4 .agents/skills/skill-creator/SKILL.md`
+   Output:
+   ---
+   name: skill-creator
+   description: Use when creating or rewriting an agent skill so the output follows the gold standard SKILL.md format and placement conventions.
+   ---
+
+3) Gold Standard/Template/Format presence (must be >0)
+   Command: `grep -c "Gold Standard\|Template\|Format" .agents/skills/skill-creator/SKILL.md`
+   Output: `2`
+
+4) Required content checks
+   - Contains mandatory gold standard format template block: YES
+   - Contains all 8 format rules (numbered 1-8): YES
+   - Contains Interview section with required prompts (name, purpose, triggers, tools): YES
+   - References placement path `.agents/skills/{name}/SKILL.md`: YES
+   - Mentions optional `knowledge.md` for domain-benefit skills: YES
+
+LSP / Build Verification
+- LSP diagnostics attempted for changed markdown file via `lsp_diagnostics`; environment reports no LSP server configured for `.md`.
+- Build: Not applicable for documentation-only change (no code/runtime impact).
+
+Planned commit message
+- `feat(skills): create skill-creator meta-skill with gold standard format template`
