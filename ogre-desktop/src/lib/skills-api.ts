@@ -8,6 +8,12 @@
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { invoke } from '@tauri-apps/api/core';
 
+type TauriResponseWithData = { data: unknown };
+
+function getResponseData(response: unknown): unknown {
+  return (response as TauriResponseWithData).data;
+}
+
 // The validated URL pattern from the spike
 export const SKILLS_SH_SEARCH_URL = "https://skills.sh/api/search";
 
@@ -71,7 +77,8 @@ export async function searchSkills(query: string, limit = 20): Promise<SkillSear
     const response = await tauriFetch(
       `${SKILLS_SH_SEARCH_URL}?q=${encodeURIComponent(query)}&limit=${limit}`
     );
-    const data = typeof response.data === 'string' ? JSON.parse(response.data) : response.data;
+    const rawData = getResponseData(response);
+    const data = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
     return data.skills ?? [];
   } catch {
     return [];
@@ -85,7 +92,8 @@ export async function searchSkills(query: string, limit = 20): Promise<SkillSear
 export async function fetchTrendingSkills(): Promise<SkillSearchResult[]> {
   try {
     const response = await tauriFetch('https://skills.sh/api/skills/trending/0');
-    const data = typeof response.data === 'string' ? JSON.parse(response.data) : response.data;
+    const rawData = getResponseData(response);
+    const data = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
     return data.skills ?? [];
   } catch {
     return [];
@@ -102,13 +110,17 @@ export async function fetchTrendingSkills(): Promise<SkillSearchResult[]> {
 export async function fetchSkillContent(source: string, skillId: string): Promise<string> {
   const url = buildSkillContentUrl(source, skillId);
   const response = await tauriFetch(url);
-  return typeof response.data === 'string' ? response.data : String(response.data);
+  const rawData = getResponseData(response);
+  return typeof rawData === 'string' ? rawData : String(rawData);
 }
 
 // ── Install Logic ───────────────────────────────────────────────────────
 
 import { getSkillBySource, saveSkill, getActiveSkills, getSkillsWithUrlPattern, type Skill } from './db';
 import { parseSkillMarkdown } from './skill-parser';
+import { convertProfileToJSON } from './profile-json-converter';
+import { formatSiteGuideForAgent } from './site-guide-types';
+import { selectBestProfile } from './profile-precedence';
 
 export interface InstallSkillParams {
   skillId: string;
@@ -203,17 +215,31 @@ export function findMatchingProfiles(url: string, skills: Skill[]): Skill[] {
  * @returns Formatted site guide injection string, or empty string if no matches
  */
 export async function buildSiteContextInjection(url: string): Promise<string> {
-  const skillsWithPatterns = await getSkillsWithUrlPattern();
-  const matching = findMatchingProfiles(url, skillsWithPatterns);
-  if (matching.length === 0) return '';
-  return matching
-    .map(s => `\n\n--- SITE GUIDE: ${s.name} ---\n${s.content}\n--- END SITE GUIDE ---\n\n`)
-    .join('');
+  try {
+    const allWithPattern = await getSkillsWithUrlPattern();
+    const matches = findMatchingProfiles(url, allWithPattern);
+    if (matches.length === 0) return '';
+
+    const best = selectBestProfile(matches);
+    if (!best) return '';
+
+    try {
+      const guide = convertProfileToJSON(best.content);
+      if (!guide.site) guide.site = best.name;
+      return formatSiteGuideForAgent(guide);
+    } catch {
+      return `--- SITE GUIDE: ${best.name} ---\n${best.content}\n--- END SITE GUIDE ---`;
+    }
+  } catch {
+    return '';
+  }
 }
 
 // ── Bundled Site Profiles ────────────────────────────────────────────────
 
+// @ts-expect-error Vite raw markdown asset import
 import momProfileRaw from '../assets/profiles/myopenmath.md?raw';
+// @ts-expect-error Vite raw markdown asset import
 import aeriesProfileRaw from '../assets/profiles/aeries.md?raw';
 
 /** Bundled site profiles shipped with the app. Exported for testing. */

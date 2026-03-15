@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import * as profileJsonConverter from './profile-json-converter';
 
 // ── Mock @tauri-apps/plugin-http ──────────────────────────────────────────
 const { mockFetch } = vi.hoisted(() => ({
@@ -400,18 +401,121 @@ describe('buildSiteContextInjection', () => {
     mockGetSkillsWithUrlPattern.mockReset();
   });
 
+  function extractGuideJson(injection: string): Record<string, unknown> {
+    const match = injection.match(/--- SITE GUIDE \(JSON\):[^\n]*---\n([\s\S]*?)\n--- END SITE GUIDE ---/);
+    expect(match?.[1]).toBeTruthy();
+    return JSON.parse(match![1]);
+  }
+
   it('returns empty string when no profiles match URL', async () => {
     mockGetSkillsWithUrlPattern.mockResolvedValue([makeProfileSkill()]);
     const result = await buildSiteContextInjection('https://canvas.instructure.com');
     expect(result).toBe('');
   });
 
-  it('returns formatted SITE GUIDE block when profile matches URL', async () => {
+  it('returns JSON SITE GUIDE block when profile matches URL', async () => {
+    const markdown = [
+      '---',
+      'name: "MOM Guide"',
+      'baseUrl: "https://www.myopenmath.com"',
+      'role: "teacher"',
+      'urlPatterns:',
+      '  - "myopenmath.com"',
+      '---',
+      '# MyOpenMath — Agent Navigation Guide',
+      '## Selectors',
+      '| Assignment link | `a[href*="assess2"]` |',
+      '## Navigation',
+      '- `https://www.myopenmath.com/course/123`',
+      '## Gotchas & Tips',
+      '- Use teacher account',
+    ].join('\n');
+
+    mockGetSkillsWithUrlPattern.mockResolvedValue([makeProfileSkill({ content: markdown })]);
+    const result = await buildSiteContextInjection('https://www.myopenmath.com/course/123');
+    expect(result).toContain('--- SITE GUIDE (JSON):');
+    expect(result).toContain('--- END SITE GUIDE ---');
+
+    const parsed = extractGuideJson(result);
+    expect(parsed).toHaveProperty('site');
+    expect(parsed).toHaveProperty('baseUrl');
+    expect(parsed).toHaveProperty('role');
+    expect(parsed).toHaveProperty('urlPatterns');
+    expect(parsed).toHaveProperty('selectors');
+    expect(parsed).toHaveProperty('navigation');
+    expect(parsed).toHaveProperty('workflows');
+    expect(parsed).toHaveProperty('gotchas');
+    expect(parsed.site).toBe('MOM Guide');
+  });
+
+  it('uses selectBestProfile behavior and emits only one matching profile', async () => {
+    const generic = makeProfileSkill({
+      id: 'skill-generic',
+      name: 'Generic Guide',
+      url_pattern: 'myopenmath.com',
+      content: '---\nname: "Generic Guide"\n---\n# Generic',
+    });
+    const specific = makeProfileSkill({
+      id: 'skill-specific',
+      name: 'Specific Guide',
+      url_pattern: 'myopenmath.com/course',
+      content: '---\nname: "Specific Guide"\n---\n# Specific',
+    });
+
+    mockGetSkillsWithUrlPattern.mockResolvedValue([generic, specific]);
+
+    const result = await buildSiteContextInjection('https://www.myopenmath.com/course/123');
+    expect(result).toContain('--- SITE GUIDE (JSON): Specific Guide ---');
+    expect(result).not.toContain('Generic Guide');
+  });
+
+  it('falls back to markdown SITE GUIDE format when JSON conversion fails', async () => {
+    const converterSpy = vi.spyOn(profileJsonConverter, 'convertProfileToJSON').mockImplementation(() => {
+      throw new Error('converter failed');
+    });
+
     mockGetSkillsWithUrlPattern.mockResolvedValue([makeProfileSkill()]);
+
     const result = await buildSiteContextInjection('https://www.myopenmath.com/course/123');
     expect(result).toContain('--- SITE GUIDE: MOM Guide ---');
     expect(result).toContain('MOM content');
     expect(result).toContain('--- END SITE GUIDE ---');
+
+    converterSpy.mockRestore();
+  });
+
+  it('produces smaller JSON injection than verbose markdown profile', async () => {
+    const verboseMarkdown = [
+      '---',
+      'name: "MOM Verbose Guide"',
+      'baseUrl: "https://www.myopenmath.com"',
+      'role: "teacher"',
+      'urlPatterns:',
+      '  - "myopenmath.com"',
+      '---',
+      '# MyOpenMath Agent Navigation Guide',
+      '## Selectors',
+      '| Student table row | `table tr[data-student-id]` | use this row selector repeatedly for grading and review contexts |',
+      '| Open score input | `input[name="score"]` | repeated selector docs repeated selector docs repeated selector docs |',
+      '## Navigation',
+      '- `https://www.myopenmath.com/course/123`',
+      '- `/assess2/teacher/gb-view.php?cid={cid}`',
+      '## Grade workflow',
+      '1. Open gradebook page and review assignment list before making edits.',
+      '2. Open student detail view and inspect uploaded work artifacts and rubric hints.',
+      '3. Apply scores carefully and verify totals across all affected rows before save.',
+      '## Gotchas & Tips',
+      '- Never overwrite teacher comments without explicit confirmation.',
+      '- Save every few records to avoid session timeout and stale state writes.',
+      '- Re-check selector targets after navigation because IDs can shift by context.',
+      'Additional narrative: '.repeat(80),
+    ].join('\n');
+
+    const best = makeProfileSkill({ name: 'MOM Verbose Guide', content: verboseMarkdown });
+    mockGetSkillsWithUrlPattern.mockResolvedValue([best]);
+
+    const output = await buildSiteContextInjection('https://www.myopenmath.com/course/123');
+    expect(output.length).toBeLessThan(best.content.length);
   });
 });
 
