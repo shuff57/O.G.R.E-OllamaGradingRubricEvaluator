@@ -41,6 +41,7 @@
   import DiscoveryConfirmation from './DiscoveryConfirmation.svelte';
   import DiscoverySaveDialog from './DiscoverySaveDialog.svelte';
   import DiscoveryModeSelector from './DiscoveryModeSelector.svelte';
+  import DiscoveryGuideStatus from './DiscoveryGuideStatus.svelte';
   import DiscoveryChat from './DiscoveryChat.svelte';
   import { highlightSelector, SELECTOR_LABELS } from '../../lib/discovery-ui';
 
@@ -296,6 +297,8 @@
 </script>
 
 <section class="discovery-panel">
+  <DiscoveryGuideStatus {pageLoadedUrl} />
+
   <div class="header">
     <h3>Discovery</h3>
     <p class="description">Automatically detect grading elements on this page using AI.</p>
