@@ -27,6 +27,7 @@
   import { updateActiveProvider } from './lib/db';
   import { checkForUpdates, type UpdateCheckResult } from './lib/updater';
   import { hideWebview, showWebview, getActiveTabId } from './lib/browser';
+  import { syncSiteProfiles } from './lib/skills-api';
   import type { Update } from '@tauri-apps/plugin-updater';
 
   // Webview layout constants (must match CSS variables in app.css)
@@ -115,6 +116,9 @@
         showUpdateModal = true;
       }
     });
+
+    // Sync bundled site profiles on app init (fire-and-forget)
+    syncSiteProfiles().catch(() => {});
   });
 
   onDestroy(() => {
