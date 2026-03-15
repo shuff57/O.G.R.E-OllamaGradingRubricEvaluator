@@ -123,6 +123,11 @@
 - Preserve native-widget caveats verbatim enough to keep behavior safe: Add An Item `<option>` clicks cause CDP `-32000`; use direct URLs or `selectOption()` with a pre-captured navigation wait.
 - Preserve instructor-vs-student distinctions explicitly: `testquestion2.php` is an instructor validation page, while `assess2/?cid={cid}&aid={aid}` is the student view.
 
+## [2026-03-15] Task 22+23 Complete — global skill update and universal installs
+- For global skill rollouts, replace only the targeted skill directories under `~/.config/opencode/skills/` and verify untouched neighbors still exist so project-specific tools are not accidentally clobbered.
+- Reference-heavy skill packages need explicit post-copy checks on required passive files (`mom-lib-map/references/*.md`, `mom-frq/references/php-patterns.md`, `gb-sync/references/phase-details.md`) because a successful directory copy alone does not prove the gold-standard payload arrived.
+- Project-agnostic global skills should be verified by searching for domain terms after writing the file; checking for strings like `O.G.R.E`, `MyOpenMath`, `Aeries`, and `gradebook` is a quick guard against accidental project leakage.
+
 ## [2026-03-15] Task 20 Complete — session-reflector skill + SessionEnd hook
 - Added `.agents/skills/session-reflector/SKILL.md` with gold-standard structure, `Use when...` frontmatter description, and explicit `## Guardrails` before workflow.
 - Encoded two-stage memory pipeline: immediate reflection write to `.agents/memory/pending/{YYYY-MM-DD}-{slug}.md` (≤50 lines), then deferred next-session indexing via `.agents/memory/scripts/index_reflection.py` and move to `pending/indexed/` only on success.

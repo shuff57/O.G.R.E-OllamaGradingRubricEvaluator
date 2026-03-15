@@ -284,20 +284,15 @@ interface LocalSkillFile {
   content: string;
 }
 
-/**
- * Scan ~/.claude/skills/ for local skill files and import new ones into OGRE's DB.
- * Skips skills already imported (identified by source='local-claude' + source_id=folder).
- * Returns counts of imported vs skipped skills.
- */
 export async function syncLocalSkills(): Promise<{ imported: number; skipped: number }> {
   let imported = 0;
   let skipped = 0;
 
   try {
-    const files = await invoke<LocalSkillFile[]>('scan_claude_skills');
+    const files = await invoke<LocalSkillFile[]>('scan_local_skills');
 
     for (const file of files) {
-      const existing = await getSkillBySource('local-claude', file.folder);
+      const existing = await getSkillBySource('local', file.folder);
       if (existing) {
         skipped++;
         continue;
@@ -308,7 +303,7 @@ export async function syncLocalSkills(): Promise<{ imported: number; skipped: nu
         name: parsed.name || file.folder,
         description: parsed.description || '',
         content: file.content,
-        source: 'local-claude',
+        source: 'local',
         source_id: file.folder,
         is_active: 0,
       });

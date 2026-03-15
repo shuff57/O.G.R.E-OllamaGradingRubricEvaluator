@@ -67,7 +67,7 @@ The `/grade` skill is an AI agent command that automates batch grading on web-ba
 ### Quick Start
 1. Install **[Playwriter Chrome extension](https://chromewebstore.google.com/detail/playwriter/dladdjplhmhnilafldonddlgllbbgelk)**
 2. Configure **Playwriter MCP** in your AI environment (OpenCode/Claude Code)
-3. Copy `.claude/commands/grade.md` and `.claude/commands/grade-selectors.md` to your project
+3. Copy `.agents/commands/grade.md` and `.agents/commands/grade-selectors.md` to your AI environment's command folder
 4. Open your grading page in Chrome and enable Playwriter extension (click icon → turns green)
 5. In your AI chat: `/grade https://your-grading-page-url`
 

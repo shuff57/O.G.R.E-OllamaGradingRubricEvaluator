@@ -6,7 +6,7 @@
   "command": {
     "session-end": {
       "description": "End-of-session memory capture — saves learnings to .agents/memory/pending/",
-      "template": "The session is ending. Use the question tool to ask the user: 'Want to save learnings from this session to .agents/memory/pending/? [y/n/edit]'. If yes, follow the session-reflector skill to draft and write the reflection. Then check if .claude/session.md has any notes below its header template — if so, ask: 'Flush session.md notes into the reflection and clear it? [y/n]'. Follow the session-reflector skill Phase 0 → Phase 1 → Phase 3 workflow exactly."
+      "template": "The session is ending. Use the question tool to ask the user: 'Want to save learnings from this session to .agents/memory/pending/? [y/n/edit]'. If yes, follow the session-reflector skill to draft and write the reflection. Follow the session-reflector skill Phase 0 → Phase 1 → Phase 3 workflow exactly."
     }
   }
 }

@@ -20,7 +20,8 @@ Key directories agents should recognize:
 - `mom/` - MyOpenMath-related artifacts
 - `.agents/skills/` - project skills (authoritative skill location)
 - `.agents/commands/` - canonical command content (tool-agnostic, authoritative)
-- Tool-specific bridges (e.g. `.claude/commands/` for Claude Code) point here as thin pointers
+- `.agents/cli/` - CLI tool references (lazy-load only — read what you need)
+- Tool-specific bridges point here as thin pointers
 - `.agents/memory/` - cross-session learnings and reflections
 
 Routing intent:
@@ -65,7 +66,7 @@ Routing preference rules:
 Authoritative conventions for Layer 1 routing:
 - Skills live in `.agents/skills/`.
 - Canonical commands live in `.agents/commands/`.
-- Tool-specific command bridges (e.g. `.claude/commands/` for Claude Code) are thin pointers only — never authoritative content.
+- Tool-specific command bridges are thin pointers only — never authoritative content.
 - Never hardcode tool-specific skill paths; always use skill names.
 
 Documentation and invocation conventions:
@@ -92,14 +93,12 @@ Session memory protocol:
 - At session end, use `session-reflector` to record new insights into `.agents/memory/pending/`.
 - Memory writes always require explicit user confirmation [y/n] — never auto-write.
 
-Session scratch (Claude Code only):
-- `.claude/session.md` is a per-session scratch file — append ad-hoc observations during the session.
-- At session end, `session-reflector` offers to flush it to `.agents/memory/pending/` and then clears it.
-- All other tools: use `.agents/memory/pending/` directly for session notes.
+Session notes:
+- Use `.agents/memory/pending/` directly for session scratch notes and reflections.
+- At session end, `session-reflector` offers to flush observations to `.agents/memory/pending/`.
 
 Question hook standard (per tool):
 - **OpenCode**: use the native `question` tool — triggers real UI dialog. Permission set to `"ask"` in `opencode.json`. Invoke via `/session-end` command.
-- **Claude Code**: `SessionEnd` hook in `.claude/settings.local.json` auto-fires at session end.
 - **Other tools**: use `[QUESTION] <text> / Options: y / n / edit` text format.
 - Never auto-write to memory without explicit user confirmation regardless of tool.
 

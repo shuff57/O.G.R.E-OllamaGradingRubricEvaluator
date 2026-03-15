@@ -93,11 +93,11 @@
       const { imported, skipped } = await syncLocalSkills();
       await loadSkills();
       if (imported > 0) {
-        syncMessage = `Synced ${imported} new skill${imported !== 1 ? 's' : ''} from ~/.claude/skills/`;
+        syncMessage = `Synced ${imported} new skill${imported !== 1 ? 's' : ''} from ~/.config/opencode/skills/`;
       } else {
         syncMessage = skipped > 0
           ? `All ${skipped} local skill${skipped !== 1 ? 's' : ''} already synced.`
-          : 'No local skills found in ~/.claude/skills/';
+          : 'No local skills found in ~/.config/opencode/skills/';
       }
     } catch (e) {
       syncMessage = `Sync failed: ${e instanceof Error ? e.message : 'Unknown error'}`;

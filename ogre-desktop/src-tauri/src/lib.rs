@@ -934,11 +934,11 @@ struct LocalSkillFile {
     content: String,
 }
 
-/// Scan ~/.claude/skills/ for local skill files (SKILL.md or CLAUDE.md) and return their contents.
+/// Scan ~/.config/opencode/skills/ for local skill files (SKILL.md) and return their contents.
 #[tauri::command]
-async fn scan_claude_skills(app: tauri::AppHandle) -> Result<Vec<LocalSkillFile>, String> {
+async fn scan_local_skills(app: tauri::AppHandle) -> Result<Vec<LocalSkillFile>, String> {
     let home = app.path().home_dir().map_err(|e| format!("Failed to get home dir: {}", e))?;
-    let skills_dir = home.join(".claude").join("skills");
+    let skills_dir = home.join(".config").join("opencode").join("skills");
 
     if !skills_dir.exists() {
         return Ok(vec![]);
@@ -959,13 +959,9 @@ async fn scan_claude_skills(app: tauri::AppHandle) -> Result<Vec<LocalSkillFile>
             None => continue,
         };
         let skill_file = path.join("SKILL.md");
-        let claude_file = path.join("CLAUDE.md");
         let content = if skill_file.exists() {
             std::fs::read_to_string(&skill_file)
                 .map_err(|e| format!("Failed to read {}: {}", skill_file.display(), e))?
-        } else if claude_file.exists() {
-            std::fs::read_to_string(&claude_file)
-                .map_err(|e| format!("Failed to read {}: {}", claude_file.display(), e))?
         } else {
             continue;
         };
@@ -1391,7 +1387,7 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_model ON response_embeddings(embedding
             #[cfg(not(target_os = "linux"))]
             _eval_callback,
             inject_webview_script,
-            scan_claude_skills,
+            scan_local_skills,
             start_oauth_callback_server,
             stop_oauth_callback_server,
             get_cdp_port,

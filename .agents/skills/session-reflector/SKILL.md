@@ -1,6 +1,6 @@
 ---
 name: session-reflector
-description: Use when ending a work session or starting a new one to persist learnings in pending/ and keep LightRAG memory indexed and queryable, or when flushing Claude Code session scratch notes to tool-agnostic memory.
+description: Use when ending a work session or starting a new one to persist learnings in pending/ and keep LightRAG memory indexed and queryable.
 ---
 
 # Session Reflector
@@ -15,7 +15,6 @@ description: Use when ending a work session or starting a new one to persist lea
 ## When to Use
 - Session is ending and key learnings should be preserved
 - New session is beginning and prior learnings should be recalled
-- `.claude/session.md` has accumulated notes to flush (Claude Code)
 - `pending/` contains unindexed reflection files from a prior session
 
 ## When NOT to Use
@@ -35,7 +34,6 @@ description: Use when ending a work session or starting a new one to persist lea
 1. Draft a reflection summary from the session.
 2. Ask: "Save learnings to `.agents/memory/pending/`? [y/n/edit]"
 3. On yes: write `{YYYY-MM-DD}-{slug}.md` to pending/.
-4. If `.claude/session.md` has notes: ask to flush and clear it.
 
 ## Workflow
 
@@ -66,14 +64,6 @@ Required reflection content:
   3. On failure: keep in `pending/`, continue
 - **OUTPUT:** Relevant memory recalled; indexed files archived; failed files preserved.
 
-### Phase 3: Flush Claude Session Scratch (Claude Code only)
-- **INPUT:** `.claude/session.md` — check if content exists below the header comment block
-- **ACTION:** If notes found, ask:
-  > "Found notes in `.claude/session.md` — include in reflection and clear? [y/n]"
-  - On yes: merge notes into the reflection, then restore `.claude/session.md` to header-only state
-  - On no: leave `.claude/session.md` unchanged
-- **OUTPUT:** session.md cleared (if confirmed); notes absorbed into pending/ reflection
-
 ## Question Hook Conventions (Per Tool)
 
 Questions to the user MUST use the tool's native mechanism — never free-form text guessing.
@@ -82,9 +72,6 @@ Questions to the user MUST use the tool's native mechanism — never free-form t
 Use the **`question` tool** directly. OpenCode shows a real UI dialog.
 The `/session-end` command in `opencode.json` triggers this workflow.
 `permission.question` is set to `"ask"` in `opencode.json` — dialog always appears.
-
-### Claude Code
-The `SessionEnd` hook in `.claude/settings.local.json` (`type: "prompt"`) injects the question sequence automatically at session end.
 
 ### Other tools (fallback)
 Use bracketed text format:
@@ -96,7 +83,6 @@ Options: y / n / edit
 | Tool | Mechanism | Trigger |
 |------|-----------|---------|
 | OpenCode | `question` tool (native UI) | `/session-end` command |
-| Claude Code | `SessionEnd` hook prompt | Auto-fires at session end |
 | Other | `[QUESTION]` text format | Manual invocation |
 
 ## Graceful Degradation
@@ -122,13 +108,11 @@ If Ollama or LightRAG is down/unavailable:
 | Mistake | Fix |
 |---------|-----|
 | Auto-writing without confirmation | Always ask [y/n] before writing to pending/ |
-| Committing `.claude/session.md` | It's transient scratch — gitignored, cleared at session end |
 | Writing reflections outside `pending/` | Save to the required pending path and naming pattern |
 | Making indexing mandatory at session end | Treat indexing as deferred and non-blocking |
 | Moving files before confirmed index | Move to `indexed/` only after index success |
 
 ## State Management
-- **Session scratch (Claude Code):** `.claude/session.md` — append observations during session; cleared at session end after flush
 - **Pending queue:** `.agents/memory/pending/{YYYY-MM-DD}-{slug}.md`
 - **Indexed archive:** `.agents/memory/pending/indexed/`
 - **Knowledge graph:** `.agents/memory/lightrag_workdir/` (gitignored)

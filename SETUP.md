@@ -63,18 +63,19 @@ You need an AI environment that supports the Model Context Protocol (MCP):
      }
    }
    ```
-3. Restart Claude Code
+3. Restart your AI coding tool
 
 ## Installing the Grade Skill
 
 ### Option 1: Copy to Project Directory
-1. Copy `.claude/commands/grade.md` and `.claude/commands/grade-selectors.md` to your project's `.claude/commands/` folder
+1. Copy `.agents/commands/grade.md` and `.agents/commands/grade-selectors.md` to your AI environment's command folder
+   - **OpenCode:** Configure as commands in `opencode.json`
+   - **Other MCP tools:** Place in your tool's command directory
 2. The skill will be available as `/grade` in any AI conversation in that project
 
-### Option 2: Install Globally (User Skills)
-1. Copy both files to:
-   - **Mac/Linux:** `~/.claude/commands/`
-   - **Windows:** `C:\Users\<YourName>\.claude\commands\`
+### Option 2: Install Globally (User-Level Commands)
+1. Copy both files to your AI environment's global command location
+   - See your tool's documentation for global command paths
 2. The skill will be available in all projects
 
 ## Using the Grading Skill
@@ -146,7 +147,7 @@ The skill grades with this philosophy (configurable in `grade.md`):
 - **Conceptual vs. minor errors** — distinguish serious misunderstandings from typos
 - **Minimum 60% for substantive attempts** — any real engagement with the prompt earns credit
 
-You can customize this in `.claude/commands/grade.md` under "Grading Philosophy".
+You can customize this in `.agents/commands/grade.md` under "Grading Philosophy".
 
 ## Troubleshooting
 
@@ -178,14 +179,14 @@ You can customize this in `.claude/commands/grade.md` under "Grading Philosophy"
 
 ### Adding New Platforms
 To add support for other platforms (Canvas, Blackboard, etc.):
-1. Edit `.claude/commands/grade-selectors.md`
+1. Edit `.agents/commands/grade-selectors.md`
 2. Add platform-specific DOM selectors
 3. Document the platform's structure (student sections, rubric location, score inputs, feedback fields)
 
 ## Advanced Configuration
 
 ### Customizing Grading Criteria
-Edit `.claude/commands/grade.md` to customize:
+Edit `.agents/commands/grade.md` to customize:
 - **Grading Philosophy** (lines 21-28) — how generous/strict to grade
 - **Max Score** — auto-extracted, but can be overridden
 - **Batch Size** — currently 5 students per save, can be adjusted
@@ -202,8 +203,8 @@ Most LMS platforms (MyOpenMath, Canvas, Blackboard) render MathJax automatically
 
 | File | Purpose |
 |------|---------|
-| `.claude/commands/grade.md` | Main skill logic and workflow for AI agents |
-| `.claude/commands/grade-selectors.md` | Platform-specific DOM selectors (MyOpenMath currently) |
+| `.agents/commands/grade.md` | Main skill logic and workflow for AI agents |
+| `.agents/commands/grade-selectors.md` | Platform-specific DOM selectors (MyOpenMath currently) |
 | `grade-state.json` | Tracks last graded student per URL for resuming |
 
 ## Getting Help
@@ -212,6 +213,6 @@ If you encounter issues:
 1. Check that Playwriter extension is enabled (green icon) on your grading tab
 2. Verify MCP configuration in your AI environment settings
 3. Check `grade-state.json` for session state
-4. Review the skill documentation in `.claude/commands/grade.md`
+4. Review the skill documentation in `.agents/commands/grade.md`
 
 For bugs or feature requests, open an issue on the repository.

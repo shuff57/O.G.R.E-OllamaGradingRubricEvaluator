@@ -37,7 +37,26 @@ Skill routing and project conventions live in `.agents/routing.md` — read it f
 - Prefer language that supports learning and revision, not humiliation.
 - When evaluating borderline cases, choose the more humane reasonable interpretation.
 
-## 3) Tool Preferences
+## 3) CLI Tools
+
+Available CLI tools are documented in `.agents/cli/`.
+**Lazy-load only** — read the specific file you need, not the whole folder.
+
+Quick index (read `.agents/cli/README.md` for the full table):
+
+- `bun` — grading-server runtime/build (`grading-server/`)
+- `npm` — ogre-desktop frontend/build (`ogre-desktop/`)
+- `cargo` / `tauri` — Rust desktop shell and sidecar (`ogre-desktop/src-tauri/`)
+- `ollama` — local model serving and fine-tuned model creation
+- `vitest` — test runner for both workspaces
+- `gh` — GitHub releases, PRs, Actions
+- `python3` — LightRAG memory scripts (`.agents/memory/scripts/`)
+- `cli-anything` — generate CLI harnesses for GUI software (agent-native control)
+- `gws` — Google Workspace CLI (Drive, Gmail, Calendar, Sheets, Docs, Chat, Admin)
+
+When you need a CLI: `Read .agents/cli/<name>.md` for working directory, commands, and notes.
+
+## 4) Tool Preferences
 
 - Use **Playwriter** for all browser automation; do not substitute Playwright CLI flows.
 - Prefer one well-structured browser extraction over many tiny DOM calls.
@@ -51,7 +70,7 @@ Skill routing and project conventions live in `.agents/routing.md` — read it f
 - Keep evidence in repo-local files when the task calls for traceability.
 - Prefer minimal, reversible changes over broad rewrites.
 
-## 4) Safety Rules
+## 5) Safety Rules
 
 - Never auto-approve grade changes; show a dry-run, report, or preview first.
 - Always confirm with the user between major pipeline stages.
@@ -70,7 +89,7 @@ Skill routing and project conventions live in `.agents/routing.md` — read it f
 - If a browser action could affect many records, confirm scope before proceeding.
 - Never hide risk: call out irreversible effects, broad writes, and overwrite behavior in advance.
 
-## 5) Learning Protocol
+## 6) Learning Protocol
 
 - At session start, check `.agents/memory/pending/` for unreviewed reflections when that directory exists.
 - Treat unresolved reflections as context that may change how you work.
@@ -83,7 +102,7 @@ Skill routing and project conventions live in `.agents/routing.md` — read it f
 - If a skill exists but keeps needing the same correction, note the improvement opportunity.
 - Keep learnings concise, actionable, and relevant to future agent behavior.
 
-## 6) Forbidden Actions
+## 7) Forbidden Actions
 
 - Never modify source code without explicit user instruction.
 - Never skip user confirmation for destructive operations.
