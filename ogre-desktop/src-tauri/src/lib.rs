@@ -440,6 +440,31 @@ async fn navigate_embedded(app: tauri::AppHandle, tab_id: String, url: String) -
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+#[tauri::command]
+async fn navigate_embedded(app: tauri::AppHandle, tab_id: String, url: String) -> Result<(), String> {
+    let label = {
+        let state = app.state::<Mutex<WebviewState>>();
+        let guard = state.lock().unwrap();
+        guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
+    };
+    let label_clone = label.clone();
+    let url_str_clone = url.clone();
+    app.run_on_main_thread(move || {
+        LINUX_WEBVIEWS.with(|webviews| {
+            if let Some(wv) = webviews.borrow().get(&label_clone) {
+                if let Err(e) = wv.load_url(&url_str_clone) {
+                    eprintln!("Navigate failed: {}", e);
+                }
+            }
+        });
+        WEBVIEW_URLS.with(|urls| {
+            urls.borrow_mut().insert(label_clone.clone(), url_str_clone.clone());
+        });
+    }).map_err(|_| "Failed to run on main thread".to_string())?;
+    Ok(())
+}
+
 #[cfg(not(target_os = "linux"))]
 #[tauri::command]
 async fn go_back(app: tauri::AppHandle, tab_id: String) -> Result<(), String> {
@@ -451,6 +476,26 @@ async fn go_back(app: tauri::AppHandle, tab_id: String) -> Result<(), String> {
     let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
     wv.eval("history.back()")
         .map_err(|e| format!("Failed to go back: {}", e))?;
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[tauri::command]
+async fn go_back(app: tauri::AppHandle, tab_id: String) -> Result<(), String> {
+    let label = {
+        let state = app.state::<Mutex<WebviewState>>();
+        let guard = state.lock().unwrap();
+        guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
+    };
+    app.run_on_main_thread(move || {
+        LINUX_WEBVIEWS.with(|webviews| {
+            if let Some(wv) = webviews.borrow().get(&label) {
+                if let Err(e) = wv.evaluate_script("history.back()") {
+                    eprintln!("go_back failed: {}", e);
+                }
+            }
+        });
+    }).map_err(|_| "Failed to run on main thread".to_string())?;
     Ok(())
 }
 
@@ -468,6 +513,26 @@ async fn go_forward(app: tauri::AppHandle, tab_id: String) -> Result<(), String>
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+#[tauri::command]
+async fn go_forward(app: tauri::AppHandle, tab_id: String) -> Result<(), String> {
+    let label = {
+        let state = app.state::<Mutex<WebviewState>>();
+        let guard = state.lock().unwrap();
+        guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
+    };
+    app.run_on_main_thread(move || {
+        LINUX_WEBVIEWS.with(|webviews| {
+            if let Some(wv) = webviews.borrow().get(&label) {
+                if let Err(e) = wv.evaluate_script("history.forward()") {
+                    eprintln!("go_forward failed: {}", e);
+                }
+            }
+        });
+    }).map_err(|_| "Failed to run on main thread".to_string())?;
+    Ok(())
+}
+
 #[cfg(not(target_os = "linux"))]
 #[tauri::command]
 async fn reload_browser(app: tauri::AppHandle, tab_id: String) -> Result<(), String> {
@@ -479,6 +544,26 @@ async fn reload_browser(app: tauri::AppHandle, tab_id: String) -> Result<(), Str
     let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
     wv.eval("location.reload()")
         .map_err(|e| format!("Failed to reload: {}", e))?;
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[tauri::command]
+async fn reload_browser(app: tauri::AppHandle, tab_id: String) -> Result<(), String> {
+    let label = {
+        let state = app.state::<Mutex<WebviewState>>();
+        let guard = state.lock().unwrap();
+        guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
+    };
+    app.run_on_main_thread(move || {
+        LINUX_WEBVIEWS.with(|webviews| {
+            if let Some(wv) = webviews.borrow().get(&label) {
+                if let Err(e) = wv.evaluate_script("location.reload()") {
+                    eprintln!("reload_browser failed: {}", e);
+                }
+            }
+        });
+    }).map_err(|_| "Failed to run on main thread".to_string())?;
     Ok(())
 }
 
@@ -1207,13 +1292,9 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_model ON response_embeddings(embedding
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             create_embedded_browser,
-            #[cfg(not(target_os = "linux"))]
             navigate_embedded,
-            #[cfg(not(target_os = "linux"))]
             go_back,
-            #[cfg(not(target_os = "linux"))]
             go_forward,
-            #[cfg(not(target_os = "linux"))]
             reload_browser,
             set_webview_bounds,
             hide_webview,
