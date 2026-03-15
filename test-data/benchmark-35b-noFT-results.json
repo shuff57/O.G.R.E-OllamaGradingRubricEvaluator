@@ -1,0 +1,183 @@
+{
+  "timestamp": "2026-03-13T19:50:24.733Z",
+  "config": {
+    "models": [
+      "Qwen35-35B-noFT"
+    ],
+    "runsPerModel": 1,
+    "tolerance": 1,
+    "chunkSize": 1,
+    "sweep": "none",
+    "studentCount": 25
+  },
+  "stats": {
+    "perModel": {
+      "Qwen35-35B-noFT": {
+        "successfulRuns": 0,
+        "totalRuns": 1,
+        "meanScore": 0,
+        "stdDev": 0,
+        "runToRunVariance": 0
+      }
+    },
+    "perStudent": {
+      "0": {
+        "name": "Alvarez, Emiliano",
+        "models": {
+          "Qwen35-35B-noFT": null
+        }
+      },
+      "1": {
+        "name": "Cartwright, Juliet",
+        "models": {
+          "Qwen35-35B-noFT": null
+        }
+      },
+      "2": {
+        "name": "Consoli, Ben",
+        "models": {
+          "Qwen35-35B-noFT": null
+        }
+      },
+      "3": {
+        "name": "Cox, Jenna",
+        "models": {
+          "Qwen35-35B-noFT": null
+        }
+      },
+      "4": {
+        "name": "Davis, Cecilia",
+        "models": {
+          "Qwen35-35B-noFT": null
+        }
+      },
+      "5": {
+        "name": "Doris, Nicole",
+        "models": {
+          "Qwen35-35B-noFT": null
+        }
+      },
+      "6": {
+        "name": "Guichard, Sophia",
+        "models": {
+          "Qwen35-35B-noFT": null
+        }
+      },
+      "7": {
+        "name": "Guzman Rangel, Jimena",
+        "models": {
+          "Qwen35-35B-noFT": null
+        }
+      },
+      "8": {
+        "name": "Herl, Chrey",
+        "models": {
+          "Qwen35-35B-noFT": null
+        }
+      },
+      "9": {
+        "name": "Jimmerson, Kwan",
+        "models": {
+          "Qwen35-35B-noFT": null
+        }
+      },
+      "10": {
+        "name": "Johnson, Kenzie",
+        "models": {
+          "Qwen35-35B-noFT": null
+        }
+      },
+      "11": {
+        "name": "Laparan, Elle",
+        "models": {
+          "Qwen35-35B-noFT": null
+        }
+      },
+      "12": {
+        "name": "Martin, Makenzie",
+        "models": {
+          "Qwen35-35B-noFT": null
+        }
+      },
+      "13": {
+        "name": "melton, myla",
+        "models": {
+          "Qwen35-35B-noFT": null
+        }
+      },
+      "14": {
+        "name": "Metroka, Layla",
+        "models": {
+          "Qwen35-35B-noFT": null
+        }
+      },
+      "15": {
+        "name": "Milton, Joshua",
+        "models": {
+          "Qwen35-35B-noFT": null
+        }
+      },
+      "16": {
+        "name": "Parker, Tyson",
+        "models": {
+          "Qwen35-35B-noFT": null
+        }
+      },
+      "17": {
+        "name": "Plummer, Justin",
+        "models": {
+          "Qwen35-35B-noFT": null
+        }
+      },
+      "18": {
+        "name": "Price, Lynn",
+        "models": {
+          "Qwen35-35B-noFT": null
+        }
+      },
+      "19": {
+        "name": "Simcox, Foster",
+        "models": {
+          "Qwen35-35B-noFT": null
+        }
+      },
+      "20": {
+        "name": "Sorenson, Jack",
+        "models": {
+          "Qwen35-35B-noFT": null
+        }
+      },
+      "21": {
+        "name": "Stratton, Tessa",
+        "models": {
+          "Qwen35-35B-noFT": null
+        }
+      },
+      "22": {
+        "name": "Teran, William",
+        "models": {
+          "Qwen35-35B-noFT": null
+        }
+      },
+      "23": {
+        "name": "Xiong, William",
+        "models": {
+          "Qwen35-35B-noFT": null
+        }
+      },
+      "24": {
+        "name": "Zimmerman, Caidyn",
+        "models": {
+          "Qwen35-35B-noFT": null
+        }
+      }
+    },
+    "agreement": {},
+    "flagged": []
+  },
+  "rawResults": {
+    "Qwen35-35B-noFT": [
+      null
+    ]
+  }
+}

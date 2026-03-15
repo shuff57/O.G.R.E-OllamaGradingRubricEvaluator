@@ -1,0 +1,2 @@
+141:    "Asserts A100 80GB VRAM and loads Qwen3.5-35B-A3B (MoE) with bf16 LoRA. Uses `FastModel.from_pretrained` for MoE loading and `FastVisionModel.get_peft_model` with `target_modules=\"all-linear\"`.\n"
+169:    "model, tokenizer = FastModel.from_pretrained(\n",

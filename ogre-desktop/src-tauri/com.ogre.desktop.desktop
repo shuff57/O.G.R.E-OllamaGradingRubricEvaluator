@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=O.G.R.E Desktop
+Comment=AI-powered grading assistant
+Exec=ogre-desktop
+Icon=com.ogre.desktop
+Type=Application
+Categories=Education;Utility;
+StartupWMClass=com.ogre.desktop
