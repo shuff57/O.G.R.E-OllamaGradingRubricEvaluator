@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { getSkillsWithUrlPattern } from '../../lib/db';
   import { findMatchingProfiles } from '../../lib/skills-api';
   import { selectBestProfile } from '../../lib/profile-precedence';
