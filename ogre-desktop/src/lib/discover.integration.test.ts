@@ -18,6 +18,13 @@ import type {
   ValidationResults,
 } from "./discover";
 import type { ExtractionConfig } from "./site-profiles";
+import { convertProfileToJSON } from "./profile-json-converter";
+import { formatSiteGuideForAgent, isSiteGuideJSON } from "./site-guide-types";
+
+// @ts-expect-error Vite raw markdown asset import
+import momProfileRaw from "../assets/profiles/myopenmath.md?raw";
+// @ts-expect-error Vite raw markdown asset import
+import aeriesProfileRaw from "../assets/profiles/aeries.md?raw";
 
 // ── Module Mocks (hoisted by vitest) ────────────────────────────────────────
 
@@ -352,5 +359,61 @@ describe("Discovery Pipeline (Integration)", () => {
     expect(result.draft.extractionConfig).toBeDefined();
     expect(result.draft.extractionConfig?.responseMethod).toBe("selector");
     expect(result.draft.extractionConfig?.maxScoreDefault).toBe("10");
+  });
+
+  it("full pipeline: MOM markdown converts to valid JSON injection", () => {
+    const guide = convertProfileToJSON(momProfileRaw);
+    const injection = formatSiteGuideForAgent(guide);
+
+    expect(injection).toContain("--- SITE GUIDE (JSON):");
+    expect(injection).toContain("--- END SITE GUIDE ---");
+
+    const match = injection.match(
+      /--- SITE GUIDE \(JSON\): .* ---\n([\s\S]+)\n--- END SITE GUIDE ---/,
+    );
+    expect(match).toBeTruthy();
+
+    const parsed = JSON.parse(match![1]);
+    expect(parsed).toHaveProperty("site");
+    expect(parsed).toHaveProperty("selectors");
+    expect(parsed).toHaveProperty("navigation");
+    expect(parsed).toHaveProperty("gotchas");
+    expect(Object.keys(parsed.selectors).length).toBeGreaterThanOrEqual(5);
+    expect(parsed.gotchas.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("JSON injection is at least 30% smaller than raw markdown", () => {
+    const guide = convertProfileToJSON(momProfileRaw);
+    const injection = formatSiteGuideForAgent(guide);
+
+    const reductionRatio = injection.length / momProfileRaw.length;
+    expect(reductionRatio).toBeLessThan(0.7);
+
+    console.log(
+      `Token reduction: ${momProfileRaw.length} chars → ${injection.length} chars (${Math.round((1 - reductionRatio) * 100)}% reduction)`,
+    );
+  });
+
+  it("full pipeline: Aeries markdown converts to valid JSON injection", () => {
+    const guide = convertProfileToJSON(aeriesProfileRaw);
+    const injection = formatSiteGuideForAgent(guide);
+
+    expect(injection).toContain("--- SITE GUIDE (JSON):");
+    const match = injection.match(
+      /--- SITE GUIDE \(JSON\): .* ---\n([\s\S]+)\n--- END SITE GUIDE ---/,
+    );
+    expect(match).toBeTruthy();
+
+    const parsed = JSON.parse(match![1]);
+    expect(Object.keys(parsed.selectors).length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("isSiteGuideJSON correctly validates guide objects", () => {
+    const guide = convertProfileToJSON(momProfileRaw);
+
+    expect(isSiteGuideJSON(guide)).toBe(true);
+    expect(isSiteGuideJSON(null)).toBe(false);
+    expect(isSiteGuideJSON({})).toBe(false);
+    expect(isSiteGuideJSON({ site: "test" })).toBe(false);
   });
 });
