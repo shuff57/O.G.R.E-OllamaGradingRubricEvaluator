@@ -469,7 +469,7 @@ Max Concurrent: 6 (Waves 3-4)
   - Message: `feat(skills): create skill-creator meta-skill with gold standard format template`
   - Files: `.agents/skills/skill-creator/SKILL.md`
 
-- [ ] 3. Delete All Old Skill Directories
+- [x] 3. Delete All Old Skill Directories
 
   **What to do**:
   - Delete `.claude/skills/` directory entirely (all 12 skill subdirectories)
@@ -530,7 +530,7 @@ Max Concurrent: 6 (Waves 3-4)
   - Message: `refactor(infrastructure): delete all old skill directories and claude-mem artifacts`
   - Files: `.claude/skills/` (deleted), cleanup artifacts
 
-- [ ] 4. Create CLAUDE.md Project Brain
+- [x] 4. Create CLAUDE.md Project Brain
 
   **What to do**:
   - Create `CLAUDE.md` at project root (≤200 lines)
@@ -595,7 +595,7 @@ Max Concurrent: 6 (Waves 3-4)
   - Message: `feat(config): create CLAUDE.md project brain with 3-layer routing and learning directives`
   - Files: `CLAUDE.md`, `.claude/CLAUDE.md`
 
-- [ ] 5. Create AGENTS.md
+- [x] 5. Create AGENTS.md
 
   **What to do**:
   - Create `AGENTS.md` at project root (~100 lines)
@@ -648,7 +648,7 @@ Max Concurrent: 6 (Waves 3-4)
   - Message: `feat(config): create AGENTS.md with shared agent behavioral rules`
   - Files: `AGENTS.md`
 
-- [ ] 6. Create Memory Infrastructure + LightRAG Setup
+- [x] 6. Create Memory Infrastructure + LightRAG Setup
 
   **What to do**:
   - Create `.agents/memory/` directory structure with LightRAG integration:
@@ -740,7 +740,7 @@ Max Concurrent: 6 (Waves 3-4)
   - Message: `feat(memory): create LightRAG-powered persistent agent memory with Ollama integration`
   - Files: `.agents/memory/`
 
-- [ ] 7. Rewrite Grade Command + Selectors
+- [x] 7. Rewrite Grade Command + Selectors
 
   **What to do**:
   - Rewrite `.claude/commands/grade.md` in gold standard format
@@ -805,7 +805,7 @@ Max Concurrent: 6 (Waves 3-4)
   - Message: `feat(commands): rewrite grade command and selectors in gold standard format`
   - Files: `.claude/commands/grade.md`, `.claude/commands/grade-selectors.md`
 
-- [ ] 8. Rewrite grade-show-work Skill
+- [x] 8. Rewrite grade-show-work Skill
 
   **What to do**:
   - Create `.agents/skills/grade-show-work/SKILL.md` in gold standard format
@@ -874,7 +874,7 @@ Max Concurrent: 6 (Waves 3-4)
   - Message: `feat(skills): rewrite grade-show-work in gold standard format`
   - Files: `.agents/skills/grade-show-work/SKILL.md`
 
-- [ ] 9. Rewrite grade-show-work-selectors Command
+- [x] 9. Rewrite grade-show-work-selectors Command
 
   **What to do**:
   - Rewrite `.claude/commands/grade-show-work-selectors.md` as a clean reference
