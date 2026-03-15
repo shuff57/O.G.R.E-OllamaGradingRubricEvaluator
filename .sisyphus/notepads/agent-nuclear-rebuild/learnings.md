@@ -123,6 +123,13 @@
 - Preserve native-widget caveats verbatim enough to keep behavior safe: Add An Item `<option>` clicks cause CDP `-32000`; use direct URLs or `selectOption()` with a pre-captured navigation wait.
 - Preserve instructor-vs-student distinctions explicitly: `testquestion2.php` is an instructor validation page, while `assess2/?cid={cid}&aid={aid}` is the student view.
 
+## [2026-03-15] Task 20 Complete — session-reflector skill + SessionEnd hook
+- Added `.agents/skills/session-reflector/SKILL.md` with gold-standard structure, `Use when...` frontmatter description, and explicit `## Guardrails` before workflow.
+- Encoded two-stage memory pipeline: immediate reflection write to `.agents/memory/pending/{YYYY-MM-DD}-{slug}.md` (≤50 lines), then deferred next-session indexing via `.agents/memory/scripts/index_reflection.py` and move to `pending/indexed/` only on success.
+- Added required start-of-session memory recall step with `.agents/memory/scripts/query_memory.py` using current task summary before significant work.
+- Documented graceful degradation: if Ollama/LightRAG is unavailable, session reflection still persists to `pending/` and indexing is deferred without blocking session end.
+- Merged `.claude/settings.local.json` to add only `hooks.SessionEnd` prompt while preserving existing permissions and config.
+
 ## [2026-03-15] Task 15 Complete — mom-fact-finder gold standard rewrite
 - Created `.agents/skills/mom-fact-finder/SKILL.md` in gold-standard format with Guardrails before Workflow, Inputs, Quick Start, phased workflow, Error Handling table, Common Mistakes table, State Management, and Selectors / References.
 - Preserved the full research flow from the archived 509-line skill: pattern-library cache check, live MOM browser search, QID ranking by Times Used, safe `viewonly=1` code extraction, cross-example pattern synthesis, JSON artifact writing, and downstream knowledge-base update behavior.

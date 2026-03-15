@@ -81,5 +81,13 @@
       "Bash(echo \"$f: DIFFERS\")",
       "Bash(cargo build --release)"
     ]
+  },
+  "hooks": {
+    "SessionEnd": [
+      {
+        "type": "prompt",
+        "prompt": "You are ending this session. Please run the session-reflector skill to capture key learnings in .agents/memory/pending/."
+      }
+    ]
   }
 }
