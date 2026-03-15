@@ -907,7 +907,7 @@ Max Concurrent: 6 (Waves 3-4)
 
   **Commit**: YES (groups with Wave 2)
 
-- [ ] 10. Rewrite gb-compare
+- [x] 10. Rewrite gb-compare
 
   **What to do**:
   - Create `.agents/skills/gb-compare/SKILL.md` in gold standard format
@@ -947,7 +947,7 @@ Max Concurrent: 6 (Waves 3-4)
 
   **Commit**: YES (groups with Wave 3)
 
-- [ ] 11. Rewrite gb-new-assignment
+- [x] 11. Rewrite gb-new-assignment
 
   **What to do**:
   - Create `.agents/skills/gb-new-assignment/SKILL.md` in gold standard format
@@ -964,7 +964,7 @@ Max Concurrent: 6 (Waves 3-4)
 
   **Commit**: YES (groups with Wave 3)
 
-- [ ] 12. Rewrite gb-sync
+- [x] 12. Rewrite gb-sync
 
   **What to do**:
   - Create `.agents/skills/gb-sync/SKILL.md` in gold standard format
@@ -986,7 +986,7 @@ Max Concurrent: 6 (Waves 3-4)
 
   **Commit**: YES (groups with Wave 3)
 
-- [ ] 13. Rewrite gb-pipeline
+- [x] 13. Rewrite gb-pipeline
 
   **What to do**:
   - Create `.agents/skills/gb-pipeline/SKILL.md` in gold standard format
@@ -1004,7 +1004,7 @@ Max Concurrent: 6 (Waves 3-4)
 
   **Commit**: YES (groups with Wave 3)
 
-- [ ] 14. Rewrite mom-frq
+- [x] 14. Rewrite mom-frq
 
   **What to do**:
   - Create `.agents/skills/mom-frq/SKILL.md` in gold standard format
@@ -1025,7 +1025,7 @@ Max Concurrent: 6 (Waves 3-4)
 
   **Commit**: YES (groups with Wave 4)
 
-- [ ] 15. Rewrite mom-fact-finder
+- [x] 15. Rewrite mom-fact-finder
 
   **What to do**:
   - Create `.agents/skills/mom-fact-finder/SKILL.md` in gold standard format
@@ -1043,7 +1043,7 @@ Max Concurrent: 6 (Waves 3-4)
 
   **Commit**: YES (groups with Wave 4)
 
-- [ ] 16. Rewrite mom-lib-map + references/
+- [x] 16. Rewrite mom-lib-map + references/
 
   **What to do**:
   - Create `.agents/skills/mom-lib-map/SKILL.md` — router/index in gold standard format
@@ -1062,7 +1062,7 @@ Max Concurrent: 6 (Waves 3-4)
 
   **Commit**: YES (groups with Wave 4)
 
-- [ ] 17. Rewrite mom-page-map
+- [x] 17. Rewrite mom-page-map
 
   **What to do**:
   - Create `.agents/skills/mom-page-map/SKILL.md` in gold standard format
@@ -1080,7 +1080,7 @@ Max Concurrent: 6 (Waves 3-4)
 
   **Commit**: YES (groups with Wave 4)
 
-- [ ] 18. Rewrite mom-patterns (Knowledge Base)
+- [x] 18. Rewrite mom-patterns (Knowledge Base)
 
   **What to do**:
   - Create `.agents/skills/mom-patterns/SKILL.md` — instructions for the knowledge base
@@ -1100,7 +1100,7 @@ Max Concurrent: 6 (Waves 3-4)
 
   **Commit**: YES (groups with Wave 4)
 
-- [ ] 19. Rewrite mom-style-guide
+- [x] 19. Rewrite mom-style-guide
 
   **What to do**:
   - Create `.agents/skills/mom-style-guide/SKILL.md` in gold standard format
@@ -1117,7 +1117,7 @@ Max Concurrent: 6 (Waves 3-4)
 
   **Commit**: YES (groups with Wave 4)
 
-- [ ] 20. Create Session Reflector + SessionEnd Hook + LightRAG Indexing
+- [x] 20. Create Session Reflector + SessionEnd Hook + LightRAG Indexing
 
   **What to do**:
   - Create `.agents/skills/session-reflector/SKILL.md` — session learning capture skill in gold standard format
@@ -1177,7 +1177,7 @@ Max Concurrent: 6 (Waves 3-4)
   - Message: `feat(skills): create session-reflector with LightRAG-powered knowledge graph indexing`
   - Files: `.agents/skills/session-reflector/SKILL.md`, `.claude/settings.local.json`
 
-- [ ] 21. Rewrite find-skills
+- [x] 21. Rewrite find-skills
 
   **What to do**:
   - Create `.agents/skills/find-skills/SKILL.md` in gold standard format
@@ -1195,7 +1195,7 @@ Max Concurrent: 6 (Waves 3-4)
 
   **Commit**: YES (groups with Wave 5)
 
-- [ ] 22. Audit + Clean Up Global Skills
+- [x] 22. Audit + Clean Up Global Skills
 
   **What to do**:
   - List ALL skills currently installed at `~/.config/opencode/skills/`
@@ -1254,7 +1254,7 @@ Max Concurrent: 6 (Waves 3-4)
   - Message: `refactor(global): clean up global skills — move project-specific skills to their projects`
   - Files: `~/.config/opencode/skills/` (removals)
 
-- [ ] 23. Install Universal Smart Agent Skills Globally
+- [x] 23. Install Universal Smart Agent Skills Globally
 
   **What to do**:
   - Copy the following NEW skills from O.G.R.E's `.agents/skills/` to `~/.config/opencode/skills/`:
