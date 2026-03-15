@@ -33,7 +33,7 @@ description: Use when syncing MyOpenMath assignments and scores into Aeries end-
 > - Never auto-advance after any stage, even if the result looks clean.
 > - Never bypass a halted stage. If auth fails, extraction fails, verification fails, or `pipelineHalted === true`, stop the pipeline and report the halt.
 > - Never treat Stage 1 as writable. Stage 1 is read-only comparison only.
-> - Never hardcode skill file paths like `.claude/skills/...`; invoke downstream skills only by name via `load_skills=["gb-compare"]`, `load_skills=["gb-new-assignment"]`, and `load_skills=["gb-sync"]`.
+> - Never hardcode skill file paths; invoke downstream skills only by name via `load_skills=["gb-compare"]`, `load_skills=["gb-new-assignment"]`, and `load_skills=["gb-sync"]`.
 > - Never lose the temp-file chain. Stage 2 must read Stage 1's compare JSON, and Stage 3 must continue from the same gradebook-specific temp data.
 > - Never declare full success for single-assignment mode. Report it as partial verification only.
 > - Never overwrite the source-of-truth rule. MOM remains the source of truth for score sync, and Stage 3 must begin with a dry run.

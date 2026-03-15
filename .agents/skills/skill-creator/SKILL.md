@@ -25,7 +25,7 @@ description: Use when creating or rewriting an agent skill so the output follows
 
 > ⚠️ **Must NOT:**
 > - Auto-create or save a skill without explicit user confirmation of the final draft
-> - Use legacy paths like `.claude/skills/` in output skill instructions
+> - Use hardcoded skill file paths in output skill instructions
 > - Add evaluation/testing framework references unless user explicitly requests them
 
 ## Interview

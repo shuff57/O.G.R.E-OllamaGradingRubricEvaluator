@@ -30,7 +30,7 @@ description: Use when MyOpenMath question authoring or pattern-discovery workflo
 > - Never overwrite unrelated topics when refreshing one topic; update only the target entry and its index line.
 > - Never delete the topic index, entry template, or metadata lines that keep the library searchable.
 > - Never freehand-edit topic content without evidence from `mom-fact-finder`; use refresh/append updates grounded in real source QIDs.
-> - Never hardcode legacy `.claude/skills/` paths; refer to this skill by name with `load_skills=["mom-patterns"]`.
+> - Never hardcode skill file paths; refer to this skill by name with `load_skills=["mom-patterns"]`.
 
 ## Quick Start
 1. Load `load_skills=["mom-patterns"]`.
