@@ -62,6 +62,7 @@
 - Kept non-negotiable policy intact: report-first, explicit teacher approval, bonus-only scoring, never decrease scores, and stop at 20 students with warning at 15.
 - Preserved direct file-fetch rule: `files.myopenmath.com/ufiles/{uid}/{filename}` is extracted programmatically and fetched without UI preview clicks.
 - Evidence recorded in `.sisyphus/evidence/task-8-grade-show-work.txt`.
+- Follow-up QA note: preserve resume-safe writeback data (`uid`, `studentUrl`, `scoreboxId`) and explicit `uid`/`stu` navigation behavior when condensing archived browser-workflow skills.
 
 ## [2026-03-15] Task 7 Complete — grade command + selectors gold-standard rewrite
 - Rewrote `.claude/commands/grade.md` into gold-standard command structure without changing grading behavior.
@@ -69,3 +70,12 @@
 - Kept grading philosophy explicitly generous for high school seniors with substantial partial credit for meaningful effort.
 - Rewrote `.claude/commands/grade-selectors.md` as a frontmatter-free reference with consistent tables while preserving all original DOM selectors and TinyMCE writeback guidance.
 - Captured verification evidence in `.sisyphus/evidence/task-7-grade-command.txt`; markdown LSP diagnostics were not available in this environment because no `.md` server is configured.
+
+## [2026-03-15] Task 13 Complete — gb-pipeline gold standard rewrite
+- Created `.agents/skills/gb-pipeline/SKILL.md` in the gold-standard format with Guardrails before Workflow, explicit stage IO, Error Handling table, Common Mistakes table, and State Management.
+- Preserved the orchestrator role and all three stages in order: `gb-compare` → `gb-new-assignment` → `gb-sync`.
+- Kept the temp-file chain explicit and gradebook-number keyed: `gb_compare_{gradebookNum}.json` → `gb_new_assignment_{gradebookNum}.json` → `gb_sync_{gradebookNum}.json` plus `temp/students/{gradebookNum}/*.json`.
+- Preserved the non-negotiable inter-stage confirmation gates and halt behavior, including `pipelineHalted`, `haltReason`, `haltStudents`, and `haltAssignments` reporting.
+- Preserved the single-assignment Stage 3 variant and its `partial-verified` reporting rule so it is never reported as full pipeline success.
+- Kept downstream skill invocation name-based only with `load_skills=["gb-compare"]`, `load_skills=["gb-new-assignment"]`, and `load_skills=["gb-sync"]`.
+- Captured verification evidence in `.sisyphus/evidence/task-13-gb-pipeline.txt`; markdown LSP diagnostics were not available in this environment because no `.md` server is configured.

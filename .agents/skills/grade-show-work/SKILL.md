@@ -62,6 +62,8 @@ description: Use when evaluating partial credit for "show your work" math proble
 - **INPUT:** Current `gbviewassess.php` page
 - **ACTION:** Use one browser extraction to gather student name, assessment name, question containers, score inputs, score maxima, and file links.
 
+**Eligibility reminder:** only review questions that have a visible work-upload pane (`div.questionpane.viewworkwrap` / `.viewworkwrap`), at least one uploaded file, and an auto-score below `4`.
+
 ```javascript
 const data = await state.gradePage.evaluate(() => {
   const studentName = document.querySelector('h2')?.textContent?.trim() || '';
@@ -120,6 +122,7 @@ const data = await state.gradePage.evaluate(() => {
 - **ACTION:**
   - Click **Save and Next Student**.
   - Treat this as a full page navigation, not an SPA update.
+  - Expect the `uid` URL parameter to change to the next student; the original `stu` parameter may disappear after navigation.
   - Wait for `domcontentloaded`, then verify the `h2` student name changed.
   - Increment the session counter.
   - At 15 students, warn that the 20-student limit is approaching.
@@ -209,9 +212,7 @@ for (const update of approvedUpdates) {
 - **Phases:**
   - `scan` — actively reviewing students and building recommendations
   - `apply` — approved changes are being written back
-- **Recommended entry shape:**
-
-- Preserve enough writeback data to resume safely: `uid`, `studentUrl`, question index, and exact `scoreboxId` values for approved updates.
+- **Recommended entry shape:** preserve enough writeback data to resume safely, including `uid`, `studentUrl`, question index, and exact `scoreboxId` values for approved updates.
 
 ```json
 {
@@ -261,7 +262,7 @@ for (const update of approvedUpdates) {
 | Multipart score | `input#scoreboxN-M` | Example: `scorebox0-0` |
 | Max score text | `scoreInput.nextSibling` | Text node like `/5` or `/10` |
 | Work upload pane | `.viewworkwrap` | Required for eligibility |
-| File download link | `a.attach.prepped` | Direct file URL lives on the anchor |
+| File download link | `a.attach.prepped[target="_blank"]` | Direct file URL lives on the anchor |
 | Work toggle | `.viewworkwrap button.slim` | Text flips between “Hide Work” and “View Work” |
 | Save and Next Student | `button.primary:has-text("Save and Next Student")` | Full-page navigation |
 | Save Changes | `button.primary:has-text("Save Changes")` | Appears more than once |
@@ -290,6 +291,7 @@ for (const update of approvedUpdates) {
 | Question content pane | `div.questionwrap.questionpane` | Left pane when uploads exist |
 | Work upload pane | `div.questionpane.viewworkwrap` | Right pane with file uploads |
 | Work list container | `.viewworkwrap .introtext ul.nomark` | File links remain in DOM even if hidden |
+| File download link | `a.attach.prepped[target="_blank"]` | Direct fetch target for uploaded work |
 | Preview toggle | `span.videoembedbtn#fileembedbtnN[role="button"]` | A `<span>` with button role, not a real `<button>` |
 | Inline preview image | `img#fileiframefileembedbtnN` | Created dynamically after preview toggle |
 | Return to Gradebook | `button.secondary:has-text("Return to Gradebook")` | Exit button |
@@ -312,6 +314,12 @@ const maxScore = parseFloat(input.nextSibling.textContent.trim().replace('/', ''
 - Pattern: `/ufiles/{uid}/{filename}`
 - Authentication: none required for direct fetch
 - Typical image shape: resized upload (often `.jpg`) suitable for vision review
+- Other possible extensions: `.png`, `.pdf`, `.jpeg`, `.heic`
+
+### Preview toggle facts
+- `span.videoembedbtn#fileembedbtnN[role="button"]` is a span-based control, not a real button.
+- Preview text usually flips from `[+]` to `[-]` when expanded.
+- Inline preview images use IDs like `img#fileiframefileembedbtnN`.
 
 ### Navigation fact
 - **Save and Next Student** performs full page navigation; always re-observe the page after clicking it.
