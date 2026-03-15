@@ -110,9 +110,11 @@
 - Router skills for large reference packs should keep subject routing, cross-subject notes, and relative `references/{subject}.md` links in the main SKILL file while leaving detailed lookup tables in passive reference docs.
 - Verification for markdown-only skill tasks should explicitly record both the positive checks (reference count, frontmatter absence, path references) and any environment limitation such as missing Markdown LSP support.
 
-## [2026-03-15] Task 19 In Progress — mom-style-guide gold-standard rewrite
+## [2026-03-15] Task 19 Complete — mom-style-guide gold-standard rewrite
 - Reference/philosophy skills cannot be converted cleanly by forcing them into a pure workflow template; preserve their role boundaries with companion-skill tables and lightweight review/apply/verify workflow instead.
 - For MOM style guidance, the high-risk losses during rewrite are usually defaults and constraints, not prose details: auto-graded-by-default, neutral student rubric wording, meaningful randomization, visual layout rules, and pseudo-PHP safety rules all need explicit sections.
+- Preserve the archive's reference-vs-workflow distinction explicitly when a legacy guide points to both a `CLAUDE.md` reference and a `SKILL.md` process file; collapsing them into one generic companion reference loses important boundaries.
+- Evidence files under `.sisyphus/evidence/` are repo-ignored, so markdown-only skill tasks should still write the evidence artifact locally and separately verify the tracked skill/notepad changes that will actually go into git.
 
 ## [2026-03-15] Task 17 Complete — mom-page-map gold standard rewrite
 - For large archived navigation skills, keep `SKILL.md` as a concise router and move exact URL/selector/AJAX details into `references/navigation-patterns.md`.

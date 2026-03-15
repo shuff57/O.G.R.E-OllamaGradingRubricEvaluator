@@ -5,7 +5,7 @@ description: Use when authoring or reviewing MyOpenMath questions and you need t
 
 # MOM Style Guide
 
-> This is the design-philosophy companion for MyOpenMath question writing. It preserves the WHY behind O.G.R.E.'s MOM conventions: voice, rubric design, randomization, layout, naming, and safety rules. It is not a syntax reference, not a macro lookup, and not a browser workflow.
+> This is the design-philosophy companion for MyOpenMath question writing. It preserves the WHY behind O.G.R.E.'s MOM conventions: voice, rubric design, randomization, layout, naming, and safety rules. It is not a syntax reference, not a workflow guide, not a macro lookup, and not a browser workflow.
 
 ## Prerequisites
 - A MOM question topic, prompt, or draft to evaluate
@@ -101,6 +101,8 @@ Core principle: write like a friendly, warm, concise instructor talking to stude
 - Student rubric items stay neutral; instructor targets must be specific
 - Model narrative variables use the `$r_` prefix, one per rubric category, then combine into `$sample_narrative`
 
+Does NOT cover the exact rubric HTML implementation pattern. Use `mom-frq` for the HOW.
+
 ### What makes a good MOM question
 - The question type matches the learning goal and defaults to auto-graded unless prose reasoning is explicitly required
 - Randomization creates meaningfully different scenarios, not superficial number swaps
@@ -129,6 +131,8 @@ Choose the pattern that matches the question type.
 - Dataset values
 - Any answer that appears in the question
 
+Does NOT cover randomizer function signatures. Use `mom-frq` reference material for exact syntax.
+
 ## Default Question Types
 
 Always default to auto-graded question types. Use essay/FRQ only when explicitly requested.
@@ -153,6 +157,8 @@ Always default to auto-graded question types. Use essay/FRQ only when explicitly
 
 ### Visual consistency palette
 
+Sourced from Khan Academy (Perseus design system), Brilliant.org, and Desmos.
+
 | Color | Purpose |
 |-------|---------|
 | `#1865f2` | Primary accent, badge background, callout border, interactive elements |
@@ -173,14 +179,15 @@ Always default to auto-graded question types. Use essay/FRQ only when explicitly
 ### Multipart card-per-part layout
 - Use the card-per-part layout for all multipart auto-graded questions
 - Each sub-part gets its own white card; never use bare `<p>` tags with bold `a.` labels
-- **Outer wrapper:** `font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif; font-size:16px; line-height:1.6; color:#21242c; max-width:688px`
+- **Outer wrapper:** `font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif; font-size:16px; line-height:1.6; color:#21242c; max-width:688px` — 688px matches the reading width used by Khan Academy
 - **Data table wrapper:** `<div style="border-radius:12px;overflow:hidden;box-shadow:0 4px 6px -1px rgba(0,0,0,0.08),0 2px 4px -2px rgba(0,0,0,0.05);border:1px solid #e5e7eb;display:inline-block;">`
 - **Header row:** `background:#f7f9fa; font-weight:600; color:#21242c; border-bottom:2px solid #dee1e3`
 - **Column cells:** `border-left:1px solid #e5e7eb`
 - Never use the `border="1"` table attribute
 - **Instruction callout** is optional and defaults to omitted; before including it, ask exactly: `Include an instruction hint? (default: no)`
 - **Instruction callout style:** `background:#f0f7ff; border-left:4px solid #1865f2; padding:10px 16px; border-radius:0 8px 8px 0`
-- **Part cards:** `background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:20px; margin:10px 0; box-shadow:0 4px 6px -1px rgba(0,0,0,0.07),0 2px 4px -2px rgba(0,0,0,0.04)`
+- The 4px instruction-callout border is the Khan Academy pattern
+- **Part cards:** `background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:20px; margin:10px 0; box-shadow:0 4px 6px -1px rgba(0,0,0,0.07),0 2px 4px -2px rgba(0,0,0,0.04)` — dual-layer shadow gives depth without heaviness
 - **Part label chips:** `display:inline-block; background:#e8f0fe; color:#1865f2; border-radius:6px; padding:3px 10px; font-size:13px; font-weight:700; margin-right:10px; vertical-align:middle`
 - Use rounded rectangle chips, not filled circles and not `border-radius:50%`
 - Wrap every `$answerbox[n]` as `<div style="margin-top:12px;text-align:center;">$answerbox[n]</div>`
