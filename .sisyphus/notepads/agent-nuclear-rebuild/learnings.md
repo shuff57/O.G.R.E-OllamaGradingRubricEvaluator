@@ -97,3 +97,10 @@
 - Preserved the single-assignment Stage 3 variant and its `partial-verified` reporting rule so it is never reported as full pipeline success.
 - Kept downstream skill invocation name-based only with `load_skills=["gb-compare"]`, `load_skills=["gb-new-assignment"]`, and `load_skills=["gb-sync"]`.
 - Captured verification evidence in `.sisyphus/evidence/task-13-gb-pipeline.txt`; markdown LSP diagnostics were not available in this environment because no `.md` server is configured.
+
+## [2026-03-15] Task 14 Complete — mom-frq gold standard rewrite
+- Created `.agents/skills/mom-frq/SKILL.md` in gold-standard format with required frontmatter, Guardrails before Workflow, score-method guidance, phased FRQ authoring workflow, Error Handling, and Common Mistakes.
+- Split heavy syntax/reference content into `.agents/skills/mom-frq/references/php-patterns.md` to keep the main skill concise while preserving critical MOM PHP/IMathAS patterns.
+- Preserved the non-negotiable essay syntax and scoring knowledge: `$anstypes`, `$displayformat[0] = "editornopaste"`, `loadlibrary()`, `takeanything`, `essayrubric`, `singlescore`, multipart file-upload patterns, and `getfeedbacktxtessay()`.
+- Preserved randomized-context and qtext/rubric construction patterns, including `rand()`, `rrand()`, `diffrands()`, `where (...)`, `$questiontext`, `$rubricbutton`, `$rubricanswerbutton`, and the final IMathAS output ordering.
+- Captured baseline verification nuance: repository `bun test` already fails in a fresh worktree due to missing packages / environment setup unrelated to this markdown-only task, so Task 14 verification must rely on changed-file checks plus evidence rather than claiming a clean global test suite.
