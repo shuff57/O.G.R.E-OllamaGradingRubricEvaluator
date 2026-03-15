@@ -140,6 +140,14 @@
     if (refreshKey > 0) staleWarning = false;
   });
 
+  $effect(() => {
+    if (staleWarning) {
+      showGuidePreview = false;
+      isGeneratingGuide = false;
+      generatedGuideMarkdown = '';
+    }
+  });
+
   // ── Actions ───────────────────────────────────────────────────────────
 
   async function handleStartDiscovery() {
@@ -451,7 +459,7 @@
 
   {#if staleWarning}
     <div class="stale-warning">
-      <small>⚠ Page has changed — discovery results may be outdated.</small>
+      <small>⚠ Page has changed — discovery results and site guide may be outdated.</small>
       <button class="btn-link" onclick={() => { staleWarning = false; }}>Dismiss</button>
     </div>
   {/if}

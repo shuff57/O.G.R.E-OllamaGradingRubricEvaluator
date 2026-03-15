@@ -49,9 +49,9 @@
         </span>
         <span class="guide-name">Site Guide: {bestProfile.name}</span>
         <span class="guide-state">{bestProfile.is_active === 1 ? 'Active' : 'Inactive'}</span>
-        {#if matchCount > 1}
-          <span class="multi-match">({matchCount} match)</span>
-        {/if}
+         {#if matchCount > 1}
+           <span class="multi-match">({matchCount} profiles match)</span>
+         {/if}
         <button class="toggle-btn" onclick={toggleActive}>
           {bestProfile.is_active === 1 ? 'Disable' : 'Enable'}
         </button>
