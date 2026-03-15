@@ -97,3 +97,10 @@
 - Preserved the single-assignment Stage 3 variant and its `partial-verified` reporting rule so it is never reported as full pipeline success.
 - Kept downstream skill invocation name-based only with `load_skills=["gb-compare"]`, `load_skills=["gb-new-assignment"]`, and `load_skills=["gb-sync"]`.
 - Captured verification evidence in `.sisyphus/evidence/task-13-gb-pipeline.txt`; markdown LSP diagnostics were not available in this environment because no `.md` server is configured.
+
+## [2026-03-15] Task 15 Complete — mom-fact-finder gold standard rewrite
+- Created `.agents/skills/mom-fact-finder/SKILL.md` in gold-standard format with Guardrails before Workflow, Inputs, Quick Start, phased workflow, Error Handling table, Common Mistakes table, State Management, and Selectors / References.
+- Preserved the full research flow from the archived 509-line skill: pattern-library cache check, live MOM browser search, QID ranking by Times Used, safe `viewonly=1` code extraction, cross-example pattern synthesis, JSON artifact writing, and downstream knowledge-base update behavior.
+- Replaced legacy path instructions with name-based cross-skill loading only: `load_skills=["mom-patterns"]` for cache/writeback and `load_skills=["mom-page-map"]` for navigation/search-scope guidance.
+- Preserved the critical safety rules: never edit, never click save/preview/delete, stay in the active course `cid`, require `View:` heading verification, and rate-limit to 8 question pages with 1000 ms pauses.
+- Evidence recorded in `.sisyphus/evidence/task-15-mom-fact-finder.txt`.
