@@ -502,6 +502,39 @@ async fn set_webview_bounds(
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+#[tauri::command]
+async fn set_webview_bounds(
+    app: tauri::AppHandle,
+    tab_id: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
+    let label = {
+        let state = app.state::<Mutex<WebviewState>>();
+        let guard = state.lock().unwrap();
+        guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
+    };
+
+    app.run_on_main_thread(move || {
+        LINUX_WEBVIEWS.with(|webviews| {
+            if let Some(wv) = webviews.borrow().get(&label) {
+                let rect = wry::Rect {
+                    position: wry::dpi::LogicalPosition::new(x, y).into(),
+                    size: wry::dpi::LogicalSize::new(width, height).into(),
+                };
+                if let Err(e) = wv.set_bounds(rect) {
+                    eprintln!("Failed to set bounds: {}", e);
+                }
+            }
+        });
+    }).map_err(|_| "Failed to run on main thread".to_string())?;
+
+    Ok(())
+}
+
 #[tauri::command]
 async fn hide_webview(app: tauri::AppHandle, tab_id: String) -> Result<(), String> {
     let label = {
@@ -509,9 +542,28 @@ async fn hide_webview(app: tauri::AppHandle, tab_id: String) -> Result<(), Strin
         let guard = state.lock().unwrap();
         guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
     };
-    let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
-    wv.hide().map_err(|e| format!("Failed to hide: {}", e))?;
-    Ok(())
+
+    #[cfg(target_os = "linux")]
+    {
+        app.run_on_main_thread(move || {
+            LINUX_WEBVIEWS.with(|webviews| {
+                if let Some(wv) = webviews.borrow().get(&label) {
+                    if let Err(e) = wv.set_visible(false) {
+                        eprintln!("Failed to hide Linux webview: {}", e);
+                    }
+                }
+            });
+        }).map_err(|_| "Failed to run on main thread".to_string())?;
+
+        return Ok(());
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
+        wv.hide().map_err(|e| format!("Failed to hide: {}", e))?;
+        Ok(())
+    }
 }
 
 #[tauri::command]
@@ -521,9 +573,28 @@ async fn show_webview(app: tauri::AppHandle, tab_id: String) -> Result<(), Strin
         let guard = state.lock().unwrap();
         guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
     };
-    let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
-    wv.show().map_err(|e| format!("Failed to show: {}", e))?;
-    Ok(())
+
+    #[cfg(target_os = "linux")]
+    {
+        app.run_on_main_thread(move || {
+            LINUX_WEBVIEWS.with(|webviews| {
+                if let Some(wv) = webviews.borrow().get(&label) {
+                    if let Err(e) = wv.set_visible(true) {
+                        eprintln!("Failed to show Linux webview: {}", e);
+                    }
+                }
+            });
+        }).map_err(|_| "Failed to run on main thread".to_string())?;
+
+        return Ok(());
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let wv = app.get_webview(&label).ok_or_else(|| "Embedded browser not open".to_string())?;
+        wv.show().map_err(|e| format!("Failed to show: {}", e))?;
+        Ok(())
+    }
 }
 
 #[tauri::command]
@@ -545,10 +616,27 @@ async fn destroy_webview(app: tauri::AppHandle, tab_id: String) -> Result<(), St
         let guard = state.lock().unwrap();
         guard.tabs.get(&tab_id).cloned()
     };
-    if let Some(label) = label {
-        if let Some(wv) = app.get_webview(&label) {
-            wv.close().map_err(|e| format!("Failed to close: {}", e))?;
+    if let Some(label) = label.clone() {
+        #[cfg(target_os = "linux")]
+        {
+            let label_clone = label.clone();
+            app.run_on_main_thread(move || {
+                LINUX_WEBVIEWS.with(|webviews| {
+                    webviews.borrow_mut().remove(&label_clone);
+                });
+                WEBVIEW_URLS.with(|urls| {
+                    urls.borrow_mut().remove(&label_clone);
+                });
+            }).map_err(|_| "Failed to run on main thread".to_string())?;
         }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            if let Some(wv) = app.get_webview(&label) {
+                wv.close().map_err(|e| format!("Failed to close: {}", e))?;
+            }
+        }
+
         let state = app.state::<Mutex<WebviewState>>();
         let mut guard = state.lock().unwrap();
         guard.tabs.remove(&tab_id);
@@ -1127,7 +1215,6 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_model ON response_embeddings(embedding
             go_forward,
             #[cfg(not(target_os = "linux"))]
             reload_browser,
-            #[cfg(not(target_os = "linux"))]
             set_webview_bounds,
             hide_webview,
             show_webview,
