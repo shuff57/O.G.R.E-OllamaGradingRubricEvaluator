@@ -1329,15 +1329,15 @@ Max Concurrent: 6 (Waves 3-4)
 
 > 4 review agents run in PARALLEL. ALL must APPROVE. Rejection → fix → re-run.
 
-- [ ] F1. **Plan Compliance Audit** — `oracle`
+- [x] F1. **Plan Compliance Audit** — `oracle`
   Read the plan end-to-end. For each "Must Have": verify implementation exists. For each "Must NOT Have": search for violations. Check all evidence files exist. Compare deliverables against plan.
   Output: `Must Have [N/N] | Must NOT Have [N/N] | Tasks [N/N] | VERDICT`
 
-- [ ] F2. **Gold Standard Format Compliance** — `unspecified-high`
+- [x] F2. **Gold Standard Format Compliance** — `unspecified-high`
   Read EVERY `.agents/skills/*/SKILL.md` file. For each, verify ALL required sections exist (YAML frontmatter, overview, prerequisites, when to use, when NOT to use, guardrails, workflow, error handling). Check YAML `description` starts with "Use when...". Check no file exceeds 500 lines. Check no `references/` file has YAML frontmatter.
   Output: `Skills [N/N compliant] | Format violations [list] | VERDICT`
 
-- [ ] F3. **Domain Knowledge Preservation Check** — `unspecified-high`
+- [x] F3. **Domain Knowledge Preservation Check** — `unspecified-high`
   For EACH rewritten skill, compare against the archive at `.sisyphus/archive/`. Verify critical domain knowledge is preserved:
   - grade-show-work: all DOM selectors (scoreboxN, bigquestionwrap, etc.)
   - gb-sync: complete Aeries scraping patterns, Phase 4-7 workflow
@@ -1349,7 +1349,7 @@ Max Concurrent: 6 (Waves 3-4)
   Flag any domain knowledge present in archive but MISSING from new skill.
   Output: `Skills [N/N preserved] | Missing knowledge [list] | VERDICT`
 
-- [ ] F4. **Scope Fidelity Check** — `deep`
+- [x] F4. **Scope Fidelity Check** — `deep`
   Verify: no source code modified, no non-markdown/JSON files created, CLAUDE.md ≤200 lines, no hooks beyond SessionEnd, `.claude/skills/` deleted, commands preserved in `.claude/commands/`.
   Output: `Scope violations [N] | VERDICT`
 
