@@ -1,0 +1,43 @@
+# Task 8: End-to-End Integration Test Evidence
+# Date: 2026-03-15
+
+## Build Verification
+cargo build: PASS (Finished dev profile in 6.58s)
+cargo clippy --all-targets: PASS (0 warnings after auto-fix)
+npm run build: PASS (built in 3.20s)
+
+## App Launch Verification
+App binary: /tmp/ogre-linux-browser/ogre-desktop/src-tauri/target/debug/ogre-desktop
+Launch result: SUCCESS (PID 313201 running)
+Sidecar: grading-server stub running (PID 313273)
+
+## Process Tree (no separate browser window)
+313201 ogre-desktop (main app)
+313239 WebKitNetworkProcess (child of main app - normal)
+313272 WebKitWebProcess (child of main app - normal)
+313273 grading-server (stub sidecar)
+
+RESULT: No separate "O.G.R.E Browser" window process spawned.
+The embedded browser uses GtkFixed embedding (wry build_gtk) - no separate window.
+
+## GTK Warnings (non-fatal, pre-existing)
+gtk_widget_get_scale_factor: assertion 'GTK_IS_WIDGET (widget)' failed
+These appear at startup from the main app's WebKitGTK webview, not from our GtkFixed code.
+
+## Windows Regression Check
+git diff 9a60030 HEAD -- ogre-desktop/src/: 0 lines (no frontend changes)
+cfg(not(target_os = "linux")) blocks: UNCHANGED (verified via git diff)
+
+## Commit History (all implementation commits)
+d80e9b4 feat(linux): add URL tracking and script injection via wry
+e9d9426 feat(linux): rewrite navigate/back/forward/reload via wry API
+94bbc49 feat(linux): implement Linux webview bounds and lifecycle
+28e2577 feat(linux): rewrite create_embedded_browser to use wry build_gtk
+c63473c feat(linux): create GtkFixed container and Linux webview state
+168e7c6 build(linux): add gtk and wry Linux-only dependencies
+0e13fd2 style: fix clippy needless_return warnings in Linux webview commands
+
+## Note on Wayland Environment
+System is running COSMIC desktop (Wayland). xdotool cannot check Wayland windows.
+Process tree verification used instead - confirms single app process, no separate browser window.
+Full visual verification requires manual testing with the complete app running.
