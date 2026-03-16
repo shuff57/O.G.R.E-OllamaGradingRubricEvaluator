@@ -317,11 +317,15 @@ export function parseRunPodResponse(data) {
     throw new Error(`Invalid RunPod response: unexpected status ${data?.status || 'undefined'}`);
   }
 
-  if (typeof data?.output?.message?.content !== 'string') {
+  const content = data.output.message?.content;
+  const thinking = data.output.message?.thinking;
+
+  if (typeof content !== 'string' && typeof thinking !== 'string') {
     throw new Error('Invalid RunPod response: missing output.message.content');
   }
 
-  return data.output.message.content;
+  // Reasoning models may return empty content; fall back to thinking field (mirrors parseOllamaResponse)
+  return content || thinking || '';
 }
 
 /**
