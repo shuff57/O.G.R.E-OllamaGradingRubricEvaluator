@@ -62,7 +62,7 @@ async def main():
             llm_model_kwargs={
                 "host": "http://localhost:11434",
                 "options": {"num_ctx": 8192},
-                "timeout": 300,
+                "timeout": 600,
             },
             embedding_func=EmbeddingFunc(
                 embedding_dim=1024,
