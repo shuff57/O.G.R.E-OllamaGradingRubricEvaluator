@@ -73,6 +73,57 @@ export function buildOllamaRequest(config, messages) {
   };
 }
 
+export function buildRunPodRequest(config, messages) {
+  const endpointId = config.endpointId || config.credentials?.endpoint_id || extractRunPodEndpointId(config.apiUrl);
+  const apiKey = config.apiKey || config.credentials?.api_key || config.credentials?.access_token;
+
+  if (!endpointId) {
+    throw new Error('RunPod endpoint ID is required');
+  }
+
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${apiKey}`,
+  };
+
+  const runPodMessages = messages.map(msg => {
+    if (!Array.isArray(msg.content)) return msg;
+
+    let text = '';
+    const images = [];
+    for (const part of msg.content) {
+      if (part.type === 'text') {
+        text += part.text;
+      } else if (part.type === 'image_url' && part.image_url?.url) {
+        const url = part.image_url.url;
+        const base64 = url.startsWith('data:') ? url.split(',')[1] : url;
+        images.push(base64);
+      }
+    }
+
+    return images.length > 0
+      ? { role: msg.role, content: text, images }
+      : { role: msg.role, content: text };
+  });
+
+  return {
+    url: `https://api.runpod.ai/v2/${endpointId}/runsync`,
+    headers,
+    body: {
+      input: {
+        model: config.model,
+        messages: runPodMessages,
+        stream: false,
+        think: false,
+        keep_alive: '5m',
+        options: {
+          temperature: config.temperature ?? 0.2,
+        },
+      },
+    },
+  };
+}
+
 /**
  * Build OpenAI API request
  * @param {Object} config - Provider configuration
@@ -257,6 +308,22 @@ export function parseOllamaResponse(data) {
   return data.message.content || data.message.thinking || '';
 }
 
+export function parseRunPodResponse(data) {
+  if (data?.status === 'FAILED') {
+    throw new Error(`RunPod request failed: ${data?.error || 'Unknown error'}`);
+  }
+
+  if (data?.status !== 'COMPLETED') {
+    throw new Error(`Invalid RunPod response: unexpected status ${data?.status || 'undefined'}`);
+  }
+
+  if (typeof data?.output?.message?.content !== 'string') {
+    throw new Error('Invalid RunPod response: missing output.message.content');
+  }
+
+  return data.output.message.content;
+}
+
 /**
  * Parse OpenAI API response
  * @param {Object} data - Response data from OpenAI API
@@ -382,4 +449,11 @@ export function parseGitHubModelsResponse(data) {
     throw new Error('Invalid GitHub Models response: missing choices[0].message.content');
   }
   return data.choices[0].message.content;
+}
+
+function extractRunPodEndpointId(apiUrl) {
+  if (!apiUrl || typeof apiUrl !== 'string') return null;
+
+  const match = apiUrl.match(/\/v2\/([^/]+)/);
+  return match?.[1] || null;
 }

@@ -22,12 +22,14 @@ import {
 } from './grading.js';
 import {
   buildOllamaRequest,
+  buildRunPodRequest,
   buildOpenAIRequest,
   buildAnthropicRequest,
   buildGoogleGeminiRequest,
   buildGitHubModelsRequest,
   getCopilotSessionToken,
   parseOllamaResponse,
+  parseRunPodResponse,
   parseOpenAIResponse,
   parseAnthropicResponse,
   parseGoogleGeminiResponse,
@@ -142,7 +144,8 @@ async function callProviderDirect(provider, config, messages, timestamp) {
 
   let requestObj;
   switch (provider.toLowerCase()) {
-    case 'ollama': case 'ollama-local': case 'ollama-cloud': requestObj = buildOllamaRequest(config, messages); break;
+    case 'ollama': case 'ollama-local': requestObj = buildOllamaRequest(config, messages); break;
+    case 'ollama-cloud': requestObj = buildRunPodRequest(config, messages); break;
     case 'openai': requestObj = buildOpenAIRequest(config, messages); break;
     case 'anthropic': requestObj = buildAnthropicRequest(config, messages); break;
     case 'google-gemini': requestObj = buildGoogleGeminiRequest(config, messages); break;
@@ -183,7 +186,8 @@ async function callProviderDirect(provider, config, messages, timestamp) {
 
   // Extract text based on provider format
   switch (provider.toLowerCase()) {
-    case 'ollama': case 'ollama-local': case 'ollama-cloud': return parseOllamaResponse(data);
+    case 'ollama': case 'ollama-local': return parseOllamaResponse(data);
+    case 'ollama-cloud': return parseRunPodResponse(data);
     case 'openai': return parseOpenAIResponse(data);
     case 'anthropic': return parseAnthropicResponse(data);
     case 'google-gemini': return parseGoogleGeminiResponse(data);

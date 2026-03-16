@@ -1,10 +1,13 @@
 import { describe, test, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import {
   buildOllamaRequest,
+  buildRunPodRequest,
   buildOpenAIRequest,
   buildAnthropicRequest,
   buildGoogleGeminiRequest,
   parseOllamaResponse,
+  parseRunPodResponse,
   buildGitHubModelsRequest,
   parseOpenAIResponse,
   parseAnthropicResponse,
@@ -60,6 +63,77 @@ describe('Provider Request Builders', () => {
       const result = buildOllamaRequest(config, messages);
       
       expect(result.url).toBe('https://api.ollama.com/api/chat');
+    });
+  });
+
+  describe('buildRunPodRequest', () => {
+    test('creates RunPod runsync URL from endpointId', () => {
+      const config = { endpointId: 'abc123', apiKey: 'rp-key', model: 'qwen3', apiUrl: 'https://api.runpod.ai/v2/abc123/runsync' };
+
+      const result = buildRunPodRequest(config, messages);
+
+      expect(result.url).toBe('https://api.runpod.ai/v2/abc123/runsync');
+    });
+
+    test('extracts endpointId from credentials when config endpointId missing', () => {
+      const config = {
+        apiKey: 'rp-key',
+        model: 'qwen3',
+        apiUrl: 'https://api.runpod.ai/v2/wrong-id/runsync',
+        credentials: { endpoint_id: 'from-creds' },
+      };
+
+      const result = buildRunPodRequest(config, messages);
+
+      expect(result.url).toBe('https://api.runpod.ai/v2/from-creds/runsync');
+    });
+
+    test('extracts endpointId from apiUrl when endpointId is not provided', () => {
+      const config = {
+        apiKey: 'rp-key',
+        model: 'qwen3',
+        apiUrl: 'https://api.runpod.ai/v2/url-endpoint/runsync',
+      };
+
+      const result = buildRunPodRequest(config, messages);
+
+      expect(result.url).toBe('https://api.runpod.ai/v2/url-endpoint/runsync');
+    });
+
+    test('reuses multimodal message transformation and sets RunPod input payload', () => {
+      const config = { endpointId: 'abc123', apiKey: 'rp-key', model: 'qwen3', temperature: 0.4 };
+      const multimodalMessages = [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Look at this' },
+            { type: 'image_url', image_url: { url: 'data:image/png;base64,Zm9vYmFy' } },
+          ],
+        },
+      ];
+
+      const result = buildRunPodRequest(config, multimodalMessages);
+
+      expect(result.headers).toEqual({
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer rp-key',
+      });
+      expect(result.body).toEqual({
+        input: {
+          model: 'qwen3',
+          messages: [{ role: 'user', content: 'Look at this', images: ['Zm9vYmFy'] }],
+          stream: false,
+          think: false,
+          keep_alive: '5m',
+          options: { temperature: 0.4 },
+        },
+      });
+    });
+
+    test('throws when endpointId cannot be determined', () => {
+      const config = { apiKey: 'rp-key', model: 'qwen3', apiUrl: 'https://api.runpod.ai/v2/' };
+
+      expect(() => buildRunPodRequest(config, messages)).toThrow('RunPod endpoint ID is required');
     });
   });
 
@@ -234,6 +308,42 @@ describe('Provider Response Parsers', () => {
       const data = { message: { role: 'assistant' } };
       
       expect(() => parseOllamaResponse(data)).toThrow('Invalid Ollama response: missing message.content');
+    });
+  });
+
+  describe('parseRunPodResponse', () => {
+    test('extracts nested output message content for completed responses', () => {
+      const data = {
+        id: 'run-1',
+        status: 'COMPLETED',
+        output: {
+          message: {
+            content: 'graded result',
+          },
+        },
+      };
+
+      expect(parseRunPodResponse(data)).toBe('graded result');
+    });
+
+    test('throws provider error for failed responses', () => {
+      const data = {
+        id: 'run-2',
+        status: 'FAILED',
+        error: 'OOM',
+      };
+
+      expect(() => parseRunPodResponse(data)).toThrow('RunPod request failed: OOM');
+    });
+
+    test('throws when completed response is missing nested content', () => {
+      const data = {
+        id: 'run-3',
+        status: 'COMPLETED',
+        output: {},
+      };
+
+      expect(() => parseRunPodResponse(data)).toThrow('Invalid RunPod response: missing output.message.content');
     });
   });
 
@@ -431,5 +541,14 @@ describe('Provider Temperature Parameters', () => {
     const config = { apiKey: 'gh-test', model: 'gpt-4o', apiUrl: 'https://api.githubcopilot.com', temperature: 0.4 };
     const result = buildGitHubModelsRequest(config, messages);
     expect(result.body.temperature).toBe(0.4);
+  });
+});
+
+describe('ollama-cloud routing', () => {
+  test('server routes ollama-cloud through RunPod adapters', () => {
+    const serverSource = readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+
+    expect(serverSource).toContain("case 'ollama-cloud': requestObj = buildRunPodRequest(config, messages); break;");
+    expect(serverSource).toContain("case 'ollama-cloud': return parseRunPodResponse(data);");
   });
 });
