@@ -132,7 +132,7 @@ async function ensureValidAnthropicToken(config) {
   };
 }
 
-async function callProviderDirect(provider, config, messages, timestamp) {
+async function callProviderDirect(provider, config, messages, timestamp, options = {}) {
   // Exchange GitHub OAuth token for Copilot session token
   if (provider.toLowerCase() === 'github-models') {
     config = { ...config, apiKey: await getCopilotSessionToken(config.apiKey) };
@@ -169,6 +169,29 @@ async function callProviderDirect(provider, config, messages, timestamp) {
       body: JSON.stringify(requestObj.body),
       signal: controller.signal,
     });
+  } catch (fetchError) {
+    const providerLower = provider.toLowerCase();
+    const message = typeof fetchError?.message === 'string' ? fetchError.message : '';
+    const isConnectionError = (
+      fetchError?.code === 'ECONNREFUSED' ||
+      fetchError?.cause?.code === 'ECONNREFUSED' ||
+      message.includes('fetch failed') ||
+      message.includes('ENOTFOUND') ||
+      message.includes('ECONNREFUSED')
+    );
+    const isLocalOllama = providerLower === 'ollama' || providerLower === 'ollama-local';
+
+    if (isConnectionError && isLocalOllama) {
+      const cloudProviderEntry = providerConfigs.find(p => p.id === 'ollama-cloud');
+      if (cloudProviderEntry) {
+        const cloudConfig = resolveProviderConfig('ollama-cloud', config.model);
+        console.log(`[${timestamp}] [fallback] Local Ollama unreachable, falling back to ollama-cloud`);
+        await options.onFallback?.();
+        return callProviderDirect('ollama-cloud', cloudConfig, messages, timestamp, options);
+      }
+    }
+
+    throw fetchError;
   } finally {
     clearTimeout(timeoutId);
   }
@@ -1446,6 +1469,16 @@ app.post('/api/grade', async (c) => {
 
   return streamSSE(c, async (stream) => {
     try {
+      const fallbackOptions = {
+        onFallback: async () => {
+          await stream.writeSSE({
+            event: 'progress',
+            data: JSON.stringify({ phase: 'cloud-fallback', reason: 'Local Ollama unreachable. Using cloud GPU.' }),
+            id: String(sseId++),
+          });
+        },
+      };
+
       // Resolve provider config
       const providerConfig = resolveProviderConfig(provider, model);
       const keySource = providerConfig.apiKey ? 'configured' : 'none';
@@ -1477,14 +1510,14 @@ app.post('/api/grade', async (c) => {
 
           console.log(`[${timestamp()}] [sse] Grading chunk ${i + 1}/${chunks.length} (${chunk.students.length} students)...`);
           const prompt = buildBatchPrompt(rubric, chunk.students, anchors, bridgeResponses);
-          const aiText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: prompt }], timestamp());
+          const aiText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: prompt }], timestamp(), fallbackOptions);
           const chunkResults = parseBatchResponse(aiText, chunk.students, maxScore);
           // Guard: if AI dropped trailing students (positional shortfall), retry them once
           const _dropped = chunk.students.slice(chunkResults.length);
           if (_dropped.length > 0) {
             console.warn(`[${timestamp()}] [sse] ⚠ Chunk ${i + 1}: AI dropped ${_dropped.length}/${chunk.students.length} — retrying...`);
             const _retryPrompt = buildBatchPrompt(rubric, _dropped, anchors, null);
-            const _retryText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: _retryPrompt }], timestamp());
+            const _retryText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: _retryPrompt }], timestamp(), fallbackOptions);
             const _retryResults = parseBatchResponse(_retryText, _dropped, maxScore);
             chunkResults.push(..._retryResults);
             console.log(`[${timestamp()}] [sse] ↺ Retry: recovered ${_retryResults.length}/${_dropped.length}`);
@@ -1525,7 +1558,7 @@ app.post('/api/grade', async (c) => {
 
         console.log(`[${timestamp()}] [sse] Grading calibration batch (${calStudents.length} students)...`);
         const calPrompt = buildBatchPrompt(rubric, calStudents, anchors, null, calibrationExamples);
-        const calText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: calPrompt }], timestamp());
+        const calText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: calPrompt }], timestamp(), fallbackOptions);
         const calResults = parseBatchResponse(calText, calStudents, maxScore);
         allResults.push(calResults);
 
@@ -1563,7 +1596,7 @@ app.post('/api/grade', async (c) => {
             const waveTexts = await Promise.all(
               wave.map(chunk => {
                 const prompt = buildBatchPrompt(rubric, chunk.students, anchors, bridgeResponses, calibrationExamples);
-                return callProviderDirect(provider, providerConfig, [{ role: 'user', content: prompt }], timestamp());
+                return callProviderDirect(provider, providerConfig, [{ role: 'user', content: prompt }], timestamp(), fallbackOptions);
               })
             );
 
@@ -1575,7 +1608,7 @@ app.post('/api/grade', async (c) => {
               if (_dropped.length > 0) {
                 console.warn(`[${timestamp()}] [sse] ⚠ Parallel chunk ${chunkIdx + 1}: AI dropped ${_dropped.length}/${wave[j].students.length} — retrying...`);
                 const _retryPrompt = buildBatchPrompt(rubric, _dropped, anchors, bridgeResponses, calibrationExamples);
-                const _retryText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: _retryPrompt }], timestamp());
+                const _retryText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: _retryPrompt }], timestamp(), fallbackOptions);
                 const _retryResults = parseBatchResponse(_retryText, _dropped, maxScore);
                 chunkResults.push(..._retryResults);
                 console.log(`[${timestamp()}] [sse] ↺ Retry: recovered ${_retryResults.length}/${_dropped.length}`);
@@ -1618,7 +1651,7 @@ app.post('/api/grade', async (c) => {
           if (effectiveSweep === 'compact') {
             // Single API call with compact table
             const sweepPrompt = buildCompactSweepPrompt(results, students, anchors, chunkMap, maxScore);
-            const sweepText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: sweepPrompt }], timestamp());
+            const sweepText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: sweepPrompt }], timestamp(), fallbackOptions);
 
             // Parse the JSON array response
             const jsonMatch = sweepText.match(/\[[\s\S]*\]/);
@@ -1637,7 +1670,7 @@ app.post('/api/grade', async (c) => {
 
             for (const bp of bandPrompts) {
               console.log(`[${timestamp()}] [sse]   Checking ${bp.label} band (${bp.studentIndices.length} students)...`);
-              const bandText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: bp.prompt }], timestamp());
+              const bandText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: bp.prompt }], timestamp(), fallbackOptions);
 
               const jsonMatch = bandText.match(/\[[\s\S]*\]/);
               if (jsonMatch) {
@@ -1723,7 +1756,7 @@ app.post('/api/grade', async (c) => {
         }, maxScore, results);
 
         try {
-          const outlierText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: outlierPrompt }], timestamp());
+          const outlierText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: outlierPrompt }], timestamp(), fallbackOptions);
           const outlierResults = parseBatchResponse(outlierText, outlierStudents, maxScore);
 
           const adjustedResults = [];

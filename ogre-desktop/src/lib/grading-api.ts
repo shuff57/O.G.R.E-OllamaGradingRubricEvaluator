@@ -14,6 +14,7 @@ import { withRetry } from "./ai-retry";
 import { buildSkillInjection } from "./skills-api";
 import type {
   BatchGradingCallbacks,
+  BatchProgressEvent,
   CancellationToken,
 } from "./sse-parser";
 
@@ -644,7 +645,19 @@ export function startBatchGrading(
       // Wrap callbacks to check cancellation before dispatching
       const guardedCallbacks: BatchGradingCallbacks = {
         onProgress: (d) => {
-          if (!token.cancelled) return callbacks.onProgress?.(d);
+          if (token.cancelled) return;
+          if (d?.phase === "cloud-fallback") {
+            const normalized = {
+              ...d,
+              reason:
+                (d as BatchProgressEvent & { reason?: string }).reason ||
+                "Local Ollama unreachable. Using cloud GPU.",
+            };
+            return callbacks.onProgress?.(
+              normalized as BatchProgressEvent,
+            );
+          }
+          return callbacks.onProgress?.(d);
         },
         onChunk: (d) => {
           if (!token.cancelled) return callbacks.onChunk?.(d);
