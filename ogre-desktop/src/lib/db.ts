@@ -170,7 +170,7 @@ export async function deleteProviderConfig(id: string): Promise<void> {
 }
 
 /**
- * Update the active provider and model based on extension write-back.
+ * Update the active provider and model based on provider-changed events.
  * Sets is_active=0 for all providers, then is_active=1 + model for the specified provider.
  */
 export async function updateActiveProvider(providerId: string, model: string): Promise<void> {

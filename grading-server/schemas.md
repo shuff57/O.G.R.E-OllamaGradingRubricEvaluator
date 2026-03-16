@@ -1,6 +1,6 @@
 # Wire Format: JSON Request/Response Schemas
 
-This document defines the exact JSON structures for the POST `/grade` endpoint. The server accepts grading requests from the Chrome extension and returns scored results with feedback.
+This document defines the exact JSON structures for the POST `/grade` endpoint. The server accepts grading requests from the desktop app and returns scored results with feedback.
 
 ---
 

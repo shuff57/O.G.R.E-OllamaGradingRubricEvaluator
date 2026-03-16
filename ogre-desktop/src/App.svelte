@@ -94,7 +94,7 @@
       sessionVersion += 1;
     });
 
-    // Listen for provider-changed events from extension write-back
+    // Listen for provider-changed events from the grading server
     // Persist the active provider selection to SQLite
     unlistenProviderChange = await listenProviderChanged(async (data) => {
       try {

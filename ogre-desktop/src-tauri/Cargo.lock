@@ -500,6 +500,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "command-group"
+version = "5.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a68fa787550392a9d58f44c21a3022cfb3ea3e2458b7f85d3b399d0ceeccf409"
+dependencies = [
+ "async-trait",
+ "nix",
+ "tokio",
+ "winapi",
+]
+
+[[package]]
 name = "concurrent-queue"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2387,6 +2399,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 
 [[package]]
+name = "nix"
+version = "0.27.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2eb04e9c688eff1c89d72b407f168cf79bb9e867a9d3323ed6c01519eb9cc053"
+dependencies = [
+ "bitflags 2.10.0",
+ "cfg-if",
+ "libc",
+]
+
+[[package]]
 name = "nodrop"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2704,6 +2727,7 @@ dependencies = [
 name = "ogre-desktop"
 version = "0.1.0"
 dependencies = [
+ "command-group",
  "gtk",
  "reqwest 0.12.28",
  "serde",
@@ -2711,6 +2735,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-http",
+ "tauri-plugin-opener",
  "tauri-plugin-process",
  "tauri-plugin-shell",
  "tauri-plugin-single-instance",
@@ -4793,6 +4818,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "tauri-plugin-opener"
+version = "2.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fc624469b06f59f5a29f874bbc61a2ed737c0f9c23ef09855a292c389c42e83f"
+dependencies = [
+ "dunce",
+ "glob",
+ "objc2-app-kit",
+ "objc2-foundation",
+ "open",
+ "schemars 0.8.22",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin",
+ "thiserror 2.0.18",
+ "url",
+ "windows",
+ "zbus",
+]
+
+[[package]]
 name = "tauri-plugin-process"
 version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5122,6 +5169,7 @@ dependencies = [
  "libc",
  "mio",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2",
  "tokio-macros",
  "windows-sys 0.61.2",

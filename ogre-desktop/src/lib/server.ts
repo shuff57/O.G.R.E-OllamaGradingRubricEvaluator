@@ -5,7 +5,7 @@ import type { SiteProfile } from './batch-grader';
 
 export type ServerStatus = 'running' | 'stopped' | 'crashed' | 'failed';
 
-/** Shape of the session_complete payload emitted from the Rust sidecar handler. */
+/** Shape of the session_complete payload emitted from the grading server child process. */
 export interface SessionCompletePayload {
   type: 'session_complete';
   provider_id: string;
@@ -21,7 +21,7 @@ export interface SessionCompletePayload {
   custom_instructions: string;
 }
 
-/** Shape of the provider_changed payload from extension write-back. */
+/** Shape of the provider_changed payload from the grading server. */
 export interface ProviderChangedPayload {
   provider_id: string;
   model: string;
@@ -44,7 +44,7 @@ export function listenServerStatus(callback: (status: ServerStatus) => void) {
 }
 
 /**
- * Listen for session-complete events emitted by the sidecar handler
+ * Listen for session-complete events emitted by the grading server child process
  * when POST /session data is captured from stdout.
  * The Rust side already inserts into SQLite — this is for UI refresh.
  * Returns an unlisten function.
@@ -54,8 +54,8 @@ export function listenSessionComplete(callback: (session: SessionCompletePayload
 }
 
 /**
- * Listen for provider-changed events from extension write-back
- * (extension POSTs active provider selection to /api/providers/active,
+ * Listen for provider-changed events from the grading server
+ * (desktop app POSTs active provider selection to /api/providers/active,
  * server writes to stdout, Rust parses and emits Tauri event).
  * Returns an unlisten function.
  */

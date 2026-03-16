@@ -1161,7 +1161,7 @@ Do not include markdown formatting, code fences, or explanations outside the JSO
 /**
  * Generate a rubric creation prompt for the given assignment content.
  *
- * Ported from Chrome extension's prompts.js getRubricGenerationPrompt().
+ * Ported from the original prompts.js getRubricGenerationPrompt().
  * Instructs the AI to create grading criteria for FREE RESPONSE questions only.
  *
  * @param content - Assignment question/prompt/description text

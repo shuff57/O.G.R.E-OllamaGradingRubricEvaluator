@@ -30,7 +30,7 @@ Choose your installer:
 - ✅ Native Windows application
 - ✅ Integrated grading server management
 - ✅ Automatic updates when new versions are released
-- ✅ All the power of the Chrome extension in a standalone app
+- ✅ Full-featured grading interface with integrated AI model support
 - ✅ Secure, cryptographically signed updates
 
 ### System Requirements
@@ -65,11 +65,10 @@ The `/grade` skill is an AI agent command that automates batch grading on web-ba
 **Currently supported:** MyOpenMath (`gradeallq2.php` pages)
 
 ### Quick Start
-1. Install **[Playwriter Chrome extension](https://chromewebstore.google.com/detail/playwriter/dladdjplhmhnilafldonddlgllbbgelk)**
-2. Configure **Playwriter MCP** in your AI environment (OpenCode/Claude Code)
-3. Copy `.agents/commands/grade.md` and `.agents/commands/grade-selectors.md` to your AI environment's command folder
-4. Open your grading page in Chrome and enable Playwriter extension (click icon → turns green)
-5. In your AI chat: `/grade https://your-grading-page-url`
+1. Configure **Playwriter MCP** in your AI environment (OpenCode/Claude Code) — see [SETUP.md](SETUP.md#playwriter-mcp-configuration)
+2. Copy `.agents/commands/grade.md` and `.agents/commands/grade-selectors.md` to your AI environment's command folder
+3. Open your grading page in Chrome with Playwriter MCP active
+4. In your AI chat: `/grade https://your-grading-page-url`
 
 ### Full Setup Guide
 See **[SETUP.md](SETUP.md)** for complete installation, configuration, and usage instructions.

@@ -59,7 +59,7 @@ console.log(`[config] Loaded ${providerConfigs.length} provider(s), token=${hand
 const profileCache = new Map();
 
 /**
- * Call an AI provider directly from the server (bypasses extension proxy).
+ * Call an AI provider directly from the server.
  * Used for providers that don't require browser auth context (Ollama, OpenAI, etc.)
  */
 // Anthropic OAuth client ID (matches oauth.ts and opencode-anthropic-auth)
@@ -240,9 +240,9 @@ function buildBridgeResponses(chunkResults, chunkStudents, anchors, maxScore) {
   return [...new Map(bridges.map(b => [b.studentIndex, b])).values()];
 }
 
-// CORS middleware for Chrome extension
+// CORS middleware
 app.use('/*', cors({
-  origin: '*', // Allow all origins (extension-friendly)
+  origin: '*', // Allow all origins (desktop app and localhost)
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],
 }));
@@ -278,18 +278,17 @@ app.get('/health', (c) => {
 
 /**
  * GET /api/handshake
- * Returns the handshake token for the Chrome extension.
- * Chrome extensions with host_permissions may not send an Origin header,
- * so we accept requests with a chrome-extension:// origin OR no origin
+ * Returns the handshake token for the desktop app.
+ * Accepts requests from localhost origins or no origin
  * (localhost-only server; the handshake token is the real security gate).
  * Returns 503 if no token has been set by desktop yet.
  */
 app.get('/api/handshake', (c) => {
   const origin = c.req.header('Origin') || '';
-  // Block non-extension web origins (e.g. random websites) but allow
-  // missing origin (Chrome extension host_permissions bypass) and extension origins
-  if (origin && !origin.startsWith('chrome-extension://') && !origin.startsWith('http://localhost') && !origin.startsWith('http://127.0.0.1')) {
-    return c.json({ error: 'Forbidden: extension origin required' }, 403);
+  // Block non-localhost web origins (e.g. random websites) but allow
+  // missing origin and localhost origins
+  if (origin && !origin.startsWith('http://localhost') && !origin.startsWith('http://127.0.0.1')) {
+    return c.json({ error: 'Forbidden: localhost origin required' }, 403);
   }
 
   return c.json({ token: handshakeToken });
@@ -305,13 +304,13 @@ app.get('/api/providers', (c) => {
 
 /**
  * POST /internal/providers
- * Desktop pushes token + provider configs. Rejects chrome-extension:// origin.
+ * Desktop pushes token + provider configs. Only accepts localhost origins.
  * Body: { token: string, providers: Array<{id, api_url, model, is_active, credentials}> }
  */
 app.post('/internal/providers', async (c) => {
   const origin = c.req.header('Origin') || '';
-  if (origin.startsWith('chrome-extension://')) {
-    return c.json({ error: 'Forbidden: extensions cannot push provider config' }, 403);
+  if (origin && !origin.startsWith('http://localhost') && !origin.startsWith('http://127.0.0.1')) {
+    return c.json({ error: 'Forbidden: only desktop app can push provider config' }, 403);
   }
 
   try {
@@ -338,9 +337,9 @@ app.post('/internal/providers', async (c) => {
 
 /**
  * POST /api/providers/active
- * Extension sets the active provider. Protected by Bearer token middleware.
+ * Desktop app sets the active provider. Protected by Bearer token middleware.
  * Body: { provider_id: string, model: string }
- * Emits stdout JSON for desktop sidecar: {"type":"provider_changed","provider_id":"...","model":"..."}
+ * Emits stdout JSON for desktop child process: {"type":"provider_changed","provider_id":"...","model":"..."}
  */
 app.post('/api/providers/active', async (c) => {
   try {
@@ -790,13 +789,13 @@ app.post('/api/automation/revoke-access', async (c) => {
  */
 app.post('/api/automation/grade', async (c) => {
   // DEPRECATED: This endpoint used Playwriter for browser automation
-  // Use /api/grade instead with extension-based extraction and filling
+  // Use /api/grade instead with desktop app extraction and filling
   return c.json({
     error: 'Endpoint deprecated',
     message: 'This automation endpoint has been removed. Use /api/grade instead.',
     migration: {
       new_endpoint: '/api/grade',
-      approach: 'Extension handles extraction and filling via chrome.scripting'
+      approach: 'Desktop app handles extraction and filling via evalScript'
     }
   }, 410);
 
@@ -1013,7 +1012,7 @@ app.post('/api/automation/grade', async (c) => {
  * Used for review mode - allows user to approve results before filling
  */
 app.post('/api/automation/grade-only', async (c) => {
-  // DEPRECATED: Use /api/grade with extension-based extraction
+  // DEPRECATED: Use /api/grade with desktop app extraction
   return c.json({
     error: 'Endpoint deprecated',
     message: 'Use /api/grade instead',
@@ -1148,11 +1147,11 @@ app.post('/api/automation/grade-only', async (c) => {
  * Used after user approves results in review mode
  */
 app.post('/api/automation/fill', async (c) => {
-  // DEPRECATED: Extension now fills grades directly via chrome.scripting
+  // DEPRECATED: Desktop app now fills grades directly via evalScript
   return c.json({
     error: 'Endpoint deprecated',
-    message: 'Extension handles filling directly - server no longer fills grades',
-    migration: { approach: 'Use BatchGrader.fillGrade() in extension' }
+    message: 'Desktop app handles filling directly - server no longer fills grades',
+    migration: { approach: 'Use BatchGrader.fillGrade() in the desktop app' }
   }, 410);
 
   // Old implementation below (unreachable - kept for reference)
@@ -1837,7 +1836,7 @@ app.post('/session', async (c) => {
   try {
     const body = await c.req.json();
     
-    // Log specialized JSON for the desktop app sidecar handler to pick up
+    // Log specialized JSON for the desktop app child process to pick up
     // This allows the desktop app to persist grading history to SQLite
     console.log(JSON.stringify({
       type: 'session_complete',
@@ -1930,8 +1929,8 @@ const server = serve({
 ║  HOW TO USE:                                                  ║
 ║  1. Keep this window open while grading                       ║
 ║  2. Open your grading page in Chrome                          ║
-║  3. Use the O.G.R.E extension's "Batch" mode                  ║
-║  4. The extension will automatically use this server          ║
+║  3. Use the O.G.R.E desktop app's "Batch" mode                ║
+║  4. The desktop app will automatically use this server        ║
 ╠═══════════════════════════════════════════════════════════════╣
 ║  TO STOP: Close this window or press Ctrl+C                   ║
 ╚═══════════════════════════════════════════════════════════════╝

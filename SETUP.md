@@ -20,12 +20,10 @@ Before using the grading skill, you need:
 ### 1. Chrome Browser
 Any Chromium-based browser works (Chrome, Edge, Brave).
 
-### 2. Playwriter Extension
-The skill uses **Playwriter** to control your browser and interact with grading pages.
+### 2. Playwriter MCP
+The skill uses **Playwriter MCP** to control your browser and interact with grading pages.
 
-**Installation:**
-1. Install the Playwriter extension from the Chrome Web Store: [Playwriter Extension](https://chromewebstore.google.com/detail/playwriter/dladdjplhmhnilafldonddlgllbbgelk)
-2. Pin the extension to your toolbar for easy access
+Playwriter MCP is configured as an MCP server in your AI environment — see [Playwriter MCP Configuration](#4-playwriter-mcp-configuration) below.
 
 ### 3. AI Environment with MCP Support
 You need an AI environment that supports the Model Context Protocol (MCP):
@@ -83,9 +81,7 @@ You need an AI environment that supports the Model Context Protocol (MCP):
 ### First-Time Setup (Per Session)
 
 1. **Open your grading page** in Chrome (e.g., MyOpenMath grading page)
-2. **Enable Playwriter** on that tab:
-   - Click the Playwriter extension icon in your toolbar
-   - The icon should turn green, indicating it's active on that tab
+2. **Ensure Playwriter MCP is active** in your AI environment (configured in MCP settings)
 3. **Keep the tab open** — the AI will control this tab to extract data and fill grades
 
 ### Basic Usage
@@ -152,7 +148,7 @@ You can customize this in `.agents/commands/grade.md` under "Grading Philosophy"
 ## Troubleshooting
 
 ### "No Playwright pages are available"
-**Solution:** Enable the Playwriter extension on your grading tab. Click the extension icon — it should turn green.
+**Solution:** Ensure Playwriter MCP is configured and active in your AI environment. Verify Chrome is running with the target tab open.
 
 ### "Playwriter not available"
 **Solution:** 
@@ -210,8 +206,8 @@ Most LMS platforms (MyOpenMath, Canvas, Blackboard) render MathJax automatically
 ## Getting Help
 
 If you encounter issues:
-1. Check that Playwriter extension is enabled (green icon) on your grading tab
-2. Verify MCP configuration in your AI environment settings
+1. Verify Playwriter MCP is configured in your AI environment settings
+2. Check that Chrome is running with your grading tab open
 3. Check `grade-state.json` for session state
 4. Review the skill documentation in `.agents/commands/grade.md`
 

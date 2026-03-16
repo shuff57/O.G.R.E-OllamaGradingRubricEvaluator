@@ -328,7 +328,7 @@ export async function getCopilotSessionToken(githubOAuthToken) {
   if (!res.ok) {
     const text = await res.text();
     if (res.status === 401) {
-      throw new Error('GitHub token is invalid or expired. Re-authenticate in the extension.');
+      throw new Error('GitHub token is invalid or expired. Re-authenticate in the desktop app.');
     }
     if (res.status === 403) {
       throw new Error('No GitHub Copilot subscription found for this account.');

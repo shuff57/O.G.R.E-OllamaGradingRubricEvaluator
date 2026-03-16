@@ -2,8 +2,7 @@
  * Provider Config Sync: Desktop → Grading Server
  *
  * Reads provider configs + OAuth tokens from SQLite and POSTs them
- * to the local grading server so the Chrome extension can fetch them
- * via the handshake → Bearer token flow.
+ * to the local grading server via the handshake → Bearer token flow.
  */
 
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";

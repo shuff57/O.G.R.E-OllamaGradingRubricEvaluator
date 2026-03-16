@@ -8,7 +8,7 @@ This document guides you through building and deploying the O.G.R.E Desktop appl
 ### Development Environment
 - **Node.js** 20+ and npm
 - **Rust** toolchain (stable)
-- **Bun** (for building grading-server sidecar)
+- **Bun** (for grading-server development)
 - **Windows** (for Windows builds; macOS support in v2)
 
 ### Required Setup
@@ -17,19 +17,9 @@ This document guides you through building and deploying the O.G.R.E Desktop appl
    ```bash
    cd ogre-desktop
    npm install
-   cd ../grading-server
-   bun install
    ```
 
-2. **Build Sidecar Binary** (REQUIRED before building desktop app)
-   ```bash
-   cd grading-server
-   bun build --compile --target=bun-windows-x64 server.js --outfile ../ogre-desktop/src-tauri/binaries/grading-server-x86_64-pc-windows-msvc.exe
-   ```
-   
-   **Important**: The sidecar binary (~111MB) is **NOT committed to git**. You must build it locally or in CI.
-
-3. **Generate Signing Keys** (for auto-updater)
+2. **Generate Signing Keys** (for auto-updater)
    ```bash
    npx tauri signer generate -w ~/.tauri/ogre-desktop.key
    ```
@@ -109,14 +99,13 @@ ogre-desktop/
 │   │   └── UpdateModal.svelte
 │   └── lib/                 # Utilities
 │       ├── db.ts            # SQLite CRUD functions
-│       ├── server.ts        # Sidecar event listeners
+│       ├── server.ts        # Server event listeners
 │       ├── oauth.ts         # OAuth flow for Google/GitHub
 │       └── updater.ts       # Auto-update logic
 ├── src-tauri/               # Rust backend
 │   ├── src/
-│   │   └── lib.rs           # Sidecar lifecycle, tray, deep links, SQLite
-│   ├── binaries/            # Sidecar binary (gitignored)
-│   │   └── grading-server-x86_64-pc-windows-msvc.exe
+│   │   └── lib.rs           # Server lifecycle, tray, deep links, SQLite
+│   ├── binaries/            # Bundled server resources
 │   ├── Cargo.toml
 │   └── tauri.conf.json      # Bundle, updater, plugins config
 └── tests/e2e/               # Integration tests (Bash scripts)
@@ -187,11 +176,11 @@ On first launch, the app shows a **Setup Wizard** with:
 ### Component Flow
 
 ```
-Chrome Extension (batch-grader.js)
+Svelte Frontend (batch-grader.ts)
    ↓ POST /grade
-Grading Server Sidecar (server.js)
+Grading Server (server.js, spawned as child process)
    ↓ POST /session
-Rust Sidecar Handler (lib.rs)
+Rust Server Handler (lib.rs)
    ↓ Parse stdout JSON
 SQLite (grading_sessions table)
    ↓ session-complete event
@@ -200,13 +189,13 @@ Svelte Frontend (Dashboard.svelte, History.svelte)
 User sees updated history
 ```
 
-### Sidecar Lifecycle
+### Server Lifecycle
 
-1. **App Launch**: Rust spawns `grading-server.exe` via `tauri-plugin-shell`
+1. **App Launch**: Rust spawns the grading server as a child process via `tauri-plugin-shell`
 2. **Stdout/Stderr Capture**: Logs streamed to frontend via `server-log` events
 3. **Health Monitoring**: Frontend polls `http://localhost:3456/health` every 5s
 4. **Crash Recovery**: Rust detects `CommandEvent::Terminated`, attempts auto-restart (max 3 times)
-5. **App Exit**: Rust kills sidecar process, port 3456 becomes free
+5. **App Exit**: Rust kills server process, port 3456 becomes free
 
 ### OAuth Flow (Tauri Deep Links)
 
@@ -223,8 +212,8 @@ User sees updated history
 
 ### Build Errors
 
-**Error:** "Sidecar binary not found"
-- **Fix:** Build the grading-server binary first (see Prerequisites)
+**Error:** "Server binary not found"
+- **Fix:** Ensure the server bundle is present in `src-tauri/binaries/server-bundle/`
 
 **Error:** "cargo check failed"
 - **Fix:** Install Rust toolchain: `rustup default stable`
@@ -236,7 +225,7 @@ User sees updated history
 
 **Error:** "Server failed to start"
 - **Check:** Is port 3456 already in use? Close conflicting processes.
-- **Check:** Sidecar binary executable permissions
+- **Check:** Server bundle executable permissions
 
 **Error:** "Database locked"
 - **Fix:** Close all instances of the app, delete `%APPDATA%/com.ogre.desktop/ogre.db-wal`
@@ -261,7 +250,7 @@ User sees updated history
 1. **API Keys**: Stored unencrypted in SQLite (local-only). Encryption is planned for v2.
 2. **OAuth Tokens**: Stored in SQLite with refresh tokens for auto-renewal.
 3. **Signing Keys**: Private key must be kept secret and never committed to git.
-4. **Sidecar Binary**: Bundled with the installer, not downloaded at runtime.
+4. **Server Bundle**: Bundled with the installer, not downloaded at runtime.
 
 ## Known Limitations (v1)
 
