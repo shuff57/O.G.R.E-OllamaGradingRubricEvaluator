@@ -1450,7 +1450,6 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_model ON response_embeddings(embedding
             get_cdp_port,
             discover_cdp_target,
         ])
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
         .plugin(
