@@ -63,6 +63,8 @@ export function loadConfig() {
     }
     const defaults = createDefaultConfig();
     writeFileSync(configPath, JSON.stringify(defaults, null, 2), 'utf-8');
+    // Merge cloud provider from env vars if configured
+    mergeCloudProviderFromEnv(defaults);
     return defaults;
   }
 
@@ -74,12 +76,17 @@ export function loadConfig() {
     if (!config.token) config.token = randomUUID();
     if (!Array.isArray(config.providers)) config.providers = [];
 
+    // Merge cloud provider from env vars if configured
+    mergeCloudProviderFromEnv(config);
+
     return config;
   } catch (err) {
     console.error(`[config] Failed to parse ${configPath}: ${err.message}. Using defaults.`);
     const defaults = createDefaultConfig();
     // Overwrite corrupt file
     writeFileSync(configPath, JSON.stringify(defaults, null, 2), 'utf-8');
+    // Merge cloud provider from env vars if configured
+    mergeCloudProviderFromEnv(defaults);
     return defaults;
   }
 }
@@ -110,23 +117,44 @@ export function saveConfig(config) {
  * @returns {function} Stop function to unwatch
  */
 export function watchConfig(callback) {
-  const configPath = getConfigPath();
-  let debounceTimer = null;
+   const configPath = getConfigPath();
+   let debounceTimer = null;
 
-  watchFile(configPath, { interval: 1000 }, () => {
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {
-      try {
-        const newConfig = loadConfig();
-        callback(newConfig);
-      } catch (err) {
-        console.error(`[config] Watch reload failed: ${err.message}`);
-      }
-    }, 500);
-  });
+   watchFile(configPath, { interval: 1000 }, () => {
+     if (debounceTimer) clearTimeout(debounceTimer);
+     debounceTimer = setTimeout(() => {
+       try {
+         const newConfig = loadConfig();
+         callback(newConfig);
+       } catch (err) {
+         console.error(`[config] Watch reload failed: ${err.message}`);
+       }
+     }, 500);
+   });
 
-  return () => {
-    if (debounceTimer) clearTimeout(debounceTimer);
-    unwatchFile(configPath);
-  };
+   return () => {
+     if (debounceTimer) clearTimeout(debounceTimer);
+     unwatchFile(configPath);
+   };
+}
+
+/**
+ * Merge cloud provider from environment variables if configured.
+ * If OGRE_RUNPOD_ENDPOINT_ID and OGRE_RUNPOD_API_KEY are set,
+ * adds an ollama-cloud provider to the config if not already present.
+ */
+function mergeCloudProviderFromEnv(config) {
+  const runpodEndpointId = process.env.OGRE_RUNPOD_ENDPOINT_ID;
+  const runpodApiKey = process.env.OGRE_RUNPOD_API_KEY;
+  if (runpodEndpointId && runpodApiKey) {
+    const hasCloud = config.providers.some(p => p.id === 'ollama-cloud');
+    if (!hasCloud) {
+      config.providers.push({
+        id: 'ollama-cloud',
+        api_url: `https://api.runpod.ai/v2/${runpodEndpointId}`,
+        model: 'qwen3.5-9B-stat-grader',
+        credentials: { api_key: runpodApiKey, endpoint_id: runpodEndpointId }
+      });
+    }
+  }
 }
