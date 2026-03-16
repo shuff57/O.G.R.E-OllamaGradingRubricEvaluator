@@ -152,11 +152,23 @@ async function callProviderDirect(provider, config, messages, timestamp) {
 
   console.log(`[${timestamp}] [direct] Calling ${provider} AI (${config.model})...`);
   const start = Date.now();
-  const response = await fetch(requestObj.url, {
-    method: 'POST',
-    headers: requestObj.headers,
-    body: JSON.stringify(requestObj.body),
-  });
+  
+  // Timeout: 120s for cloud (cold start tolerance), 30s for local
+  const timeoutMs = provider.toLowerCase() === 'ollama-cloud' ? 120000 : 30000;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
+  let response;
+  try {
+    response = await fetch(requestObj.url, {
+      method: 'POST',
+      headers: requestObj.headers,
+      body: JSON.stringify(requestObj.body),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => '');
@@ -1237,9 +1249,16 @@ function resolveProviderConfig(providerId, model) {
   const refreshToken = p?.credentials?.refresh_token || null;
   const expiresAt = p?.credentials?.expires_at || null;
   let effectiveApiUrl = apiUrl;
+  
+  // Extract endpointId from credentials or URL
+  const endpointId = p?.credentials?.endpoint_id || 
+    (apiUrl ? apiUrl.replace('https://api.runpod.ai/v2/', '').split('/')[0] : null);
+  
   if (!effectiveApiUrl) {
     switch (providerId.toLowerCase()) {
-      case 'ollama': case 'ollama-local': case 'ollama-cloud': effectiveApiUrl = 'http://localhost:11434'; break;
+      case 'ollama': case 'ollama-local': effectiveApiUrl = 'http://localhost:11434'; break;
+      case 'ollama-cloud':
+        throw new Error('Ollama Cloud provider requires a RunPod endpoint. Set OGRE_RUNPOD_ENDPOINT_ID and OGRE_RUNPOD_API_KEY or configure the endpoint URL in settings.');
       case 'openai': effectiveApiUrl = 'https://api.openai.com'; break;
       case 'anthropic': effectiveApiUrl = 'https://api.anthropic.com'; break;
       case 'google-gemini': effectiveApiUrl = 'https://generativelanguage.googleapis.com'; break;
@@ -1247,7 +1266,12 @@ function resolveProviderConfig(providerId, model) {
     }
   }
 
-  return { apiUrl: effectiveApiUrl, apiKey, model, tokenType, refreshToken, expiresAt };
+  // Guard against misconfigured localhost URLs for ollama-cloud
+  if (providerId.toLowerCase() === 'ollama-cloud' && effectiveApiUrl.includes('localhost')) {
+    throw new Error('Ollama Cloud provider is configured with a localhost URL. Please set a valid RunPod endpoint URL.');
+  }
+
+  return { apiUrl: effectiveApiUrl, apiKey, model, tokenType, refreshToken, expiresAt, endpointId };
 }
 
 // ── Anchor Generation Helpers ─────────────────────────────────────────
