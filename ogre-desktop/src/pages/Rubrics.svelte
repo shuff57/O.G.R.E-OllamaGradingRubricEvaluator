@@ -292,7 +292,7 @@
   {:else if rubrics.length === 0 && !isNew}
     <div class="empty-state">
       <h3>No rubrics saved yet</h3>
-      <p class="text-muted">Create a rubric here or save one from the Chrome extension.</p>
+      <p class="text-muted">Create a rubric here to get started.</p>
       <button class="btn-primary" on:click={openCreate}>Create First Rubric</button>
     </div>
   {:else}

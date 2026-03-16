@@ -4,9 +4,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const { mockFetch } = vi.hoisted(() => ({ mockFetch: vi.fn() }));
 vi.mock("@tauri-apps/plugin-http", () => ({ fetch: mockFetch }));
 
-// ── Mock @tauri-apps/plugin-shell ─────────────────────────────────────────
+// ── Mock @tauri-apps/plugin-opener ─────────────────────────────────────────
 const { mockOpen } = vi.hoisted(() => ({ mockOpen: vi.fn() }));
-vi.mock("@tauri-apps/plugin-shell", () => ({ open: mockOpen }));
+vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: mockOpen }));
 
 // ── Mock ./db ─────────────────────────────────────────────────────────────
 const {

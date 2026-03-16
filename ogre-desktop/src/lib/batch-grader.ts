@@ -1,7 +1,7 @@
 /**
  * batch-grader.ts - Desktop batch grading engine
  *
- * Ports the Chrome extension's batch-grader.js to the Tauri desktop app.
+ * Desktop batch grading engine for the Tauri desktop app.
  * Replaces all chrome.scripting.executeScript calls with evalScript/evalScriptJSON
  * from browser.ts.
  *

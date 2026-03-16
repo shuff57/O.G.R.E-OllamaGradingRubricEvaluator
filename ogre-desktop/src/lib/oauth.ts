@@ -1,4 +1,4 @@
-import { open } from "@tauri-apps/plugin-shell";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { saveOAuthToken, getOAuthToken, deleteOAuthToken } from "./db";
 import { pushProvidersToServer } from "./provider-sync";
@@ -80,7 +80,7 @@ export async function startGitHubDeviceFlow(): Promise<DeviceFlowResult> {
   let interval = (rawInterval ?? 5) * 1000 + POLLING_SAFETY_MARGIN_MS;
   let cancelled = false;
 
-  await open(verification_uri);
+  await openUrl(verification_uri);
 
   return {
     userCode: user_code,
@@ -160,7 +160,7 @@ export async function startChatGPTDeviceFlow(): Promise<DeviceFlowResult> {
   let cancelled = false;
 
   const verificationUrl = `https://auth.openai.com/codex/device?user_code=${user_code}`;
-  await open(verificationUrl);
+  await openUrl(verificationUrl);
 
   return {
     userCode: user_code,
@@ -289,7 +289,7 @@ export async function startClaudeOAuthFlow(): Promise<DeviceFlowResult> {
   authUrl.searchParams.set("scope", ANTHROPIC_SCOPE);
   authUrl.searchParams.set("state", state);
   const authUrlStr = authUrl.toString();
-  await open(authUrlStr);
+  await openUrl(authUrlStr);
   // Copy-paste resolver: poll() awaits until submitCode() is called with the pasted value.
   let resolveCode: ((code: string) => void) | null = null;
   const codePromise = new Promise<string>(resolve => { resolveCode = resolve; });
@@ -431,7 +431,7 @@ export async function startGoogleDeviceFlow(): Promise<DeviceFlowResult> {
   let interval = (rawInterval ?? 5) * 1000 + POLLING_SAFETY_MARGIN_MS;
   let cancelled = false;
 
-  await open(verification_url);
+  await openUrl(verification_url);
 
   return {
     userCode: user_code,

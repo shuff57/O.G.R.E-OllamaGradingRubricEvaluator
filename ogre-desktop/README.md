@@ -38,7 +38,6 @@ Choose your preferred installer:
 
 - [Node.js](https://nodejs.org/) v20 or later
 - [Rust](https://www.rust-lang.org/tools/install) (latest stable)
-- [Bun](https://bun.sh/) (for grading-server compilation)
 
 ### Setup
 
@@ -46,12 +45,6 @@ Choose your preferred installer:
 # Clone the repository
 git clone https://github.com/shuff57/O.G.R.E-OllamaGradingRubricEvaluator.git
 cd O.G.R.E-OllamaGradingRubricEvaluator
-
-# Build the grading server sidecar
-cd grading-server
-bun install
-bun build --compile --target=bun-windows-x64 server.js --outfile ../ogre-desktop/src-tauri/binaries/grading-server-x86_64-pc-windows-msvc.exe
-cd ..
 
 # Install desktop app dependencies
 cd ogre-desktop
@@ -90,7 +83,7 @@ ogre-desktop/
 │   └── main.js            # Frontend entry point
 ├── src-tauri/             # Rust backend
 │   ├── src/               # Rust source files
-│   ├── binaries/          # External binaries (grading-server)
+│   ├── binaries/          # Bundled server resources
 │   ├── icons/             # App icons
 │   ├── Cargo.toml         # Rust dependencies
 │   └── tauri.conf.json    # Tauri configuration
@@ -151,7 +144,7 @@ Update configuration is in `src-tauri/tauri.conf.json`:
 
 - **Frontend:** Svelte 5 + Vite
 - **Backend:** Tauri v2 (Rust)
-- **Grading Server:** Bun (compiled to standalone executable)
+- **Grading Server:** Bun/Node.js (spawned as child process)
 - **Updates:** Tauri updater plugin with signature verification
 - **Build:** GitHub Actions CI/CD
 
@@ -176,13 +169,6 @@ Update configuration is in `src-tauri/tauri.conf.json`:
 - Logs are stored in the app data directory
 
 ### Build Errors
-
-**Missing sidecar binary:**
-```bash
-cd grading-server
-bun install
-bun build --compile --target=bun-windows-x64 server.js --outfile ../ogre-desktop/src-tauri/binaries/grading-server-x86_64-pc-windows-msvc.exe
-```
 
 **Rust compilation errors:**
 ```bash

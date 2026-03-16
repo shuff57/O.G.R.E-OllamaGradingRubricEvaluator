@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { buildSingleGradePrompt, buildBatchPrompt, buildOutlierReviewPrompt, generateScoringAnchors } from '../grading.js';
 
-// NOTE: Tests for the extension's Prompts object (getRubricExtractionPrompt, etc.)
-// have been removed — they belong in the extension package, not in the grading-server.
+// NOTE: Tests for the Prompts object (getRubricExtractionPrompt, etc.)
+// have been removed — they belong in the desktop app package, not in the grading-server.
 // T12 (prompt structure regression tests) will add tiered-architecture tests here
 // after T9-T11 rewrite the prompt builders.
 

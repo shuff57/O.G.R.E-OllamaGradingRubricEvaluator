@@ -7,10 +7,11 @@ use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton};
 use tauri::webview::WebviewBuilder;
 #[cfg(not(target_os = "linux"))]
 use tauri::WebviewUrl;
-use tauri_plugin_shell::ShellExt;
-use tauri_plugin_shell::process::CommandEvent;
 use tauri_plugin_sql::{Migration, MigrationKind};
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::process::Command as TokioCommand;
 use tokio::sync::oneshot;
+use command_group::AsyncCommandGroup;
 
 #[cfg(target_os = "linux")]
 use gtk::prelude::*;
@@ -32,9 +33,8 @@ thread_local! {
     static WEBVIEW_URLS: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
 }
 
-/// Holds the sidecar child process handle so we can kill it on exit.
-struct SidecarState {
-    child: Option<tauri_plugin_shell::process::CommandChild>,
+struct ServerState {
+    child: Option<command_group::AsyncGroupChild>,
     status_item: Option<MenuItem<tauri::Wry>>,
 }
 
@@ -65,6 +65,24 @@ struct CdpPortState {
     port: Option<u16>,
 }
 
+pub enum ServerEvent {
+    SessionComplete(serde_json::Value),
+    ProviderChanged { provider_id: String, model: String },
+}
+
+pub fn parse_server_event(line: &str) -> Option<ServerEvent> {
+    let json = serde_json::from_str::<serde_json::Value>(line).ok()?;
+    match json.get("type").and_then(|t| t.as_str()) {
+        Some("session_complete") => Some(ServerEvent::SessionComplete(json)),
+        Some("provider_changed") => {
+            let provider_id = json["provider_id"].as_str().unwrap_or("").to_string();
+            let model = json["model"].as_str().unwrap_or("").to_string();
+            Some(ServerEvent::ProviderChanged { provider_id, model })
+        }
+        _ => None,
+    }
+}
+
 #[derive(serde::Deserialize)]
 #[allow(dead_code)]
 struct CdpTarget {
@@ -77,34 +95,93 @@ struct CdpTarget {
     ws_debugger_url: Option<String>,
 }
 
-/// Spawn the grading-server sidecar, wire up log forwarding and crash recovery.
-fn spawn_sidecar(app_handle: &tauri::AppHandle, restart_count: Arc<Mutex<u32>>) {
+fn spawn_server(app_handle: &tauri::AppHandle, restart_count: Arc<Mutex<u32>>) {
     let handle = app_handle.clone();
 
     // Pass the Tauri app data dir so the server reads/writes ogre-server.json there
     let config_dir = handle.path().app_data_dir()
         .expect("failed to resolve app data dir");
 
-    let sidecar_command = handle
-        .shell()
-        .sidecar("grading-server")
-        .expect("failed to create sidecar command")
-        .env("OGRE_CONFIG_DIR", config_dir.to_string_lossy().to_string());
+    // Resolve server-bundle path. In production Tauri copies resources to resource_dir,
+    // but in dev mode the files stay at their original location (src-tauri/binaries/).
+    let server_bundle_dir = {
+        let resource_path = handle
+            .path()
+            .resource_dir()
+            .expect("failed to resolve resource dir")
+            .join("server-bundle");
+        if resource_path.join("server.js").exists() {
+            resource_path
+        } else {
+            // Dev fallback: resources declared as "binaries/server-bundle" live
+            // directly under the src-tauri directory during development.
+            let dev_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("binaries")
+                .join("server-bundle");
+            if dev_path.join("server.js").exists() {
+                dev_path
+            } else {
+                panic!(
+                    "server-bundle not found at {:?} or {:?}",
+                    resource_path, dev_path
+                );
+            }
+        }
+    };
+    let server_js = server_bundle_dir.join("server.js");
 
-    let (mut rx, child) = sidecar_command
-        .spawn()
-        .expect("failed to spawn grading-server sidecar");
+    let mut cmd = TokioCommand::new("bun");
+    cmd.arg("run")
+        .arg(&server_js)
+        .current_dir(&server_bundle_dir)
+        .env("OGRE_CONFIG_DIR", config_dir.to_string_lossy().to_string())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+
+    #[cfg(not(windows))]
+    {
+        let bun_paths = [
+            "/opt/homebrew/bin".to_string(),
+            "/usr/local/bin".to_string(),
+            format!("{}/.bun/bin", std::env::var("HOME").unwrap_or_default()),
+        ];
+        let path = std::env::var("PATH").unwrap_or_default();
+        let augmented_path = format!("{}:{}", bun_paths.join(":"), path);
+        cmd.env("PATH", augmented_path);
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+
+    let mut child = cmd
+        .group_spawn()
+        .expect("failed to spawn grading-server process");
+
+    let stdout = child
+        .inner()
+        .stdout
+        .take()
+        .expect("failed to capture stdout");
+    let stderr = child
+        .inner()
+        .stderr
+        .take()
+        .expect("failed to capture stderr");
 
     // Store child handle in managed state for cleanup
     {
-        let state = handle.state::<Mutex<SidecarState>>();
+        let state = handle.state::<Mutex<ServerState>>();
         let mut guard = state.lock().unwrap();
         guard.child = Some(child);
     }
 
     let _ = handle.emit("server-status", "running");
     {
-        let state = handle.state::<Mutex<SidecarState>>();
+        let state = handle.state::<Mutex<ServerState>>();
         let guard = state.lock().unwrap();
         if let Some(item) = &guard.status_item {
             let _ = item.set_text("Server: Running ✓");
@@ -118,117 +195,133 @@ fn spawn_sidecar(app_handle: &tauri::AppHandle, restart_count: Arc<Mutex<u32>>) 
     }
 
     let restart_count_clone = restart_count.clone();
-    let handle_clone = handle.clone();
+    let handle_stdout = handle.clone();
+    let handle_stderr = handle.clone();
+    let handle_monitor = handle.clone();
 
-    // Async task to read stdout/stderr and detect termination
     tauri::async_runtime::spawn(async move {
-        while let Some(event) = rx.recv().await {
-            match event {
-                CommandEvent::Stdout(line_bytes) => {
-                    let line = String::from_utf8_lossy(&line_bytes).to_string();
-                    let _ = handle_clone.emit("server-log", &line);
+        let mut stdout_lines = BufReader::new(stdout).lines();
+        while let Ok(Some(line)) = stdout_lines.next_line().await {
+            let _ = handle_stdout.emit("server-log", &line);
 
-                    // Detect session_complete JSON to record history
-                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
-                         if json.get("type").and_then(|t| t.as_str()) == Some("session_complete") {
-                            // Emit event for frontend - frontend handles DB persistence via TypeScript
-                            let _ = handle_clone.emit("session-complete", &json);
-                         } else if json.get("type").and_then(|t| t.as_str()) == Some("provider_changed") {
-                            // Detect provider_changed JSON from extension write-back
-                            let provider_id = json["provider_id"].as_str().unwrap_or("").to_string();
-                            let model = json["model"].as_str().unwrap_or("").to_string();
-                            
-                            // Emit event for frontend to persist active provider change
-                            let payload = serde_json::json!({
-                                "provider_id": provider_id,
-                                "model": model
-                            });
-                            let _ = handle_clone.emit("provider-changed", &payload);
-                         }
-                    }
+            match parse_server_event(&line) {
+                Some(ServerEvent::SessionComplete(json)) => {
+                    // Emit event for frontend - frontend handles DB persistence via TypeScript
+                    let _ = handle_stdout.emit("session-complete", &json);
                 }
-                CommandEvent::Stderr(line_bytes) => {
-                    let line = String::from_utf8_lossy(&line_bytes).to_string();
-                    let _ = handle_clone.emit("server-log", format!("[stderr] {}", line));
+                Some(ServerEvent::ProviderChanged { provider_id, model }) => {
+                    // Emit event for frontend to persist active provider change
+                    let payload = serde_json::json!({
+                        "provider_id": provider_id,
+                        "model": model
+                    });
+                    let _ = handle_stdout.emit("provider-changed", &payload);
                 }
-                CommandEvent::Terminated(payload) => {
-                    eprintln!(
-                        "grading-server terminated: code={:?} signal={:?}",
-                        payload.code, payload.signal
-                    );
+                None => {}
+            }
+        }
+    });
 
-                    // Clear the stored child handle
-                    {
-                        let state = handle_clone.state::<Mutex<SidecarState>>();
-                        let mut guard = state.lock().unwrap();
-                        guard.child = None;
+    tauri::async_runtime::spawn(async move {
+        let mut stderr_lines = BufReader::new(stderr).lines();
+        while let Ok(Some(line)) = stderr_lines.next_line().await {
+            let _ = handle_stderr.emit("server-log", format!("[stderr] {}", line));
+        }
+    });
+
+    tauri::async_runtime::spawn(async move {
+        loop {
+            let mut exit_status: Option<std::process::ExitStatus> = None;
+            let mut check_error = None;
+            {
+                let state = handle_monitor.state::<Mutex<ServerState>>();
+                let mut guard = state.lock().unwrap();
+                if let Some(child) = guard.child.as_mut() {
+                    match child.inner().try_wait() {
+                        Ok(status) => exit_status = status,
+                        Err(err) => check_error = Some(err),
                     }
+                } else {
+                    break;
+                }
 
-                    // Exit code 0 = intentional shutdown (we killed it), don't restart
-                    if payload.code == Some(0) {
-                        let _ = handle_clone.emit("server-status", "stopped");
-                        {
-                            let state = handle_clone.state::<Mutex<SidecarState>>();
-                            let guard = state.lock().unwrap();
-                            if let Some(item) = &guard.status_item {
-                                let _ = item.set_text("Server: Stopped ✗");
-                            }
-                        }
-                        break;
-                    }
+                if exit_status.is_some() {
+                    guard.child = None;
+                }
+            }
 
-                    let _ = handle_clone.emit("server-status", "crashed");
+            if let Some(err) = check_error {
+                let _ = handle_monitor.emit("server-log", format!("[error] {}", err));
+            }
+
+            if let Some(status) = exit_status {
+                eprintln!(
+                    "grading-server terminated: code={:?}",
+                    status.code()
+                );
+
+                // Exit code 0 = intentional shutdown (we killed it), don't restart
+                if status.code() == Some(0) {
+                    let _ = handle_monitor.emit("server-status", "stopped");
                     {
-                        let state = handle_clone.state::<Mutex<SidecarState>>();
+                        let state = handle_monitor.state::<Mutex<ServerState>>();
                         let guard = state.lock().unwrap();
                         if let Some(item) = &guard.status_item {
                             let _ = item.set_text("Server: Stopped ✗");
                         }
                     }
-
-                    // Auto-restart with exponential backoff
-                    let current_count = {
-                        let mut count = restart_count_clone.lock().unwrap();
-                        *count += 1;
-                        *count
-                    };
-
-                    if current_count <= MAX_RESTART_ATTEMPTS {
-                        let delay_secs = 1u64 << (current_count - 1); // 1s, 2s, 4s
-                        let _ = handle_clone.emit(
-                            "server-log",
-                            format!(
-                                "Restarting grading-server (attempt {}/{}) in {}s...",
-                                current_count, MAX_RESTART_ATTEMPTS, delay_secs
-                            ),
-                        );
-
-                        tokio::time::sleep(std::time::Duration::from_secs(delay_secs)).await;
-                        spawn_sidecar(&handle_clone, restart_count_clone.clone());
-                    } else {
-                        let _ = handle_clone.emit("server-status", "failed");
-                        {
-                            let state = handle_clone.state::<Mutex<SidecarState>>();
-                            let guard = state.lock().unwrap();
-                            if let Some(item) = &guard.status_item {
-                                let _ = item.set_text("Server: Stopped ✗");
-                            }
-                        }
-                        let _ = handle_clone.emit(
-                            "server-log",
-                            format!(
-                                "Grading server failed after {} restart attempts. Manual restart required.",
-                                MAX_RESTART_ATTEMPTS
-                            ),
-                        );
-                    }
                     break;
                 }
-                CommandEvent::Error(err) => {
-                    let _ = handle_clone.emit("server-log", format!("[error] {}", err));
+
+                let _ = handle_monitor.emit("server-status", "crashed");
+                {
+                    let state = handle_monitor.state::<Mutex<ServerState>>();
+                    let guard = state.lock().unwrap();
+                    if let Some(item) = &guard.status_item {
+                        let _ = item.set_text("Server: Stopped ✗");
+                    }
                 }
-                _ => {}
+
+                // Auto-restart with exponential backoff
+                let current_count = {
+                    let mut count = restart_count_clone.lock().unwrap();
+                    *count += 1;
+                    *count
+                };
+
+                if current_count <= MAX_RESTART_ATTEMPTS {
+                    let delay_secs = 1u64 << (current_count - 1); // 1s, 2s, 4s
+                    let _ = handle_monitor.emit(
+                        "server-log",
+                        format!(
+                            "Restarting grading-server (attempt {}/{}) in {}s...",
+                            current_count, MAX_RESTART_ATTEMPTS, delay_secs
+                        ),
+                    );
+
+                    tokio::time::sleep(std::time::Duration::from_secs(delay_secs)).await;
+                    spawn_server(&handle_monitor, restart_count_clone.clone());
+                } else {
+                    let _ = handle_monitor.emit("server-status", "failed");
+                    {
+                        let state = handle_monitor.state::<Mutex<ServerState>>();
+                        let guard = state.lock().unwrap();
+                        if let Some(item) = &guard.status_item {
+                            let _ = item.set_text("Server: Stopped ✗");
+                        }
+                    }
+                    let _ = handle_monitor.emit(
+                        "server-log",
+                        format!(
+                            "Grading server failed after {} restart attempts. Manual restart required.",
+                            MAX_RESTART_ATTEMPTS
+                        ),
+                    );
+                }
+                break;
             }
+
+            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
         }
     });
 }
@@ -1393,7 +1486,7 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_model ON response_embeddings(embedding
             get_cdp_port,
             discover_cdp_target,
         ])
-        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
         .plugin(
             tauri_plugin_sql::Builder::default()
@@ -1410,7 +1503,7 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_model ON response_embeddings(embedding
                 let _ = window.set_focus();
             }
         }))
-        .manage(Mutex::new(SidecarState { child: None, status_item: None }))
+        .manage(Mutex::new(ServerState { child: None, status_item: None }))
         .manage(Mutex::new(WebviewState { tabs: HashMap::new() }))
         .manage(EvalRegistry::new(Mutex::new(HashMap::new())))
         .manage(Mutex::new(OAuthCallbackState { cancel_tx: None }))
@@ -1493,7 +1586,7 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_model ON response_embeddings(embedding
 
             // Store status item in state
             {
-                let state = app.state::<Mutex<SidecarState>>();
+                let state = app.state::<Mutex<ServerState>>();
                 let mut guard = state.lock().unwrap();
                 guard.status_item = Some(status_item);
             }
@@ -1510,7 +1603,10 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_model ON response_embeddings(embedding
              }
 
              let restart_count = Arc::new(Mutex::new(0u32));
-            spawn_sidecar(&handle, restart_count);
+            let server_handle = handle.clone();
+            tauri::async_runtime::spawn(async move {
+                spawn_server(&server_handle, restart_count);
+            });
 
             // Linux: initialize shared GtkFixed container for embedded browser webviews.
             // ALL wry webviews must share this single GtkFixed instance (per wry PR #1504).
@@ -1530,10 +1626,9 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_model ON response_embeddings(embedding
 
                 // Reparent existing vbox children (the main webview) into the overlay
                 let children: Vec<gtk::Widget> = vbox.children();
-                for child in &children {
+                if let Some(child) = children.first() {
                     vbox.remove(child);
                     overlay.add(child);  // First child becomes the "main" child
-                    break; // Only reparent the first child (the main webview)
                 }
 
                 // Create the GtkFixed for embedded browser webviews
@@ -1558,11 +1653,9 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_model ON response_embeddings(embedding
         .run(|app_handle, event| {
             // Kill sidecar when the app exits
             if let tauri::RunEvent::Exit = event {
-                let state = app_handle.state::<Mutex<SidecarState>>();
+                let state = app_handle.state::<Mutex<ServerState>>();
                 let mut guard = state.lock().unwrap();
-                if let Some(child) = guard.child.take() {
-                    let _ = child.kill();
-                }
+                guard.child.take();
             }
         });
 }

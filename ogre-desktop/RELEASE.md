@@ -114,7 +114,6 @@ git push origin v0.2.0
 1. Go to `https://github.com/shuff57/O.G.R.E-OllamaGradingRubricEvaluator/actions`
 2. Watch the "Build O.G.R.E Desktop" workflow
 3. The workflow will:
-   - Build the grading-server sidecar binary
    - Build the Tauri desktop app
    - Create installers (MSI and NSIS)
    - Create a GitHub Release with all artifacts attached
@@ -159,13 +158,6 @@ Users can download installers from:
 ---
 
 ## Troubleshooting
-
-### Build Fails with "Sidecar binary not found"
-
-The grading-server binary wasn't compiled. Check:
-- `grading-server/` directory exists
-- Bun is installed in the GitHub Actions runner
-- Build command in workflow is correct
 
 ### Build Fails with "Tauri build error"
 
