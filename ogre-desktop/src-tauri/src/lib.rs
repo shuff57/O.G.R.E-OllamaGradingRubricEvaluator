@@ -102,11 +102,32 @@ fn spawn_server(app_handle: &tauri::AppHandle, restart_count: Arc<Mutex<u32>>) {
     let config_dir = handle.path().app_data_dir()
         .expect("failed to resolve app data dir");
 
-    let server_bundle_dir = handle
-        .path()
-        .resource_dir()
-        .expect("failed to resolve resource dir")
-        .join("server-bundle");
+    // Resolve server-bundle path. In production Tauri copies resources to resource_dir,
+    // but in dev mode the files stay at their original location (src-tauri/binaries/).
+    let server_bundle_dir = {
+        let resource_path = handle
+            .path()
+            .resource_dir()
+            .expect("failed to resolve resource dir")
+            .join("server-bundle");
+        if resource_path.join("server.js").exists() {
+            resource_path
+        } else {
+            // Dev fallback: resources declared as "binaries/server-bundle" live
+            // directly under the src-tauri directory during development.
+            let dev_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("binaries")
+                .join("server-bundle");
+            if dev_path.join("server.js").exists() {
+                dev_path
+            } else {
+                panic!(
+                    "server-bundle not found at {:?} or {:?}",
+                    resource_path, dev_path
+                );
+            }
+        }
+    };
     let server_js = server_bundle_dir.join("server.js");
 
     let mut cmd = TokioCommand::new("bun");
@@ -1582,7 +1603,10 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_model ON response_embeddings(embedding
              }
 
              let restart_count = Arc::new(Mutex::new(0u32));
-            spawn_server(&handle, restart_count);
+            let server_handle = handle.clone();
+            tauri::async_runtime::spawn(async move {
+                spawn_server(&server_handle, restart_count);
+            });
 
             // Linux: initialize shared GtkFixed container for embedded browser webviews.
             // ALL wry webviews must share this single GtkFixed instance (per wry PR #1504).
