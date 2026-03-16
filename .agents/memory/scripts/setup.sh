@@ -11,10 +11,13 @@ if [ ! -d "$VENV_DIR" ]; then
 fi
 
 echo "Installing LightRAG into venv..."
-"$VENV_DIR/bin/pip" install -q lightrag-hku ollama
+"$VENV_DIR/bin/pip" install -q lightrag-hku
 
 echo "Verifying Ollama connectivity..."
 curl -s localhost:11434/api/tags > /dev/null || { echo "ERROR: Ollama is not running. Start with: ollama serve"; exit 1; }
+
+echo "Pulling bge-m3 embedding model..."
+ollama pull bge-m3 2>/dev/null || echo "WARNING: Could not pull bge-m3. Run 'ollama pull bge-m3' manually."
 
 echo "Creating working directory..."
 mkdir -p "$MEMORY_DIR/lightrag_workdir"

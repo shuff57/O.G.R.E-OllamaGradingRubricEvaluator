@@ -5,6 +5,7 @@
 import sys
 import asyncio
 from pathlib import Path
+from functools import partial
 
 WORKING_DIR = Path(__file__).parent.parent / "lightrag_workdir"
 
@@ -31,16 +32,8 @@ async def main():
 
     missing = []
     try:
-        import numpy as np
-    except ImportError:
-        missing.append("numpy")
-    try:
-        import ollama
-    except ImportError:
-        missing.append("ollama")
-    try:
         from lightrag import LightRAG, QueryParam
-        from lightrag.llm.ollama import ollama_model_complete
+        from lightrag.llm.ollama import ollama_model_complete, ollama_embed
         from lightrag.utils import EmbeddingFunc
     except ImportError:
         missing.append("lightrag-hku")
@@ -52,10 +45,8 @@ async def main():
         sys.exit(1)
 
     try:
-        import numpy as np
-        import ollama
         from lightrag import LightRAG, QueryParam
-        from lightrag.llm.ollama import ollama_model_complete
+        from lightrag.llm.ollama import ollama_model_complete, ollama_embed
         from lightrag.utils import EmbeddingFunc
 
         if not WORKING_DIR.exists() or not any(WORKING_DIR.iterdir()):
@@ -64,20 +55,23 @@ async def main():
             )
             return
 
-        async def nomic_embed(texts: list[str]) -> np.ndarray:
-            client = ollama.AsyncClient()
-            data = await client.embed(model="nomic-embed-text", input=texts)
-            await client._client.aclose()
-            return np.array(data["embeddings"])
-
         rag = LightRAG(
             working_dir=str(WORKING_DIR),
             llm_model_func=ollama_model_complete,
             llm_model_name="llama3.2",
+            llm_model_kwargs={
+                "host": "http://localhost:11434",
+                "options": {"num_ctx": 8192},
+                "timeout": 300,
+            },
             embedding_func=EmbeddingFunc(
-                embedding_dim=768,
+                embedding_dim=1024,
                 max_token_size=8192,
-                func=nomic_embed,
+                func=partial(
+                    ollama_embed.func,
+                    embed_model="bge-m3:latest",
+                    host="http://localhost:11434",
+                ),
             ),
         )
 
