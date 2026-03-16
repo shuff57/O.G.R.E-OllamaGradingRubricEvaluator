@@ -104,6 +104,13 @@
 - Kept downstream skill invocation name-based only with `load_skills=["gb-compare"]`, `load_skills=["gb-new-assignment"]`, and `load_skills=["gb-sync"]`.
 - Captured verification evidence in `.sisyphus/evidence/task-13-gb-pipeline.txt`; markdown LSP diagnostics were not available in this environment because no `.md` server is configured.
 
+## [2026-03-15] Task 14 Complete — mom-frq gold standard rewrite
+- Created `.agents/skills/mom-frq/SKILL.md` in gold-standard format with required frontmatter, Guardrails before Workflow, score-method guidance, phased FRQ authoring workflow, Error Handling, and Common Mistakes.
+- Split heavy syntax/reference content into `.agents/skills/mom-frq/references/php-patterns.md` to keep the main skill concise while preserving critical MOM PHP/IMathAS patterns.
+- Preserved the non-negotiable essay syntax and scoring knowledge: `$anstypes`, `$displayformat[0] = "editornopaste"`, `loadlibrary()`, `takeanything`, `essayrubric`, `singlescore`, multipart file-upload patterns, and `getfeedbacktxtessay()`.
+- Preserved randomized-context and qtext/rubric construction patterns, including `rand()`, `rrand()`, `diffrands()`, `where (...)`, `$questiontext`, `$rubricbutton`, `$rubricanswerbutton`, and the final IMathAS output ordering.
+- Captured baseline verification nuance: repository `bun test` already fails in a fresh worktree due to missing packages / environment setup unrelated to this markdown-only task, so Task 14 verification must rely on changed-file checks plus evidence rather than claiming a clean global test suite.
+
 ## [2026-03-15] Task 16 Complete — mom-lib-map router + passive references
 - Replaced the archived multi-file `mom-lib-map` skill layout with a single discoverable router at `.agents/skills/mom-lib-map/SKILL.md` plus 16 plain-markdown subject references under `.agents/skills/mom-lib-map/references/`.
 - Stripping YAML frontmatter from the subject files is enough to keep them out of the skill catalog while preserving the actual topic-map content verbatim.
@@ -144,14 +151,7 @@
 
 ## [2026-03-15] Task 18 Complete — mom-patterns knowledge base split
 - Rebuilt `mom-patterns` as a two-file package: `.agents/skills/mom-patterns/SKILL.md` for operating rules and `.agents/skills/mom-patterns/knowledge.md` for the living pattern library.
-- Preserved the archive’s core lifecycle rules explicitly: `mom-fact-finder` appends/refreshes entries, `mom-frq` reads the library before drafting, and updates happen through named skill loading (`load_skills=["mom-patterns"]`).
+- Preserved the archive's core lifecycle rules explicitly: `mom-fact-finder` appends/refreshes entries, `mom-frq` reads the library before drafting, and updates happen through named skill loading (`load_skills=["mom-patterns"]`).
 - Kept the long-term growth controls intact: 800-line hard cap, oldest/least-used compression to summary form, stable entry template, and maintained Topic Index.
 - Porting archived knowledge works best when `knowledge.md` keeps the real entries verbatim-enough while `SKILL.md` only defines policy, workflow, and guardrails; blending the two invites future overwrite or drift.
 - Added explicit guardrails against freehand topic edits without `mom-fact-finder` evidence so the shared library stays source-backed instead of turning into informal notes.
-
-## [2026-03-15] Task 17 Complete — mom-page-map gold standard rewrite
-- For large archived navigation skills, keep `SKILL.md` as a concise router and move exact URL/selector/AJAX details into `references/navigation-patterns.md`.
-- Preserve MOM route variants exactly, especially `addassessment2.php?id={aid}&cid={cid}&from=gb` and the URL-only `gradeallq2.php?cid={cid}&aid={aid}` path.
-- Preserve the dual block-id model explicitly: DOM `blockh{bid}` vs URL `path` like `0-1` extracted from `toggleblock(...)`.
-- Preserve native-widget caveats verbatim enough to keep behavior safe: Add An Item `<option>` clicks cause CDP `-32000`; use direct URLs or `selectOption()` with a pre-captured navigation wait.
-- Preserve instructor-vs-student distinctions explicitly: `testquestion2.php` is an instructor validation page, while `assess2/?cid={cid}&aid={aid}` is the student view.

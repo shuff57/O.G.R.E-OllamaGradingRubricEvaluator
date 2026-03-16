@@ -1,217 +1,286 @@
-# MOM PHP Patterns Reference
+# MyOpenMath FRQ PHP Patterns
 
-> Detailed code patterns for MyOpenMath (IMathAS) question authoring.
-> This is a reference file — no YAML frontmatter. Loaded by the `mom-frq` skill.
+Use this reference when the main `mom-frq` skill needs exact MyOpenMath / IMathAS syntax examples.
 
----
+## 1. Core essay and scoring patterns
 
-## 1. QUESTION TYPE → ANSWER SETUP
-
-| If asking for... | $anstypes value | Key variables |
-|-----------------|-----------------|---------------|
-| A number | `"number"` | `$answer = 42` |
-| An algebraic expression | `"numfunc"` | `$answer = "2*x+3"` |
-| Multiple-choice | `"choices"` | `$questions = array(...)`, `$answer = 0` |
-| Select all correct | `"multans"` | `$questions = array(...)`, `$answers = "0,2"` |
-| Point or vector | `"ntuple"` | `$answer = "(3,4)"` |
-| Matrix of numbers | `"matrix"` | `$answer`, `$answersize = "2,3"` |
-| Interval notation | `"interval"` | `$answer = "[2,5)"` |
-| Written explanation | `"essay"` | `$displayformat[0]="editornopaste"` |
-| File upload | `"file"` | `$scoremethod[i]="takeanything"`, `$answerformat[i]="images,.pdf"` |
-| Multiple types | Array of above | `$anstypes = array("number","essay")` |
-
----
-
-## 2. ESSAY QUESTION PATTERN
-
+### Essay-only FRQ
 ```php
-// Basic essay (teacher grades)
 $anstypes = array("essay");
-$displayformat[0] = "editornopaste";   // ALWAYS this, not "editor"
-$scoremethod[0] = "takeanything";      // teacher manually grades
-
-// Essay question text
-$qtext = "Explain in complete sentences: Why does the Central Limit Theorem matter?";
-$qtext .= getfeedbacktxtessay("Use specific examples from class.");
+$displayformat[0] = "editornopaste";
 ```
 
----
-
-## 3. MULTIPART PATTERN (number + essay)
-
+### Score-method choices
 ```php
-// Part (a): numeric; Part (b): essay
-$anstypes = array("number","essay");
-$answer[0] = $a * $b;                  // auto-graded
-$scoremethod[1] = "takeanything";      // teacher grades essay
-$displayformat[1] = "editornopaste";
-
-$qtext = "A car travels at \($a\) mph for \($b\) hours.<br><br>" .
-         "(a) Calculate the distance: \$answerbox[0]<br><br>" .
-         "(b) Explain the distance formula: \$answerbox[1]";
+$scoremethod = "takeanything";
+$scoremethod[0] = "essayrubric";
+$scoremethod = "singlescore";
 ```
 
----
+- `takeanything` = standard manual-grading FRQ pattern
+- `essayrubric` = rubric-based essay scoring setup
+- `singlescore` = multipart question scored as one combined item
 
-## 4. RANDOMIZERS
-
+### Essay feedback helper
 ```php
-rand(2,8)                // integer in [2,8]
-rrand(1,8,2)             // real with 2 decimal places
-nonzerorand(-5,5)        // nonzero integer
-diffrands(-5,5,2)        // 2 distinct integers → $a,$b = diffrands(-5,5,2)
-randsfrom(array(2,3,5,7), 2)  // 2 items from list (may repeat)
-diffrandsfrom(array(2,3,5,7), 2)  // 2 DISTINCT items from list
-
-// Conditional randomization (retry until condition met):
-$a,$b = diffrands(-5,5,2) where ($a+$b != 0)
-{ $a = rand(-5,-1); $b = rand(1,5) } where ($a+$b != 0) else { $a=-3; $b=5 }
+$scoremethod = "takeanything";
+$hidetips = true;
+$fb = getfeedbacktxtessay($stuanswers[$thisq],"Answers will vary. Here are a few possible reasons:<ul><li>Reason 1</li><li>Reason 2</li></ul>");
 ```
 
----
+## 2. `loadlibrary()` patterns
 
-## 5. SCORING METHODS
-
-| $scoremethod value | When to use |
-|-------------------|-------------|
-| `""` (default) | Auto-graded numeric/function answer |
-| `"takeanything"` | Accept any answer — teacher grades manually |
-| `"essayrubric"` | Display rubric for essay; teacher grades via rubric |
-| `"singlescore"` | All parts correct for any credit |
-| `"allornothing"` | For multiple-choice: all or nothing |
-| `"answers"` | Partial credit by correct answer count |
-| `"byelement"` | Partial credit by element (matrix, ntuple) |
-
----
-
-## 6. RANDOMIZATION PATTERNS (diffrands, where)
-
-```php
-// Distinct coefficients for quadratic
-$a,$b,$c = diffrands(1,9,3)  // 3 distinct integers
-
-// Where clause — prevent bad cases
-$a,$b = diffrands(2,8,2) where (gcd($a,$b)==1)  // coprime
-
-// Named people
-$name = randname()         // random name
-$namewp = randnamewpronouns()  // sets $name,$heshe,$himher,$hisher
-
-// Pick from a set
-$topic = randfrom(array("mean","median","mode"))
-```
-
----
-
-## 7. LOADLIBRARY CALLS
-
-```php
-loadlibrary("stats");         // statistics functions
-loadlibrary("algebra");       // polynomial/matrix algebra
-loadlibrary("calculus");      // calculus functions
-loadlibrary("finance");       // financial functions
-loadlibrary("linearalgebra"); // linear algebra
-loadlibrary("chemistry");     // chemistry/stoichiometry
-loadlibrary("physics");       // physics constants/formulas
-```
-
-See `mom-lib-map` skill for complete function listings per library.
-
----
-
-## 8. FORMAT MACROS
-
-```php
-// Display-ready polynomial: "3+-2x" → "3-2x"
-makepretty("$a+$b")
-polymakepretty("$a*x^2+0*x+$c")   // removes 0*x terms
-makexxpretty("1*x^2+0*x+3")        // aggressive cleanup
-
-// Numbers
-prettyint(1234567)          // → "1,234,567"
-prettyreal(1234.567, 2)     // → "1,234.57"
-dispreducedfraction(3,6)    // → "1/2"
-
-// Signs
-sign($a)           // → "+" or "-"
-sign($a,"onlyneg") // → "-" or ""
-
-// Inline conditional text in $qtext:
-// [if sign==positive]The value is positive.[/if]
-```
-
----
-
-## 9. ESSAY FEEDBACK HELPER
-
-```php
-getfeedbacktxtessay("Scoring guidance text for the student")
-// Returns HTML block showing: "Note: This is an essay question. [guidance text]"
-// Append to $qtext after the question prompt
-```
-
----
-
-## 10. COMMON PATTERNS BY SUBJECT
-
-### Statistics Essay Pattern
 ```php
 loadlibrary("stats");
-$n = rand(15,40);
-$mean = rrand(50,90,1);
-$sd = rrand(5,20,1);
+loadlibrary("matrix");
+loadlibrary("polys");
+loadlibrary("fractions");
+loadlibrary("interval");
+loadlibrary("stats,matrix");
+```
+
+Use library loads only when the code calls helpers from those libraries.
+
+## 3. Randomization patterns
+
+### Single values
+```php
+$a = rand(1,9);
+$b = nonzerorand(-5,5);
+$p = rrand(0.2,0.8,0.05);
+$name = randname();
+```
+
+### Distinct values
+```php
+$x0,$y0 = nonzerodiffrands(-4,4,2);
+$a,$b = diffrands(-5,5,2);
+$vals = diffrrands(-2,2,0.5,3);
+```
+
+### Constrained generation
+```php
+$a,$b = diffrands(-5,5,2) where ($a+$b != 0);
+$a = rand(1,9) where (gcd($a,$b)==1) else ($a = 1);
+{ $a = rand(-5,-1); $b = rand(1,5) } where ($a+$b != 0) else { $a=-3; $b=5 };
+```
+
+### Context arrays
+```php
+$contexts = array("scenario A","scenario B","scenario C");
+$i = rand(0, count($contexts)-1);
+$topic = $contexts[$i];
+
+$values = array(0.60, 0.85, 0.40);
+$val = $values[$i];
+```
+
+## 4. qtext HTML construction
+
+### Minimal question text
+```php
+$questiontext = '<div style="font-family:Arial;font-size:medium;line-height:1.6;">'
+  . '<p>Scenario: '.$topic.'</p>'
+  . '<p><b>Essay Prompt:</b><br>Explain your reasoning.</p>'
+  . '<ul><li>Point 1</li><li>Point 2</li></ul>'
+  . $rubricbutton
+  . '</div>';
+```
+
+### Interpolation pitfall
+```php
+$a = -4;
+$bad = "$a^2";     // gives -4^2
+$good = "($a)^2";  // correct grouping
+```
+
+### Arrays inside strings
+```php
+$ar = array(3,4);
+$txt = "{$ar[0]} items";
+```
+
+## 5. FRQ scaffold
+
+```php
+loadlibrary("stats");
 
 $anstypes = array("essay");
 $displayformat[0] = "editornopaste";
-$scoremethod[0] = "takeanything";
 
-$qtext = "A sample of \($n\) students scored with mean \($mean\) and " .
-         "standard deviation \($sd\).<br><br>" .
-         "Interpret what these statistics tell us about this class's performance.";
-$qtext .= getfeedbacktxtessay("Address both the mean and spread. Use complete sentences.");
+$r_step1 = "first step description";
+$r_step2 = "second step description";
+$sample_narrative = "Model answer: <b>$r_step1</b>. Then <b>$r_step2</b>.";
+
+$css_block = '<style>
+  .rubric-container { width:100%; font-family:Arial; font-size:medium; margin:1em 0; }
+  .rubric-container details { width:100%; border:1px solid #ccc; border-radius:8px; overflow:hidden; background:#fff; }
+  .rubric-container summary { cursor:pointer; display:block; width:100%; background:#f8f8f8; color:#333; padding:0.35em 0.6em; font-weight:bold; border-bottom:1px solid #ccc; list-style:none; border:none; }
+  .rubric-content { overflow:hidden; max-height:0; opacity:0; transition:max-height 300ms ease-out, opacity 300ms ease-out, padding 200ms ease-out; margin-top:0; background:#fafafa; box-sizing:border-box; padding:0 0.75em; }
+  .rubric-container details[open] .rubric-content { max-height:2000px; opacity:1; padding:0.75em; }
+  .ideal-ans { display:block; background-color:#e8f5e9; font-style:italic; font-weight:bold; font-size:0.95em; margin:5px 0 10px 0; border-left:3px solid #4CAF50; padding-left:8px; }
+</style>';
+
+$rubricbutton = $css_block . '
+<div class="rubric-container">
+  <details>
+    <summary>Click to View Grading Checklist</summary>
+    <div class="rubric-content">
+      <ul style="list-style:none;margin:0;padding-left:0;">
+        <li><label><input type="checkbox"> Requirement text.</label></li>
+      </ul>
+    </div>
+  </details>
+</div>';
+
+$rubricanswerbutton = $css_block . '
+<div class="rubric-container">
+  <details>
+    <summary>Rubric &amp; Model Response</summary>
+    <div class="rubric-content">
+      <ul style="list-style:none;margin:0;padding-left:0;">
+        <li>Requirement.
+            <span class="ideal-ans">Target: "ideal answer text"</span></li>
+      </ul>
+      <div class="full-response-box">'.$sample_narrative.'</div>
+    </div>
+  </details>
+</div>';
+
+$questiontext = '<div style="font-family:Arial;font-size:medium;line-height:1.6;">'
+  . '<p>Scenario: '.$topic.'</p>'
+  . '<p><b>Essay Prompt:</b><br>Explain...</p>'
+  . $rubricbutton
+  . '</div>';
+
+// $questiontext
+// $answerbox[0]
+// ///
+// $rubricanswerbutton
 ```
 
-### Algebra Multipart with Essay
-```php
-loadlibrary("algebra");
-$a = rand(2,8);
-$b = rand(1,6);
-$c = $a * $b;    // product for a factoring question
+### FRQ anti-patterns
+- Never use `$displayformat[0] = "editor"`
+- Never put model answers in `$rubricbutton`
+- Keep student checklist and instructor targets separate
+- Prefer randomized context arrays over one hardcoded scenario
 
-$anstypes = array("numfunc","essay");
-$answer[0] = "$a*x+$b";
-$scoremethod[1] = "takeanything";
+## 6. Multipart patterns
+
+### Number + essay
+```php
+$anstypes = array("number","essay");
+$answer[0] = 42;
 $displayformat[1] = "editornopaste";
+$scoremethod[1] = "takeanything";
 
-$qtext = "Consider the equation \($a x + $b = " . ($a*3+$b) . "\).<br><br>" .
-         "(a) Solve for \(x\): \$answerbox[0]<br><br>" .
-         "(b) Describe each step of your solution process: \$answerbox[1]";
+$questiontext = 'Part (a): '.$answerbox[0].'<br><br>'
+  . 'Part (b): '.$answerbox[1];
 ```
 
-### File Upload Pattern
+### Matrix + file upload
 ```php
-$anstypes = array("file");
-$scoremethod[0] = "takeanything";
-$answerformat[0] = "images,.pdf";
+loadlibrary("matrix");
 
-$qtext = "Upload a photo of your handwritten work showing " .
-         "the calculation for this problem.";
+$x0,$y0 = nonzerodiffrands(-4,4,2);
+$a = nonzerorand(-2,2);
+$c = nonzerorand(-2,2);
+$a22 = $a*$c + 1;
+$b1 = $x0 + $a*$y0;
+$b2 = $c*$x0 + $a22*$y0;
+
+$Aug = matrix(array(1,$a,$b1,$c,$a22,$b2), 2, 3);
+$RREF = matrix(array(1,0,$x0,0,1,$y0), 2, 3);
+
+$anstypes = array("matrix","file");
+$answer[0] = matrixformat($RREF);
+$answersize[0] = "2,3";
+$scoremethod[1] = "takeanything";
+$answerformat[1] = "images,.pdf";
 ```
 
----
+## 7. Library-specific helpers to preserve
 
-## 11. LATEX MATH IN QTEXT
+### Statistics
+```php
+loadlibrary("stats");
 
+$answer = round(normalcdf($mu,$sigma,$a,$b), 4);
+$reg = linreg($xdata,$ydata);
+$m = round($reg[0],3);
+$b_int = round($reg[1],3);
+$r2 = round($reg[3],4);
 ```
-\( inline math \)          → inline math (use for formulas in sentences)
-\[ display math \]         → centered display equation
-\( \frac{a}{b} \)         → fraction
-\( x^{2} \)               → exponent
-\( \sqrt{x} \)            → square root
-\( \sum_{i=1}^{n} \)      → summation
+
+### Matrix
+```php
+loadlibrary("matrix");
+
+$A = matrix(array(1,2,3,4), 2, 2);
+$disp = matrixdisplaytable($A, "", 1, 1);
+$answer = matrixformat($A);
+$inv = matrixinverse($A);
+$R = matrixreduce($A);
 ```
 
-**Pitfalls:**
-- Use `$$` → WRONG in MOM. Use `\( \)` instead.
-- Em dashes (—) → WRONG. Use hyphen (-) instead.
-- Negative values in expressions: `$b = "($a)^2"` not `"$a^2"` when $a could be negative.
+### Polynomials / formatting
+```php
+loadlibrary("polys");
+
+$r1,$r2 = diffrands(-5,5,2);
+$a = nonzerorand(1,3);
+$p = formpolyfromroots($a, array($r1,$r2));
+$disp = writepolyfrac($p);
+
+$pretty = makepretty("3+-4");
+$poly = polymakeprettydisp("1*x^2+0*x-3");
+```
+
+## 8. Worked mini-examples
+
+### Linear equation
+```php
+$a = nonzerorand(-9,9) where ($a!=1 && $a!=-1);
+$b = rand(-9,9);
+$c = rand(-9,9);
+$answer = ($c - $b) / $a;
+```
+
+### Normal distribution probability
+```php
+loadlibrary("stats");
+loadlibrary("normalcurve");
+
+$mu = rand(60,80);
+$sigma = rand(5,15);
+$a = round($mu - rrand(1,2,.5)*$sigma, 1);
+$b = round($mu + rrand(1,2,.5)*$sigma, 1);
+$answer = round(normalcdf($mu,$sigma,$a,$b), 4);
+$graph = normalcurve($mu,$sigma,$mu-4*$sigma,$mu+4*$sigma,"x",$a,"right",$b,"left");
+```
+
+### Regression
+```php
+loadlibrary("stats");
+
+$n = rand(6,8);
+$xdata = rands(1,10,$n,'inc');
+$true_m = rrand(0.5,2,0.5);
+$true_b = rand(1,5);
+for ($i=0..$n-1) {
+  $ydata[$i] = round($true_m*$xdata[$i] + $true_b + rrand(-1,1,0.5), 1);
+}
+```
+
+## 9. Common pitfalls
+
+| Problem | Fix |
+|---------|-----|
+| `"$a^2"` with a negative value | Use `"($a)^2"` |
+| Array value not interpolating | Use `{$ar[0]}` |
+| `where` never resolves | Loosen the condition or add `else` |
+| `3+-4` display text | Use `makepretty()` |
+| `1*x+0` polynomial display | Use `polymakeprettydisp()` |
+| Matrix answer grid missing | Add `$answersize[index] = "rows,cols"` |
+| Essay editor allows paste | Use `$displayformat[0] = "editornopaste"` |
+| Multiple library calls are cluttered | Combine them: `loadlibrary("stats,matrix")` |
