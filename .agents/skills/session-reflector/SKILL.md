@@ -9,8 +9,8 @@ description: Use when ending a work session or starting a new one to persist lea
 
 ## Prerequisites
 - Write access to `.agents/memory/pending/`
-- Python available for index and query scripts
-- Optional for indexing/query: Ollama running locally with LightRAG installed
+- LightRAG venv at `.agents/memory/.venv/` (run `bash .agents/memory/scripts/setup.sh` if missing)
+- Optional for indexing/query: Ollama running locally (`ollama serve`)
 
 ## When to Use
 - Session is ending and key learnings should be preserved
@@ -57,11 +57,13 @@ Required reflection content:
 ### Phase 2: Next Session Start — Recall + Deferred Indexing
 - **INPUT:** Current task summary + any files in `.agents/memory/pending/`
 - **ACTION A (Recall First):**
-  `python3 .agents/memory/scripts/query_memory.py "<current task summary>"`
+   `python3 .agents/memory/scripts/query_memory.py "<current task summary>"`
+   Note: The script auto-activates the .venv if available. No manual venv activation needed.
 - **ACTION B (Deferred Indexing):** For each file in `pending/`:
-  1. Run `python3 .agents/memory/scripts/index_reflection.py <file>`
-  2. On success: move to `.agents/memory/pending/indexed/`
-  3. On failure: keep in `pending/`, continue
+   1. Run `python3 .agents/memory/scripts/index_reflection.py <file>`
+   2. On success: move to `.agents/memory/pending/indexed/`
+   3. On failure: keep in `pending/`, continue
+   Note: The script auto-activates the .venv if available. No manual venv activation needed.
 - **OUTPUT:** Relevant memory recalled; indexed files archived; failed files preserved.
 
 ## Question Hook Conventions (Per Tool)
@@ -98,7 +100,7 @@ If Ollama or LightRAG is down/unavailable:
 | Problem | Action |
 |---------|--------|
 | Ollama not running | Keep reflections in `pending/`; retry indexing next session |
-| LightRAG dependency missing | Preserve flat markdown; run setup later |
+| LightRAG dependency missing | Run `bash .agents/memory/scripts/setup.sh` to create venv; preserve flat markdown until then |
 | `index_reflection.py` fails | Leave file in `pending/`, log reason, continue |
 | `query_memory.py` — no graph data | Proceed with work; index pending files when possible |
 | User says no to saving | End cleanly with no changes |

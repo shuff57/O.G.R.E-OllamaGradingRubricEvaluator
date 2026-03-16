@@ -158,14 +158,14 @@
 
   .progress-fill {
     height: 100%;
-    background: #3498db;
-    border-radius: 4px;
+    background: var(--color-primary);
+    border-radius: var(--radius-md);
     transition: width 0.2s ease;
   }
 
   .progress-text {
     font-size: 0.85rem;
-    color: #555;
+    color: var(--color-text-secondary);
     min-width: 3rem;
     text-align: right;
   }
@@ -177,18 +177,18 @@
   }
 
   .btn-primary {
-    background: #3498db;
-    color: white;
+    background: var(--color-primary);
+    color: var(--color-primary-text);
     border: none;
     padding: 0.6rem 1.25rem;
-    border-radius: 4px;
+    border-radius: var(--radius-md);
     font-size: 0.95rem;
     cursor: pointer;
     transition: background 0.2s;
   }
 
   .btn-primary:hover:not(:disabled) {
-    background: #2980b9;
+    background: var(--color-primary-hover);
   }
 
   .btn-primary:disabled {
@@ -198,17 +198,17 @@
 
   .btn-secondary {
     background: none;
-    border: 1px solid #ccc;
+    border: 1px solid var(--color-border);
     padding: 0.6rem 1.25rem;
-    border-radius: 4px;
+    border-radius: var(--radius-md);
     font-size: 0.95rem;
     cursor: pointer;
-    color: #555;
+    color: var(--color-text-secondary);
     transition: background 0.2s;
   }
 
   .btn-secondary:hover:not(:disabled) {
-    background: #f0f0f0;
+    background: var(--color-bg-hover);
   }
 
   .btn-secondary:disabled {

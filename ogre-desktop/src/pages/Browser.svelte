@@ -583,7 +583,7 @@
     padding-right: 2rem;
     border: 1px solid var(--color-border);
     border-radius: 20px;
-    background: var(--color-bg-input);
+    background-color: var(--color-bg-input);
     color: var(--color-text-primary);
     font-size: 0.9rem;
     transition: all 0.2s;

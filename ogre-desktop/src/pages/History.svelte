@@ -414,7 +414,7 @@
     border: 1px solid var(--color-error);
     color: var(--color-error);
     padding: 0.5rem 1rem;
-    border-radius: 6px;
+    border-radius: var(--radius-lg);
     font-size: 0.875rem;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -432,7 +432,7 @@
     justify-content: center;
     padding: 4rem 2rem;
     background: var(--color-bg-card);
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     border: 1px dashed var(--color-border);
     text-align: center;
   }
@@ -455,7 +455,7 @@
 
   .table-wrapper {
     border: 1px solid var(--color-border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     overflow: hidden;
     box-shadow: var(--shadow-sm);
   }
@@ -532,7 +532,7 @@
   }
 
   .model {
-    font-family: monospace;
+    font-family: var(--font-mono);
     font-size: 0.85em;
     color: var(--color-primary);
   }
@@ -542,7 +542,7 @@
   }
 
   .font-mono {
-    font-family: monospace;
+    font-family: var(--font-mono);
   }
 
   .link-btn {
@@ -580,7 +580,7 @@
     padding: 0.5rem 1rem;
     border: 1px solid var(--color-border);
     background: var(--color-bg-card);
-    border-radius: 6px;
+    border-radius: var(--radius-lg);
     cursor: pointer;
     font-size: 0.875rem;
     color: var(--color-text-primary);
@@ -616,7 +616,7 @@
     padding: 0.75rem 1rem;
     background: var(--color-primary-bg);
     border: 1px solid var(--color-primary);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     font-size: 0.875rem;
     flex-wrap: wrap;
   }
@@ -661,7 +661,7 @@
     padding: 0.75rem 1rem;
     background: var(--color-warning-bg);
     border: 1px solid var(--color-warning);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     font-size: 0.875rem;
   }
 
@@ -682,7 +682,7 @@
     border: 1px solid var(--color-primary);
     background: var(--color-primary);
     color: white;
-    border-radius: 6px;
+    border-radius: var(--radius-lg);
     font-size: 0.8125rem;
     cursor: pointer;
     transition: opacity 0.2s;

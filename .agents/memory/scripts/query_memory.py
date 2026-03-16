@@ -9,6 +9,19 @@ from pathlib import Path
 WORKING_DIR = Path(__file__).parent.parent / "lightrag_workdir"
 
 
+def activate_venv():
+    """Auto-activate the .venv if it exists and we're not already in it."""
+    venv_dir = Path(__file__).parent.parent / ".venv"
+    venv_python = venv_dir / "bin" / "python3"
+    if venv_python.exists() and str(venv_dir) not in sys.prefix:
+        import os
+
+        os.execv(str(venv_python), [str(venv_python)] + sys.argv)
+
+
+activate_venv()
+
+
 async def main():
     if len(sys.argv) < 2:
         print("Usage: query_memory.py '<your query>'")
@@ -16,9 +29,33 @@ async def main():
 
     query = " ".join(sys.argv[1:])
 
+    missing = []
+    try:
+        import numpy as np
+    except ImportError:
+        missing.append("numpy")
+    try:
+        import ollama
+    except ImportError:
+        missing.append("ollama")
     try:
         from lightrag import LightRAG, QueryParam
-        from lightrag.llm.ollama import ollama_model_complete, ollama_embed
+        from lightrag.llm.ollama import ollama_model_complete
+        from lightrag.utils import EmbeddingFunc
+    except ImportError:
+        missing.append("lightrag-hku")
+
+    if missing:
+        print(
+            f"Missing packages: {', '.join(missing)}. Run: bash .agents/memory/scripts/setup.sh"
+        )
+        sys.exit(1)
+
+    try:
+        import numpy as np
+        import ollama
+        from lightrag import LightRAG, QueryParam
+        from lightrag.llm.ollama import ollama_model_complete
         from lightrag.utils import EmbeddingFunc
 
         if not WORKING_DIR.exists() or not any(WORKING_DIR.iterdir()):
@@ -27,6 +64,12 @@ async def main():
             )
             return
 
+        async def nomic_embed(texts: list[str]) -> np.ndarray:
+            client = ollama.AsyncClient()
+            data = await client.embed(model="nomic-embed-text", input=texts)
+            await client._client.aclose()
+            return np.array(data["embeddings"])
+
         rag = LightRAG(
             working_dir=str(WORKING_DIR),
             llm_model_func=ollama_model_complete,
@@ -34,16 +77,15 @@ async def main():
             embedding_func=EmbeddingFunc(
                 embedding_dim=768,
                 max_token_size=8192,
-                func=lambda texts: ollama_embed(texts, embed_model="nomic-embed-text"),
+                func=nomic_embed,
             ),
         )
 
+        await rag.initialize_storages()
         result = await rag.aquery(query, param=QueryParam(mode="mix"))
         print("=== Relevant Past Learnings ===")
         print(result)
 
-    except ImportError:
-        print("LightRAG not installed. Run setup.sh first.")
     except Exception as e:
         print(f"Note: Knowledge graph query unavailable: {e}")
         print("Check pending/ for recent unindexed reflections.")

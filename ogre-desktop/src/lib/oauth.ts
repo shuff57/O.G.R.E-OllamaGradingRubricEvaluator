@@ -399,9 +399,9 @@ export async function getValidAnthropicToken(): Promise<string | null> {
 
 // ── Google Device Flow ───────────────────────────────────────────────────
 
-// TODO: Create a Google OAuth Client at https://console.cloud.google.com/apis/credentials
-// — select "TVs and Limited Input Devices" type, then replace this value
-const GOOGLE_CLIENT_ID = "TODO_REGISTER_GOOGLE_OAUTH_CLIENT";
+// Placeholder — register at https://console.cloud.google.com/apis/credentials
+// (select "TVs and Limited Input Devices" type) then replace this value.
+const GOOGLE_CLIENT_ID = "UNREGISTERED_GOOGLE_OAUTH_CLIENT";
 const GOOGLE_DEVICE_CODE_URL = "https://oauth2.googleapis.com/device/code";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_SCOPE = "https://www.googleapis.com/auth/generative-language.retriever";

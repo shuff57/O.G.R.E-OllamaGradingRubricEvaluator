@@ -258,21 +258,14 @@
 
 <style>
   /* Global styles for the app container */
-  :global(body) {
-    margin: 0;
-    padding: 0;
-    font-family: 'Segoe UI', sans-serif;
-    background-color: #f5f5f5;
-  }
-
   .loading-screen {
     height: 100vh;
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    background-color: #2c3e50;
-    color: white;
+    background-color: var(--color-bg-main);
+    color: var(--color-text-primary);
   }
   
   .spinner {

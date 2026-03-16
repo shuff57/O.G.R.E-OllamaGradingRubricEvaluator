@@ -87,7 +87,7 @@ function handleScroll() {
   h2 {
     margin: 0;
     font-size: 1.5rem;
-    color: #333;
+    color: var(--color-text-primary);
   }
 
   .controls {
@@ -95,41 +95,41 @@ function handleScroll() {
     gap: 1rem;
     align-items: center;
     font-size: 0.9rem;
-    color: #555;
+    color: var(--color-text-secondary);
   }
 
   .log-container {
     flex: 1;
     overflow-y: auto;
-    background: #1e1e1e;
-    color: #d4d4d4;
+    background: var(--color-bg-input);
+    color: var(--color-text-primary);
     padding: 1rem;
-    font-family: 'Consolas', 'Courier New', monospace;
+    font-family: var(--font-mono);
     font-size: 0.875rem;
     line-height: 1.4;
-    border-radius: 4px;
+    border-radius: var(--radius-md);
     margin: 0;
     white-space: pre-wrap;
     word-break: break-all;
-    border: 1px solid #333;
+    border: 1px solid var(--color-border);
   }
 
   .error {
-    color: #f48771;
+    color: var(--color-error);
   }
 
   button {
     padding: 0.5rem 1rem;
-    background: #007acc;
-    color: white;
+    background: var(--color-primary);
+    color: var(--color-primary-text);
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-md);
     cursor: pointer;
     font-weight: 500;
   }
 
   button:hover {
-    background: #005a9e;
+    background: var(--color-primary-hover);
   }
 
   label {

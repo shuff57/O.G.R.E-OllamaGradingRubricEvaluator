@@ -1,10 +1,10 @@
 {
-  "active_plan": "/home/shuff57/Documents/GitHub/O.G.R.E-OllamaGradingRubricEvaluator/.sisyphus/plans/agent-nuclear-rebuild.md",
-  "started_at": "2026-03-15T15:39:00.094Z",
+  "active_plan": "/home/shuff57/Documents/GitHub/O.G.R.E-OllamaGradingRubricEvaluator/.sisyphus/plans/sidecar-extension-removal.md",
+  "started_at": "2026-03-16T00:04:21.752Z",
   "session_ids": [
-    "ses_30dd96d92ffeIO8u6cSHZYX25b"
+    "ses_30c310b0affeY8DwP74WZ3yBz3"
   ],
-  "plan_name": "agent-nuclear-rebuild",
+  "plan_name": "sidecar-extension-removal",
   "agent": "atlas",
-  "worktree_path": "/home/shuff57/Documents/GitHub/O.G.R.E-OllamaGradingRubricEvaluator"
+  "worktree_path": "/home/shuff57/.config/superpowers/worktrees/O.G.R.E-OllamaGradingRubricEvaluator/sidecar-extension-removal"
 }

@@ -145,7 +145,7 @@
     padding: 2rem;
     max-width: 1200px;
     margin: 0 auto;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-family: var(--font-body);
   }
 
   header {
@@ -166,7 +166,7 @@
   .version {
     color: var(--color-text-muted);
     font-size: 0.9rem;
-    font-family: monospace;
+    font-family: var(--font-mono);
   }
 
   /* Health Indicators */
@@ -176,7 +176,7 @@
     margin-bottom: 2rem;
     background: var(--color-bg-card);
     padding: 1.5rem;
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     border: 1px solid var(--color-border);
   }
 
@@ -228,7 +228,7 @@
   .action-card {
     background: var(--color-bg-card);
     border: 1px solid var(--color-border);
-    border-radius: 10px;
+    border-radius: var(--radius-lg);
     padding: 1.5rem;
     cursor: pointer;
     text-align: left;
@@ -286,9 +286,9 @@
   .stat {
     background: var(--color-bg-card);
     padding: 1.5rem;
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     border: 1px solid var(--color-border);
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    box-shadow: var(--shadow-sm);
     display: flex;
     flex-direction: column;
     gap: 0.5rem;

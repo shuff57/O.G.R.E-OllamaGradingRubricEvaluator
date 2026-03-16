@@ -41,6 +41,15 @@
   --color-warning-bg: rgba(210, 153, 34, 0.1);
   --color-error-bg: rgba(248, 81, 73, 0.1);
 
+  /* Extended Palette */
+  --color-bg-input: #0d1117;
+  --color-bg-hover: #1c2333;
+  --color-bg-selected: rgba(88, 166, 255, 0.15);
+  --color-bg-subtle: #161b22;
+  --color-bg-app: #0d1117;
+  --color-text-subtle: #383d47;
+  --color-primary-rgb: 88, 166, 255;
+
   /* Typography - Technical */
   --font-display: 'JetBrains Mono', monospace;
   --font-body: 'JetBrains Mono', monospace; /* Monospace everything for that dev feel */
@@ -54,6 +63,10 @@
   --spacing-6: 1.5rem;
   --spacing-8: 2rem;
   --spacing-12: 3rem;
+  --spacing-sm: var(--spacing-2);
+  --spacing-md: var(--spacing-4);
+  --spacing-lg: var(--spacing-6);
+  --spacing-xl: var(--spacing-8);
 
   --sidebar-width-expanded: 250px;
   --sidebar-width-collapsed: 60px;
@@ -121,6 +134,14 @@
   --color-success-bg: rgba(6, 214, 160, 0.1);
   --color-warning-bg: rgba(255, 209, 102, 0.1);
   --color-error-bg: rgba(239, 71, 111, 0.1);
+
+  --color-bg-input: #ffffff;
+  --color-bg-hover: #f5f0e8;
+  --color-bg-selected: rgba(255, 107, 107, 0.12);
+  --color-bg-subtle: #f8f4ec;
+  --color-bg-app: #fffcf5;
+  --color-text-subtle: #c4b5a5;
+  --color-primary-rgb: 255, 107, 107;
 
   /* Typography - Friendly */
   --font-display: 'Fredoka', sans-serif;
@@ -219,7 +240,7 @@ a:hover {
 }
 
 /* Decorative top border for dark mode cards to look like code blocks */
-[data-theme="dark"] .card::before {
+:root:not([data-theme="light"]) .card::before {
   content: '';
   position: absolute;
   top: 0;
