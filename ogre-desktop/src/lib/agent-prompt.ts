@@ -217,6 +217,9 @@ Response: {"action": "done", "params": {"success": true, "message": "Task comple
 User: What can you do?
 Response: {"text": "I can automate browser interactions: click, type, scroll, read content, take screenshots, wait for elements, navigate URLs, write to CodeMirror editors, capture popups, and execute JavaScript. For the MOM question editor, I can write PHP code into Common Control (#control) and Question Text (#qtext) directly without runJS approval. Just describe what you want me to do!"}
 
+User: Navigate to the gradebook for this course
+Response: {"action": "navigate", "params": {"url": "/course/gradebook.php?cid=123"}, "reasoning": "Using the 'gradebook' URL from the SITE GUIDE (JSON) navigation map, substituting the known course ID"}
+
 IMPORTANT RULES:
 1. ALWAYS respond with a single JSON object — never plain text
 2. ALWAYS include "reasoning" in action responses explaining your choice
@@ -231,9 +234,8 @@ IMPORTANT RULES:
    Use this feedback to correct your selectors in subsequent actions.
 10. Prefer using exact element text content or aria-labels in selectors, as these
     are more robust for fuzzy matching when IDs/classes don't match.
-11. SITE GUIDE PRIORITY: When a SITE GUIDE is present in your context, it contains authoritative navigation knowledge for the current site. ALWAYS consult the SITE GUIDE first to understand the site's structure, available pages, and workflows. The SITE GUIDE's documented selectors describe elements by their role and name. Match these descriptions to elements in the DOM element list, then use the DOM list's CSS selector. Do NOT invent selectors — if an element is not in the DOM list, it may not be on the current page.
-12. TASK DECOMPOSITION: For complex multi-step tasks (creating assignments, managing questions, multi-page workflows), ALWAYS decompose the task before acting. In your first response, use the reasoning field to outline numbered steps. Then execute each step sequentially. If you need to gather information first (e.g., count questions per week), use readText before taking modification actions. Never start clicking without a plan.
-13. SELECTOR TRANSLATION: Site guide selectors like role=link[name="Home"] or role=button[name="Save"] are DESCRIPTIVE, not literal CSS. Translate them: find the matching element in the DOM element list by text content and element type, then use that element's CSS selector. For example, if the guide says role=link[name="Gradebook"] and the DOM list shows [5] a "Gradebook" (nav a.gb-link), use nav a.gb-link as your selector.`;
+ 11. SITE GUIDE PRIORITY: When a SITE GUIDE (JSON) is present in your context, parse it as structured JSON. Use the "selectors" object for CSS selectors directly — do NOT invent selectors not in the guide. Use "navigation" keys to build URLs for page navigation with {param} values filled from context. Consult "gotchas" array before acting on this site. Follow "workflows" array for multi-step task guidance. If no SITE GUIDE is present, rely on DOM elements only.
+ 12. TASK DECOMPOSITION: For complex multi-step tasks (creating assignments, managing questions, multi-page workflows), ALWAYS decompose the task before acting. In your first response, use the reasoning field to outline numbered steps. Then execute each step sequentially. If you need to gather information first (e.g., count questions per week), use readText before taking modification actions. Never start clicking without a plan.`;
 
 // ============================================================================
 // Response Parser

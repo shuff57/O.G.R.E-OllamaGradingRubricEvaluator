@@ -29,10 +29,19 @@
     runChatDiscovery,
     intentToDiscoveryHints,
   } from '../../lib/discovery-intent';
+  import { getSkillsWithUrlPattern } from '../../lib/db';
+  import { findMatchingProfiles } from '../../lib/skills-api';
+  import { selectBestProfile } from '../../lib/profile-precedence';
+  import { convertProfileToJSON } from '../../lib/profile-json-converter';
   import {
     testProfile,
     type ProfileTestReport
   } from '../../lib/profile-tester';
+  import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
+  import { getHandshakeToken } from '../../lib/provider-sync';
+  import { parseSkillMarkdown } from '../../lib/skill-parser';
+  import { saveSkill } from '../../lib/db';
+  import { captureInteractiveDom } from '../../lib/agent-dom';
   import type { ExtractionConfig } from '../../lib/site-profiles';
   import ExtractionConfigPanel from './ExtractionConfigPanel.svelte';
 
@@ -40,9 +49,18 @@
   import DiscoveryResults from './DiscoveryResults.svelte';
   import DiscoveryConfirmation from './DiscoveryConfirmation.svelte';
   import DiscoverySaveDialog from './DiscoverySaveDialog.svelte';
+  import DiscoveryGuidePreview from './DiscoveryGuidePreview.svelte';
   import DiscoveryModeSelector from './DiscoveryModeSelector.svelte';
+  import DiscoveryGuideStatus from './DiscoveryGuideStatus.svelte';
   import DiscoveryChat from './DiscoveryChat.svelte';
   import { highlightSelector, SELECTOR_LABELS } from '../../lib/discovery-ui';
+
+  const SERVER_BASE = 'http://localhost:3456';
+
+  type TauriResponseWithData = { data: unknown; status?: number };
+  function getResponseData(response: unknown): unknown {
+    return (response as TauriResponseWithData).data;
+  }
 
   // Props
   let {
@@ -95,6 +113,12 @@
   let profileName = $state('');
   let saveStatus = $state('');
 
+  // Guide generation preview state
+  let showGuidePreview = $state(false);
+  let isGeneratingGuide = $state(false);
+  let generatedGuideMarkdown = $state('');
+  let isSavingGuide = $state(false);
+
   // Confirmation flow state
   let confirmationFlow = $state<ConfirmationFlow | null>(null);
   let isRefining = $state(false);
@@ -116,6 +140,14 @@
     if (refreshKey > 0) staleWarning = false;
   });
 
+  $effect(() => {
+    if (staleWarning) {
+      showGuidePreview = false;
+      isGeneratingGuide = false;
+      generatedGuideMarkdown = '';
+    }
+  });
+
   // ── Actions ───────────────────────────────────────────────────────────
 
   async function handleStartDiscovery() {
@@ -128,7 +160,34 @@
     testReport = null;
 
     try {
-      const hints = intentToDiscoveryHints(mode, mode === 'form' ? formInput : mode === 'chat' ? chatState.messages : exampleSelections);
+      const intentHints = intentToDiscoveryHints(mode, mode === 'form' ? formInput : mode === 'chat' ? chatState.messages : exampleSelections);
+
+      // Check for existing knowledge profile to use as hints
+      let knownSelectors: Record<string, string> | undefined;
+      let pageDescription: string | undefined;
+      try {
+        const allWithPattern = await getSkillsWithUrlPattern();
+        const matches = findMatchingProfiles(pageLoadedUrl || '', allWithPattern);
+        const best = selectBestProfile(matches);
+        if (best) {
+          const guide = convertProfileToJSON(best.content);
+          if (Object.keys(guide.selectors).length > 0) {
+            knownSelectors = guide.selectors;
+          }
+          if (guide.site) {
+            pageDescription = guide.site;
+          }
+        }
+      } catch {
+        // If lookup fails, discovery proceeds without hints
+      }
+
+      const hints = {
+        ...intentHints,
+        ...(knownSelectors ? { knownSelectors } : {}),
+        ...(pageDescription ? { pageDescription } : {})
+      };
+
       const workflow = await runDiscovery({
         provider: provider || undefined,
         model: model || undefined,
@@ -293,9 +352,84 @@
       error = err instanceof Error ? err.message : String(err);
     }
   }
+
+  async function handleGenerateGuide() {
+    showGuidePreview = true;
+    isGeneratingGuide = true;
+    generatedGuideMarkdown = '';
+
+    try {
+      const pageSnapshot = await captureInteractiveDom();
+      const snapshotText = typeof pageSnapshot === 'string'
+        ? pageSnapshot
+        : JSON.stringify(pageSnapshot);
+
+      const url = pageLoadedUrl || '';
+      const existingSelectors = discoveryResult?.selectors || {};
+      const token = getHandshakeToken();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await tauriFetch(`${SERVER_BASE}/api/generate-knowledge-profile`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          pageSnapshot: snapshotText.substring(0, 8000),
+          url,
+          existingSelectors,
+          provider,
+          model,
+        }),
+      });
+
+      const status = (response as TauriResponseWithData).status ?? 500;
+      if (status < 200 || status >= 300) {
+        throw new Error(`Generation failed: ${status}`);
+      }
+
+      const raw = getResponseData(response);
+      const data = typeof raw === 'string' ? JSON.parse(raw) : raw as { markdown?: string };
+      generatedGuideMarkdown = data.markdown || '';
+    } catch (e) {
+      generatedGuideMarkdown = '';
+      error = e instanceof Error ? e.message : 'Guide generation failed';
+      showGuidePreview = false;
+    } finally {
+      isGeneratingGuide = false;
+    }
+  }
+
+  async function handleSaveGuide() {
+    if (!generatedGuideMarkdown) return;
+    isSavingGuide = true;
+    try {
+      const parsed = parseSkillMarkdown(generatedGuideMarkdown);
+      await saveSkill({
+        name: parsed.name || `Site Guide — ${pageLoadedUrl || 'Unknown'}`,
+        description: parsed.description || '',
+        content: generatedGuideMarkdown,
+        source: 'site-profile',
+        source_id: pageLoadedUrl || null,
+        is_active: 0,
+        url_pattern: parsed.urlPatterns?.[0] || pageLoadedUrl || null,
+      });
+      showGuidePreview = false;
+      generatedGuideMarkdown = '';
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Failed to save guide';
+    } finally {
+      isSavingGuide = false;
+    }
+  }
 </script>
 
 <section class="discovery-panel">
+  <DiscoveryGuideStatus {pageLoadedUrl} />
+
   <div class="header">
     <h3>Discovery</h3>
     <p class="description">Automatically detect grading elements on this page using AI.</p>
@@ -325,7 +459,7 @@
 
   {#if staleWarning}
     <div class="stale-warning">
-      <small>⚠ Page has changed — discovery results may be outdated.</small>
+      <small>⚠ Page has changed — discovery results and site guide may be outdated.</small>
       <button class="btn-link" onclick={() => { staleWarning = false; }}>Dismiss</button>
     </div>
   {/if}
@@ -377,6 +511,15 @@
       onSave={() => { showSaveDialog = true; }}
       onDiscard={() => { phase = 'idle'; }}
     />
+
+    <button
+      class="btn-secondary full-width"
+      onclick={handleGenerateGuide}
+      disabled={!provider || !model || isGeneratingGuide || isSavingGuide}
+      title={!provider || !model ? 'Configure AI provider first' : 'Generate a knowledge profile for this site'}
+    >
+      📖 Generate Site Guide
+    </button>
   {/if}
 
   {#if phase === 'confirming' && confirmationFlow}
@@ -397,6 +540,18 @@
     isSaving={phase === 'saving'}
     onSave={handleSaveProfile}
     onCancel={() => { showSaveDialog = false; }}
+  />
+
+  <DiscoveryGuidePreview
+    isOpen={showGuidePreview}
+    isGenerating={isGeneratingGuide}
+    generatedMarkdown={generatedGuideMarkdown}
+    isSaving={isSavingGuide}
+    onSave={handleSaveGuide}
+    onDiscard={() => {
+      showGuidePreview = false;
+      generatedGuideMarkdown = '';
+    }}
   />
 
   {#if error}
@@ -427,6 +582,9 @@
   .btn-link { background: transparent; border: none; color: #92400e; cursor: pointer; font-size: 0.85rem; text-decoration: underline; padding: 0; }
   .btn-primary { padding: var(--spacing-2) var(--spacing-3); border-radius: var(--radius-md); font-weight: 500; cursor: pointer; font-size: 0.9rem; transition: all 0.2s; background: var(--color-primary); color: white; border: none; }
   .btn-primary:hover { background: var(--color-primary-dark); }
+  .btn-secondary { padding: var(--spacing-2) var(--spacing-3); border-radius: var(--radius-md); font-weight: 500; cursor: pointer; font-size: 0.9rem; transition: all 0.2s; background: transparent; border: 1px solid var(--color-border); color: var(--color-text-primary); }
+  .btn-secondary:hover { background: var(--color-bg-secondary); }
+  .btn-secondary:disabled { opacity: 0.6; cursor: not-allowed; }
   .full-width { width: 100%; }
   .error-banner { display: flex; align-items: center; gap: var(--spacing-2); padding: var(--spacing-2); background: var(--color-error-bg); border: 1px solid var(--color-error-border); border-radius: var(--radius-md); color: var(--color-error); font-size: 0.85rem; }
 </style>
