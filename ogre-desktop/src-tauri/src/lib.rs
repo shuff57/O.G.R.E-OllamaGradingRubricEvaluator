@@ -65,6 +65,24 @@ struct CdpPortState {
     port: Option<u16>,
 }
 
+pub enum ServerEvent {
+    SessionComplete(serde_json::Value),
+    ProviderChanged { provider_id: String, model: String },
+}
+
+pub fn parse_server_event(line: &str) -> Option<ServerEvent> {
+    let json = serde_json::from_str::<serde_json::Value>(line).ok()?;
+    match json.get("type").and_then(|t| t.as_str()) {
+        Some("session_complete") => Some(ServerEvent::SessionComplete(json)),
+        Some("provider_changed") => {
+            let provider_id = json["provider_id"].as_str().unwrap_or("").to_string();
+            let model = json["model"].as_str().unwrap_or("").to_string();
+            Some(ServerEvent::ProviderChanged { provider_id, model })
+        }
+        _ => None,
+    }
+}
+
 #[derive(serde::Deserialize)]
 #[allow(dead_code)]
 struct CdpTarget {
@@ -165,23 +183,20 @@ fn spawn_server(app_handle: &tauri::AppHandle, restart_count: Arc<Mutex<u32>>) {
         while let Ok(Some(line)) = stdout_lines.next_line().await {
             let _ = handle_stdout.emit("server-log", &line);
 
-            // Detect session_complete JSON to record history
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
-                 if json.get("type").and_then(|t| t.as_str()) == Some("session_complete") {
+            match parse_server_event(&line) {
+                Some(ServerEvent::SessionComplete(json)) => {
                     // Emit event for frontend - frontend handles DB persistence via TypeScript
                     let _ = handle_stdout.emit("session-complete", &json);
-                 } else if json.get("type").and_then(|t| t.as_str()) == Some("provider_changed") {
-                    // Detect provider_changed JSON from extension write-back
-                    let provider_id = json["provider_id"].as_str().unwrap_or("").to_string();
-                    let model = json["model"].as_str().unwrap_or("").to_string();
-
+                }
+                Some(ServerEvent::ProviderChanged { provider_id, model }) => {
                     // Emit event for frontend to persist active provider change
                     let payload = serde_json::json!({
                         "provider_id": provider_id,
                         "model": model
                     });
                     let _ = handle_stdout.emit("provider-changed", &payload);
-                 }
+                }
+                None => {}
             }
         }
     });
