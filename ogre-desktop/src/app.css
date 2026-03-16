@@ -5,6 +5,7 @@
      DARK MODE (Default / Technical / VS Code)
      ========================================= */
   --theme-name: 'dark';
+  color-scheme: dark;
   
   /* Colors */
   --color-bg-main: #0d1117;     /* GitHub Dark Dimmed / VS Code deeply dark */
@@ -99,6 +100,7 @@
    ========================================= */
 [data-theme="light"] {
   --theme-name: 'light';
+  color-scheme: light;
 
   /* Colors - Warm & Vibrant */
   --color-bg-main: #fffcf5;      /* Cream / Warm Paper */
@@ -350,6 +352,11 @@ input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--color-primary);
   box-shadow: 0 0 0 3px var(--color-primary-bg);
+}
+
+option {
+  background-color: var(--color-bg-main);
+  color: var(--color-text-primary);
 }
 
 label {
