@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { getGradingSessions, getSetting, getProviderConfigs, initDB } from "../lib/db";
   import type { GradingSession } from "../lib/db";
-  import { open } from "@tauri-apps/plugin-shell";
+  import { openUrl } from "@tauri-apps/plugin-opener";
   import { deleteEmbeddingsBySessionId } from "../lib/vector-store";
   import { getEmbeddingStats, getSessionEmbeddingCounts, type EmbeddingStats } from "../lib/embedding-stats";
   import { reEmbedAll } from "../lib/re-embed";
@@ -165,9 +165,9 @@
     }
   }
 
-  function openUrl(url: string | null) {
+  function handleOpenUrl(url: string | null) {
     if (url) {
-      open(url);
+      openUrl(url);
     }
   }
 </script>
@@ -323,7 +323,7 @@
                     {#if session.page_url}
                       <button
                         class="link-btn"
-                        on:click={() => openUrl(session.page_url)}
+                        on:click={() => handleOpenUrl(session.page_url)}
                         title={session.page_url}
                       >
                         Open ↗
