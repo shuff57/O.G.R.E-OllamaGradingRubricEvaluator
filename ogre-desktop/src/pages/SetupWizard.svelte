@@ -41,6 +41,17 @@
       placeholderUrl: 'http://localhost:11434 or https://your-cloud-instance.com'
     },
     {
+      id: 'ollama-cloud',
+      name: 'Ollama (Cloud GPU)',
+      enabled: false,
+      apiKey: '',
+      apiUrl: 'https://api.runpod.ai/v2/YOUR_ENDPOINT_ID',
+      model: 'qwen3.5-9B-stat-grader',
+      keyUrl: '',
+      placeholderKey: 'RunPod API Key (from Settings → API Keys)',
+      placeholderUrl: 'https://api.runpod.ai/v2/YOUR_ENDPOINT_ID'
+    },
+    {
       id: 'openai',
       name: 'OpenAI',
       enabled: false,

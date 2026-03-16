@@ -47,6 +47,7 @@
   // Legacy providers with old IDs will still work but won't appear in add dropdown
   const PROVIDER_OPTIONS = [
     { id: 'ollama', name: 'Ollama', requiresUrl: true, requiresKey: false, defaultUrl: 'http://localhost:11434', canSignIn: false },
+    { id: 'ollama-cloud', name: 'Ollama (Cloud GPU)', requiresUrl: true, requiresKey: true, defaultUrl: 'https://api.runpod.ai/v2/YOUR_ENDPOINT_ID', canSignIn: false },
     { id: 'openai', name: 'OpenAI', requiresUrl: false, requiresKey: true, defaultUrl: '', canSignIn: true },
     { id: 'anthropic', name: 'Anthropic (Claude)', requiresUrl: false, requiresKey: true, defaultUrl: '', canSignIn: true },
     { id: 'google-gemini', name: 'Google Gemini', requiresUrl: false, requiresKey: true, defaultUrl: '', canSignIn: true },
@@ -67,7 +68,7 @@
     if (id === 'openai') return 'openai';
     if (id === 'anthropic') return 'anthropic';
     if (id === 'google-gemini') return 'google';
-    if (id === 'ollama') return 'ollama';
+    if (id === 'ollama' || id === 'ollama-cloud') return 'ollama';
     return null;
   }
 
@@ -183,6 +184,11 @@
   }
 
   async function fetchModels(providerId: string) {
+    // Skip model discovery for ollama-cloud (model is fixed)
+    if (providerId === 'ollama-cloud') {
+      return;
+    }
+    
     fetchingModels[providerId] = true;
     fetchingModels = { ...fetchingModels }; // Trigger reactivity
     modelFetchErrors[providerId] = '';
@@ -265,7 +271,8 @@
     if (option) {
       newProviderUrl = option.defaultUrl;
       newProviderKey = '';
-      newProviderModel = '';
+      // Set default model for ollama-cloud
+      newProviderModel = newProviderId === 'ollama-cloud' ? 'qwen3.5-9B-stat-grader' : '';
     }
   }
 
@@ -341,96 +348,96 @@
               {/if}
             {/if}
             
-            {#if option?.requiresKey}
-              {#if option.canSignIn}
-                 <div class="oauth-section">
-                   {#if oauthStatus[provider.id] && !useApiKey[provider.id]}
-                     <!-- SIGNED IN STATE -->
-                     <div class="oauth-status success">
-                        <span class="icon">✅</span> Signed in
-                        <button class="ghost small" onclick={() => handleSignOut(provider.id)}>Sign out</button>
-                     </div>
-   {:else if deviceFlows[provider.id]}
-     <!-- DEVICE FLOW ACTIVE -->
-     <div class="device-flow-container">
-       {#if deviceFlows[provider.id].submitCode}
-         <!-- COPY-PASTE FLOW (Anthropic) -->
-         <p class="instructions">1. Sign in at the page that just opened in your browser.</p>
-         <p class="instructions">2. Copy the code shown on the page and paste it below:</p>
-         <div class="paste-input-row">
-           <input
-             type="text"
-             placeholder="Paste code here (e.g. abc123#xyz...)"
-             oninput={(e) => { _anthropicPasteBuffer = (e.currentTarget as HTMLInputElement).value; }}
-           />
-           <button class="btn primary small" onclick={() => {
-             if (_anthropicPasteBuffer) {
-               deviceFlows[provider.id].submitCode?.(_anthropicPasteBuffer);
-               _anthropicPasteBuffer = '';
-             }
-           }}>Submit</button>
-         </div>
-       {:else}
-         <!-- STANDARD DEVICE-CODE FLOW (GitHub, OpenAI, Google) -->
-         <p class="instructions">1. Go to: <a href={deviceFlows[provider.id].verificationUrl} target="_blank">{deviceFlows[provider.id].verificationUrl}</a></p>
-         <p class="instructions">2. Enter code:</p>
-         <div class="code-display">
-            {deviceFlows[provider.id].userCode}
-            <button class="ghost small" title="Copy" onclick={() => navigator.clipboard.writeText(deviceFlows[provider.id].userCode)}>📋</button>
-         </div>
-       {/if}
-       <div class="polling-indicator">
-          <span class="spinner">⏳</span> Waiting for authorization...
-       </div>
-       <button class="ghost small" onclick={() => cancelAuth(provider.id)}>Cancel</button>
-     </div>
-                   {:else}
-                     <!-- NOT SIGNED IN / ACTIONS -->
-                     <div class="oauth-actions">
-                        {#if authErrors[provider.id]}
-                          <div class="error-banner">{authErrors[provider.id]}</div>
-                        {/if}
+             {#if option?.requiresKey}
+               {#if option.canSignIn}
+                  <div class="oauth-section">
+                    {#if oauthStatus[provider.id] && !useApiKey[provider.id]}
+                      <!-- SIGNED IN STATE -->
+                      <div class="oauth-status success">
+                         <span class="icon">✅</span> Signed in
+                         <button class="ghost small" onclick={() => handleSignOut(provider.id)}>Sign out</button>
+                      </div>
+    {:else if deviceFlows[provider.id]}
+      <!-- DEVICE FLOW ACTIVE -->
+      <div class="device-flow-container">
+        {#if deviceFlows[provider.id].submitCode}
+          <!-- COPY-PASTE FLOW (Anthropic) -->
+          <p class="instructions">1. Sign in at the page that just opened in your browser.</p>
+          <p class="instructions">2. Copy the code shown on the page and paste it below:</p>
+          <div class="paste-input-row">
+            <input
+              type="text"
+              placeholder="Paste code here (e.g. abc123#xyz...)"
+              oninput={(e) => { _anthropicPasteBuffer = (e.currentTarget as HTMLInputElement).value; }}
+            />
+            <button class="btn primary small" onclick={() => {
+              if (_anthropicPasteBuffer) {
+                deviceFlows[provider.id].submitCode?.(_anthropicPasteBuffer);
+                _anthropicPasteBuffer = '';
+              }
+            }}>Submit</button>
+          </div>
+        {:else}
+          <!-- STANDARD DEVICE-CODE FLOW (GitHub, OpenAI, Google) -->
+          <p class="instructions">1. Go to: <a href={deviceFlows[provider.id].verificationUrl} target="_blank">{deviceFlows[provider.id].verificationUrl}</a></p>
+          <p class="instructions">2. Enter code:</p>
+          <div class="code-display">
+             {deviceFlows[provider.id].userCode}
+             <button class="ghost small" title="Copy" onclick={() => navigator.clipboard.writeText(deviceFlows[provider.id].userCode)}>📋</button>
+          </div>
+        {/if}
+        <div class="polling-indicator">
+           <span class="spinner">⏳</span> Waiting for authorization...
+        </div>
+        <button class="ghost small" onclick={() => cancelAuth(provider.id)}>Cancel</button>
+      </div>
+                    {:else}
+                      <!-- NOT SIGNED IN / ACTIONS -->
+                      <div class="oauth-actions">
+                         {#if authErrors[provider.id]}
+                           <div class="error-banner">{authErrors[provider.id]}</div>
+                         {/if}
 
-                        {#if !useApiKey[provider.id]}
-                           <button class="btn oauth-btn" disabled={authLoading[provider.id]} onclick={() => startAuth(provider.id)}>
-                             {#if authLoading[provider.id]}
-                               Loading...
-                             {:else}
-                               Sign in with {option.name.split(' ')[0]}
-                             {/if}
-                           </button>
-                           <div class="divider"><span>OR</span></div>
-                        {/if}
-                        
-                        {#if useApiKey[provider.id]}
-                           <label>
-                              API Key (Optional)
-                              <input type="password" bind:value={provider.api_key} placeholder="sk-..." />
-                           </label>
-                           <button class="link-btn" onclick={() => useApiKey[provider.id] = false}>
-                             Use Sign In instead
-                           </button>
-                        {:else}
-                           <button class="link-btn" onclick={() => useApiKey[provider.id] = true}>
-                             Use API Key instead
-                           </button>
-                        {/if}
-                     </div>
-                   {/if}
-                 </div>
-              {:else}
-                <label>
-                  API Key
-                  <input type="password" bind:value={provider.api_key} placeholder="sk-..." />
-                </label>
-              {/if}
-            {:else if provider.id === 'ollama'}
-              <!-- Ollama optional API key -->
-              <label>
-                API Key <span class="optional-badge">(Optional - only for cloud endpoints)</span>
-                <input type="password" bind:value={provider.api_key} placeholder="Leave empty for local" />
-              </label>
-            {/if}
+                         {#if !useApiKey[provider.id]}
+                            <button class="btn oauth-btn" disabled={authLoading[provider.id]} onclick={() => startAuth(provider.id)}>
+                              {#if authLoading[provider.id]}
+                                Loading...
+                              {:else}
+                                Sign in with {option.name.split(' ')[0]}
+                              {/if}
+                            </button>
+                            <div class="divider"><span>OR</span></div>
+                         {/if}
+                         
+                         {#if useApiKey[provider.id]}
+                            <label>
+                               API Key (Optional)
+                               <input type="password" bind:value={provider.api_key} placeholder="sk-..." />
+                            </label>
+                            <button class="link-btn" onclick={() => useApiKey[provider.id] = false}>
+                              Use Sign In instead
+                            </button>
+                         {:else}
+                            <button class="link-btn" onclick={() => useApiKey[provider.id] = true}>
+                              Use API Key instead
+                            </button>
+                         {/if}
+                      </div>
+                    {/if}
+                  </div>
+               {:else}
+                 <label>
+                   {provider.id === 'ollama-cloud' ? 'RunPod API Key' : 'API Key'}
+                   <input type="password" bind:value={provider.api_key} placeholder={provider.id === 'ollama-cloud' ? 'RunPod API Key (from Settings → API Keys)' : 'sk-...'} />
+                 </label>
+               {/if}
+             {:else if provider.id === 'ollama'}
+               <!-- Ollama optional API key -->
+               <label>
+                 API Key <span class="optional-badge">(Optional - only for cloud endpoints)</span>
+                 <input type="password" bind:value={provider.api_key} placeholder="Leave empty for local" />
+               </label>
+             {/if}
 
             <label>
               Model
@@ -555,27 +562,27 @@
             {/if}
           {/if}
 
-          {#if newOption?.requiresKey}
-             {#if newOption.canSignIn}
-                <!-- Simple view for add form, detailed view in edit -->
-                <p class="hint">You can sign in after saving.</p>
-                <label>
-                  API Key (Optional if using Auth)
-                  <input type="password" bind:value={newProviderKey} placeholder="sk-..." />
-                </label>
-             {:else}
-                <label>
-                  API Key
-                  <input type="password" bind:value={newProviderKey} placeholder="sk-..." />
-                </label>
-             {/if}
-          {:else if newProviderId === 'ollama'}
-            <!-- Ollama optional API key -->
-            <label>
-              API Key <span class="optional-badge">(Optional - only for cloud endpoints)</span>
-              <input type="password" bind:value={newProviderKey} placeholder="Leave empty for local" />
-            </label>
-          {/if}
+           {#if newOption?.requiresKey}
+              {#if newOption.canSignIn}
+                 <!-- Simple view for add form, detailed view in edit -->
+                 <p class="hint">You can sign in after saving.</p>
+                 <label>
+                   API Key (Optional if using Auth)
+                   <input type="password" bind:value={newProviderKey} placeholder="sk-..." />
+                 </label>
+              {:else}
+                 <label>
+                   {newProviderId === 'ollama-cloud' ? 'RunPod API Key' : 'API Key'}
+                   <input type="password" bind:value={newProviderKey} placeholder={newProviderId === 'ollama-cloud' ? 'RunPod API Key (from Settings → API Keys)' : 'sk-...'} />
+                 </label>
+              {/if}
+           {:else if newProviderId === 'ollama'}
+             <!-- Ollama optional API key -->
+             <label>
+               API Key <span class="optional-badge">(Optional - only for cloud endpoints)</span>
+               <input type="password" bind:value={newProviderKey} placeholder="Leave empty for local" />
+             </label>
+           {/if}
 
           <label>
             Model
