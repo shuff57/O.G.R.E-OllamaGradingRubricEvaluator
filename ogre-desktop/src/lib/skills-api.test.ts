@@ -12,7 +12,7 @@ vi.mock("@tauri-apps/plugin-http", () => ({
 }));
 
 // Import AFTER mocks are set up
-import { buildSkillContentUrl, SKILLS_SH_SEARCH_URL, searchSkills, fetchSkillContent, fetchTrendingSkills, installSkill, buildSkillInjection, getSkillInjectionSize, findMatchingProfiles, buildSiteContextInjection, syncSiteProfiles, BUNDLED_PROFILES } from "./skills-api";
+import { buildSkillContentUrl, SKILLS_SH_SEARCH_URL, searchSkills, fetchSkillContent, fetchTrendingSkills, installSkill, buildSkillInjection, getSkillInjectionSize, findMatchingProfiles, buildSiteContextInjection, syncSiteProfiles, BUNDLED_PROFILES, getMatchingSkillsForUrl } from "./skills-api";
 
 // ── Tests ─────────────────────────────────────────────────────────────────
 
@@ -394,6 +394,48 @@ describe('findMatchingProfiles', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = findMatchingProfiles('https://www.myopenmath.com', profiles as any);
     expect(result).toHaveLength(1);
+  });
+});
+
+describe('getMatchingSkillsForUrl', () => {
+  beforeEach(() => {
+    mockGetSkillsWithUrlPattern.mockReset();
+  });
+
+  it('returns skills whose url_pattern matches the given URL', async () => {
+    const mockSkills = [
+      { id: '1', name: 'MOM Skill', url_pattern: 'myopenmath.com', is_active: 1, content: '', description: '', source: null, source_id: null, created_at: '', updated_at: '' },
+      { id: '2', name: 'Aeries Skill', url_pattern: 'aeries.com', is_active: 1, content: '', description: '', source: null, source_id: null, created_at: '', updated_at: '' },
+      { id: '3', name: 'No Pattern', url_pattern: '', is_active: 1, content: '', description: '', source: null, source_id: null, created_at: '', updated_at: '' },
+    ];
+    mockGetSkillsWithUrlPattern.mockResolvedValue(mockSkills);
+
+    const result = await getMatchingSkillsForUrl('https://myopenmath.com/course/view.php');
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe('MOM Skill');
+  });
+
+  it('returns empty array when no patterns match', async () => {
+    mockGetSkillsWithUrlPattern.mockResolvedValue([]);
+    const result = await getMatchingSkillsForUrl('https://unknown.example.com');
+    expect(result).toHaveLength(0);
+  });
+
+  it('handles comma-separated url_pattern', async () => {
+    const mockSkills = [
+      { id: '1', name: 'Multi', url_pattern: 'aeries.net,aeries.com,powerschool.com', is_active: 1, content: '', description: '', source: null, source_id: null, created_at: '', updated_at: '' },
+    ];
+    mockGetSkillsWithUrlPattern.mockResolvedValue(mockSkills);
+
+    const result = await getMatchingSkillsForUrl('https://mydistrict.aeries.net/gradebook');
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe('Multi');
+  });
+
+  it('returns empty array on error', async () => {
+    mockGetSkillsWithUrlPattern.mockRejectedValue(new Error('DB error'));
+    const result = await getMatchingSkillsForUrl('https://myopenmath.com');
+    expect(result).toHaveLength(0);
   });
 });
 

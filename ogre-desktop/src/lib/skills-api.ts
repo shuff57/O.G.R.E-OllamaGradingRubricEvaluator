@@ -235,6 +235,23 @@ export async function buildSiteContextInjection(url: string): Promise<string> {
   }
 }
 
+/**
+ * Get all skills whose url_pattern matches the given URL.
+ * Returns skills that can be loaded for the current page context.
+ * Used by the skill dropdown in AgentChat to show relevant skills.
+ *
+ * @param url - The current browser URL
+ * @returns Skills matching the URL pattern
+ */
+export async function getMatchingSkillsForUrl(url: string): Promise<Skill[]> {
+  try {
+    const allWithPattern = await getSkillsWithUrlPattern();
+    return findMatchingProfiles(url, allWithPattern);
+  } catch {
+    return [];
+  }
+}
+
 // ── Bundled Site Profiles ────────────────────────────────────────────────
 
 // @ts-expect-error Vite raw markdown asset import
