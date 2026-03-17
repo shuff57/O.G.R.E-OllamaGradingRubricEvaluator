@@ -26,6 +26,18 @@ use wry::WebViewExtUnix;
 use std::cell::RefCell;
 
 #[cfg(target_os = "linux")]
+extern "C" {
+    /// GDK 3 test utility: synthesize a pointer motion event at (x, y) in window.
+    /// Available in libgdk-3 but not exposed in the gdk-sys Rust bindings.
+    fn gdk_test_simulate_motion(
+        window: *mut gtk::gdk::ffi::GdkWindow,
+        x: i32,
+        y: i32,
+        modifiers: gtk::gdk::ffi::GdkModifierType,
+    ) -> gtk::glib::ffi::gboolean;
+}
+
+#[cfg(target_os = "linux")]
 thread_local! {
     /// Maps webview label → wry WebView handle (main thread only)
     static LINUX_WEBVIEWS: RefCell<HashMap<String, wry::WebView>> = RefCell::new(HashMap::new());
@@ -1487,40 +1499,59 @@ async fn simulate_mouse_event(
                     let iy = y as i32;
                     match event_type.as_str() {
                         "click" => {
-                            gtk::gdk::test_simulate_button(
+                            let press_ok = gtk::gdk::test_simulate_button(
                                 &window, ix, iy, btn,
                                 mods,
                                 gtk::gdk::EventType::ButtonPress,
                             );
-                            gtk::gdk::test_simulate_button(
+                            let release_ok = gtk::gdk::test_simulate_button(
                                 &window, ix, iy, btn,
                                 mods,
                                 gtk::gdk::EventType::ButtonRelease,
                             );
-                            Ok(())
+                            if press_ok && release_ok {
+                                Ok(())
+                            } else {
+                                Err(format!("simulate_mouse_event: GDK click failed at ({}, {})", ix, iy))
+                            }
                         }
                         "mousedown" => {
-                            gtk::gdk::test_simulate_button(
+                            if gtk::gdk::test_simulate_button(
                                 &window, ix, iy, btn,
                                 mods,
                                 gtk::gdk::EventType::ButtonPress,
-                            );
-                            Ok(())
+                            ) {
+                                Ok(())
+                            } else {
+                                Err(format!("simulate_mouse_event: GDK mousedown failed at ({}, {})", ix, iy))
+                            }
                         }
                         "mouseup" => {
-                            gtk::gdk::test_simulate_button(
+                            if gtk::gdk::test_simulate_button(
                                 &window, ix, iy, btn,
                                 mods,
                                 gtk::gdk::EventType::ButtonRelease,
-                            );
-                            Ok(())
+                            ) {
+                                Ok(())
+                            } else {
+                                Err(format!("simulate_mouse_event: GDK mouseup failed at ({}, {})", ix, iy))
+                            }
                         }
                         "mousemove" => {
-                            // Motion event: use test_simulate_button with MotionNotify
-                            // Actually need to use GDK motion directly via gdk_sys or
-                            // simulate a very slight movement. For now just move focus.
-                            let _ = widget.grab_focus();
-                            Ok(())
+                            use gtk::glib::translate::ToGlibPtr;
+                            let result = unsafe {
+                                gdk_test_simulate_motion(
+                                    window.to_glib_none().0,
+                                    ix,
+                                    iy,
+                                    mods.bits(),
+                                )
+                            };
+                            if result != 0 {
+                                Ok(())
+                            } else {
+                                Err(format!("simulate_mouse_event: gdk_test_simulate_motion failed at ({}, {})", ix, iy))
+                            }
                         }
                         other => Err(format!("simulate_mouse_event: unknown event_type: {}", other)),
                     }
@@ -1563,29 +1594,39 @@ async fn simulate_key_event(
                 if let Some(window) = widget.window() {
                     match event_type.as_str() {
                         "keydown" => {
-                            gtk::gdk::test_simulate_key(
+                            if gtk::gdk::test_simulate_key(
                                 &window, 0, 0, key_val, mods,
                                 gtk::gdk::EventType::KeyPress,
-                            );
-                            Ok(())
+                            ) {
+                                Ok(())
+                            } else {
+                                Err(format!("simulate_key_event: GDK keydown failed for keyval {}", key_val))
+                            }
                         }
                         "keyup" => {
-                            gtk::gdk::test_simulate_key(
+                            if gtk::gdk::test_simulate_key(
                                 &window, 0, 0, key_val, mods,
                                 gtk::gdk::EventType::KeyRelease,
-                            );
-                            Ok(())
+                            ) {
+                                Ok(())
+                            } else {
+                                Err(format!("simulate_key_event: GDK keyup failed for keyval {}", key_val))
+                            }
                         }
                         "keypress" => {
-                            gtk::gdk::test_simulate_key(
+                            let press_ok = gtk::gdk::test_simulate_key(
                                 &window, 0, 0, key_val, mods,
                                 gtk::gdk::EventType::KeyPress,
                             );
-                            gtk::gdk::test_simulate_key(
+                            let release_ok = gtk::gdk::test_simulate_key(
                                 &window, 0, 0, key_val, mods,
                                 gtk::gdk::EventType::KeyRelease,
                             );
-                            Ok(())
+                            if press_ok && release_ok {
+                                Ok(())
+                            } else {
+                                Err(format!("simulate_key_event: GDK keypress failed for keyval {}", key_val))
+                            }
                         }
                         other => Err(format!("simulate_key_event: unknown event_type: {}", other)),
                     }
@@ -1626,14 +1667,17 @@ async fn simulate_text_input(
                     for ch in text.chars() {
                         // For ASCII chars, keyval equals Unicode codepoint
                         let keyval = ch as u32;
-                        gtk::gdk::test_simulate_key(
+                        let press_ok = gtk::gdk::test_simulate_key(
                             &window, 0, 0, keyval, gtk::gdk::ModifierType::empty(),
                             gtk::gdk::EventType::KeyPress,
                         );
-                        gtk::gdk::test_simulate_key(
+                        let release_ok = gtk::gdk::test_simulate_key(
                             &window, 0, 0, keyval, gtk::gdk::ModifierType::empty(),
                             gtk::gdk::EventType::KeyRelease,
                         );
+                        if !press_ok || !release_ok {
+                            return Err(format!("simulate_text_input: GDK key failed for char '{}'", ch));
+                        }
                     }
                     Ok(())
                 } else {
