@@ -560,15 +560,16 @@
 </section>
 
 <style>
-  .discovery-panel { display: flex; flex-direction: column; gap: var(--spacing-3); padding: var(--spacing-2); }
-  .header h3 { margin: 0 0 var(--spacing-1) 0; font-size: 1rem; color: var(--color-text-primary); }
-  .description { margin: 0; font-size: 0.85rem; color: var(--color-text-secondary); }
-  .mode-content { background: var(--color-bg-main); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--spacing-3); margin-bottom: var(--spacing-3); }
-  .form-mode-inputs { display: flex; flex-direction: column; gap: var(--spacing-2); }
-  .checkbox { display: flex; align-items: center; gap: var(--spacing-2); font-size: 0.9rem; color: var(--color-text-primary); }
-  .input-group { display: flex; flex-direction: column; gap: 4px; }
-  .input-group label { font-size: 0.85rem; color: var(--color-text-secondary); }
-  .input-group input { padding: 6px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); }
+  .discovery-panel { display: flex; flex-direction: column; gap: var(--spacing-2); padding: var(--spacing-2); }
+  .header h3 { margin: 0; font-size: 1rem; color: var(--color-text-primary); }
+  .description { margin: 0; font-size: 0.8rem; color: var(--color-text-secondary); line-height: 1.3; }
+  .mode-content { background: var(--color-bg-main); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--spacing-2); }
+  .form-mode-inputs { display: flex; flex-direction: column; gap: var(--spacing-1); }
+  .checkbox { display: flex; align-items: center; gap: var(--spacing-2); font-size: 0.85rem; color: var(--color-text-primary); white-space: nowrap; }
+  .checkbox input[type="checkbox"] { width: auto; margin: 0; flex-shrink: 0; }
+  .input-group { display: flex; flex-direction: column; gap: 2px; }
+  .input-group label { font-size: 0.8rem; color: var(--color-text-secondary); margin-bottom: 0; }
+  .input-group input { padding: 5px 6px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); }
   .engine-badge { font-size: 0.85rem; padding: 4px 8px; border-radius: var(--radius-sm); margin-bottom: var(--spacing-2); display: flex; align-items: center; gap: 6px; }
   .engine-badge.heuristic { background: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; }
   .engine-badge.ai { background: #f3e8ff; color: #6b21a8; border: 1px solid #d8b4fe; }
