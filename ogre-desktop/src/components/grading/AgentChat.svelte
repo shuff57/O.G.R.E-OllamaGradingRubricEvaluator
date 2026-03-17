@@ -7,8 +7,9 @@
   import type { AgentEvent, AgentController } from '../../lib/agent-loop';
   import type { AgentMode, AgentState } from '../../lib/agent-types';
   import ProviderSelector from './ProviderSelector.svelte';
-  import { getSkillsWithUrlPattern, findMatchingProfiles, selectBestProfile } from '../../lib/skills-api';
+  import { getSkillsWithUrlPattern, findMatchingProfiles, selectBestProfile, getMatchingSkillsForUrl } from '../../lib/skills-api';
   import { getEmbeddedUrl } from '../../lib/browser';
+  import { saveSkill, type Skill } from '../../lib/db';
 
   // ============================================================================
   // Message Types
@@ -66,6 +67,9 @@
   let controller: AgentController = $state(createAgentController());
   let activeProfileName: string | null = $state(null);
   let showDiscoveryBanner: boolean = $state(false);
+
+  let matchingSkills: Skill[] = $state([]);
+  let selectedSkillId: string | null = $state(null);
 
   // ============================================================================
   // Helpers
@@ -292,9 +296,54 @@
     }
   }
 
+  async function refreshMatchingSkills() {
+    try {
+      const url = await getEmbeddedUrl();
+      if (url) {
+        matchingSkills = await getMatchingSkillsForUrl(url);
+        const active = matchingSkills.find(s => s.is_active === 1);
+        if (active) {
+          selectedSkillId = active.id;
+        } else {
+          selectedSkillId = null;
+        }
+      } else {
+        matchingSkills = [];
+        selectedSkillId = null;
+      }
+    } catch {
+      matchingSkills = [];
+      selectedSkillId = null;
+    }
+  }
+
+  async function handleSkillSelect(event: Event) {
+    const select = event.target as HTMLSelectElement;
+    const newSkillId = select.value || null;
+    
+    // Deactivate previous skill if any
+    if (selectedSkillId && selectedSkillId !== newSkillId) {
+      const prev = matchingSkills.find(s => s.id === selectedSkillId);
+      if (prev) {
+        await saveSkill({ ...prev, is_active: 0 });
+      }
+    }
+    
+    // Activate new skill if selected
+    if (newSkillId) {
+      const next = matchingSkills.find(s => s.id === newSkillId);
+      if (next) {
+        await saveSkill({ ...next, is_active: 1 });
+      }
+    }
+    
+    selectedSkillId = newSkillId;
+  }
+
   // Check for active profile on mount and when URL changes
   $effect(() => {
     checkActiveProfile();
+    refreshMatchingSkills();
   });
 </script>
 
@@ -326,6 +375,21 @@
           title="~{contextUsed.toLocaleString()} / 200K tokens used"
         >
           ctx {contextPercent}%
+        </div>
+      {/if}
+      {#if matchingSkills.length > 0}
+        <div class="skill-select-wrapper">
+          <select
+            class="skill-select"
+            value={selectedSkillId ?? ''}
+            onchange={handleSkillSelect}
+            disabled={agentState !== 'idle'}
+          >
+            <option value="">No skill</option>
+            {#each matchingSkills as skill}
+              <option value={skill.id}>{skill.name}</option>
+            {/each}
+          </select>
         </div>
       {/if}
       <!-- Mode toggle -->
@@ -1006,5 +1070,31 @@
 
   .btn-discover:hover {
     background: rgba(245, 158, 11, 0.1);
+  }
+
+  .skill-select-wrapper {
+    display: flex;
+    align-items: center;
+  }
+
+  .skill-select {
+    padding: 3px 8px;
+    font-size: 0.78rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-main);
+    color: var(--color-text-primary);
+    cursor: pointer;
+    max-width: 140px;
+  }
+
+  .skill-select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .skill-select:focus {
+    outline: none;
+    border-color: var(--color-primary);
   }
 </style>
