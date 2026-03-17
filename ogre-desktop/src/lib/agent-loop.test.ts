@@ -24,6 +24,7 @@ vi.mock('./agent-prompt', () => ({
 
 vi.mock('./skills-api', () => ({
   buildSiteContextInjection: vi.fn().mockResolvedValue(''),
+  buildSkillInjection: vi.fn().mockResolvedValue(''),
 }));
 
 import { sendAgentRequest } from './agent-api';
@@ -43,9 +44,10 @@ beforeEach(async () => {
   (captureWebviewScreenshot as ReturnType<typeof vi.fn>).mockResolvedValue('data:image/png;base64,abc');
   const { getEmbeddedUrl } = await import('./browser');
   (getEmbeddedUrl as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-  const { buildSiteContextInjection } = await import('./skills-api');
+  const { buildSiteContextInjection, buildSkillInjection } = await import('./skills-api');
   (buildSiteContextInjection as ReturnType<typeof vi.fn>).mockResolvedValue('');
-  });
+  (buildSkillInjection as ReturnType<typeof vi.fn>).mockResolvedValue('');
+});
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -104,16 +106,6 @@ async function approveAndCollect(
       events.push(r.value);
       r = await gen.next();
     }
-  }
-  return events;
-}
-
-/** Collect events until stopType is found (inclusive), then stop iterating. */
-async function runUntil(gen: AsyncGenerator<any>, stopType: string): Promise<any[]> {
-  const events: any[] = [];
-  for await (const event of gen) {
-    events.push(event);
-    if (event.type === stopType) break;
   }
   return events;
 }
@@ -273,8 +265,10 @@ describe('agent-loop: runJS requires approval in auto mode', () => {
 // ---------------------------------------------------------------------------
 
 describe('agent-loop: text-only response', () => {
-  test('emits text event and terminates', async () => {
-    mockSend.mockResolvedValue({ text: 'Here is my answer' });
+  test('emits text event and continues (non-terminal)', async () => {
+    mockSend.mockResolvedValueOnce({ text: 'Here is my answer' });
+    mockSend.mockResolvedValue({ action: 'done', params: { success: true, message: 'done' }, reasoning: '' });
+    mockExecute.mockResolvedValue({ success: true });
 
     const controller = createAgentController();
     const gen = controller.start({ mode: 'auto', initialMessage: 'Tell me something', config: { actionDelayMs: 0, maxSteps: 10, maxTimeMs: 30000, maxSameAction: 3 } });
@@ -283,9 +277,9 @@ describe('agent-loop: text-only response', () => {
     const textEvent = events.find((e) => e.type === 'text');
     expect(textEvent).toBeDefined();
     expect(textEvent.content).toBe('Here is my answer');
-    // Generator should have finished (no infinite loop)
+    // Text response is non-terminal — loop should continue and eventually finish
     expect(events.length).toBeGreaterThan(0);
-    expect(events.filter((e) => e.type === 'text')).toHaveLength(1);
+    expect(events.some((e) => e.type === 'done')).toBe(true);
   });
 });
 

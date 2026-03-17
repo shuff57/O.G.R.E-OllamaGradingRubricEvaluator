@@ -7,6 +7,10 @@
   import type { AgentEvent, AgentController } from '../../lib/agent-loop';
   import type { AgentMode, AgentState } from '../../lib/agent-types';
   import ProviderSelector from './ProviderSelector.svelte';
+  import { findMatchingProfiles, getMatchingSkillsForUrl } from '../../lib/skills-api';
+  import { selectBestProfile } from '../../lib/profile-precedence';
+  import { getEmbeddedUrl } from '../../lib/browser';
+  import { saveSkill, getSkillsWithUrlPattern, type Skill } from '../../lib/db';
 
   // ============================================================================
   // Message Types
@@ -62,10 +66,47 @@
   let pendingAction: PendingAction | null = $state(null);
   let chatContainer: HTMLElement | undefined = $state(undefined);
   let controller: AgentController = $state(createAgentController());
+  let activeProfileName: string | null = $state(null);
+  let showDiscoveryBanner: boolean = $state(false);
+
+  let matchingSkills: Skill[] = $state([]);
+  let selectedSkillId: string | null = $state(null);
 
   // ============================================================================
   // Helpers
   // ============================================================================
+
+  /** Check if the current embedded browser URL matches any site profile. */
+  async function checkActiveProfile() {
+    try {
+      const url = await getEmbeddedUrl();
+      if (!url) {
+        activeProfileName = null;
+        showDiscoveryBanner = false;
+        return;
+      }
+      const allWithPattern = await getSkillsWithUrlPattern();
+      const matches = findMatchingProfiles(url, allWithPattern);
+      const best = selectBestProfile(matches);
+      if (best) {
+        activeProfileName = best.name;
+        showDiscoveryBanner = false;
+      } else {
+        activeProfileName = null;
+        showDiscoveryBanner = true;
+      }
+    } catch {
+      activeProfileName = null;
+      showDiscoveryBanner = false;
+    }
+  }
+
+  /** Handle "Discover Page" button click. */
+  function handleDiscoverPage() {
+    showDiscoveryBanner = false;
+    // Dispatch a custom event so parent (GradingPanel) can switch to discovery mode
+    document.dispatchEvent(new CustomEvent('ogre:switch-to-discovery', { bubbles: true }));
+  }
 
   /** Extract a short target label from action params for compact badge display. */
   function getBadgeTarget(action: string, params: Record<string, unknown>): string {
@@ -255,6 +296,56 @@
       handleSend();
     }
   }
+
+  async function refreshMatchingSkills() {
+    try {
+      const url = await getEmbeddedUrl();
+      if (url) {
+        matchingSkills = await getMatchingSkillsForUrl(url);
+        const active = matchingSkills.find(s => s.is_active === 1);
+        if (active) {
+          selectedSkillId = active.id;
+        } else {
+          selectedSkillId = null;
+        }
+      } else {
+        matchingSkills = [];
+        selectedSkillId = null;
+      }
+    } catch {
+      matchingSkills = [];
+      selectedSkillId = null;
+    }
+  }
+
+  async function handleSkillSelect(event: Event) {
+    const select = event.target as HTMLSelectElement;
+    const newSkillId = select.value || null;
+    
+    // Deactivate previous skill if any
+    if (selectedSkillId && selectedSkillId !== newSkillId) {
+      const prev = matchingSkills.find(s => s.id === selectedSkillId);
+      if (prev) {
+        await saveSkill({ ...prev, is_active: 0 });
+      }
+    }
+    
+    // Activate new skill if selected
+    if (newSkillId) {
+      const next = matchingSkills.find(s => s.id === newSkillId);
+      if (next) {
+        await saveSkill({ ...next, is_active: 1 });
+      }
+    }
+    
+    selectedSkillId = newSkillId;
+  }
+
+  // Check for active profile on mount and when URL changes
+  $effect(() => {
+    checkActiveProfile();
+    refreshMatchingSkills();
+  });
 </script>
 
 <section class="agent-chat">
@@ -267,6 +358,9 @@
   <div class="chat-header">
     <div class="chat-title-row">
       <span class="chat-title">Agent</span>
+      {#if activeProfileName}
+        <span class="profile-badge" title="Site profile: {activeProfileName}">{activeProfileName}</span>
+      {/if}
       {#if agentState !== 'idle'}
         <span class="activity-dot" title="Agent active"></span>
       {/if}
@@ -282,6 +376,21 @@
           title="~{contextUsed.toLocaleString()} / 200K tokens used"
         >
           ctx {contextPercent}%
+        </div>
+      {/if}
+      {#if matchingSkills.length > 0}
+        <div class="skill-select-wrapper">
+          <select
+            class="skill-select"
+            value={selectedSkillId ?? ''}
+            onchange={handleSkillSelect}
+            disabled={agentState !== 'idle'}
+          >
+            <option value="">No skill</option>
+            {#each matchingSkills as skill}
+              <option value={skill.id}>{skill.name}</option>
+            {/each}
+          </select>
         </div>
       {/if}
       <!-- Mode toggle -->
@@ -329,6 +438,12 @@
   </div>
 
   <div class="chat-interface">
+    {#if showDiscoveryBanner}
+      <div class="discovery-banner">
+        <span class="discovery-banner-text">No site profile found for this page.</span>
+        <button class="btn-discover" onclick={handleDiscoverPage}>Discover Page</button>
+      </div>
+    {/if}
     <div class="chat-messages" bind:this={chatContainer}>
       {#each messages as msg}
         {#if msg.type === 'text'}
@@ -907,5 +1022,80 @@
     font-size: 0.76rem;
     padding: 4px 10px;
     font-family: var(--font-mono, monospace);
+  }
+
+  /* Profile badge — shows matched site profile name */
+  .profile-badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-size: 0.72rem;
+    font-weight: 500;
+    background: rgba(34, 197, 94, 0.1);
+    color: #22c55e;
+    border: 1px solid rgba(34, 197, 94, 0.25);
+    white-space: nowrap;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Auto-discovery banner — shown when no profile matches */
+  .discovery-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: rgba(245, 158, 11, 0.08);
+    border-bottom: 1px solid rgba(245, 158, 11, 0.3);
+    font-size: 0.82rem;
+    gap: var(--spacing-2);
+  }
+
+  .discovery-banner-text {
+    color: #f59e0b;
+    flex: 1;
+  }
+
+  .btn-discover {
+    padding: 3px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid #f59e0b;
+    background: transparent;
+    color: #f59e0b;
+    font-size: 0.78rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+  }
+
+  .btn-discover:hover {
+    background: rgba(245, 158, 11, 0.1);
+  }
+
+  .skill-select-wrapper {
+    display: flex;
+    align-items: center;
+  }
+
+  .skill-select {
+    padding: 3px 8px;
+    font-size: 0.78rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-main);
+    color: var(--color-text-primary);
+    cursor: pointer;
+    max-width: 140px;
+  }
+
+  .skill-select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .skill-select:focus {
+    outline: none;
+    border-color: var(--color-primary);
   }
 </style>

@@ -11,10 +11,10 @@
 
 import { captureInteractiveDom, formatDomForPrompt } from './agent-dom';
 import { captureWebviewScreenshot, getEmbeddedUrl } from './browser';
-import { sendAgentRequest } from './agent-api';
+import { sendAgentRequest, parseAgentResponse } from './agent-api';
 import { executeAction } from './browser-actions';
 import { AGENT_SYSTEM_PROMPT } from './agent-prompt';
-import { buildSiteContextInjection } from './skills-api';
+import { buildSiteContextInjection, buildSkillInjection } from './skills-api';
 import type {
   AgentMode,
   AgentAction,
@@ -179,9 +179,15 @@ export function createAgentController(): AgentController {
     } catch {
       // No browser open or URL unavailable — skip injection
     }
-    const systemPrompt = siteContext
-      ? `${AGENT_SYSTEM_PROMPT}\n\n${siteContext}`
-      : AGENT_SYSTEM_PROMPT;
+    let skillContent = '';
+    try {
+      skillContent = await buildSkillInjection();
+    } catch {}
+
+    const systemPromptParts = [AGENT_SYSTEM_PROMPT];
+    if (skillContent) systemPromptParts.push(skillContent);
+    if (siteContext) systemPromptParts.push(siteContext);
+    const systemPrompt = systemPromptParts.join('\n\n');
 
     // Conversation history — includes system role and optional screenshot field
     const conversationHistory: AgentMessage[] = [
@@ -194,6 +200,7 @@ export function createAgentController(): AgentController {
     let lastActionKey = '';
     let lastActionRepeatCount = 0;
     let consecutiveFailures = 0;
+    let consecutiveTextResponses = 0;
     let lastSiteContext = siteContext;
 
     const isCompact = config.compact ?? true;
@@ -266,12 +273,25 @@ export function createAgentController(): AgentController {
 
       // ── Step 3: Handle response ──
 
-      // Text-only response (no action)
+      if (
+        'response' in response &&
+        typeof (response as Record<string, unknown>).response === 'string'
+      ) {
+        response = parseAgentResponse((response as Record<string, unknown>).response as string);
+      }
+
+      // Text-only response (no action) — non-terminal
       if ('text' in response) {
         yield { type: 'text', content: response.text };
         conversationHistory.push({ role: 'assistant', content: response.text });
-        // Text responses are terminal — agent answered without taking action
-        return;
+        // Count consecutive text responses — if too many, terminate gracefully
+        consecutiveTextResponses = (consecutiveTextResponses ?? 0) + 1;
+        if (consecutiveTextResponses >= 3) {
+          yield { type: 'done', message: 'Agent provided text responses without taking action. Please rephrase your request to be more specific.' };
+          return;
+        }
+        stepCount++;
+        continue; // Non-terminal — loop back to capture page state and ask AI again
       }
 
       // Action response
@@ -391,6 +411,7 @@ export function createAgentController(): AgentController {
         }
       } else if (result.success) {
         consecutiveFailures = 0;
+        consecutiveTextResponses = 0; // Reset on successful action
       }
       // ── Site context refresh after navigate ──
       // When the agent navigates to a new URL, inject an updated site guide as a

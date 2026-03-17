@@ -1,4 +1,5 @@
 import { describe, test, expect } from 'vitest';
+import * as agentPrompt from './agent-prompt';
 import { AGENT_SYSTEM_PROMPT } from './agent-prompt';
 
 // ---------------------------------------------------------------------------
@@ -42,6 +43,16 @@ describe('AGENT_SYSTEM_PROMPT: task decomposition (Rule 12)', () => {
 
   test('warns against clicking without a plan', () => {
     expect(AGENT_SYSTEM_PROMPT).toMatch(/Never start clicking without a plan/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Dead Code Removal: parseAgentResponse
+// ---------------------------------------------------------------------------
+
+describe('agent-prompt exports', () => {
+  test('does not export parseAgentResponse (dead code removed)', () => {
+    expect((agentPrompt as Record<string, unknown>).parseAgentResponse).toBeUndefined();
   });
 });
 

@@ -1,13 +1,10 @@
 /**
- * agent-prompt.ts - System prompt builder and JSON response parser for the browser agent.
+ * agent-prompt.ts - System prompt builder for the browser agent.
  *
  * Exports:
  * - AGENT_SYSTEM_PROMPT: The complete system prompt sent to the AI model
  * - ToolDefinition interface and TOOL_DEFINITIONS: Structured tool metadata
- * - parseAgentResponse(): Extracts JSON from raw AI text responses
  */
-
-import type { AgentActionResponse, AgentApiResponse, AgentTextResponse } from './agent-types';
 
 // ============================================================================
 // Tool Definitions
@@ -237,55 +234,3 @@ IMPORTANT RULES:
  11. SITE GUIDE PRIORITY: When a SITE GUIDE (JSON) is present in your context, parse it as structured JSON. Use the "selectors" object for CSS selectors directly — do NOT invent selectors not in the guide. Use "navigation" keys to build URLs for page navigation with {param} values filled from context. Consult "gotchas" array before acting on this site. Follow "workflows" array for multi-step task guidance. If no SITE GUIDE is present, rely on DOM elements only.
  12. TASK DECOMPOSITION: For complex multi-step tasks (creating assignments, managing questions, multi-page workflows), ALWAYS decompose the task before acting. In your first response, use the reasoning field to outline numbered steps. Then execute each step sequentially. If you need to gather information first (e.g., count questions per week), use readText before taking modification actions. Never start clicking without a plan.`;
 
-// ============================================================================
-// Response Parser
-// ============================================================================
-
-/**
- * Parse raw AI text into a structured AgentApiResponse.
- *
- * Handles common LLM quirks:
- * - Strips <think>...</think> blocks
- * - Unescapes HTML entities
- * - Removes trailing commas in JSON
- * - Extracts JSON from markdown code fences
- * - Falls back to { text: rawText } if no valid JSON found
- */
-export function parseAgentResponse(rawText: string): AgentApiResponse {
-  let text = rawText.trim();
-
-  // Strip thinking blocks
-  text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-
-  // HTML entity unescape
-  text = text
-    .replace(/&quot;/g, '"')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>');
-
-  // Trailing comma cleanup
-  text = text.replace(/(,)(\s*[}\]])/g, '$2');
-
-  // Strip markdown code fences
-  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-  if (fenceMatch) text = fenceMatch[1].trim();
-
-  // Find JSON object
-  const first = text.indexOf('{');
-  const last = text.lastIndexOf('}');
-  if (first !== -1 && last > first) {
-    const candidate = text.slice(first, last + 1);
-    try {
-      const parsed = JSON.parse(candidate);
-      if (parsed.action && typeof parsed.action === 'string') {
-        return parsed as AgentActionResponse;
-      }
-      if (parsed.text && typeof parsed.text === 'string') {
-        return parsed as AgentTextResponse;
-      }
-    } catch { /* fall through */ }
-  }
-
-  return { text: rawText } as AgentTextResponse;
-}
