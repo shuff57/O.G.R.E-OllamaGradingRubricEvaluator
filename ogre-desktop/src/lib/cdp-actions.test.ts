@@ -23,7 +23,7 @@ import {
   connectCDP, disconnectCDP, isConnected,
   pwClick, pwType, pwReadText, pwWaitFor, pwScroll, pwPressKey,
   pwWriteCodeMirror, pwCapturePopup,
-  cdpScreenshot,
+  cdpScreenshot, resetCdpCache,
 } from './cdp-actions';
 
 const mockInvoke = invoke as ReturnType<typeof vi.fn>;
@@ -39,6 +39,7 @@ const mockCdp = cdp as {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetCdpCache();
   mockCdp.isConnected.mockReturnValue(false);
   mockCdp.connect.mockResolvedValue(false);
   mockCdp.connectToUrl.mockResolvedValue(false);

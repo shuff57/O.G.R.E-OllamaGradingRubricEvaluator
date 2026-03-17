@@ -57,6 +57,8 @@ import {
   captureWebviewScreenshot,
   captureWebviewArea,
   cropImageData,
+  evalScript,
+  resetEvalScriptCache,
 } from './browser';
 import { connectCDP } from './cdp-actions';
 
@@ -287,10 +289,12 @@ describe('browser.ts — captureWebviewScreenshot', () => {
     await expect(captureWebviewScreenshot()).rejects.toThrow('CDN unreachable');
   });
 
-  it('propagates eval errors when CDP not connected', async () => {
+  it('propagates eval errors when CDP not connected and IPC fails', async () => {
     mockCdpIsConnected.mockReturnValue(false);
     vi.mocked(connectCDP).mockResolvedValueOnce(false);
-    await expect(captureWebviewScreenshot()).rejects.toThrow('CDP not connected');
+    resetEvalScriptCache();
+    mockInvoke.mockRejectedValueOnce(new Error('Tab not found'));
+    await expect(captureWebviewScreenshot()).rejects.toThrow('Tab not found');
   });
 });
 
@@ -324,6 +328,65 @@ describe('browser.ts — cropImageData', () => {
     await expect(
       cropImageData('data:image/jpeg;base64,abc', 0, 0, 50, 50)
     ).rejects.toThrow();
+  });
+});
+
+// ── evalScript IPC Fallback Tests (Linux) ────────────────────────────────────
+// When CDP is not connected (Linux), evalScript should fall back to Tauri IPC.
+
+describe('browser.ts — evalScript IPC fallback (Linux)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetEvalScriptCache();
+    mockCdpIsConnected.mockReturnValue(false);
+    vi.mocked(connectCDP).mockResolvedValue(false);
+  });
+
+  it('returns actual value from Tauri IPC when CDP unavailable', async () => {
+    // Mock Tauri IPC to return a stringified value
+    mockInvoke.mockResolvedValueOnce(JSON.stringify('My Page Title'));
+
+    const result = await evalScript('document.title');
+
+    expect(result).toBe(JSON.stringify('My Page Title'));
+    expect(mockInvoke).toHaveBeenCalledWith('eval_webview_script', {
+      tabId: expect.any(String),
+      script: 'document.title',
+    });
+  });
+
+  it('propagates errors from Tauri IPC fallback', async () => {
+    // Mock Tauri IPC to reject with an error
+    mockInvoke.mockRejectedValueOnce(new Error('Script execution failed'));
+
+    await expect(evalScript('throw new Error("test")')).rejects.toThrow(
+      'Script execution failed'
+    );
+  });
+
+  it('passes script correctly to invoke', async () => {
+    const testScript = 'document.querySelectorAll(".answer").length';
+    mockInvoke.mockResolvedValueOnce(JSON.stringify(5));
+
+    await evalScript(testScript);
+
+    expect(mockInvoke).toHaveBeenCalledWith('eval_webview_script', {
+      tabId: expect.any(String),
+      script: testScript,
+    });
+  });
+
+  it('does not re-attempt CDP connection on repeated failures', async () => {
+    mockInvoke.mockResolvedValue(JSON.stringify('result'));
+
+    // Call evalScript twice
+    await evalScript('script1');
+    await evalScript('script2');
+
+    // connectCDP should only be called once (cached as failed)
+    expect(vi.mocked(connectCDP)).toHaveBeenCalledTimes(1);
+    // Both calls should use Tauri IPC
+    expect(mockInvoke).toHaveBeenCalledTimes(2);
   });
 });
 

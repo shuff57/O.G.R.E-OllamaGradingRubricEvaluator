@@ -158,16 +158,26 @@ export async function injectAutofill(tabId: string, username: string, password: 
  *   [...document.querySelectorAll('.answer')].map(el => el.value)
  * `);
  */
+let _evalScriptCdpUnavailable = false;
+
+/** Reset the evalScript CDP-unavailable cache. Used by tests and manual retry. */
+export function resetEvalScriptCache(): void {
+  _evalScriptCdpUnavailable = false;
+}
+
 export async function evalScript(script: string): Promise<string> {
-  // Ensure CDP is connected (auto-connects if needed)
-  if (!cdp.isConnected()) {
+  if (cdp.isConnected()) {
+    _evalScriptCdpUnavailable = false;
+  } else if (!_evalScriptCdpUnavailable) {
     const ok = await connectCDP();
-    if (!ok) throw new Error('Cannot evaluate script: CDP not connected');
+    if (!ok) {
+      _evalScriptCdpUnavailable = true;
+      return invoke<string>('eval_webview_script', { tabId: _activeTabId, script });
+    }
+  } else {
+    return invoke<string>('eval_webview_script', { tabId: _activeTabId, script });
   }
 
-  // Use CDP Runtime.evaluate which works reliably on the embedded browser.
-  // The old Tauri IPC callback mechanism does not work because external-URL
-  // webviews do not have window.__TAURI_INTERNALS__.
   const result = await cdp.send('Runtime.evaluate', {
     expression: script,
     returnByValue: true,
@@ -182,8 +192,6 @@ export async function evalScript(script: string): Promise<string> {
     throw new Error(`Script error: ${desc}`);
   }
 
-  // Runtime.evaluate returns { type, value } when returnByValue=true.
-  // JSON.stringify the value to match the old evalScript contract (returns a string).
   const val = result.result.value;
   return val === undefined ? 'undefined' : JSON.stringify(val);
 }

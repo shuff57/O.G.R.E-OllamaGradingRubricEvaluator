@@ -17,6 +17,9 @@ import { DANGEROUS_JS_PATTERNS } from './agent-types';
 // Helpers (module-private)
 // ============================================================================
 
+/** Cache CDP connection failures to avoid repeated 3s HTTP timeouts on Linux. */
+let _cdpConnectFailed = false;
+
 /**
  * Check a code string for dangerous JS patterns.
  * Returns the blocked pattern name if found, or null if safe.
@@ -49,20 +52,34 @@ function escapeSelector(selector: string): string {
  * @returns true on success, false on failure (NEVER throws)
  */
 export async function connectCDP(port?: number): Promise<boolean> {
+  // Return false immediately if a previous connection attempt failed (cache hit)
+  if (_cdpConnectFailed) return false;
+
   try {
     let resolvedPort = port;
     if (resolvedPort === undefined || resolvedPort === null) {
       const tauriPort = await invoke<number | null>('get_cdp_port');
-      if (tauriPort === null || tauriPort === undefined) return false;
+      if (tauriPort === null || tauriPort === undefined) {
+        _cdpConnectFailed = true;
+        return false;
+      }
       resolvedPort = tauriPort;
     }
 
     // Discover the embedded browser target via Rust (bypasses CORS)
     const wsUrl = await invoke<string | null>('discover_cdp_target', { port: resolvedPort });
-    if (!wsUrl) return false;
+    if (!wsUrl) {
+      _cdpConnectFailed = true;
+      return false;
+    }
 
-    return await cdp.connectToUrl(wsUrl);
+    const connected = await cdp.connectToUrl(wsUrl);
+    if (!connected) {
+      _cdpConnectFailed = true;
+    }
+    return connected;
   } catch {
+    _cdpConnectFailed = true;
     return false;
   }
 }
@@ -73,6 +90,14 @@ export async function connectCDP(port?: number): Promise<boolean> {
  */
 export async function disconnectCDP(): Promise<void> {
   await cdp.disconnect();
+}
+
+/**
+ * Reset the CDP connection failure cache.
+ * Used for testing or manual retry after a failed connection attempt.
+ */
+export function resetCdpCache(): void {
+  _cdpConnectFailed = false;
 }
 
 /**

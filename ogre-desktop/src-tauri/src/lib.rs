@@ -970,16 +970,65 @@ async fn eval_webview_script(
         let guard = state.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
     };
+    let wrapped_script = format!(
+        r#"(async () => {{
+            try {{
+                let __result = (0, eval)(`{}`);
+                if (__result instanceof Promise) {{
+                    __result = await __result;
+                }}
+                return __result;
+            }} catch (__e) {{
+                return {{ __ogre_error: String(__e) }};
+            }}
+        }})()"#,
+        script
+            .replace('\\', "\\\\")
+            .replace('`', "\\`")
+            .replace("${", "\\${")
+    );
+    let (tx, rx) = tokio::sync::oneshot::channel::<String>();
+    let tx_mutex = std::sync::Arc::new(std::sync::Mutex::new(Some(tx)));
+
     app.run_on_main_thread(move || {
         LINUX_WEBVIEWS.with(|webviews| {
             if let Some(wv) = webviews.borrow().get(&label) {
-                if let Err(e) = wv.evaluate_script(&script) {
-                    eprintln!("eval_webview_script (fire-and-forget) failed: {}", e);
+                let tx_for_callback = std::sync::Arc::clone(&tx_mutex);
+                wv.evaluate_script_with_callback(&wrapped_script, move |result: String| {
+                    if let Some(sender) = tx_for_callback.lock().unwrap().take() {
+                        let _ = sender.send(result);
+                    }
+                })
+                .unwrap_or_else(|e| {
+                    eprintln!("evaluate_script_with_callback failed: {}", e);
+                    if let Some(sender) = tx_mutex.lock().unwrap().take() {
+                        let _ = sender.send(format!(
+                            "{{\"__ogre_error\":\"wry eval failed: {}\"}}",
+                            e
+                        ));
+                    }
+                });
+            } else {
+                eprintln!("eval_webview_script: webview not found for label {}", label);
+                if let Some(sender) = tx_mutex.lock().unwrap().take() {
+                    let _ = sender.send("null".to_string());
                 }
             }
         });
-    }).map_err(|_| "Failed to run on main thread".to_string())?;
-    Ok("null".to_string())
+    })
+    .map_err(|_| "Failed to run on main thread".to_string())?;
+    match tokio::time::timeout(tokio::time::Duration::from_secs(120), rx).await {
+        Ok(Ok(result)) => {
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&result) {
+                if let Some(err) = parsed.get("__ogre_error").and_then(|v| v.as_str()) {
+                    return Err(format!("Script error: {}", err));
+                }
+            }
+            Ok(result)
+        }
+        Ok(Err(_)) => Err("Callback channel closed unexpectedly".to_string()),
+        Err(_) => Err("Timeout waiting for eval result (120s)".to_string()),
+    }
 }
 
 /// Inject JavaScript into the embedded browser without waiting for a return value.
