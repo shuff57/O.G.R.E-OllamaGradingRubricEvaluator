@@ -1,7 +1,0 @@
-[
-  {
-    "index": 0,
-    "name": "Alvarez, Emiliano",
-    "response": "[Context: Imagine you roll a standard six-sided die 60 times and get the following results: 8 ones, 9 twos, 11 threes, 10 fours, 12 fives, and 10 sixes.]\n\nThe distribution is fair because of the amount of dice rolls there is provided in the research. If the experiment was truly fair the frequency for each category would be 10. The observed data are very close to the expected values which suggests the dice roll is fair. A goodness of fit test measures a set of observed data and if it fits a specific expected distribution. The test uses observed and expected frequencies in order to calculate a single score that demonstrates how much the actual results deviate from the theoretical predictions."
-  }
-]
