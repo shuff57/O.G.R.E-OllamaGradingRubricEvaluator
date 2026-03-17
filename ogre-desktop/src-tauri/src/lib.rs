@@ -17,6 +17,8 @@ use command_group::AsyncCommandGroup;
 use gtk::prelude::*;
 #[cfg(target_os = "linux")]
 use wry::WebViewBuilderExtUnix;
+#[cfg(target_os = "linux")]
+use wry::WebViewExtUnix;
 
 /// Linux-only: thread-local storage for wry WebView handles and GTK state.
 /// These must be on the main thread (GTK widgets are !Send).
@@ -31,6 +33,63 @@ thread_local! {
     static GTK_FIXED: RefCell<Option<gtk::Fixed>> = const { RefCell::new(None) };
     /// Maps webview label → current URL (since wry has no url() getter)
     static WEBVIEW_URLS: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+}
+
+#[cfg(target_os = "linux")]
+#[allow(dead_code)]
+fn linux_gdk_input_spike_probe() -> Result<(), String> {
+    GTK_FIXED.with(|fixed_cell| {
+        let fixed_ref = fixed_cell.borrow();
+        let fixed = fixed_ref
+            .as_ref()
+            .ok_or_else(|| "GTK_FIXED is not initialized".to_string())?;
+
+        let children = fixed.children();
+
+        let webview_widget_found = LINUX_WEBVIEWS.with(|webviews| {
+            let webviews = webviews.borrow();
+            webviews.values().any(|webview| {
+                let webview_widget: gtk::Widget = webview.webview().upcast();
+                children
+                    .iter()
+                    .any(|child| child.as_ptr() == webview_widget.as_ptr())
+            })
+        });
+
+        let mut target_window = children.iter().find_map(|child| child.window());
+
+        if target_window.is_none() && webview_widget_found {
+            target_window = LINUX_WEBVIEWS.with(|webviews| {
+                webviews
+                    .borrow()
+                    .values()
+                    .find_map(|webview| webview.webview().upcast::<gtk::Widget>().window())
+            });
+        }
+
+        let window = target_window
+            .ok_or_else(|| "No child widget yielded a GdkWindow (widget may be unrealized)".to_string())?;
+
+        let _button_ok = gtk::gdk::test_simulate_button(
+            &window,
+            1,
+            1,
+            1,
+            gtk::gdk::ModifierType::empty(),
+            gtk::gdk::EventType::ButtonPress,
+        );
+
+        let _key_ok = gtk::gdk::test_simulate_key(
+            &window,
+            1,
+            1,
+            *gtk::gdk::keys::constants::A,
+            gtk::gdk::ModifierType::empty(),
+            gtk::gdk::EventType::KeyPress,
+        );
+
+        Ok(())
+    })
 }
 
 struct ServerState {
@@ -1396,6 +1455,180 @@ async fn discover_cdp_target(port: u16) -> Result<Option<String>, String> {
     Ok(target.and_then(|t| t.ws_debugger_url.clone()))
 }
 
+/// Simulate mouse events on a Linux embedded webview using GDK.
+/// Only available on Linux; no-op on other platforms.
+#[cfg(target_os = "linux")]
+#[tauri::command]
+async fn simulate_mouse_event(
+    app: tauri::AppHandle,
+    tab_id: String,
+    event_type: String,    // "click" | "mousedown" | "mouseup" | "mousemove"
+    x: f64,
+    y: f64,
+    button: Option<u32>,   // 1=left, 2=middle, 3=right (default: 1)
+    modifiers: Option<u32>, // GDK modifier mask (default: 0)
+) -> Result<(), String> {
+    let label = {
+        let state = app.state::<Mutex<WebviewState>>();
+        let guard = state.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
+        guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
+    };
+    let btn = button.unwrap_or(1);
+    let mods = gtk::gdk::ModifierType::from_bits_truncate(modifiers.unwrap_or(0));
+    
+    app.run_on_main_thread(move || {
+        LINUX_WEBVIEWS.with(|webviews| {
+            if let Some(wv) = webviews.borrow().get(&label) {
+                let widget: gtk::Widget = wv.webview().upcast();
+                if let Some(window) = widget.window() {
+                    let ix = x as i32;
+                    let iy = y as i32;
+                    match event_type.as_str() {
+                        "click" => {
+                            gtk::gdk::test_simulate_button(
+                                &window, ix, iy, btn,
+                                mods,
+                                gtk::gdk::EventType::ButtonPress,
+                            );
+                            gtk::gdk::test_simulate_button(
+                                &window, ix, iy, btn,
+                                mods,
+                                gtk::gdk::EventType::ButtonRelease,
+                            );
+                        }
+                        "mousedown" => {
+                            gtk::gdk::test_simulate_button(
+                                &window, ix, iy, btn,
+                                mods,
+                                gtk::gdk::EventType::ButtonPress,
+                            );
+                        }
+                        "mouseup" => {
+                            gtk::gdk::test_simulate_button(
+                                &window, ix, iy, btn,
+                                mods,
+                                gtk::gdk::EventType::ButtonRelease,
+                            );
+                        }
+                        "mousemove" => {
+                            // Motion event: use test_simulate_button with MotionNotify
+                            // Actually need to use GDK motion directly via gdk_sys or
+                            // simulate a very slight movement. For now just move focus.
+                            let _ = widget.grab_focus();
+                        }
+                        _ => {
+                            eprintln!("simulate_mouse_event: unknown event_type: {}", event_type);
+                        }
+                    }
+                } else {
+                    eprintln!("simulate_mouse_event: widget not realized for tab {}", tab_id);
+                }
+            }
+        });
+    }).map_err(|_| "Failed to run on main thread".to_string())?;
+    Ok(())
+}
+
+/// Simulate keyboard key events on a Linux embedded webview using GDK.
+/// Only available on Linux; no-op on other platforms.
+#[cfg(target_os = "linux")]
+#[tauri::command]
+async fn simulate_key_event(
+    app: tauri::AppHandle,
+    tab_id: String,
+    event_type: String,    // "keydown" | "keyup" | "keypress" (= keydown+keyup)
+    key_val: u32,          // GDK keyval (e.g. gtk::gdk::keys::constants::Return)
+    modifiers: Option<u32>, // GDK modifier mask (default: 0)
+) -> Result<(), String> {
+    let label = {
+        let state = app.state::<Mutex<WebviewState>>();
+        let guard = state.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
+        guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
+    };
+    let mods = gtk::gdk::ModifierType::from_bits_truncate(modifiers.unwrap_or(0));
+    
+    app.run_on_main_thread(move || {
+        LINUX_WEBVIEWS.with(|webviews| {
+            if let Some(wv) = webviews.borrow().get(&label) {
+                let widget: gtk::Widget = wv.webview().upcast();
+                if let Some(window) = widget.window() {
+                    match event_type.as_str() {
+                        "keydown" => {
+                            gtk::gdk::test_simulate_key(
+                                &window, 0, 0, key_val, mods,
+                                gtk::gdk::EventType::KeyPress,
+                            );
+                        }
+                        "keyup" => {
+                            gtk::gdk::test_simulate_key(
+                                &window, 0, 0, key_val, mods,
+                                gtk::gdk::EventType::KeyRelease,
+                            );
+                        }
+                        "keypress" => {
+                            gtk::gdk::test_simulate_key(
+                                &window, 0, 0, key_val, mods,
+                                gtk::gdk::EventType::KeyPress,
+                            );
+                            gtk::gdk::test_simulate_key(
+                                &window, 0, 0, key_val, mods,
+                                gtk::gdk::EventType::KeyRelease,
+                            );
+                        }
+                        _ => {
+                            eprintln!("simulate_key_event: unknown event_type: {}", event_type);
+                        }
+                    }
+                } else {
+                    eprintln!("simulate_key_event: widget not realized for tab {}", tab_id);
+                }
+            }
+        });
+    }).map_err(|_| "Failed to run on main thread".to_string())?;
+    Ok(())
+}
+
+/// Simulate text input on a Linux embedded webview using GDK.
+/// Only available on Linux; no-op on other platforms.
+#[cfg(target_os = "linux")]
+#[tauri::command]
+async fn simulate_text_input(
+    app: tauri::AppHandle,
+    tab_id: String,
+    text: String,
+) -> Result<(), String> {
+    let label = {
+        let state = app.state::<Mutex<WebviewState>>();
+        let guard = state.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
+        guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
+    };
+    
+    app.run_on_main_thread(move || {
+        LINUX_WEBVIEWS.with(|webviews| {
+            if let Some(wv) = webviews.borrow().get(&label) {
+                let widget: gtk::Widget = wv.webview().upcast();
+                if let Some(window) = widget.window() {
+                    for ch in text.chars() {
+                        // For ASCII chars, keyval equals Unicode codepoint
+                        let keyval = ch as u32;
+                        gtk::gdk::test_simulate_key(
+                            &window, 0, 0, keyval, gtk::gdk::ModifierType::empty(),
+                            gtk::gdk::EventType::KeyPress,
+                        );
+                        gtk::gdk::test_simulate_key(
+                            &window, 0, 0, keyval, gtk::gdk::ModifierType::empty(),
+                            gtk::gdk::EventType::KeyRelease,
+                        );
+                    }
+                } else {
+                    eprintln!("simulate_text_input: widget not realized for tab {}", tab_id);
+                }
+            }
+        });
+    }).map_err(|_| "Failed to run on main thread".to_string())?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // === CDP: Dynamic port allocation for embedded browser automation ===
@@ -1609,6 +1842,12 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_model ON response_embeddings(embedding
             stop_oauth_callback_server,
             get_cdp_port,
             discover_cdp_target,
+            #[cfg(target_os = "linux")]
+            simulate_mouse_event,
+            #[cfg(target_os = "linux")]
+            simulate_key_event,
+            #[cfg(target_os = "linux")]
+            simulate_text_input,
         ])
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
