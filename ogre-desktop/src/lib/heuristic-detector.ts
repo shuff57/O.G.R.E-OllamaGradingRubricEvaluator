@@ -243,9 +243,19 @@ function findScoreInput(allNodes: SnapshotNode[]): SnapshotNode | null {
 }
 
 /**
- * Find the first feedback textarea/input.
+ * Find the first feedback box: prioritizes TinyMCE contenteditable editors,
+ * then falls back to textarea elements.
  */
 function findFeedbackBox(allNodes: SnapshotNode[]): SnapshotNode | null {
+  const contenteditableEditor = allNodes.find(
+    (n) =>
+      n.attrs['contenteditable'] === 'true' &&
+      (n.attrs['role'] === 'textbox' ||
+        (n.attrs['class'] ?? '').includes('mce') ||
+        (n.attrs['class'] ?? '').includes('fbbox') ||
+        (n.attrs['aria-label'] ?? '').toLowerCase().includes('feedback')),
+  );
+  if (contenteditableEditor) return contenteditableEditor;
   return (
     allNodes.find(
       (n) => n.tag === 'textarea' && !isScoreInput(n),

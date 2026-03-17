@@ -378,4 +378,138 @@ describe('detectGradingStructure', () => {
     expect(result!.confidence).toBeGreaterThanOrEqual(0.7);
     expect(result!.candidateSelectors.scoreInput).toBeTruthy();
   });
+
+  // ------- Test 12: TinyMCE contenteditable detection -------
+  it('detects contenteditable div with role=textbox as feedbackBox', () => {
+    // Build a batch snapshot with a contenteditable editor
+    const rows: SnapshotNode[] = [];
+    for (let i = 0; i < 3; i++) {
+      rows.push(
+        node('div', {
+          depth: 1,
+          priority: 'medium',
+          selector: `div.student-row:nth-child(${i + 1})`,
+          attrs: { class: 'student-row' },
+          children: [
+            node('span', {
+              depth: 2,
+              priority: 'medium',
+              text: `Student ${i + 1}`,
+              selector: `div.student-row:nth-child(${i + 1}) > span`,
+              attrs: { class: 'student-name' },
+            }),
+            node('input', {
+              depth: 2,
+              priority: 'critical',
+              selector: `div.student-row:nth-child(${i + 1}) > input`,
+              attrs: { type: 'number', class: 'score-input', name: `score_${i + 1}` },
+            }),
+          ],
+        }),
+      );
+    }
+
+    // Add a contenteditable div (TinyMCE editor)
+    const contenteditableEditor = node('div', {
+      depth: 1,
+      priority: 'medium',
+      selector: 'div.fbbox',
+      attrs: {
+        contenteditable: 'true',
+        role: 'textbox',
+        class: 'fbbox mce-content-body',
+        'aria-label': 'Feedback editor',
+      },
+      text: 'Enter feedback here...',
+    });
+
+    const result = detectGradingStructure(
+      snap([
+        node('div', {
+          depth: 0,
+          priority: 'medium',
+          attrs: {},
+          selector: 'body > div',
+          children: [...rows, contenteditableEditor],
+        }),
+      ]),
+    );
+
+    expect(result).not.toBeNull();
+    expect(result!.candidateSelectors.feedbackBox).toBeTruthy();
+    // Should contain 'fbbox' or 'contenteditable' in the selector
+    const feedbackSelector = result!.candidateSelectors.feedbackBox || '';
+    expect(feedbackSelector.toLowerCase()).toMatch(/fbbox|contenteditable/);
+  });
+
+  // ------- Test 13: contenteditable wins over textarea -------
+  it('prefers contenteditable div over textarea when both exist', () => {
+    // Build a batch snapshot with both contenteditable and textarea
+    const rows: SnapshotNode[] = [];
+    for (let i = 0; i < 3; i++) {
+      rows.push(
+        node('div', {
+          depth: 1,
+          priority: 'medium',
+          selector: `div.student-row:nth-child(${i + 1})`,
+          attrs: { class: 'student-row' },
+          children: [
+            node('span', {
+              depth: 2,
+              priority: 'medium',
+              text: `Student ${i + 1}`,
+              selector: `div.student-row:nth-child(${i + 1}) > span`,
+              attrs: { class: 'student-name' },
+            }),
+            node('input', {
+              depth: 2,
+              priority: 'critical',
+              selector: `div.student-row:nth-child(${i + 1}) > input`,
+              attrs: { type: 'number', class: 'score-input', name: `score_${i + 1}` },
+            }),
+          ],
+        }),
+      );
+    }
+
+    // Add both contenteditable and textarea
+    const contenteditableEditor = node('div', {
+      depth: 1,
+      priority: 'medium',
+      selector: 'div.fbbox',
+      attrs: {
+        contenteditable: 'true',
+        role: 'textbox',
+        class: 'fbbox',
+      },
+      text: 'TinyMCE feedback',
+    });
+
+    const textareaFallback = node('textarea', {
+      depth: 1,
+      priority: 'medium',
+      selector: 'textarea.fallback-feedback',
+      attrs: { class: 'fallback-feedback', name: 'feedback' },
+      text: 'Textarea feedback',
+    });
+
+    const result = detectGradingStructure(
+      snap([
+        node('div', {
+          depth: 0,
+          priority: 'medium',
+          attrs: {},
+          selector: 'body > div',
+          children: [...rows, contenteditableEditor, textareaFallback],
+        }),
+      ]),
+    );
+
+    expect(result).not.toBeNull();
+    expect(result!.candidateSelectors.feedbackBox).toBeTruthy();
+    // Should select the contenteditable, not the textarea
+    const feedbackSelector = result!.candidateSelectors.feedbackBox || '';
+    expect(feedbackSelector).toContain('fbbox');
+    expect(feedbackSelector).not.toContain('fallback-feedback');
+  });
 });
