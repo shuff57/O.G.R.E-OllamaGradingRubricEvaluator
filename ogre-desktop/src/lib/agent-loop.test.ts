@@ -24,6 +24,7 @@ vi.mock('./agent-prompt', () => ({
 
 vi.mock('./skills-api', () => ({
   buildSiteContextInjection: vi.fn().mockResolvedValue(''),
+  buildSkillInjection: vi.fn().mockResolvedValue(''),
 }));
 
 import { sendAgentRequest } from './agent-api';
@@ -43,9 +44,10 @@ beforeEach(async () => {
   (captureWebviewScreenshot as ReturnType<typeof vi.fn>).mockResolvedValue('data:image/png;base64,abc');
   const { getEmbeddedUrl } = await import('./browser');
   (getEmbeddedUrl as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-  const { buildSiteContextInjection } = await import('./skills-api');
+  const { buildSiteContextInjection, buildSkillInjection } = await import('./skills-api');
   (buildSiteContextInjection as ReturnType<typeof vi.fn>).mockResolvedValue('');
-  });
+  (buildSkillInjection as ReturnType<typeof vi.fn>).mockResolvedValue('');
+});
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -104,16 +106,6 @@ async function approveAndCollect(
       events.push(r.value);
       r = await gen.next();
     }
-  }
-  return events;
-}
-
-/** Collect events until stopType is found (inclusive), then stop iterating. */
-async function runUntil(gen: AsyncGenerator<any>, stopType: string): Promise<any[]> {
-  const events: any[] = [];
-  for await (const event of gen) {
-    events.push(event);
-    if (event.type === stopType) break;
   }
   return events;
 }

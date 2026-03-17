@@ -14,7 +14,7 @@ import { captureWebviewScreenshot, getEmbeddedUrl } from './browser';
 import { sendAgentRequest, parseAgentResponse } from './agent-api';
 import { executeAction } from './browser-actions';
 import { AGENT_SYSTEM_PROMPT } from './agent-prompt';
-import { buildSiteContextInjection } from './skills-api';
+import { buildSiteContextInjection, buildSkillInjection } from './skills-api';
 import type {
   AgentMode,
   AgentAction,
@@ -179,9 +179,15 @@ export function createAgentController(): AgentController {
     } catch {
       // No browser open or URL unavailable — skip injection
     }
-    const systemPrompt = siteContext
-      ? `${AGENT_SYSTEM_PROMPT}\n\n${siteContext}`
-      : AGENT_SYSTEM_PROMPT;
+    let skillContent = '';
+    try {
+      skillContent = await buildSkillInjection();
+    } catch {}
+
+    const systemPromptParts = [AGENT_SYSTEM_PROMPT];
+    if (skillContent) systemPromptParts.push(skillContent);
+    if (siteContext) systemPromptParts.push(siteContext);
+    const systemPrompt = systemPromptParts.join('\n\n');
 
     // Conversation history — includes system role and optional screenshot field
     const conversationHistory: AgentMessage[] = [

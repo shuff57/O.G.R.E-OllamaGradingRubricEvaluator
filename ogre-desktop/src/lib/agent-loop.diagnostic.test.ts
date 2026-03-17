@@ -33,6 +33,11 @@ beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(sendAgentRequest).mockReset();
   vi.mocked(executeAction).mockResolvedValue({ success: true });
+  vi.mocked(sendAgentRequest).mockResolvedValue({
+    action: 'done',
+    params: { success: true, message: 'done' },
+    reasoning: '',
+  } as any);
 });
 
 describe('agent-loop diagnostic: action execution pipeline', () => {

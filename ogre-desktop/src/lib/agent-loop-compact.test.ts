@@ -21,6 +21,11 @@ vi.mock('./agent-prompt', () => ({
   AGENT_SYSTEM_PROMPT: 'You are a browser agent.',
 }));
 
+vi.mock('./skills-api', () => ({
+  buildSiteContextInjection: vi.fn().mockResolvedValue(''),
+  buildSkillInjection: vi.fn().mockResolvedValue(''),
+}));
+
 import { sendAgentRequest } from './agent-api';
 import { executeAction } from './browser-actions';
 import { captureWebviewScreenshot } from './browser';
