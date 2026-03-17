@@ -247,6 +247,7 @@ function findScoreInput(allNodes: SnapshotNode[]): SnapshotNode | null {
  * then falls back to textarea elements.
  */
 function findFeedbackBox(allNodes: SnapshotNode[]): SnapshotNode | null {
+  // Priority 1: contenteditable with editor signals
   const contenteditableEditor = allNodes.find(
     (n) =>
       n.attrs['contenteditable'] === 'true' &&
@@ -256,6 +257,16 @@ function findFeedbackBox(allNodes: SnapshotNode[]): SnapshotNode | null {
         (n.attrs['aria-label'] ?? '').toLowerCase().includes('feedback')),
   );
   if (contenteditableEditor) return contenteditableEditor;
+
+  // Priority 2: role="textbox" with editor class (contenteditable set as JS property, not attribute)
+  const richEditorByRole = allNodes.find(
+    (n) =>
+      n.attrs['role'] === 'textbox' &&
+      ((n.attrs['class'] ?? '').includes('mce') ||
+        (n.attrs['class'] ?? '').includes('fbbox') ||
+        (n.attrs['aria-label'] ?? '').toLowerCase().includes('feedback')),
+  );
+  if (richEditorByRole) return richEditorByRole;
   return (
     allNodes.find(
       (n) => n.tag === 'textarea' && !isScoreInput(n),

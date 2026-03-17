@@ -257,7 +257,10 @@ function classify(tag,attrs,hasText,cc){
   return"low";
 }
 function capAttrs(el){
-  var o={};for(var i=0;i<el.attributes.length;i++){var a=el.attributes[i];if(captureSet[a.name])o[a.name]=a.value;}return o;
+  var o={};for(var i=0;i<el.attributes.length;i++){var a=el.attributes[i];if(captureSet[a.name])o[a.name]=a.value;}
+  if(!o.contenteditable&&el.isContentEditable&&el.getAttribute("contenteditable")!==null)o.contenteditable="true";
+  if(!o.contenteditable&&el.contentEditable==="true")o.contenteditable="true";
+  return o;
 }
 function directText(el){
   var t="";for(var i=0;i<el.childNodes.length;i++){var c=el.childNodes[i];if(c.nodeType===3)t+=c.textContent||"";}
@@ -283,7 +286,7 @@ function bbox(el){
 var all=[];var visited=0;
 function walk(el,d,ps,isR){
   if(d>opts.maxDepth)return;visited++;
-  if(!isR&&opts.skipHidden&&hidden(el)){if(!(el.tagName&&el.tagName.toLowerCase()==="input"&&el.getAttribute("type")==="hidden"))return;}
+  if(!isR&&opts.skipHidden&&hidden(el)){var ht=el.tagName?el.tagName.toLowerCase():"";if(ht==="input"&&el.getAttribute("type")==="hidden"){}else if(ht==="textarea"){}else return;}
   if(!isR&&collapsible(el)){walk(el.children[0],d,ps,false);return;}
   var tag=el.tagName.toLowerCase();var at=capAttrs(el);var tx=directText(el);var ht=tx!==void 0;
   var ch=Array.prototype.slice.call(el.children);var pr=classify(tag,at,ht,ch.length);
