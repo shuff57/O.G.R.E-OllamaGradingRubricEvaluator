@@ -21,14 +21,14 @@ Any (system-wide CLI).
 
 - `llama3.2` — default model for LightRAG memory queries
 - `nomic-embed-text` — embedding model for LightRAG indexing
-- Fine-tuned Modelfiles live in `fine-tuned-model/`:
+- Fine-tuned Modelfiles live in `../shuff57-llm-finetune/ogre/fine-tuned-model/`:
   - `Modelfile-qwen3.5-9B-stat-grader`
   - `Modelfile-qwen3.5-35B-A3B-stat-grader`
 
 ## Creating a fine-tuned model
 
 ```bash
-ollama create stat-grader -f fine-tuned-model/Modelfile-qwen3.5-9B-stat-grader
+ollama create stat-grader -f ../shuff57-llm-finetune/ogre/fine-tuned-model/Modelfile-qwen3.5-9B-stat-grader
 ```
 
 ## Notes

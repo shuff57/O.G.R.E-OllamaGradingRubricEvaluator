@@ -10,8 +10,8 @@ import {
 } from '../grading.js';
 
 // Test data imports
-import testRubric from '../../test-data/test-rubric.json';
-import testStudents from '../../test-data/test-students.json';
+import testRubric from '../../../shuff57-llm-finetune/ogre/test-data/test-rubric.json';
+import testStudents from '../../../shuff57-llm-finetune/ogre/test-data/test-students.json';
 
 describe('generateScoringAnchors', () => {
   it('should generate 3 anchors (Excellent, Adequate, Minimal)', () => {

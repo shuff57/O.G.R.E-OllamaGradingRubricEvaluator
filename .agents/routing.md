@@ -11,7 +11,7 @@ O.G.R.E (Ollama Grading Review Evaluator) is an educator-focused grading toolkit
 Primary stack and runtime surfaces:
 - Tauri + Rust desktop application (`ogre-desktop/`)
 - Node.js grading server (`grading-server/`)
-- Python model/fine-tuning assets (`fine-tuned-model/`)
+- Python model/fine-tuning assets (`../shuff57-llm-finetune/ogre/fine-tuned-model/`)
 - Playwriter browser automation for web grading and gradebook operations
 
 Key directories agents should recognize:
