@@ -20,6 +20,7 @@ import {
 import { findFuzzyMatch, fuzzyMatchReason } from './agent-dom-fuzzy';
 import { captureInteractiveDom } from './agent-dom';
 import { isConnected, pwClick, pwType, pwReadText, pwWaitFor, pwScroll, pwPressKey, pwWriteCodeMirror, pwCapturePopup } from './cdp-actions';
+import { isGdkAvailable, gdkClick, gdkType, gdkPressKey, gdkScroll, setGdkActiveTab } from './gdk-actions';
 import { cdp } from './cdp-client';
 import { runDiscovery } from './discover';
 import { testProfile } from './profile-tester';
@@ -525,6 +526,21 @@ export async function executeAction(params: ActionParams): Promise<ActionResult>
           return pwCapturePopup(p.timeoutMs);
         case 'navigate':
           return cdp.send('Page.navigate', { url: p.url }).then(() => ({ success: true as const })).catch((err: unknown) => ({ success: false as const, error: err instanceof Error ? err.message : String(err) }));
+        // All other actions fall through to evalScript below
+      }
+    }
+
+    if (isGdkAvailable()) {
+      setGdkActiveTab(getActiveTabId());
+      switch (p.action) {
+        case 'click':
+          return gdkClick(p.selector);
+        case 'type':
+          return gdkType(p.selector, p.text, p.clear);
+        case 'pressKey':
+          return gdkPressKey(p.key);
+        case 'scroll':
+          return gdkScroll(p.direction, p.amount);
         // All other actions fall through to evalScript below
       }
     }
