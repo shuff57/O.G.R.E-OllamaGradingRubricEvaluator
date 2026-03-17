@@ -265,6 +265,31 @@ function findFeedbackBox(allNodes: SnapshotNode[]): SnapshotNode | null {
   );
 }
 
+/** Regex for hidden input names that correlate with feedback (fb-, feedback-, comment-). */
+const FEEDBACK_HIDDEN_NAME_RE = /^fb[-_]|^feedback[-_]|^comment[-_]/i;
+
+/**
+ * Find a hidden input that correlates with a contenteditable feedback editor.
+ * Only returns a match if the feedback node is a contenteditable element.
+ * Returns null if feedbackNode is null or not contenteditable.
+ */
+function findFeedbackHidden(
+  allNodes: SnapshotNode[],
+  feedbackNode: SnapshotNode | null,
+): SnapshotNode | null {
+  if (!feedbackNode) return null;
+  const isRichEditor = feedbackNode.attrs['contenteditable'] === 'true';
+  if (!isRichEditor) return null;
+  return (
+    allNodes.find(
+      (n) =>
+        n.tag === 'input' &&
+        (n.attrs['type'] ?? '').toLowerCase() === 'hidden' &&
+        FEEDBACK_HIDDEN_NAME_RE.test(n.attrs['name'] ?? ''),
+    ) ?? null
+  );
+}
+
 // ============================================================================
 // Main detection
 // ============================================================================
@@ -346,25 +371,28 @@ export function detectGradingStructure(
       ? `Batch grading (${patterns.join(', ')})`
       : `Sequential grading (${patterns.join(', ')})`;
 
-  // ---- Find feedback box ----
-  const feedbackNode = findFeedbackBox(allNodes);
+   // ---- Find feedback box ----
+   const feedbackNode = findFeedbackBox(allNodes);
 
-  // ---- Build result ----
-  return {
-    mode,
-    candidateSelectors: {
-      studentSection: repeating ? selectorFor(repeating.rows[0]) : null,
-      studentName: nameNode ? selectorFor(nameNode) : '',
-      scoreInput: scoreNode ? selectorFor(scoreNode) : '',
-      feedbackBox: feedbackNode ? selectorFor(feedbackNode) : null,
-      feedbackHidden: null,
-      questionRegion: null,
-      fullCreditLink: null,
-    },
-    confidence: Math.min(confidence, 1),
-    patternName,
-  };
-}
+   // ---- Find hidden input correlated with contenteditable feedback ----
+   const feedbackHiddenNode = findFeedbackHidden(allNodes, feedbackNode);
+
+   // ---- Build result ----
+   return {
+     mode,
+     candidateSelectors: {
+       studentSection: repeating ? selectorFor(repeating.rows[0]) : null,
+       studentName: nameNode ? selectorFor(nameNode) : '',
+       scoreInput: scoreNode ? selectorFor(scoreNode) : '',
+       feedbackBox: feedbackNode ? selectorFor(feedbackNode) : null,
+       feedbackHidden: feedbackHiddenNode ? selectorFor(feedbackHiddenNode) : null,
+       questionRegion: null,
+       fullCreditLink: null,
+     },
+     confidence: Math.min(confidence, 1),
+     patternName,
+   };
+ }
 
 /**
  * Global search for a name candidate: find any text node that is a sibling
