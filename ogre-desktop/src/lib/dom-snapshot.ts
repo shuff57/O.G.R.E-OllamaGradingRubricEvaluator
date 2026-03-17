@@ -249,6 +249,7 @@ var captureSet={};DEFAULT_ATTRS.concat(opts.extraAttrs||[]).forEach(function(a){
 function classify(tag,attrs,hasText,cc){
   if(lowSet[tag])return"low";
   for(var k in attrs){if(critSet[k])return"critical";}
+  if(tag==="input"){var tp=(attrs.type||"").toLowerCase();if(tp==="hidden")return((attrs.name||"").match(/^fb[-_]/i))?"high":"medium";}
   if(tag==="input"){var tp=(attrs.type||"").toLowerCase();if(tp==="number"||tp==="text"||tp==="")return"critical";}
   if(tag==="textarea")return"critical";
   if(highSet[tag])return"high";
@@ -282,7 +283,7 @@ function bbox(el){
 var all=[];var visited=0;
 function walk(el,d,ps,isR){
   if(d>opts.maxDepth)return;visited++;
-  if(!isR&&opts.skipHidden&&hidden(el))return;
+  if(!isR&&opts.skipHidden&&hidden(el)){if(!(el.tagName&&el.tagName.toLowerCase()==="input"&&el.getAttribute("type")==="hidden"))return;}
   if(!isR&&collapsible(el)){walk(el.children[0],d,ps,false);return;}
   var tag=el.tagName.toLowerCase();var at=capAttrs(el);var tx=directText(el);var ht=tx!==void 0;
   var ch=Array.prototype.slice.call(el.children);var pr=classify(tag,at,ht,ch.length);

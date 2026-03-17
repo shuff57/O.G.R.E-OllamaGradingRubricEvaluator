@@ -205,6 +205,31 @@ describe('bounding box', () => {
 
 // ── buildSmartWalkScript ──────────────────────────────────────────────────
 describe('buildSmartWalkScript', () => {
+  let origW: PropertyDescriptor | undefined;
+  let origH: PropertyDescriptor | undefined;
+
+  beforeEach(() => {
+    origW = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+    origH = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
+    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
+      get(this: HTMLElement) {
+        return this.classList.contains('hidden-display') ? 0 : 100;
+      },
+      configurable: true,
+    });
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+      get(this: HTMLElement) {
+        return this.classList.contains('hidden-display') ? 0 : 50;
+      },
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    if (origW) Object.defineProperty(HTMLElement.prototype, 'offsetWidth', origW);
+    if (origH) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', origH);
+  });
+
   // ── 7. Returns string ─────────────────────────────────────────────────
   it('returns a string', () => {
     const script = buildSmartWalkScript();
@@ -215,5 +240,30 @@ describe('buildSmartWalkScript', () => {
   it('contains no import or require', () => {
     const script = buildSmartWalkScript();
     expect(/\bimport\b|\brequire\b/.test(script)).toBe(false);
+  });
+
+  it('captures hidden inputs with skipHidden=true and assigns hidden-input priority', () => {
+    document.body.innerHTML = `
+      <form>
+        <input class="hidden-display" type="hidden" name="fb_score" value="9" />
+        <input class="hidden-display" type="hidden" name="csrf_token" value="abc" />
+      </form>
+    `;
+
+    const script = buildSmartWalkScript({ skipHidden: true });
+    const runScript = Function(`return ${script};`) as () => ReturnType<typeof smartWalk>;
+    const result = runScript();
+
+    const fbHidden = result.nodes.find(
+      n => n.tag === 'input' && n.attrs.type === 'hidden' && n.attrs.name === 'fb_score',
+    );
+    const otherHidden = result.nodes.find(
+      n => n.tag === 'input' && n.attrs.type === 'hidden' && n.attrs.name === 'csrf_token',
+    );
+
+    expect(fbHidden).toBeDefined();
+    expect(otherHidden).toBeDefined();
+    expect(fbHidden?.priority).toBe('high');
+    expect(otherHidden?.priority).toBe('medium');
   });
 });

@@ -378,4 +378,381 @@ describe('detectGradingStructure', () => {
     expect(result!.confidence).toBeGreaterThanOrEqual(0.7);
     expect(result!.candidateSelectors.scoreInput).toBeTruthy();
   });
+
+  // ------- Test 12: TinyMCE contenteditable detection -------
+  it('detects contenteditable div with role=textbox as feedbackBox', () => {
+    // Build a batch snapshot with a contenteditable editor
+    const rows: SnapshotNode[] = [];
+    for (let i = 0; i < 3; i++) {
+      rows.push(
+        node('div', {
+          depth: 1,
+          priority: 'medium',
+          selector: `div.student-row:nth-child(${i + 1})`,
+          attrs: { class: 'student-row' },
+          children: [
+            node('span', {
+              depth: 2,
+              priority: 'medium',
+              text: `Student ${i + 1}`,
+              selector: `div.student-row:nth-child(${i + 1}) > span`,
+              attrs: { class: 'student-name' },
+            }),
+            node('input', {
+              depth: 2,
+              priority: 'critical',
+              selector: `div.student-row:nth-child(${i + 1}) > input`,
+              attrs: { type: 'number', class: 'score-input', name: `score_${i + 1}` },
+            }),
+          ],
+        }),
+      );
+    }
+
+    // Add a contenteditable div (TinyMCE editor)
+    const contenteditableEditor = node('div', {
+      depth: 1,
+      priority: 'medium',
+      selector: 'div.fbbox',
+      attrs: {
+        contenteditable: 'true',
+        role: 'textbox',
+        class: 'fbbox mce-content-body',
+        'aria-label': 'Feedback editor',
+      },
+      text: 'Enter feedback here...',
+    });
+
+    const result = detectGradingStructure(
+      snap([
+        node('div', {
+          depth: 0,
+          priority: 'medium',
+          attrs: {},
+          selector: 'body > div',
+          children: [...rows, contenteditableEditor],
+        }),
+      ]),
+    );
+
+    expect(result).not.toBeNull();
+    expect(result!.candidateSelectors.feedbackBox).toBeTruthy();
+    // Should contain 'fbbox' or 'contenteditable' in the selector
+    const feedbackSelector = result!.candidateSelectors.feedbackBox || '';
+    expect(feedbackSelector.toLowerCase()).toMatch(/fbbox|contenteditable/);
+  });
+
+   // ------- Test 13: contenteditable wins over textarea -------
+   it('prefers contenteditable div over textarea when both exist', () => {
+     // Build a batch snapshot with both contenteditable and textarea
+     const rows: SnapshotNode[] = [];
+     for (let i = 0; i < 3; i++) {
+       rows.push(
+         node('div', {
+           depth: 1,
+           priority: 'medium',
+           selector: `div.student-row:nth-child(${i + 1})`,
+           attrs: { class: 'student-row' },
+           children: [
+             node('span', {
+               depth: 2,
+               priority: 'medium',
+               text: `Student ${i + 1}`,
+               selector: `div.student-row:nth-child(${i + 1}) > span`,
+               attrs: { class: 'student-name' },
+             }),
+             node('input', {
+               depth: 2,
+               priority: 'critical',
+               selector: `div.student-row:nth-child(${i + 1}) > input`,
+               attrs: { type: 'number', class: 'score-input', name: `score_${i + 1}` },
+             }),
+           ],
+         }),
+       );
+     }
+
+     // Add both contenteditable and textarea
+     const contenteditableEditor = node('div', {
+       depth: 1,
+       priority: 'medium',
+       selector: 'div.fbbox',
+       attrs: {
+         contenteditable: 'true',
+         role: 'textbox',
+         class: 'fbbox',
+       },
+       text: 'TinyMCE feedback',
+     });
+
+     const textareaFallback = node('textarea', {
+       depth: 1,
+       priority: 'medium',
+       selector: 'textarea.fallback-feedback',
+       attrs: { class: 'fallback-feedback', name: 'feedback' },
+       text: 'Textarea feedback',
+     });
+
+     const result = detectGradingStructure(
+       snap([
+         node('div', {
+           depth: 0,
+           priority: 'medium',
+           attrs: {},
+           selector: 'body > div',
+           children: [...rows, contenteditableEditor, textareaFallback],
+         }),
+       ]),
+     );
+
+     expect(result).not.toBeNull();
+     expect(result!.candidateSelectors.feedbackBox).toBeTruthy();
+     // Should select the contenteditable, not the textarea
+     const feedbackSelector = result!.candidateSelectors.feedbackBox || '';
+     expect(feedbackSelector).toContain('fbbox');
+     expect(feedbackSelector).not.toContain('fallback-feedback');
+   });
+
+   // ------- Test 14: feedbackHidden with contenteditable + hidden input -------
+   it('detects feedbackHidden when contenteditable feedback + input[type="hidden"][name^="fb-"] exist together', () => {
+     // Build a batch snapshot with contenteditable editor and hidden input
+     const rows: SnapshotNode[] = [];
+     for (let i = 0; i < 3; i++) {
+       rows.push(
+         node('div', {
+           depth: 1,
+           priority: 'medium',
+           selector: `div.student-row:nth-child(${i + 1})`,
+           attrs: { class: 'student-row' },
+           children: [
+             node('span', {
+               depth: 2,
+               priority: 'medium',
+               text: `Student ${i + 1}`,
+               selector: `div.student-row:nth-child(${i + 1}) > span`,
+               attrs: { class: 'student-name' },
+             }),
+             node('input', {
+               depth: 2,
+               priority: 'critical',
+               selector: `div.student-row:nth-child(${i + 1}) > input`,
+               attrs: { type: 'number', class: 'score-input', name: `score_${i + 1}` },
+             }),
+           ],
+         }),
+       );
+     }
+
+     // Add contenteditable editor
+     const contenteditableEditor = node('div', {
+       depth: 1,
+       priority: 'medium',
+       selector: 'div.fbbox',
+       attrs: {
+         contenteditable: 'true',
+         role: 'textbox',
+         class: 'fbbox mce-content-body',
+       },
+       text: 'Enter feedback here...',
+     });
+
+     // Add hidden input with fb- prefix
+     const hiddenInput = node('input', {
+       depth: 1,
+       priority: 'medium',
+       selector: 'input[name="fb-123"]',
+       attrs: { type: 'hidden', name: 'fb-123' },
+     });
+
+     const result = detectGradingStructure(
+       snap([
+         node('div', {
+           depth: 0,
+           priority: 'medium',
+           attrs: {},
+           selector: 'body > div',
+           children: [...rows, contenteditableEditor, hiddenInput],
+         }),
+       ]),
+     );
+
+     expect(result).not.toBeNull();
+     expect(result!.candidateSelectors.feedbackHidden).toBeTruthy();
+     // Should contain 'hidden' or 'input' in the selector
+     const hiddenSelector = result!.candidateSelectors.feedbackHidden || '';
+     expect(hiddenSelector.toLowerCase()).toMatch(/hidden|input/);
+   });
+
+   // ------- Test 15: feedbackHidden is null with textarea only -------
+   it('returns null for feedbackHidden when only textarea exists (no contenteditable)', () => {
+     // Build a batch snapshot with textarea but no contenteditable
+     const rows: SnapshotNode[] = [];
+     for (let i = 0; i < 3; i++) {
+       rows.push(
+         node('div', {
+           depth: 1,
+           priority: 'medium',
+           selector: `div.student-row:nth-child(${i + 1})`,
+           attrs: { class: 'student-row' },
+           children: [
+             node('span', {
+               depth: 2,
+               priority: 'medium',
+               text: `Student ${i + 1}`,
+               selector: `div.student-row:nth-child(${i + 1}) > span`,
+               attrs: { class: 'student-name' },
+             }),
+             node('input', {
+               depth: 2,
+               priority: 'critical',
+               selector: `div.student-row:nth-child(${i + 1}) > input`,
+               attrs: { type: 'number', class: 'score-input', name: `score_${i + 1}` },
+             }),
+           ],
+         }),
+       );
+     }
+
+     // Add only textarea (no contenteditable)
+     const textareaFeedback = node('textarea', {
+       depth: 1,
+       priority: 'medium',
+       selector: 'textarea.feedback-input',
+       attrs: { class: 'feedback-input', name: 'feedback' },
+       text: 'Textarea feedback',
+     });
+
+     // Add hidden input (but should not be detected since no contenteditable)
+     const hiddenInput = node('input', {
+       depth: 1,
+       priority: 'medium',
+       selector: 'input[name="fb-123"]',
+       attrs: { type: 'hidden', name: 'fb-123' },
+     });
+
+     const result = detectGradingStructure(
+       snap([
+         node('div', {
+           depth: 0,
+           priority: 'medium',
+           attrs: {},
+           selector: 'body > div',
+           children: [...rows, textareaFeedback, hiddenInput],
+         }),
+       ]),
+     );
+
+      expect(result).not.toBeNull();
+      expect(result!.candidateSelectors.feedbackHidden).toBeNull();
+    });
+
+    // ------- Test 16: questionRegion detection -------
+    it('detects questionRegion when div[role="region"][aria-label^="Question"] exists', () => {
+      // Build a batch snapshot with a question region
+      const rows: SnapshotNode[] = [];
+      for (let i = 0; i < 3; i++) {
+        rows.push(
+          node('div', {
+            depth: 1,
+            priority: 'medium',
+            selector: `div.student-row:nth-child(${i + 1})`,
+            attrs: { class: 'student-row' },
+            children: [
+              node('span', {
+                depth: 2,
+                priority: 'medium',
+                text: `Student ${i + 1}`,
+                selector: `div.student-row:nth-child(${i + 1}) > span`,
+                attrs: { class: 'student-name' },
+              }),
+              node('div', {
+                depth: 2,
+                priority: 'medium',
+                selector: 'div[role="region"]',
+                attrs: { role: 'region', 'aria-label': 'Question 1' },
+                children: [
+                  node('p', { depth: 3, text: 'Student response text' }),
+                ],
+              }),
+              node('input', {
+                depth: 2,
+                priority: 'critical',
+                selector: `div.student-row:nth-child(${i + 1}) > input`,
+                attrs: { type: 'number', class: 'score-input', name: `score_${i + 1}` },
+              }),
+            ],
+          }),
+        );
+      }
+
+      const result = detectGradingStructure(
+        snap([
+          node('div', {
+            depth: 0,
+            priority: 'medium',
+            attrs: {},
+            selector: 'body > div',
+            children: rows,
+          }),
+        ]),
+      );
+
+      expect(result).not.toBeNull();
+      expect(result!.candidateSelectors.questionRegion).toBeTruthy();
+    });
+
+    // ------- Test 17: fullCreditLink detection -------
+    it('detects fullCreditLink when a[class="fullcredlink"] exists', () => {
+      // Build a batch snapshot with a full credit link
+      const rows: SnapshotNode[] = [];
+      for (let i = 0; i < 3; i++) {
+        rows.push(
+          node('div', {
+            depth: 1,
+            priority: 'medium',
+            selector: `div.student-row:nth-child(${i + 1})`,
+            attrs: { class: 'student-row' },
+            children: [
+              node('span', {
+                depth: 2,
+                priority: 'medium',
+                text: `Student ${i + 1}`,
+                selector: `div.student-row:nth-child(${i + 1}) > span`,
+                attrs: { class: 'student-name' },
+              }),
+              node('input', {
+                depth: 2,
+                priority: 'critical',
+                selector: `div.student-row:nth-child(${i + 1}) > input`,
+                attrs: { type: 'number', class: 'score-input', name: `score_${i + 1}` },
+              }),
+            ],
+          }),
+        );
+      }
+
+      // Add full credit link
+      const fullCreditLink = node('a', {
+        depth: 1,
+        priority: 'medium',
+        selector: 'a.fullcredlink',
+        attrs: { class: 'fullcredlink', href: '#' },
+        text: 'Full Credit',
+      });
+
+      const result = detectGradingStructure(
+        snap([
+          node('div', {
+            depth: 0,
+            priority: 'medium',
+            attrs: {},
+            selector: 'body > div',
+            children: [...rows, fullCreditLink],
+          }),
+        ]),
+      );
+
+      expect(result).not.toBeNull();
+      expect(result!.candidateSelectors.fullCreditLink).toBeTruthy();
+    });
 });

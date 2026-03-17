@@ -243,15 +243,91 @@ function findScoreInput(allNodes: SnapshotNode[]): SnapshotNode | null {
 }
 
 /**
- * Find the first feedback textarea/input.
+ * Find the first feedback box: prioritizes TinyMCE contenteditable editors,
+ * then falls back to textarea elements.
  */
 function findFeedbackBox(allNodes: SnapshotNode[]): SnapshotNode | null {
+  const contenteditableEditor = allNodes.find(
+    (n) =>
+      n.attrs['contenteditable'] === 'true' &&
+      (n.attrs['role'] === 'textbox' ||
+        (n.attrs['class'] ?? '').includes('mce') ||
+        (n.attrs['class'] ?? '').includes('fbbox') ||
+        (n.attrs['aria-label'] ?? '').toLowerCase().includes('feedback')),
+  );
+  if (contenteditableEditor) return contenteditableEditor;
   return (
     allNodes.find(
       (n) => n.tag === 'textarea' && !isScoreInput(n),
     ) ??
     allNodes.find((n) => n.tag === 'textarea') ??
     null
+  );
+}
+
+/** Regex for hidden input names that correlate with feedback (fb-, feedback-, comment-). */
+const FEEDBACK_HIDDEN_NAME_RE = /^fb[-_]|^feedback[-_]|^comment[-_]/i;
+
+/**
+ * Find a hidden input that correlates with a contenteditable feedback editor.
+ * Only returns a match if the feedback node is a contenteditable element.
+ * Returns null if feedbackNode is null or not contenteditable.
+ */
+function findFeedbackHidden(
+  allNodes: SnapshotNode[],
+  feedbackNode: SnapshotNode | null,
+): SnapshotNode | null {
+  if (!feedbackNode) return null;
+  const isRichEditor = feedbackNode.attrs['contenteditable'] === 'true';
+  if (!isRichEditor) return null;
+  return (
+    allNodes.find(
+      (n) =>
+        n.tag === 'input' &&
+        (n.attrs['type'] ?? '').toLowerCase() === 'hidden' &&
+        FEEDBACK_HIDDEN_NAME_RE.test(n.attrs['name'] ?? ''),
+    ) ?? null
+  );
+}
+
+/**
+ * Find a question region node: prioritizes div/section with role="region" and
+ * aria-label containing "question", then falls back to div with class containing
+ * "question" that has score inputs in its subtree.
+ */
+function findQuestionRegion(allNodes: SnapshotNode[]): SnapshotNode | null {
+  return (
+    allNodes.find(
+      (n) =>
+        (n.tag === 'div' || n.tag === 'section') &&
+        n.attrs['role'] === 'region' &&
+        (n.attrs['aria-label'] ?? '').toLowerCase().includes('question'),
+    ) ??
+    allNodes.find(
+      (n) =>
+        n.tag === 'div' &&
+        (n.attrs['class'] ?? '').toLowerCase().includes('question') &&
+        n.children?.some((c) => flatChildren(c).some(isScoreInput) || isScoreInput(c)),
+    ) ??
+    null
+  );
+}
+
+/** Regex for full credit link text or class. */
+const FULL_CREDIT_RE = /full\s*cred|fullcred/i;
+
+/**
+ * Find a full credit link: looks for an anchor tag with class or text matching
+ * "full credit" or "fullcredit" (case-insensitive).
+ */
+function findFullCreditLink(allNodes: SnapshotNode[]): SnapshotNode | null {
+  return (
+    allNodes.find(
+      (n) =>
+        n.tag === 'a' &&
+        (FULL_CREDIT_RE.test(n.attrs['class'] ?? '') ||
+          FULL_CREDIT_RE.test(n.text ?? '')),
+    ) ?? null
   );
 }
 
@@ -336,25 +412,34 @@ export function detectGradingStructure(
       ? `Batch grading (${patterns.join(', ')})`
       : `Sequential grading (${patterns.join(', ')})`;
 
-  // ---- Find feedback box ----
-  const feedbackNode = findFeedbackBox(allNodes);
+    // ---- Find feedback box ----
+    const feedbackNode = findFeedbackBox(allNodes);
 
-  // ---- Build result ----
-  return {
-    mode,
-    candidateSelectors: {
-      studentSection: repeating ? selectorFor(repeating.rows[0]) : null,
-      studentName: nameNode ? selectorFor(nameNode) : '',
-      scoreInput: scoreNode ? selectorFor(scoreNode) : '',
-      feedbackBox: feedbackNode ? selectorFor(feedbackNode) : null,
-      feedbackHidden: null,
-      questionRegion: null,
-      fullCreditLink: null,
-    },
-    confidence: Math.min(confidence, 1),
-    patternName,
-  };
-}
+    // ---- Find hidden input correlated with contenteditable feedback ----
+    const feedbackHiddenNode = findFeedbackHidden(allNodes, feedbackNode);
+
+    // ---- Find question region ----
+    const questionRegionNode = findQuestionRegion(allNodes);
+
+    // ---- Find full credit link ----
+    const fullCreditNode = findFullCreditLink(allNodes);
+
+    // ---- Build result ----
+    return {
+      mode,
+      candidateSelectors: {
+        studentSection: repeating ? selectorFor(repeating.rows[0]) : null,
+        studentName: nameNode ? selectorFor(nameNode) : '',
+        scoreInput: scoreNode ? selectorFor(scoreNode) : '',
+        feedbackBox: feedbackNode ? selectorFor(feedbackNode) : null,
+        feedbackHidden: feedbackHiddenNode ? selectorFor(feedbackHiddenNode) : null,
+        questionRegion: questionRegionNode ? selectorFor(questionRegionNode) : null,
+        fullCreditLink: fullCreditNode ? selectorFor(fullCreditNode) : null,
+      },
+      confidence: Math.min(confidence, 1),
+      patternName,
+    };
+  }
 
 /**
  * Global search for a name candidate: find any text node that is a sibling
