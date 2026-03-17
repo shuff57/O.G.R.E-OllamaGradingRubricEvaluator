@@ -29,7 +29,7 @@ import { buildSiteContextInjection } from './skills-api';
 import { buildSkillInjection } from './skills-api';
 
 beforeEach(() => {
-  vi.resetAllMocks();
+  vi.clearAllMocks(); // clear call history only — preserve factory implementations
   vi.mocked(getEmbeddedUrl).mockResolvedValue('https://myopenmath.com');
   vi.mocked(executeAction).mockResolvedValue({ success: true });
   vi.mocked(buildSiteContextInjection).mockResolvedValue('--- SITE GUIDE (JSON): MyOpenMath ---\n{}\n--- END SITE GUIDE ---');

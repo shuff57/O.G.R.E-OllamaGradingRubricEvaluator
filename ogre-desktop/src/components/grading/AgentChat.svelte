@@ -7,9 +7,10 @@
   import type { AgentEvent, AgentController } from '../../lib/agent-loop';
   import type { AgentMode, AgentState } from '../../lib/agent-types';
   import ProviderSelector from './ProviderSelector.svelte';
-  import { getSkillsWithUrlPattern, findMatchingProfiles, selectBestProfile, getMatchingSkillsForUrl } from '../../lib/skills-api';
+  import { findMatchingProfiles, getMatchingSkillsForUrl } from '../../lib/skills-api';
+  import { selectBestProfile } from '../../lib/profile-precedence';
   import { getEmbeddedUrl } from '../../lib/browser';
-  import { saveSkill, type Skill } from '../../lib/db';
+  import { saveSkill, getSkillsWithUrlPattern, type Skill } from '../../lib/db';
 
   // ============================================================================
   // Message Types
