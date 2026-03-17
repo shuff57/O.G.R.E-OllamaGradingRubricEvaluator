@@ -1,10 +1,10 @@
 {
-  "active_plan": "/home/shuff57/Documents/GitHub/O.G.R.E-OllamaGradingRubricEvaluator/.sisyphus/plans/dark-mode-dropdowns.md",
-  "started_at": "2026-03-16T22:37:15.228Z",
+  "active_plan": "/home/shuff57/Documents/GitHub/O.G.R.E-OllamaGradingRubricEvaluator/.sisyphus/plans/linux-gdk-input-injection.md",
+  "started_at": "2026-03-17T02:57:14.302Z",
   "session_ids": [
-    "ses_3073cb2c4ffecOWStJZu8aZc1i"
+    "ses_306461fcbffeuFY8EX58Nfwe7x"
   ],
-  "plan_name": "dark-mode-dropdowns",
+  "plan_name": "linux-gdk-input-injection",
   "agent": "atlas",
-  "worktree_path": "/home/shuff57/Documents/GitHub/O.G.R.E-OllamaGradingRubricEvaluator"
+  "worktree_path": "/home/shuff57/Documents/GitHub/O.G.R.E-OllamaGradingRubricEvaluator/.worktrees/linux-gdk-input-injection"
 }

@@ -485,3 +485,167 @@ npx tsc --noEmit
 - **T1+T2**: `feat(linux): add GDK mouse and keyboard event injection commands`
 - **T3+T4**: `feat(linux): add gdk-actions.ts with CDP-equivalent input simulation`
 - **T5**: `feat(browser): add 3-tier input dispatch — CDP → GDK → evalScript`
+
+---
+
+## Phase 2B: Discovery Re-Scan Loop (post-interaction element detection)
+
+> **Depends on:** T0-T5 complete (GDK input simulation working)
+
+### Problem
+
+TinyMCE and other dynamic editors initialize AFTER page load. The initial DOM snapshot captures the raw `<textarea>` (hidden by TinyMCE) but NOT the `<div contenteditable>` that TinyMCE creates. Phase 1 heuristics work on mock data but fail on live MOM pages because the contenteditable div doesn't exist at snapshot time.
+
+### Solution: Interact → Re-Scan → Merge
+
+After the initial discovery snapshot, use GDK click simulation to trigger editor initialization, then re-snapshot and merge results.
+
+### Architecture
+
+```
+Initial Snapshot (existing)
+    │
+    ├── Heuristic detection → find candidate feedback elements
+    │   (textarea, div with fbbox/mce class, elements near score inputs)
+    │
+    ▼
+Interaction Phase (NEW — requires GDK)
+    │
+    ├── For each candidate feedback element:
+    │   1. GDK-click the element (triggers TinyMCE/editor init)
+    │   2. Wait 500ms for DOM mutation (editor toolbar, contenteditable div)
+    │   3. Re-snapshot ONLY the area around the clicked element (scoped snapshot)
+    │
+    ▼
+Merge Phase (NEW)
+    │
+    ├── Compare initial vs post-interaction snapshots
+    ├── Detect new nodes: contenteditable divs, editor toolbars, hidden inputs
+    ├── Re-run heuristics on merged snapshot
+    ├── Update feedback type: textarea → tinymce-inline
+    ├── Find feedbackHidden via correlation
+    │
+    ▼
+Final Profile (improved)
+```
+
+### Tasks
+
+**T6 — Interaction probe for feedback candidates** [deep]
+
+**Files:**
+- Create: `ogre-desktop/src/lib/discovery-interaction-probe.ts`
+- Modify: `ogre-desktop/src/lib/discover.ts` (add post-heuristic interaction phase)
+
+**What:**
+After initial heuristic detection, if `feedbackBox` is a textarea OR null AND confidence is high enough to identify candidate areas:
+1. Identify clickable candidates near score inputs (siblings, adjacent divs)
+2. Use `gdkClick()` (or evalScript `element.click()` fallback) on each candidate
+3. Wait for DOM mutation (MutationObserver or simple timeout)
+4. Run a scoped `captureDomSnapshot()` on the parent region
+5. Check if new contenteditable/role=textbox nodes appeared
+
+```typescript
+interface InteractionProbeResult {
+  originalFeedback: string | null;       // from initial heuristic
+  discoveredFeedback: string | null;     // from post-interaction scan
+  feedbackType: 'textarea' | 'tinymce-inline' | 'contenteditable' | 'unknown';
+  hiddenInputFound: string | null;       // feedbackHidden selector
+  editorInitialized: boolean;            // true if new nodes appeared after click
+}
+
+async function probeForDynamicEditors(
+  initialResult: HeuristicDetection,
+  options?: { maxProbes?: number; waitMs?: number }
+): Promise<InteractionProbeResult>
+```
+
+**Acceptance Criteria:**
+- On MOM grading page: clicks feedback area → TinyMCE toolbar appears → re-scan finds `div.fbbox[contenteditable]`
+- On non-TinyMCE pages: probe runs, finds nothing new, returns original result unchanged
+- Probe is non-destructive: doesn't type, doesn't change values, only clicks to trigger init
+
+---
+
+**T7 — Scoped re-snapshot after interaction** [quick]
+
+**Files:**
+- Modify: `ogre-desktop/src/lib/dom-snapshot.ts` (add scoped snapshot option)
+
+**What:**
+Add ability to snapshot a specific subtree instead of `document.body`:
+```typescript
+// Existing: captureDomSnapshot() snapshots entire page
+// New: captureDomSnapshot({ rootSelector: 'div.questionwrap:first-child' })
+```
+The `rootSelector` option already exists in `SmartWalkOptions` but may not be wired through. Verify it works, and add a helper that snapshots just the area around a given element.
+
+---
+
+**T8 — Wire interaction probe into discovery pipeline** [deep]
+
+**Files:**
+- Modify: `ogre-desktop/src/lib/discover.ts`
+
+**What:**
+In `runDiscovery()`, after the heuristic fast-path succeeds but before returning:
+1. Check if feedbackBox is textarea or null AND feedbackHidden is null
+2. If yes: run `probeForDynamicEditors()`
+3. If probe finds contenteditable: update the result's selectors, feedback type, and hiddenSync
+4. Add progress callback: `"Probing for dynamic editors..."`
+
+```typescript
+// After heuristic validation succeeds (~line 959):
+if (criticalValid && (!heuristicDraft.selectors.feedbackBox || 
+    heuristicDraft.feedback.type === 'textarea')) {
+  onProgress?.({ stage: 'interaction-probe', message: 'Probing for dynamic editors...', progress: 50 });
+  const probeResult = await probeForDynamicEditors(heuristic);
+  if (probeResult.editorInitialized) {
+    heuristicDraft.selectors.feedbackBox = probeResult.discoveredFeedback ?? heuristicDraft.selectors.feedbackBox;
+    heuristicDraft.selectors.feedbackHidden = probeResult.hiddenInputFound ?? null;
+    heuristicDraft.feedback.type = probeResult.feedbackType;
+    heuristicDraft.feedback.requiresHiddenSync = !!probeResult.hiddenInputFound;
+    heuristicDraft.feedback.htmlWrap = probeResult.feedbackType === 'tinymce-inline';
+  }
+}
+```
+
+**Acceptance Criteria:**
+- MOM grading page: discovery returns `feedbackBox: div.fbbox[contenteditable]`, `feedback.type: tinymce-inline`, `requiresHiddenSync: true`
+- Non-editor pages: no change in behavior (probe finds nothing, falls through)
+- Probe adds ≤2s to discovery time
+
+---
+
+**T9 — Integration test on live MOM page** [deep]
+
+Manual verification:
+- [ ] Run Discover Page on MOM grading page
+- [ ] Verify feedbackBox is `div.fbbox[contenteditable]` (not textarea)
+- [ ] Verify feedbackHidden is `input[type="hidden"][name^="fb-"]`
+- [ ] Verify feedback.type is `tinymce-inline`
+- [ ] Compare against built-in profile — target 90%+ field match
+
+---
+
+### Updated Task Summary
+
+| Task | Wave | Description |
+|------|------|-------------|
+| T0   | 0    | Spike: GdkWindow access from wry WebView |
+| T1   | 1    | Rust simulate_mouse_event command |
+| T2   | 1    | Rust simulate_key_event + simulate_text_input |
+| T3   | 2    | TypeScript gdk-actions.ts wrappers |
+| T4   | 2    | Tests for gdk-actions.ts |
+| T5   | 3    | Wire 3-tier dispatcher |
+| **T6** | **4** | **Interaction probe for feedback candidates** |
+| **T7** | **4** | **Scoped re-snapshot after interaction** |
+| **T8** | **4** | **Wire probe into discovery pipeline** |
+| **T9** | **5** | **Integration test on live MOM page** |
+
+### Updated Commit Strategy
+
+- **T6**: `feat(discovery): add interaction probe for dynamic editor detection`
+- **T7**: `feat(discovery): scoped re-snapshot for post-interaction DOM capture`
+- **T8**: `feat(discovery): wire interaction probe into discovery pipeline`
+- **T9**: No commit (manual verification)
