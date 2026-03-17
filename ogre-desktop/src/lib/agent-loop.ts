@@ -267,8 +267,6 @@ export function createAgentController(): AgentController {
 
       // ── Step 3: Handle response ──
 
-      // Safety net: if transport returns raw server format { response: string },
-      // normalize it into AgentApiResponse before branch checks.
       if (
         'response' in response &&
         typeof (response as Record<string, unknown>).response === 'string'

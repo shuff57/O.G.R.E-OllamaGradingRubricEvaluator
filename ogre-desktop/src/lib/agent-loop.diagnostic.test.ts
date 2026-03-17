@@ -11,9 +11,13 @@ vi.mock('./agent-dom', () => ({
   captureInteractiveDom: vi.fn().mockResolvedValue([]),
   formatDomForPrompt: vi.fn().mockReturnValue('No elements'),
 }));
-vi.mock('./agent-api', () => ({
-  sendAgentRequest: vi.fn(),
-}));
+vi.mock('./agent-api', async () => {
+  const actual = await vi.importActual<typeof import('./agent-api')>('./agent-api');
+  return {
+    ...actual,
+    sendAgentRequest: vi.fn(),
+  };
+});
 vi.mock('./browser-actions', () => ({
   executeAction: vi.fn().mockResolvedValue({ success: true }),
 }));
@@ -32,45 +36,43 @@ beforeEach(() => {
 });
 
 describe('agent-loop diagnostic: action execution pipeline', () => {
-  it('DIAGNOSTIC: executes click action from { response: "..." } server format', async () => {
-    // Mock server returning the ACTUAL format: { response: '{"action":"click",...}' }
+  it('FIX: safety net parses { response: string } format correctly', async () => {
     vi.mocked(sendAgentRequest).mockResolvedValueOnce({
       response: JSON.stringify({
         action: 'click',
-        params: { selector: '#test-btn' },
-        reasoning: 'clicking test button',
+        params: { selector: '#test' },
+        reasoning: 'test',
       }),
     } as any);
-    // After click, return done
     vi.mocked(sendAgentRequest).mockResolvedValue({
-      response: JSON.stringify({
-        action: 'done',
-        params: { success: true, message: 'done' },
-        reasoning: 'task complete',
-      }),
+      action: 'done',
+      params: { success: true, message: 'done' },
+      reasoning: '',
+    } as any);
+
+    const controller = createAgentController();
+    const gen = controller.start({ mode: 'auto', initialMessage: 'test' });
+    const events = await collectEvents(gen);
+
+    expect(events.some(e => e.type === 'propose')).toBe(true);
+    expect(events.some(e => e.type === 'result')).toBe(true);
+  });
+
+  it('DIAGNOSTIC: executes click action from parsed AgentApiResponse format', async () => {
+    vi.mocked(sendAgentRequest).mockResolvedValueOnce({
+      action: 'click',
+      params: { selector: '#test-btn' },
+      reasoning: 'clicking test button',
+    } as any);
+    vi.mocked(sendAgentRequest).mockResolvedValue({
+      action: 'done',
+      params: { success: true, message: 'done' },
+      reasoning: 'task complete',
     } as any);
 
     const controller = createAgentController();
     const gen = controller.start({ mode: 'auto', initialMessage: 'Click the test button' });
     const events = await collectEvents(gen);
-
-    // DIAGNOSTIC: Log all events to understand the flow
-    console.log('Events received:', events.map(e => e.type));
-
-    // Find the propose event
-    const proposeEvent = events.find(e => e.type === 'propose');
-    const resultEvent = events.find(e => e.type === 'result');
-
-    // Document findings
-    if (!proposeEvent) {
-      // DIAGNOSTIC: If no propose event, the AI response parsing failed
-      console.log('DIAGNOSTIC FAILURE: No propose event — parsing chain broken');
-      console.log('All events:', JSON.stringify(events, null, 2));
-    }
-    if (!resultEvent) {
-      // DIAGNOSTIC: If no result event, executeAction was never called
-      console.log('DIAGNOSTIC FAILURE: No result event — action dispatch broken');
-    }
 
     expect(events.some(e => e.type === 'propose')).toBe(true);
     expect(events.some(e => e.type === 'result')).toBe(true);
@@ -78,60 +80,36 @@ describe('agent-loop diagnostic: action execution pipeline', () => {
 
   it('DIAGNOSTIC: executeAction receives flat ActionParams (not nested params object)', async () => {
     vi.mocked(sendAgentRequest).mockResolvedValueOnce({
-      response: JSON.stringify({
-        action: 'type',
-        params: { selector: '#input', text: 'hello world' },
-        reasoning: 'typing',
-      }),
+      action: 'type',
+      params: { selector: '#input', text: 'hello world' },
+      reasoning: 'typing',
     } as any);
     vi.mocked(sendAgentRequest).mockResolvedValue({
-      response: JSON.stringify({ action: 'done', params: { success: true, message: 'done' }, reasoning: '' }),
+      action: 'done',
+      params: { success: true, message: 'done' },
+      reasoning: '',
     } as any);
 
     const controller = createAgentController();
     const gen = controller.start({ mode: 'auto', initialMessage: 'Type hello' });
     await collectEvents(gen);
 
-    // Check what executeAction was called with
-    const calls = vi.mocked(executeAction).mock.calls;
-    console.log('executeAction calls:', JSON.stringify(calls, null, 2));
-
-    if (calls.length > 0) {
-      const firstCallArg = calls[0][0] as Record<string, unknown>;
-      // Should be { action: 'type', selector: '#input', text: 'hello world' }
-      // NOT { action: 'type', params: { selector: '#input', text: 'hello world' } }
-      console.log('executeAction arg shape:', JSON.stringify(firstCallArg));
-
-      if ('params' in firstCallArg) {
-        // DIAGNOSTIC: params was NOT spread — this is the bug!
-        console.log('DIAGNOSTIC FAILURE: ActionParams has nested params object, not flat!');
-        console.log('Bug location: agent-loop.ts line ~284: { action, ...params }');
-      } else if (firstCallArg.action === 'type') {
-        console.log('DIAGNOSTIC OK: ActionParams is flat as expected');
-      }
-    }
+    expect(executeAction).toHaveBeenCalled();
+    const firstCallArg = vi.mocked(executeAction).mock.calls[0][0] as Record<string, unknown>;
+    expect(firstCallArg).toEqual({ action: 'type', selector: '#input', text: 'hello world' });
+    expect(firstCallArg).not.toHaveProperty('params');
   });
 
-  it('DIAGNOSTIC: text response emits text event', async () => {
+  it('DIAGNOSTIC: text response emits text event from parsed format', async () => {
     vi.mocked(sendAgentRequest).mockResolvedValueOnce({
-      response: JSON.stringify({ text: 'I can help with that!' }),
+      text: 'I can help with that!',
     } as any);
 
     const controller = createAgentController();
     const gen = controller.start({ mode: 'auto', initialMessage: 'What can you do?' });
     const events = await collectEvents(gen);
 
-    console.log('Text path events:', events.map(e => e.type));
-
     const textEvent = events.find(e => e.type === 'text');
-    if (textEvent && 'content' in textEvent) {
-      console.log('Text content:', textEvent.content);
-    }
-
-    // Document current behavior (may or may not terminate)
-    const loopContinues = events.filter(e => e.type === 'thinking').length > 1;
-    console.log('Loop continues after text?', loopContinues, '(currently terminates — this is the bug Task 6 fixes)');
-
     expect(textEvent).toBeDefined();
   });
 
@@ -142,16 +120,17 @@ describe('agent-loop diagnostic: action execution pipeline', () => {
       reasoning: 'clicking',
     } as any);
     vi.mocked(sendAgentRequest).mockResolvedValue({
-      response: JSON.stringify({ action: 'done', params: { success: true, message: 'done' }, reasoning: '' }),
+      action: 'done',
+      params: { success: true, message: 'done' },
+      reasoning: '',
     } as any);
 
     const controller = createAgentController();
     const gen = controller.start({ mode: 'auto', initialMessage: 'Click' });
     const events = await collectEvents(gen);
 
-    console.log('Direct format events:', events.map(e => e.type));
     const proposeEvent = events.find(e => e.type === 'propose');
-    console.log('Direct format propose:', proposeEvent ? 'YES' : 'NO — direct format may not be handled');
+    expect(proposeEvent).toBeDefined();
   });
 });
 
