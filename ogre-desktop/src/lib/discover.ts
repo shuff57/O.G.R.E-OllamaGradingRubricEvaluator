@@ -114,8 +114,8 @@ export type ValidationResults = Record<string, SelectorValidation>;
 export interface DiscoveryRequest {
   /** Current page URL. */
   pageUrl: string;
-  /** Screenshot data URL (base64 PNG). */
-  screenshot: string;
+  /** Screenshot data URL (base64 PNG). Null if capture failed (e.g. cross-origin security). */
+  screenshot: string | null;
   /** Simplified DOM tree snapshot. */
   domSnapshot: Array<{
     depth: number;
@@ -140,7 +140,7 @@ export interface DiscoveryProgress {
 export interface DiscoveryWorkflow {
   draft: DiscoveryResult;
   validation: ValidationResults;
-  screenshot: string;
+  screenshot: string | null;
 }
 
 /** Maximum number of AI call attempts before giving up. */
@@ -607,14 +607,14 @@ function authHeaders(): Record<string, string> {
 async function callDiscoveryAI(
   systemPrompt: string,
   userPrompt: string,
-  screenshot: string,
+  screenshot: string | null,
   options?: Pick<DiscoveryOptions, "provider" | "model">,
 ): Promise<string> {
   const body: Record<string, unknown> = {
     message: userPrompt,
     systemPrompt,
-    images: [screenshot],
   };
+  if (screenshot) body.images = [screenshot];
 
   if (options?.provider) body.provider = normalizeProviderId(options.provider);
   if (options?.model) body.model = options.model;
@@ -920,7 +920,10 @@ export async function runDiscovery(
     });
 
     const [screenshot, snapshotResult, pageUrl] = await Promise.all([
-      captureWebviewScreenshot(),
+      captureWebviewScreenshot().catch((e: unknown) => {
+        console.warn('Screenshot capture failed (non-fatal):', e);
+        return null as string | null;
+      }),
       captureDomSnapshot(),
       getEmbeddedUrl(),
     ]);

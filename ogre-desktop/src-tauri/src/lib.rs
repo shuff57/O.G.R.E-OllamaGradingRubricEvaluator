@@ -970,23 +970,35 @@ async fn eval_webview_script(
         let guard = state.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
         guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
     };
+    let escaped_script = script
+        .replace('\\', "\\\\")
+        .replace('`', "\\`")
+        .replace("${", "\\${");
+
+    let eval_id_js = uuid::Uuid::new_v4().to_string().replace('-', "");
     let wrapped_script = format!(
-        r#"(async () => {{
+        r#"(function() {{
             try {{
-                let __result = (0, eval)(`{}`);
-                if (__result instanceof Promise) {{
-                    __result = await __result;
+                var __result = (0, eval)(`{escaped}`);
+                if (__result && typeof __result === 'object' && typeof __result.then === 'function') {{
+                    var __id = '{eval_id}';
+                    window['__ogre_' + __id] = {{ pending: true }};
+                    __result.then(function(v) {{
+                        window['__ogre_' + __id] = {{ done: true, value: v }};
+                    }}).catch(function(e) {{
+                        window['__ogre_' + __id] = {{ done: true, error: String(e) }};
+                    }});
+                    return {{ __ogre_pending: __id }};
                 }}
                 return __result;
             }} catch (__e) {{
-                return {{ __ogre_error: String(__e) }};
+                return {{ __ogre_error: String(__e) + (__e && __e.stack ? '\n' + __e.stack : '') }};
             }}
         }})()"#,
-        script
-            .replace('\\', "\\\\")
-            .replace('`', "\\`")
-            .replace("${", "\\${")
+        escaped = escaped_script,
+        eval_id = eval_id_js
     );
+    let label_for_poll = label.clone();
     let (tx, rx) = tokio::sync::oneshot::channel::<String>();
     let tx_mutex = std::sync::Arc::new(std::sync::Mutex::new(Some(tx)));
 
@@ -1017,18 +1029,81 @@ async fn eval_webview_script(
         });
     })
     .map_err(|_| "Failed to run on main thread".to_string())?;
-    match tokio::time::timeout(tokio::time::Duration::from_secs(120), rx).await {
-        Ok(Ok(result)) => {
-            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&result) {
-                if let Some(err) = parsed.get("__ogre_error").and_then(|v| v.as_str()) {
-                    return Err(format!("Script error: {}", err));
-                }
-            }
-            Ok(result)
+    let initial = match tokio::time::timeout(tokio::time::Duration::from_secs(120), rx).await {
+        Ok(Ok(r)) => if r.is_empty() { "null".to_string() } else { r },
+        Ok(Err(_)) => return Err("Callback channel closed unexpectedly".to_string()),
+        Err(_) => return Err("Timeout waiting for eval result (120s)".to_string()),
+    };
+
+    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&initial) {
+        if let Some(err) = parsed.get("__ogre_error").and_then(|v| v.as_str()) {
+            return Err(format!("Script error: {}", err));
         }
-        Ok(Err(_)) => Err("Callback channel closed unexpectedly".to_string()),
-        Err(_) => Err("Timeout waiting for eval result (120s)".to_string()),
+
+        if let Some(pending_id) = parsed.get("__ogre_pending").and_then(|v| v.as_str()) {
+            let poll_script = format!(
+                r#"(function() {{
+                    var r = window['__ogre_{id}'];
+                    if (r && r.done) {{
+                        delete window['__ogre_{id}'];
+                        if (r.error) return {{ __ogre_error: r.error }};
+                        return r.value;
+                    }}
+                    return {{ __ogre_polling: true }};
+                }})()"#,
+                id = pending_id
+            );
+            let poll_label = label_for_poll.clone();
+            let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(120);
+
+            loop {
+                if tokio::time::Instant::now() > deadline {
+                    return Err("Timeout waiting for async eval result (120s)".to_string());
+                }
+                tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+
+                let (ptx, prx) = tokio::sync::oneshot::channel::<String>();
+                let ptx_mutex = std::sync::Arc::new(std::sync::Mutex::new(Some(ptx)));
+                let ps = poll_script.clone();
+                let pl = poll_label.clone();
+
+                app.run_on_main_thread(move || {
+                    LINUX_WEBVIEWS.with(|webviews| {
+                        if let Some(wv) = webviews.borrow().get(&pl) {
+                            let ptx_cb = std::sync::Arc::clone(&ptx_mutex);
+                            wv.evaluate_script_with_callback(&ps, move |r: String| {
+                                if let Some(s) = ptx_cb.lock().unwrap().take() {
+                                    let _ = s.send(r);
+                                }
+                            }).unwrap_or_else(|e| {
+                                if let Some(s) = ptx_mutex.lock().unwrap().take() {
+                                    let _ = s.send(format!("{{\"__ogre_error\":\"poll failed: {}\"}}", e));
+                                }
+                            });
+                        }
+                    });
+                }).map_err(|_| "Failed to run poll on main thread".to_string())?;
+
+                let poll_result = match tokio::time::timeout(tokio::time::Duration::from_secs(5), prx).await {
+                    Ok(Ok(r)) => if r.is_empty() { "null".to_string() } else { r },
+                    Ok(Err(_)) => continue,
+                    Err(_) => continue,
+                };
+
+                if let Ok(pv) = serde_json::from_str::<serde_json::Value>(&poll_result) {
+                    if pv.get("__ogre_polling").is_some() {
+                        continue;
+                    }
+                    if let Some(err) = pv.get("__ogre_error").and_then(|v| v.as_str()) {
+                        return Err(format!("Script error: {}", err));
+                    }
+                }
+                return Ok(poll_result);
+            }
+        }
     }
+
+    Ok(initial)
 }
 
 /// Inject JavaScript into the embedded browser without waiting for a return value.

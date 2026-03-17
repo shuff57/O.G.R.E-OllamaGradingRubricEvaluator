@@ -11,7 +11,16 @@
     "core:webview:allow-set-webview-size",
     "core:webview:allow-set-webview-position",
     "core:webview:allow-webview-close",
-    "opener:allow-open-url",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "https://claude.ai/**" },
+        { "url": "https://console.anthropic.com/**" },
+        { "url": "https://auth.openai.com/**" },
+        { "url": "https://accounts.google.com/**" },
+        { "url": "https://github.com/**" }
+      ]
+    },
     "sql:default",
     "sql:allow-load",
     "sql:allow-execute",
