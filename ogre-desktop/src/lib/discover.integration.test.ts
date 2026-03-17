@@ -274,6 +274,35 @@ describe("Discovery Pipeline (Integration)", () => {
     expect(result.draft.selectors.scoreInput).toBe("input.score");
     // Confidence mapped: 0.9 ≥ 0.8 → "high"
     expect(result.draft.confidence).toBe("high");
+    expect(result.draft.feedback).toEqual({
+      type: "textarea",
+      requiresHiddenSync: false,
+      htmlWrap: false,
+    });
+  });
+
+  it("infers TinyMCE inline feedback from heuristic selectors", async () => {
+    const heuristicTinymce: HeuristicDetection = {
+      ...HEURISTIC,
+      candidateSelectors: {
+        ...HEURISTIC.candidateSelectors,
+        feedbackBox: "div.fbbox",
+        feedbackHidden: "input[type='hidden'][name^='feedback']",
+      },
+    };
+
+    mockDetect.mockReturnValue(heuristicTinymce);
+    mockEvalJSON
+      .mockResolvedValueOnce(SNAPSHOT)
+      .mockResolvedValueOnce(VALIDATION_PASS);
+
+    const result = await runDiscovery();
+
+    expect(result.draft.feedback).toEqual({
+      type: "tinymce-inline",
+      requiresHiddenSync: true,
+      htmlWrap: true,
+    });
   });
 
   // ── Test 3: Heuristic validation fail → AI fallback ────────────────────
@@ -359,6 +388,29 @@ describe("Discovery Pipeline (Integration)", () => {
     expect(result.draft.extractionConfig).toBeDefined();
     expect(result.draft.extractionConfig?.responseMethod).toBe("selector");
     expect(result.draft.extractionConfig?.maxScoreDefault).toBe("10");
+  });
+
+  it("enables extractionConfig discovery by default", async () => {
+    const extConfig: ExtractionConfig = {
+      responseMethod: "selector",
+      responseSelector: ".student-response",
+      maxScoreMethod: "parentTextRegex",
+      maxScoreRegex: "/(\\d+\\.?\\d*)",
+      maxScoreDefault: "10",
+    };
+
+    mockDetect.mockReturnValue(null);
+    mockEvalJSON
+      .mockResolvedValueOnce(SNAPSHOT)
+      .mockResolvedValueOnce(VALIDATION_PASS);
+    mockFetch.mockResolvedValueOnce(
+      mockHttpResponse(JSON.stringify(AI_RESULT)),
+    );
+    mockDiscoverExt.mockResolvedValue(extConfig);
+
+    await runDiscovery();
+
+    expect(mockDiscoverExt).toHaveBeenCalled();
   });
 
   it("full pipeline: MOM markdown converts to valid JSON injection", () => {

@@ -9,7 +9,7 @@
  */
 
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
-import { evalScript, evalScriptJSON, captureWebviewScreenshot, getEmbeddedUrl } from "./browser";
+import { evalScriptJSON, captureWebviewScreenshot, getEmbeddedUrl } from "./browser";
 import { getHandshakeToken } from "./provider-sync";
 import type { RubricCriterion } from "./rubric-api";
 import { withRetry } from "./ai-retry";
@@ -805,6 +805,13 @@ function heuristicToDiscoveryResult(
   detection: HeuristicDetection,
   snapshotMeta?: DiscoveryResult["snapshotMetadata"],
 ): DiscoveryResult {
+  const feedbackSelector = detection.candidateSelectors.feedbackBox;
+  const isContenteditable =
+    (feedbackSelector ?? "").includes("contenteditable") ||
+    (feedbackSelector ?? "").includes("fbbox") ||
+    (feedbackSelector ?? "").includes("mce");
+  const hasHiddenSync = !!detection.candidateSelectors.feedbackHidden;
+
   return {
     navigation: {
       mode: detection.mode,
@@ -824,9 +831,9 @@ function heuristicToDiscoveryResult(
       fullCreditLink: detection.candidateSelectors.fullCreditLink ?? null,
     },
     feedback: {
-      type: "unknown",
-      requiresHiddenSync: false,
-      htmlWrap: false,
+      type: isContenteditable ? "tinymce-inline" : "textarea",
+      requiresHiddenSync: hasHiddenSync,
+      htmlWrap: isContenteditable,
     },
     save: {
       buttonText: "Save",
@@ -907,9 +914,10 @@ async function runExtractionConfigPass(
  * @throws Error if any stage fails (DOM capture, AI call, parse, validation)
  */
 export async function runDiscovery(
-  options: DiscoveryOptions = {},
+  options: DiscoveryOptions = { includeExtractionConfig: true },
 ): Promise<DiscoveryWorkflow> {
   const { onProgress } = options;
+  const includeExtractionConfig = options.includeExtractionConfig ?? true;
 
   try {
     // ── Stage 1: Capture DOM snapshot + screenshot in parallel ──────────
@@ -964,7 +972,7 @@ export async function runDiscovery(
         });
 
         // Optional ExtractionConfig second pass
-        if (options.includeExtractionConfig) {
+        if (includeExtractionConfig) {
           await runExtractionConfigPass(heuristicDraft, snapshotResult, options, onProgress);
         }
 
@@ -1071,7 +1079,7 @@ export async function runDiscovery(
     const validation = await validateSelectors(draft);
 
     // ── Stage 4.5: Optional ExtractionConfig second pass ────────────────
-    if (options.includeExtractionConfig) {
+    if (includeExtractionConfig) {
       await runExtractionConfigPass(draft, snapshotResult, options, onProgress);
     }
 
