@@ -19,7 +19,7 @@
   } from '../../lib/confirmation-flow';
   import { ProfileStorageImpl, type SiteProfile } from '../../lib/site-profiles';
   import { discoveryResultToSiteProfile } from '../../lib/type-mappers';
-  import { getEmbeddedUrl } from '../../lib/browser';
+  import { getEmbeddedUrl, hideWebview, showWebview, getActiveTabId } from '../../lib/browser';
 
   import {
     type IntentMode,
@@ -318,6 +318,7 @@
     } else {
       phase = 'review';
       showSaveDialog = true;
+      hideWebview(getActiveTabId()).catch(() => {});
     }
   }
 
@@ -340,6 +341,7 @@
       saveStatus = 'Saved!';
       phase = 'idle';
       showSaveDialog = false;
+      showWebview(getActiveTabId()).catch(() => {});
       onProfileSaved(newProfile);
       setTimeout(() => {
         saveStatus = '';
@@ -349,6 +351,8 @@
     } catch (err) {
       phase = 'review';
       saveStatus = '';
+      showSaveDialog = false;
+      showWebview(getActiveTabId()).catch(() => {});
       error = err instanceof Error ? err.message : String(err);
     }
   }
@@ -356,6 +360,7 @@
   async function handleGenerateGuide() {
     showGuidePreview = true;
     isGeneratingGuide = true;
+    hideWebview(getActiveTabId()).catch(() => {});
     generatedGuideMarkdown = '';
 
     try {
@@ -419,6 +424,7 @@
       });
       showGuidePreview = false;
       generatedGuideMarkdown = '';
+      showWebview(getActiveTabId()).catch(() => {});
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to save guide';
     } finally {
@@ -508,7 +514,7 @@
       {returnToBatch}
       onRefine={handleRefine}
       onConfirm={handleStartConfirmation}
-      onSave={() => { showSaveDialog = true; }}
+      onSave={() => { showSaveDialog = true; hideWebview(getActiveTabId()).catch(() => {}); }}
       onDiscard={() => { phase = 'idle'; }}
     />
 
@@ -539,7 +545,7 @@
     bind:profileName
     isSaving={phase === 'saving'}
     onSave={handleSaveProfile}
-    onCancel={() => { showSaveDialog = false; }}
+    onCancel={() => { showSaveDialog = false; showWebview(getActiveTabId()).catch(() => {}); }}
   />
 
   <DiscoveryGuidePreview
@@ -551,6 +557,7 @@
     onDiscard={() => {
       showGuidePreview = false;
       generatedGuideMarkdown = '';
+      showWebview(getActiveTabId()).catch(() => {});
     }}
   />
 
