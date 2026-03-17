@@ -1476,8 +1476,10 @@ async fn simulate_mouse_event(
     let btn = button.unwrap_or(1);
     let mods = gtk::gdk::ModifierType::from_bits_truncate(modifiers.unwrap_or(0));
     
+    let (tx, rx) = oneshot::channel::<Result<(), String>>();
+    let tab_id_clone = tab_id.clone();
     app.run_on_main_thread(move || {
-        LINUX_WEBVIEWS.with(|webviews| {
+        let result = LINUX_WEBVIEWS.with(|webviews| {
             if let Some(wv) = webviews.borrow().get(&label) {
                 let widget: gtk::Widget = wv.webview().upcast();
                 if let Some(window) = widget.window() {
@@ -1495,6 +1497,7 @@ async fn simulate_mouse_event(
                                 mods,
                                 gtk::gdk::EventType::ButtonRelease,
                             );
+                            Ok(())
                         }
                         "mousedown" => {
                             gtk::gdk::test_simulate_button(
@@ -1502,6 +1505,7 @@ async fn simulate_mouse_event(
                                 mods,
                                 gtk::gdk::EventType::ButtonPress,
                             );
+                            Ok(())
                         }
                         "mouseup" => {
                             gtk::gdk::test_simulate_button(
@@ -1509,24 +1513,27 @@ async fn simulate_mouse_event(
                                 mods,
                                 gtk::gdk::EventType::ButtonRelease,
                             );
+                            Ok(())
                         }
                         "mousemove" => {
                             // Motion event: use test_simulate_button with MotionNotify
                             // Actually need to use GDK motion directly via gdk_sys or
                             // simulate a very slight movement. For now just move focus.
                             let _ = widget.grab_focus();
+                            Ok(())
                         }
-                        _ => {
-                            eprintln!("simulate_mouse_event: unknown event_type: {}", event_type);
-                        }
+                        other => Err(format!("simulate_mouse_event: unknown event_type: {}", other)),
                     }
                 } else {
-                    eprintln!("simulate_mouse_event: widget not realized for tab {}", tab_id);
+                    Err(format!("simulate_mouse_event: widget not realized for tab {}", tab_id_clone))
                 }
+            } else {
+                Err(format!("simulate_mouse_event: webview not found for tab {}", tab_id_clone))
             }
         });
+        let _ = tx.send(result);
     }).map_err(|_| "Failed to run on main thread".to_string())?;
-    Ok(())
+    rx.await.map_err(|_| "Channel closed".to_string())?
 }
 
 /// Simulate keyboard key events on a Linux embedded webview using GDK.
@@ -1547,8 +1554,10 @@ async fn simulate_key_event(
     };
     let mods = gtk::gdk::ModifierType::from_bits_truncate(modifiers.unwrap_or(0));
     
+    let (tx, rx) = oneshot::channel::<Result<(), String>>();
+    let tab_id_clone = tab_id.clone();
     app.run_on_main_thread(move || {
-        LINUX_WEBVIEWS.with(|webviews| {
+        let result = LINUX_WEBVIEWS.with(|webviews| {
             if let Some(wv) = webviews.borrow().get(&label) {
                 let widget: gtk::Widget = wv.webview().upcast();
                 if let Some(window) = widget.window() {
@@ -1558,12 +1567,14 @@ async fn simulate_key_event(
                                 &window, 0, 0, key_val, mods,
                                 gtk::gdk::EventType::KeyPress,
                             );
+                            Ok(())
                         }
                         "keyup" => {
                             gtk::gdk::test_simulate_key(
                                 &window, 0, 0, key_val, mods,
                                 gtk::gdk::EventType::KeyRelease,
                             );
+                            Ok(())
                         }
                         "keypress" => {
                             gtk::gdk::test_simulate_key(
@@ -1574,18 +1585,20 @@ async fn simulate_key_event(
                                 &window, 0, 0, key_val, mods,
                                 gtk::gdk::EventType::KeyRelease,
                             );
+                            Ok(())
                         }
-                        _ => {
-                            eprintln!("simulate_key_event: unknown event_type: {}", event_type);
-                        }
+                        other => Err(format!("simulate_key_event: unknown event_type: {}", other)),
                     }
                 } else {
-                    eprintln!("simulate_key_event: widget not realized for tab {}", tab_id);
+                    Err(format!("simulate_key_event: widget not realized for tab {}", tab_id_clone))
                 }
+            } else {
+                Err(format!("simulate_key_event: webview not found for tab {}", tab_id_clone))
             }
         });
+        let _ = tx.send(result);
     }).map_err(|_| "Failed to run on main thread".to_string())?;
-    Ok(())
+    rx.await.map_err(|_| "Channel closed".to_string())?
 }
 
 /// Simulate text input on a Linux embedded webview using GDK.
@@ -1603,8 +1616,10 @@ async fn simulate_text_input(
         guard.tabs.get(&tab_id).cloned().ok_or_else(|| format!("Tab {} not found", tab_id))?
     };
     
+    let (tx, rx) = oneshot::channel::<Result<(), String>>();
+    let tab_id_clone = tab_id.clone();
     app.run_on_main_thread(move || {
-        LINUX_WEBVIEWS.with(|webviews| {
+        let result = LINUX_WEBVIEWS.with(|webviews| {
             if let Some(wv) = webviews.borrow().get(&label) {
                 let widget: gtk::Widget = wv.webview().upcast();
                 if let Some(window) = widget.window() {
@@ -1620,13 +1635,17 @@ async fn simulate_text_input(
                             gtk::gdk::EventType::KeyRelease,
                         );
                     }
+                    Ok(())
                 } else {
-                    eprintln!("simulate_text_input: widget not realized for tab {}", tab_id);
+                    Err(format!("simulate_text_input: widget not realized for tab {}", tab_id_clone))
                 }
+            } else {
+                Err(format!("simulate_text_input: webview not found for tab {}", tab_id_clone))
             }
         });
+        let _ = tx.send(result);
     }).map_err(|_| "Failed to run on main thread".to_string())?;
-    Ok(())
+    rx.await.map_err(|_| "Channel closed".to_string())?
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
