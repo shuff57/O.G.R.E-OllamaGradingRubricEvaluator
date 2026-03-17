@@ -642,7 +642,117 @@ describe('detectGradingStructure', () => {
        ]),
      );
 
-     expect(result).not.toBeNull();
-     expect(result!.candidateSelectors.feedbackHidden).toBeNull();
-   });
+      expect(result).not.toBeNull();
+      expect(result!.candidateSelectors.feedbackHidden).toBeNull();
+    });
+
+    // ------- Test 16: questionRegion detection -------
+    it('detects questionRegion when div[role="region"][aria-label^="Question"] exists', () => {
+      // Build a batch snapshot with a question region
+      const rows: SnapshotNode[] = [];
+      for (let i = 0; i < 3; i++) {
+        rows.push(
+          node('div', {
+            depth: 1,
+            priority: 'medium',
+            selector: `div.student-row:nth-child(${i + 1})`,
+            attrs: { class: 'student-row' },
+            children: [
+              node('span', {
+                depth: 2,
+                priority: 'medium',
+                text: `Student ${i + 1}`,
+                selector: `div.student-row:nth-child(${i + 1}) > span`,
+                attrs: { class: 'student-name' },
+              }),
+              node('div', {
+                depth: 2,
+                priority: 'medium',
+                selector: 'div[role="region"]',
+                attrs: { role: 'region', 'aria-label': 'Question 1' },
+                children: [
+                  node('p', { depth: 3, text: 'Student response text' }),
+                ],
+              }),
+              node('input', {
+                depth: 2,
+                priority: 'critical',
+                selector: `div.student-row:nth-child(${i + 1}) > input`,
+                attrs: { type: 'number', class: 'score-input', name: `score_${i + 1}` },
+              }),
+            ],
+          }),
+        );
+      }
+
+      const result = detectGradingStructure(
+        snap([
+          node('div', {
+            depth: 0,
+            priority: 'medium',
+            attrs: {},
+            selector: 'body > div',
+            children: rows,
+          }),
+        ]),
+      );
+
+      expect(result).not.toBeNull();
+      expect(result!.candidateSelectors.questionRegion).toBeTruthy();
+    });
+
+    // ------- Test 17: fullCreditLink detection -------
+    it('detects fullCreditLink when a[class="fullcredlink"] exists', () => {
+      // Build a batch snapshot with a full credit link
+      const rows: SnapshotNode[] = [];
+      for (let i = 0; i < 3; i++) {
+        rows.push(
+          node('div', {
+            depth: 1,
+            priority: 'medium',
+            selector: `div.student-row:nth-child(${i + 1})`,
+            attrs: { class: 'student-row' },
+            children: [
+              node('span', {
+                depth: 2,
+                priority: 'medium',
+                text: `Student ${i + 1}`,
+                selector: `div.student-row:nth-child(${i + 1}) > span`,
+                attrs: { class: 'student-name' },
+              }),
+              node('input', {
+                depth: 2,
+                priority: 'critical',
+                selector: `div.student-row:nth-child(${i + 1}) > input`,
+                attrs: { type: 'number', class: 'score-input', name: `score_${i + 1}` },
+              }),
+            ],
+          }),
+        );
+      }
+
+      // Add full credit link
+      const fullCreditLink = node('a', {
+        depth: 1,
+        priority: 'medium',
+        selector: 'a.fullcredlink',
+        attrs: { class: 'fullcredlink', href: '#' },
+        text: 'Full Credit',
+      });
+
+      const result = detectGradingStructure(
+        snap([
+          node('div', {
+            depth: 0,
+            priority: 'medium',
+            attrs: {},
+            selector: 'body > div',
+            children: [...rows, fullCreditLink],
+          }),
+        ]),
+      );
+
+      expect(result).not.toBeNull();
+      expect(result!.candidateSelectors.fullCreditLink).toBeTruthy();
+    });
 });
