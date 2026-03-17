@@ -6,7 +6,8 @@ import {
   createTestSkillContent,
   createTestDomElements,
 } from './agent-fixtures';
-import type { AgentApiResponse, AgentEvent } from '../agent-types';
+import type { AgentApiResponse } from '../agent-types';
+import type { AgentEvent } from '../agent-loop';
 
 describe('createMockAgentServer', () => {
   it('returns responses in sequence', async () => {
@@ -14,7 +15,7 @@ describe('createMockAgentServer', () => {
       { action: 'click', params: { selector: '#btn1' }, reasoning: 'click first' },
       { action: 'click', params: { selector: '#btn2' }, reasoning: 'click second' },
     ];
-    const mock = createMockAgentServer(responses);
+    const mock = createMockAgentServer(responses) as any;
 
     const call1 = await mock();
     const call2 = await mock();
@@ -32,7 +33,7 @@ describe('createMockAgentServer', () => {
     const responses: AgentApiResponse[] = [
       { action: 'click', params: { selector: '#btn' }, reasoning: 'click' },
     ];
-    const mock = createMockAgentServer(responses);
+    const mock = createMockAgentServer(responses) as any;
 
     await mock(); // first call
     const call2 = await mock(); // second call (exhausted)
@@ -53,7 +54,7 @@ describe('createMockAgentServer', () => {
       params: { url: 'https://example.com' },
       reasoning: 'navigate',
     };
-    const mock = createMockAgentServer([actionResponse]);
+    const mock = createMockAgentServer([actionResponse]) as any;
 
     const result = await mock();
 
@@ -64,7 +65,7 @@ describe('createMockAgentServer', () => {
 
   it('handles text responses', async () => {
     const textResponse: AgentApiResponse = { text: 'Here is my answer' };
-    const mock = createMockAgentServer([textResponse]);
+    const mock = createMockAgentServer([textResponse]) as any;
 
     const result = await mock();
 

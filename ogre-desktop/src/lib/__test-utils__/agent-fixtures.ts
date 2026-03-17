@@ -1,5 +1,6 @@
 import { vi } from 'vitest';
-import type { AgentApiResponse, ActionResult, AgentEvent, InteractiveElement } from '../agent-types';
+import type { AgentApiResponse, ActionResult, InteractiveElement } from '../agent-types';
+import type { AgentEvent } from '../agent-loop';
 import type { SiteGuideJSON } from '../site-guide-types';
 
 /**
@@ -7,7 +8,7 @@ import type { SiteGuideJSON } from '../site-guide-types';
  * Each call returns the next response; repeats last when exhausted.
  * Responses are wrapped in the server format: { response: JSON.stringify(response) }
  */
-export function createMockAgentServer(responses: AgentApiResponse[]): ReturnType<typeof vi.fn> {
+export function createMockAgentServer(responses: AgentApiResponse[]): any {
   let index = 0;
   return vi.fn(async () => {
     const response = responses[Math.min(index, responses.length - 1)];
