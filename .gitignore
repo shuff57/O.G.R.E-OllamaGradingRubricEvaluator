@@ -53,3 +53,6 @@ __pycache__/
 .claude/skills/
 skills-lock.json
 .sisyphus/run-continuation/
+
+# Git worktrees
+.worktrees/
