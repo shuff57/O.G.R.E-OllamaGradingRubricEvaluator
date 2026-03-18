@@ -1,9 +1,10 @@
-import { ipcMain, app } from 'electron'
+import { ipcMain, BrowserWindow } from 'electron'
 import { getViewWebContents } from './browser-manager'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 
-const CDP_PORT_FILE = path.join(app.getPath('userData'), '.cdp-port')
+const CDP_PORT_FILE = path.join(os.homedir(), '.ogre', 'cdp-port')
 
 let cdpPort: number | null = null
 
@@ -34,7 +35,7 @@ export function attachDebugger(tabId: string): void {
   } catch { /* already attached */ }
 
   wc.debugger.on('message', (_event: Electron.Event, method: string, params: unknown) => {
-    const win = wc.getOwnerBrowserWindow()
+    const win = BrowserWindow.fromWebContents(wc)
     if (win && !win.isDestroyed()) {
       win.webContents.send('cdp-event', { tabId, method, params })
     }
