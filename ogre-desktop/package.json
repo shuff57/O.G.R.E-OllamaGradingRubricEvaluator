@@ -1,11 +1,14 @@
 {
   "name": "ogre-desktop",
+  "main": "dist-electron/main.js",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "electron:dev": "NODE_ENV=development vite",
     "build": "npm run build:turndown && vite build",
+    "electron:build": "vite build && electron-builder",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
@@ -20,9 +23,12 @@
     "@tauri-apps/cli": "^2.10.0",
     "@types/turndown": "^5.0.6",
     "@vitest/ui": "^4.0.18",
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
     "jsdom": "^28.1.0",
     "svelte": "^5.45.2",
     "vite": "^7.3.1",
+    "vite-plugin-electron": "^0.29.1",
     "vitest": "^4.0.18"
   },
   "dependencies": {
@@ -33,6 +39,7 @@
     "@tauri-apps/plugin-shell": "^2.3.5",
     "@tauri-apps/plugin-sql": "^2.3.2",
     "@tauri-apps/plugin-updater": "^2.10.0",
+    "better-sqlite3": "^11.10.0",
     "gray-matter": "^4.0.3",
     "katex": "^0.16.28",
     "marked": "^17.0.3",
