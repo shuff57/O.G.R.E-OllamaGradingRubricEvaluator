@@ -103,5 +103,49 @@ export function createTestDomElements(): InteractiveElement[] {
       visible: true,
       selector: 'input#name-input',
     },
+    {
+      index: 2,
+      tag: 'summary',
+      type: 'collapsed',
+      text: 'Click to View Grading Checklist',
+      disabled: false,
+      visible: true,
+      selector: 'summary',
+    },
+    {
+      index: 3,
+      tag: 'summary',
+      type: 'expanded',
+      text: 'Click to View Rubric Targets',
+      disabled: false,
+      visible: true,
+      selector: 'details:nth-child(2)>summary',
+    },
+  ];
+}
+
+/**
+ * Return a sample array of just the summary elements for testing.
+ */
+export function createTestSummaryElements(): InteractiveElement[] {
+  return [
+    {
+      index: 0,
+      tag: 'summary',
+      type: 'collapsed',
+      text: 'Click to View Grading Checklist',
+      disabled: false,
+      visible: true,
+      selector: 'summary',
+    },
+    {
+      index: 1,
+      tag: 'summary',
+      type: 'expanded',
+      text: 'Click to View Rubric Targets',
+      disabled: false,
+      visible: true,
+      selector: 'details:nth-child(2)>summary',
+    },
   ];
 }
