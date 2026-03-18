@@ -1,6 +1,9 @@
 import { app, BrowserWindow } from 'electron'
 import path from 'node:path'
 import { registerIpcHandlers } from './ipc-handlers'
+import { initDatabase } from './database'
+import { spawnServer, stopServer } from './server-manager'
+import { setCdpPort } from './cdp-bridge'
 
 if (process.platform === 'linux') {
   app.disableHardwareAcceleration()
@@ -9,6 +12,8 @@ if (process.platform === 'linux') {
   app.commandLine.appendSwitch('no-sandbox')
   app.commandLine.appendSwitch('disable-dev-shm-usage')
 }
+
+app.commandLine.appendSwitch('remote-debugging-port', '9223')
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
@@ -45,7 +50,10 @@ process.on('message', (msg) => {
 })
 
 app.whenReady().then(() => {
+  initDatabase()
   registerIpcHandlers()
+  setCdpPort(9223)
+  spawnServer()
   createWindow()
 
   app.on('activate', () => {
@@ -53,6 +61,10 @@ app.whenReady().then(() => {
       createWindow()
     }
   })
+})
+
+app.on('before-quit', () => {
+  stopServer()
 })
 
 app.on('window-all-closed', () => {

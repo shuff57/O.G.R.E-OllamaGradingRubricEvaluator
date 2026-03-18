@@ -1,34 +1,29 @@
-import { ipcMain } from 'electron'
+import { ipcMain, app } from 'electron'
+import path from 'node:path'
+import fs from 'node:fs'
+import { registerDatabaseHandlers } from './database'
+import { registerBrowserHandlers } from './browser-manager'
+import { registerCdpHandlers } from './cdp-bridge'
+import { registerOAuthHandlers } from './oauth-server'
 
 export function registerIpcHandlers(): void {
-  const stub = (channel: string) => {
-    ipcMain.handle(channel, async () => {
-      throw new Error(`IPC handler '${channel}' not yet implemented`)
-    })
-  }
+  registerDatabaseHandlers()
+  registerBrowserHandlers()
+  registerCdpHandlers()
+  registerOAuthHandlers()
 
-  stub('create_embedded_browser')
-  stub('navigate_embedded')
-  stub('go_back')
-  stub('go_forward')
-  stub('reload_browser')
-  stub('set_webview_bounds')
-  stub('hide_webview')
-  stub('show_webview')
-  stub('get_embedded_url')
-  stub('destroy_webview')
-  stub('inject_autofill')
-  stub('eval_webview_script')
-  stub('inject_webview_script')
-
-  stub('get_cdp_port')
-  stub('discover_cdp_target')
-
-  stub('db_query')
-  stub('db_execute')
-
-  stub('scan_local_skills')
-
-  stub('start_oauth_callback_server')
-  stub('stop_oauth_callback_server')
+  ipcMain.handle('scan_local_skills', async (_e, { dir }: { dir: string }) => {
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true })
+      return entries
+        .filter((e) => e.isDirectory())
+        .map((e) => {
+          const skillMd = path.join(dir, e.name, 'SKILL.md')
+          const content = fs.existsSync(skillMd) ? fs.readFileSync(skillMd, 'utf-8') : ''
+          return { name: e.name, path: path.join(dir, e.name), content }
+        })
+    } catch {
+      return []
+    }
+  })
 }
