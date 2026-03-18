@@ -197,12 +197,24 @@ describe('intentToDiscoveryHints', () => {
     expect(hints.hasStudentNames).toBe(true);
   });
 
-  it('routes chat mode correctly', () => {
+  it('routes train mode correctly', () => {
     const messages: ChatMessage[] = [
       { role: 'user', content: 'mypage has 10 students', timestamp: new Date().toISOString() },
     ];
-    const hints = intentToDiscoveryHints('chat', messages);
+    const hints = intentToDiscoveryHints('train', messages);
     expect(hints.extraContext).toContain('10 students');
+  });
+
+  it('all three mode literals are handled without throw', () => {
+    const modes: IntentMode[] = ['form', 'train', 'example'];
+    const payloads: [IntentMode, FormModeInput | ChatMessage[] | ExampleSelection[]][] = [
+      ['form', { hasStudentNames: false, hasScoreInputs: false, hasFeedbackFields: false }],
+      ['train', []],
+      ['example', []],
+    ];
+    for (const [mode, payload] of payloads) {
+      expect(() => intentToDiscoveryHints(mode, payload)).not.toThrow();
+    }
   });
 
   it('routes example mode correctly', () => {
