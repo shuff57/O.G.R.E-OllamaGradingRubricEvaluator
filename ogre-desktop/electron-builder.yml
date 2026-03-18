@@ -29,3 +29,8 @@ win:
 
 nsis:
   oneClick: false
+
+publish:
+  provider: github
+  owner: shuff57
+  repo: O.G.R.E-OllamaGradingRubricEvaluator

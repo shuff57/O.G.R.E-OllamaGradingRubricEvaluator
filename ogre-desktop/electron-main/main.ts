@@ -4,6 +4,7 @@ import { registerIpcHandlers } from './ipc-handlers'
 import { initDatabase } from './database'
 import { spawnServer, stopServer } from './server-manager'
 import { setCdpPort } from './cdp-bridge'
+import { initAutoUpdater } from './updater'
 
 if (process.platform === 'linux') {
   app.disableHardwareAcceleration()
@@ -54,11 +55,18 @@ app.whenReady().then(() => {
   registerIpcHandlers()
   setCdpPort(9223)
   spawnServer()
-  createWindow()
+  const mainWindow = createWindow()
+
+  if (app.isPackaged) {
+    initAutoUpdater(mainWindow)
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow()
+      const nextWindow = createWindow()
+      if (app.isPackaged) {
+        initAutoUpdater(nextWindow)
+      }
     }
   })
 })

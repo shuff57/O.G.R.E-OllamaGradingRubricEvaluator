@@ -1,6 +1,7 @@
-import { ipcMain, app } from 'electron'
+import { ipcMain } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
+import { autoUpdater } from 'electron-updater'
 import { registerDatabaseHandlers } from './database'
 import { registerBrowserHandlers } from './browser-manager'
 import { registerCdpHandlers } from './cdp-bridge'
@@ -25,5 +26,17 @@ export function registerIpcHandlers(): void {
     } catch {
       return []
     }
+  })
+
+  ipcMain.handle('updater:download', async () => {
+    try {
+      return await autoUpdater.downloadUpdate()
+    } catch {
+      return null
+    }
+  })
+
+  ipcMain.handle('updater:install', () => {
+    autoUpdater.quitAndInstall()
   })
 }

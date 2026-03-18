@@ -40,6 +40,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   dbQuery: (sql: string, params?: unknown[]) => invoke('db_query', { sql, params }),
   dbExecute: (sql: string, params?: unknown[]) => invoke('db_execute', { sql, params }),
 
+  updaterDownload: () => invoke('updater:download'),
+  updaterInstall: () => invoke('updater:install'),
+
   on: listen,
   emit: (event: string, payload: unknown) => ipcRenderer.send(event, payload),
   invoke: (channel: string, args?: Record<string, unknown>) => ipcRenderer.invoke(channel, args),
