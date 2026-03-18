@@ -226,6 +226,19 @@ export async function buildSiteContextInjection(url: string): Promise<string> {
     try {
       const guide = convertProfileToJSON(best.content);
       if (!guide.site) guide.site = best.name;
+
+      // Merge any stored learned corrections into the guide
+      if (best.learned_corrections) {
+        try {
+          const corrections = JSON.parse(best.learned_corrections) as import('./site-guide-types').LearnedCorrection[];
+          if (corrections.length > 0) {
+            guide.learned_corrections = corrections;
+          }
+        } catch {
+          // Ignore malformed corrections JSON
+        }
+      }
+
       return formatSiteGuideForAgent(guide);
     } catch (e) {
       console.warn('buildSiteContextInjection: JSON conversion failed, using raw content', e);
@@ -267,6 +280,7 @@ export async function getMatchingSkillsForUrl(url: string): Promise<Skill[]> {
             source_id: parsed.urlPatterns?.[0] ?? '',
             is_active: 1,
             url_pattern: urlPattern,
+            learned_corrections: null,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           });

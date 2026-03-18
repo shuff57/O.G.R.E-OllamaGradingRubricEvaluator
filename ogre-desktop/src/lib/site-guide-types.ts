@@ -22,6 +22,27 @@ export interface SiteGuideJSON {
   workflows: Array<{ name: string; steps: string[] }>;
   /** Tips, warnings, and gotchas for AI agent */
   gotchas: string[];
+  /** Structured corrections learned during Agent Training sessions. Optional — not present on bundled profiles. */
+  learned_corrections?: LearnedCorrection[];
+}
+
+/**
+ * A single learned correction from an Agent Training session.
+ * Stored as JSON array in the `learned_corrections` column on the skills table.
+ */
+export interface LearnedCorrection {
+  /** The browser action this corrects: "click", "type", "scroll", "navigate" */
+  action: string;
+  /** Human description of what the agent was trying to target */
+  target: string;
+  /** The confirmed working CSS selector */
+  correct_selector: string;
+  /** Optional: parent/ancestor scope hint */
+  scope_hint?: string;
+  /** Free-text notes from the training conversation */
+  notes?: string;
+  /** ISO 8601 datetime when this correction was saved */
+  timestamp: string;
 }
 
 /**
@@ -30,7 +51,18 @@ export interface SiteGuideJSON {
  */
 export function formatSiteGuideForAgent(guide: SiteGuideJSON): string {
   const json = JSON.stringify(guide);
-  return `--- SITE GUIDE (JSON): ${guide.site} ---\n${json}\n--- END SITE GUIDE ---`;
+  let output = `--- SITE GUIDE (JSON): ${guide.site} ---\n${json}\n--- END SITE GUIDE ---`;
+
+  if (guide.learned_corrections && guide.learned_corrections.length > 0) {
+    const correctionLines = guide.learned_corrections.map(c => {
+      const scope = c.scope_hint ? ` (scope: ${c.scope_hint})` : '';
+      const notes = c.notes ? ` — ${c.notes}` : '';
+      return `• [${c.action}] ${c.target}: use selector \`${c.correct_selector}\`${scope}${notes}`;
+    }).join('\n');
+    output += `\n\n--- LEARNED CORRECTIONS: ${guide.site} ---\n${correctionLines}\n--- END LEARNED CORRECTIONS ---`;
+  }
+
+  return output;
 }
 
 /**
