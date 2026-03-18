@@ -100,7 +100,8 @@
         activeProfileName = null;
         showDiscoveryBanner = true;
       }
-    } catch {
+    } catch (e) {
+      console.warn('checkActiveProfile: profile detection failed', e);
       activeProfileName = null;
       showDiscoveryBanner = false;
     }
@@ -317,7 +318,8 @@
         matchingSkills = [];
         selectedSkillId = null;
       }
-    } catch {
+    } catch (e) {
+      console.warn('refreshMatchingSkills: failed to load matching skills', e);
       matchingSkills = [];
       selectedSkillId = null;
     }

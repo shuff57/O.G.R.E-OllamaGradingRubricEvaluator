@@ -432,9 +432,9 @@ describe('getMatchingSkillsForUrl', () => {
     expect(result[0].name).toBe('Multi');
   });
 
-  it('returns empty array on error', async () => {
+  it('returns empty array on error for unknown URLs', async () => {
     mockGetSkillsWithUrlPattern.mockRejectedValue(new Error('DB error'));
-    const result = await getMatchingSkillsForUrl('https://myopenmath.com');
+    const result = await getMatchingSkillsForUrl('https://unknown-site-xyz.example.com');
     expect(result).toHaveLength(0);
   });
 });

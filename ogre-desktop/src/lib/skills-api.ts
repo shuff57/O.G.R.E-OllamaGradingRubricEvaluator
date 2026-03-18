@@ -227,10 +227,12 @@ export async function buildSiteContextInjection(url: string): Promise<string> {
       const guide = convertProfileToJSON(best.content);
       if (!guide.site) guide.site = best.name;
       return formatSiteGuideForAgent(guide);
-    } catch {
+    } catch (e) {
+      console.warn('buildSiteContextInjection: JSON conversion failed, using raw content', e);
       return `--- SITE GUIDE: ${best.name} ---\n${best.content}\n--- END SITE GUIDE ---`;
     }
-  } catch {
+  } catch (e) {
+    console.warn('buildSiteContextInjection: failed to build site context', e);
     return '';
   }
 }
@@ -247,8 +249,33 @@ export async function getMatchingSkillsForUrl(url: string): Promise<Skill[]> {
   try {
     const allWithPattern = await getSkillsWithUrlPattern();
     return findMatchingProfiles(url, allWithPattern);
-  } catch {
-    return [];
+  } catch (e) {
+    console.warn('getMatchingSkillsForUrl: DB query failed, falling back to bundled profiles', e);
+    // Fallback to bundled profiles when DB is unavailable
+    const bundledSkills: Skill[] = [];
+    for (const content of BUNDLED_PROFILES) {
+      try {
+        const parsed = parseSkillMarkdown(content);
+        const urlPattern = parsed.urlPatterns?.join(',') ?? '';
+        if (urlPattern) {
+          bundledSkills.push({
+            id: `bundled-${parsed.name || 'unknown'}`,
+            name: parsed.name || 'Unknown Profile',
+            description: parsed.description || '',
+            content,
+            source: 'site-profile',
+            source_id: parsed.urlPatterns?.[0] ?? '',
+            is_active: 1,
+            url_pattern: urlPattern,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+        }
+      } catch {
+        // Skip profiles that fail to parse
+      }
+    }
+    return findMatchingProfiles(url, bundledSkills);
   }
 }
 
