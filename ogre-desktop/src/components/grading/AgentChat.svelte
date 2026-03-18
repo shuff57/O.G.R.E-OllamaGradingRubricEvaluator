@@ -7,10 +7,16 @@
   import type { AgentEvent, AgentController } from '../../lib/agent-loop';
   import type { AgentMode, AgentState } from '../../lib/agent-types';
   import ProviderSelector from './ProviderSelector.svelte';
-  import { findMatchingProfiles, getMatchingSkillsForUrl } from '../../lib/skills-api';
+  import { getMatchingSkillsForUrl } from '../../lib/skills-api';
   import { selectBestProfile } from '../../lib/profile-precedence';
   import { getEmbeddedUrl } from '../../lib/browser';
-  import { saveSkill, getSkillsWithUrlPattern, type Skill } from '../../lib/db';
+  import { saveSkill, type Skill } from '../../lib/db';
+
+  // ============================================================================
+  // Props
+  // ============================================================================
+
+  let { pageLoadedUrl = '' }: { pageLoadedUrl?: string } = $props();
 
   // ============================================================================
   // Message Types
@@ -77,16 +83,15 @@
   // ============================================================================
 
   /** Check if the current embedded browser URL matches any site profile. */
-  async function checkActiveProfile() {
+  async function checkActiveProfile(urlHint?: string) {
     try {
-      const url = await getEmbeddedUrl();
+      const url = urlHint || await getEmbeddedUrl();
       if (!url) {
         activeProfileName = null;
         showDiscoveryBanner = false;
         return;
       }
-      const allWithPattern = await getSkillsWithUrlPattern();
-      const matches = findMatchingProfiles(url, allWithPattern);
+      const matches = await getMatchingSkillsForUrl(url);
       const best = selectBestProfile(matches);
       if (best) {
         activeProfileName = best.name;
@@ -297,9 +302,9 @@
     }
   }
 
-  async function refreshMatchingSkills() {
+  async function refreshMatchingSkills(urlHint?: string) {
     try {
-      const url = await getEmbeddedUrl();
+      const url = urlHint || await getEmbeddedUrl();
       if (url) {
         matchingSkills = await getMatchingSkillsForUrl(url);
         const active = matchingSkills.find(s => s.is_active === 1);
@@ -343,8 +348,9 @@
 
   // Check for active profile on mount and when URL changes
   $effect(() => {
-    checkActiveProfile();
-    refreshMatchingSkills();
+    const url = pageLoadedUrl; // synchronous read → Svelte 5 tracks this as reactive dep
+    checkActiveProfile(url);
+    refreshMatchingSkills(url);
   });
 </script>
 
