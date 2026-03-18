@@ -407,7 +407,7 @@
         {/if}
       {/if}
       {#if activeMode === 'agent'}
-        <AgentChat />
+        <AgentChat {pageLoadedUrl} />
       {/if}
       {#if activeMode === 'discovery'}
         <ProviderSelector bind:provider={activeProvider} bind:model={activeModel} />

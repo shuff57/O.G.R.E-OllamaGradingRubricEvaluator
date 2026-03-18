@@ -432,9 +432,9 @@ describe('getMatchingSkillsForUrl', () => {
     expect(result[0].name).toBe('Multi');
   });
 
-  it('returns empty array on error', async () => {
+  it('returns empty array on error for unknown URLs', async () => {
     mockGetSkillsWithUrlPattern.mockRejectedValue(new Error('DB error'));
-    const result = await getMatchingSkillsForUrl('https://myopenmath.com');
+    const result = await getMatchingSkillsForUrl('https://unknown-site-xyz.example.com');
     expect(result).toHaveLength(0);
   });
 });
@@ -715,5 +715,39 @@ describe('AGENT_SYSTEM_PROMPT', () => {
 
   it('instructs agent to use selectors object from JSON guide', () => {
     expect(AGENT_SYSTEM_PROMPT).toContain('Use the "selectors" object for CSS selectors directly');
+  });
+});
+
+describe('getMatchingSkillsForUrl error logging', () => {
+  beforeEach(() => {
+    mockGetSkillsWithUrlPattern.mockReset();
+  });
+
+  it('logs console.warn when DB query fails but still returns bundled profiles', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    
+    // Make the DB mock throw
+    mockGetSkillsWithUrlPattern.mockRejectedValueOnce(new Error('DB unavailable'));
+    
+    const result = await getMatchingSkillsForUrl('https://myopenmath.com/gradeallq2.php');
+    
+    // Should warn about the failure
+    expect(warnSpy).toHaveBeenCalled();
+    // But should still return bundled MOM profile (via substring match on 'myopenmath.com')
+    expect(result.length).toBeGreaterThan(0);
+    
+    warnSpy.mockRestore();
+  });
+
+  it('returns empty array with warning when everything fails', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    
+    const result = await getMatchingSkillsForUrl('https://unknown-site-xyz.example.com');
+    
+    // Unknown URL — no matches even with bundled profiles
+    expect(result).toEqual([]);
+    // No warning needed for no-match (only for errors)
+    
+    warnSpy.mockRestore();
   });
 });
