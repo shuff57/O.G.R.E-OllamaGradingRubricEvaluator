@@ -74,6 +74,7 @@ export interface Skill {
   source_id: string | null;
   is_active: number;
   url_pattern: string | null;
+  learned_corrections: string | null;  // JSON-serialized LearnedCorrection[]
   created_at: string;
   updated_at: string;
 }
@@ -230,6 +231,9 @@ export async function insertGradingSession(session: {
       session.custom_instructions ?? null,
     ]
   );
+  if (typeof result.lastInsertId !== 'number') {
+    throw new Error('Failed to retrieve inserted grading session id');
+  }
   return result.lastInsertId;
 }
 
@@ -393,6 +397,9 @@ export async function saveSiteCredential(credential: {
         credential.notes ?? null,
       ]
     );
+    if (typeof result.lastInsertId !== 'number') {
+      throw new Error('Failed to retrieve inserted site credential id');
+    }
     return result.lastInsertId;
   }
 }
@@ -596,6 +603,52 @@ export async function getSkillsWithUrlPattern(): Promise<Skill[]> {
   return await database.select<Skill[]>(
     "SELECT * FROM skills WHERE url_pattern IS NOT NULL AND url_pattern != '' ORDER BY name"
   );
+}
+
+/**
+ * Append learned corrections to a skill's stored corrections array.
+ * New corrections are merged with any existing ones (never overwrites).
+ */
+export async function appendLearnedCorrections(
+  skillId: string,
+  newCorrections: import('./site-guide-types').LearnedCorrection[]
+): Promise<void> {
+  const database = await initDB();
+  const rows = await database.select<{ learned_corrections: string | null }[]>(
+    'SELECT learned_corrections FROM skills WHERE id = $1',
+    [skillId]
+  );
+  if (rows.length === 0) return;
+
+  const existing: import('./site-guide-types').LearnedCorrection[] = rows[0].learned_corrections
+    ? JSON.parse(rows[0].learned_corrections)
+    : [];
+  const merged = [...existing, ...newCorrections];
+
+  await database.execute(
+    `UPDATE skills SET learned_corrections = $1, updated_at = datetime('now') WHERE id = $2`,
+    [JSON.stringify(merged), skillId]
+  );
+}
+
+/**
+ * Get all learned corrections for a skill.
+ * Returns empty array if none exist.
+ */
+export async function getLearnedCorrections(
+  skillId: string
+): Promise<import('./site-guide-types').LearnedCorrection[]> {
+  const database = await initDB();
+  const rows = await database.select<{ learned_corrections: string | null }[]>(
+    'SELECT learned_corrections FROM skills WHERE id = $1',
+    [skillId]
+  );
+  if (rows.length === 0 || !rows[0].learned_corrections) return [];
+  try {
+    return JSON.parse(rows[0].learned_corrections);
+  } catch {
+    return [];
+  }
 }
 
 /**

@@ -14,10 +14,10 @@
     📝 Guided Form
   </button>
   <button 
-    class="mode-btn {mode === 'chat' ? 'active' : ''}" 
-    onclick={() => mode = 'chat'}
+    class="mode-btn {mode === 'train' ? 'active' : ''}" 
+    onclick={() => mode = 'train'}
   >
-    💬 Chat
+    🧠 Train
   </button>
   <button 
     class="mode-btn {mode === 'example' ? 'active' : ''}" 

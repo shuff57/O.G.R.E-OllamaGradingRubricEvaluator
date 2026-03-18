@@ -19,7 +19,7 @@
 /**
  * The three interaction modes available in the Discover tab.
  */
-export type IntentMode = 'form' | 'chat' | 'example';
+export type IntentMode = 'form' | 'train' | 'example';
 
 // ============================================================================
 // Shared Hints Output
@@ -490,7 +490,7 @@ export function intentToDiscoveryHints(
     case 'form':
       return parseFormIntent(payload as FormModeInput);
 
-    case 'chat':
+    case 'train':
       return parseChatIntent(payload as ChatMessage[]);
 
     case 'example': {

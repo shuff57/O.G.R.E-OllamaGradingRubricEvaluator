@@ -498,6 +498,14 @@
           <div class="message system {msg.variant}">
             <div class="message-content">{msg.content}</div>
           </div>
+          {#if msg.content?.includes('Loop detected')}
+            <div class="train-prompt">
+              <p>The agent seems stuck on this page. Training can help it learn reliable selectors.</p>
+              <button class="btn-train" onclick={handleDiscoverPage}>
+                🧠 Train this page?
+              </button>
+            </div>
+          {/if}
         {/if}
       {/each}
 
@@ -1105,5 +1113,33 @@
   .skill-select:focus {
     outline: none;
     border-color: var(--color-primary);
+  }
+
+  .train-prompt {
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    font-size: 0.85rem;
+    margin-top: 4px;
+  }
+
+  .train-prompt p {
+    margin: 0 0 6px 0;
+    color: var(--color-text-secondary);
+  }
+
+  .btn-train {
+    padding: 6px 12px;
+    background: var(--color-primary);
+    color: white;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 0.85rem;
+  }
+
+  .btn-train:hover {
+    opacity: 0.9;
   }
 </style>

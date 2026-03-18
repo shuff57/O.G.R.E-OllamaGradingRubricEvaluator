@@ -1881,6 +1881,13 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_model ON response_embeddings(embedding
             sql: "ALTER TABLE site_profiles ADD COLUMN extraction TEXT DEFAULT NULL;",
             kind: MigrationKind::Up,
         },
+        // Migration 12: add learned_corrections column to skills for Agent Training
+        Migration {
+            version: 12,
+            description: "add_learned_corrections_to_skills",
+            sql: "ALTER TABLE skills ADD COLUMN learned_corrections TEXT DEFAULT NULL;",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()

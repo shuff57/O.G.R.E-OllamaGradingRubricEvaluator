@@ -25,10 +25,19 @@
     type IntentMode,
     type FormModeInput,
     type ExampleSelection,
-    createChatDiscoveryState,
-    runChatDiscovery,
+    type ChatMessage,
     intentToDiscoveryHints,
   } from '../../lib/discovery-intent';
+  import {
+    createTrainingSession,
+    TRAINING_SYSTEM_PROMPT,
+    isSaveSignal,
+    canSaveTraining,
+    type TrainingSession,
+  } from '../../lib/training-session';
+  import { synthesizeTraining } from '../../lib/training-synthesizer';
+  import { appendLearnedCorrections } from '../../lib/db';
+  import { getMatchingSkillsForUrl } from '../../lib/skills-api';
   import { getSkillsWithUrlPattern } from '../../lib/db';
   import { findMatchingProfiles } from '../../lib/skills-api';
   import { selectBestProfile } from '../../lib/profile-precedence';
@@ -94,7 +103,8 @@
     hasScoreInputs: true,
     hasFeedbackFields: true
   });
-  let chatState = $state(createChatDiscoveryState());
+  let trainingSession = $state<TrainingSession>(createTrainingSession());
+  let showPostDiscoveryTrainPrompt = $state(false);
   let exampleSelections = $state<ExampleSelection[]>([]);
 
   // Test Results State
@@ -160,7 +170,7 @@
     testReport = null;
 
     try {
-      const intentHints = intentToDiscoveryHints(mode, mode === 'form' ? formInput : mode === 'chat' ? chatState.messages : exampleSelections);
+      const intentHints = intentToDiscoveryHints(mode, mode === 'form' ? formInput : mode === 'train' ? [] : exampleSelections);
 
       // Check for existing knowledge profile to use as hints
       let knownSelectors: Record<string, string> | undefined;
@@ -210,18 +220,154 @@
       lastDiscoveryUrl = pageLoadedUrl;
       staleWarning = false;
       profileName = 'New Grading Profile';
+      showPostDiscoveryTrainPrompt = true;
     } catch (err) {
       phase = 'error';
       error = err instanceof Error ? err.message : String(err);
     }
   }
 
-  async function handleChatSubmit() {
+  // ── Training helpers ──────────────────────────────────────────────────────
+
+  async function sendTrainingMessage(messages: ChatMessage[]): Promise<string> {
+    const token = getHandshakeToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const lastMsg = messages[messages.length - 1];
+    const response = await tauriFetch(`${SERVER_BASE}/api/chat`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        message: lastMsg.content,
+        systemPrompt: TRAINING_SYSTEM_PROMPT,
+        provider: provider || undefined,
+        model: model || undefined,
+      }),
+    });
+
+    const raw = getResponseData(response);
+    const data = typeof raw === 'string' ? JSON.parse(raw) : raw as { content?: string };
+    return data.content || '';
+  }
+
+  async function resolveSkillForUrl(): Promise<{ skillId: string; siteName: string } | null> {
     try {
-      const mockResponse = "I understand. I'll look for that structure.";
-      chatState = await runChatDiscovery(chatState, chatState.messages[chatState.messages.length - 1].content, async () => mockResponse);
+      const skills = await getMatchingSkillsForUrl(pageLoadedUrl || '');
+      const best = selectBestProfile(skills);
+      if (best) {
+        return { skillId: best.id, siteName: best.name };
+      }
+    } catch { /* ignore */ }
+    return null;
+  }
+
+  async function handleTrainMessage(text: string): Promise<void> {
+    // If "Start Training" button fires synthetic start, capture DOM and begin perception
+    if (text === '__start__') {
+      const resolved = await resolveSkillForUrl();
+      let domSnapshot = '';
+      try {
+        const raw = await captureInteractiveDom();
+        domSnapshot = typeof raw === 'string' ? raw : JSON.stringify(raw);
+      } catch { /* proceed without snapshot */ }
+
+      const perceptionMsg: ChatMessage = {
+        role: 'user',
+        content: `Please analyze this page and report your understanding of how to interact with it for grading purposes. Here is the DOM snapshot:\n\n${domSnapshot.substring(0, 6000)}`,
+        timestamp: new Date().toISOString(),
+      };
+
+      trainingSession = {
+        ...trainingSession,
+        phase: 'perception',
+        skillId: resolved?.skillId ?? null,
+        siteName: resolved?.siteName ?? null,
+        messages: [perceptionMsg],
+      };
+
+      try {
+        const reply = await sendTrainingMessage([perceptionMsg]);
+        const assistantMsg: ChatMessage = {
+          role: 'assistant',
+          content: reply,
+          timestamp: new Date().toISOString(),
+        };
+        trainingSession = {
+          ...trainingSession,
+          phase: 'dialogue',
+          messages: [...trainingSession.messages, assistantMsg],
+        };
+      } catch (e) {
+        trainingSession = { ...trainingSession, phase: 'error', error: String(e) };
+      }
+      return;
+    }
+
+    // Check for save signal
+    if (isSaveSignal(text)) {
+      await handleSaveTraining();
+      return;
+    }
+
+    // Normal dialogue turn
+    const userMsg: ChatMessage = {
+      role: 'user',
+      content: text,
+      timestamp: new Date().toISOString(),
+    };
+
+    // If still idle (user typed directly without pressing Start Training), kick off perception first
+    if (trainingSession.phase === 'idle') {
+      await handleTrainMessage('__start__');
+      // Then append user message as follow-up
+      trainingSession = {
+        ...trainingSession,
+        phase: 'dialogue',
+        messages: [...trainingSession.messages, userMsg],
+      };
+    } else {
+      trainingSession = {
+        ...trainingSession,
+        messages: [...trainingSession.messages, userMsg],
+      };
+    }
+
+    try {
+      const reply = await sendTrainingMessage(trainingSession.messages);
+      const assistantMsg: ChatMessage = {
+        role: 'assistant',
+        content: reply,
+        timestamp: new Date().toISOString(),
+      };
+      trainingSession = {
+        ...trainingSession,
+        phase: 'dialogue',
+        messages: [...trainingSession.messages, assistantMsg],
+      };
     } catch (e) {
-      error = "Chat failed: " + e;
+      trainingSession = { ...trainingSession, phase: 'error', error: String(e) };
+    }
+  }
+
+  async function handleSaveTraining(): Promise<void> {
+    if (!trainingSession.skillId) {
+      trainingSession = {
+        ...trainingSession,
+        phase: 'error',
+        error: 'No skill profile found for this URL. Run Discovery first to create one.',
+      };
+      return;
+    }
+    trainingSession = { ...trainingSession, phase: 'synthesizing' };
+    try {
+      const { corrections } = await synthesizeTraining(trainingSession.messages, sendTrainingMessage);
+      if (corrections.length > 0) {
+        await appendLearnedCorrections(trainingSession.skillId, corrections);
+      }
+      trainingSession = { ...trainingSession, phase: 'saved', pendingCorrections: corrections };
+    } catch (e) {
+      trainingSession = { ...trainingSession, phase: 'error', error: String(e) };
     }
   }
 
@@ -455,8 +601,20 @@
             <input id="estimated-students" type="number" bind:value={formInput.estimatedStudentCount} placeholder="e.g. 25">
           </div>
         </div>
-      {:else if mode === 'chat'}
-        <DiscoveryChat bind:chatState onChatSubmit={handleChatSubmit} />
+      {:else if mode === 'train'}
+        {#if trainingSession.phase === 'idle'}
+          <button
+            class="btn-primary full-width"
+            onclick={() => handleTrainMessage('__start__')}
+          >
+            🧠 Start Training
+          </button>
+        {/if}
+        <DiscoveryChat
+          bind:session={trainingSession}
+          onSendMessage={handleTrainMessage}
+          onSaveTraining={handleSaveTraining}
+        />
       {:else if mode === 'example'}
         <div class="example-mode-ui"><p>Click elements on the page to teach the AI (Coming Soon)</p></div>
       {/if}
@@ -467,6 +625,18 @@
     <div class="stale-warning">
       <small>⚠ Page has changed — discovery results and site guide may be outdated.</small>
       <button class="btn-link" onclick={() => { staleWarning = false; }}>Dismiss</button>
+    </div>
+  {/if}
+
+  {#if showPostDiscoveryTrainPrompt && phase === 'review' && mode === 'train'}
+    <div class="post-discovery-train-prompt">
+      <p>Discovery complete. Want to verify these selectors with the agent?</p>
+      <div class="prompt-actions">
+        <button class="btn-primary" onclick={() => { showPostDiscoveryTrainPrompt = false; trainingSession = createTrainingSession(); }}>
+          🧠 Train this page
+        </button>
+        <button class="btn-link-dim" onclick={() => showPostDiscoveryTrainPrompt = false}>Dismiss</button>
+      </div>
     </div>
   {/if}
 
@@ -595,4 +765,8 @@
   .btn-secondary:disabled { opacity: 0.6; cursor: not-allowed; }
   .full-width { width: 100%; }
   .error-banner { display: flex; align-items: center; gap: var(--spacing-2); padding: var(--spacing-2); background: var(--color-error-bg); border: 1px solid var(--color-error-border); border-radius: var(--radius-md); color: var(--color-error); font-size: 0.85rem; }
+  .post-discovery-train-prompt { background: #eff6ff; border: 1px solid #93c5fd; border-radius: var(--radius-sm); padding: 10px 12px; font-size: 0.85rem; color: #1e40af; }
+  .post-discovery-train-prompt p { margin: 0 0 8px 0; }
+  .prompt-actions { display: flex; gap: 8px; align-items: center; }
+  .btn-link-dim { background: transparent; border: none; color: var(--color-text-secondary); cursor: pointer; font-size: 0.82rem; text-decoration: underline; padding: 0; }
 </style>
