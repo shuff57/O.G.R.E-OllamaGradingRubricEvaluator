@@ -253,6 +253,10 @@ export async function extractSelectedText(): Promise<string> {
   })()`);
 }
 
+export async function captureAccessibilityTree(tabId?: string): Promise<string> {
+  return invoke<string>('capture_accessibility_tree', { tabId: tabId ?? _activeTabId });
+}
+
 /** Common grading site presets */
 export const GRADING_SITE_PRESETS = [
   { name: 'MyOpenMath', url: 'https://www.myopenmath.com/' },
@@ -262,85 +266,22 @@ export const GRADING_SITE_PRESETS = [
   { name: 'Aeries', url: 'https://chicousd.aeries.net/teacher/Login.aspx' },
 ];
 
-// --- Webview Screenshot Capture (V1 — webview-based via html2canvas) ---
-
-/** CDN URL for html2canvas (loaded on-demand into the embedded webview). */
-const HTML2CANVAS_CDN =
-  'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-
 /**
- * Ensure html2canvas is loaded in the embedded webview.
- * Injects the CDN script tag if the library isn't already present.
- * Cached after first load — subsequent calls are near-instant.
- *
- * @throws Error if CDN is unreachable or script fails to load
- */
-async function ensureHtml2CanvasLoaded(): Promise<void> {
-  const alreadyLoaded = await evalScriptJSON<boolean>(
-    `typeof window.html2canvas === 'function'`
-  );
-  if (alreadyLoaded) return;
-
-  await evalScriptJSON<string>(`
-    new Promise(function(resolve, reject) {
-      var s = document.createElement('script');
-      s.src = '${HTML2CANVAS_CDN}';
-      s.onload = function() { resolve('loaded'); };
-      s.onerror = function() { reject(new Error('Failed to load html2canvas from CDN. Check internet connection.')); };
-      document.head.appendChild(s);
-    })
-  `);
-}
-
-/**
- * Capture the visible viewport of the embedded webview as a base64 JPEG.
- *
- * Loads html2canvas dynamically on first call (CDN).
- * The capture renders the current visible viewport — no scrolling content
- * is included beyond what the user can see.
+ * Capture the visible viewport of the embedded webview as a base64 JPEG via CDP.
  *
  * @returns Promise resolving to a data URL string (`data:image/jpeg;base64,...`)
- * @throws Error if the webview is not open, html2canvas fails to load, or capture errors
+ * @throws Error if CDP cannot connect or screenshot capture fails
  *
  * @example
  * const screenshot = await captureWebviewScreenshot();
  * // screenshot is "data:image/jpeg;base64,/9j/4AAQ..."
  */
 export async function captureWebviewScreenshot(): Promise<string> {
-  // Try CDP screenshot first (native, no CDN dependency)
-  if (isConnected()) {
-    try {
-      return await cdpScreenshot();
-    } catch {
-      // Fall through to html2canvas
-    }
+  if (!isConnected()) {
+    const ok = await connectCDP();
+    if (!ok) throw new Error('CDP not connected for screenshot capture');
   }
-
-  // Step 1: Load html2canvas (cached after first call)
-  await ensureHtml2CanvasLoaded();
-
-  // Step 2: Capture visible viewport and return as data URL
-  const dataUrl = await evalScriptJSON<string>(`
-    (async function() {
-      var canvas = await window.html2canvas(document.body, {
-        useCORS: true,
-        allowTaint: true,
-        scrollX: -window.scrollX,
-        scrollY: -window.scrollY,
-        width: window.innerWidth,
-        height: window.innerHeight,
-        windowWidth: document.documentElement.clientWidth,
-        windowHeight: document.documentElement.clientHeight
-      });
-      return canvas.toDataURL('image/jpeg', 0.8);
-    })()
-  `);
-
-  if (!dataUrl || !dataUrl.startsWith('data:image/')) {
-    throw new Error('Screenshot capture returned invalid image data');
-  }
-
-  return dataUrl;
+  return cdpScreenshot();
 }
 
 /**
@@ -393,7 +334,7 @@ export function cropImageData(
 /**
  * Capture a specific rectangular area of the webview content.
  *
- * Captures the full visible viewport via html2canvas, then crops to the
+ * Captures the full visible viewport via CDP, then crops to the
  * requested region. Coordinates are in image-space pixels (matching the
  * webview's CSS pixel dimensions).
  *
