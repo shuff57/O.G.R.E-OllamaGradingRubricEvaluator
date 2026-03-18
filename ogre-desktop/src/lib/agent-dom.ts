@@ -20,12 +20,12 @@ const INTERACTIVE_DOM_SCRIPT = `(function() {
   var MAX_ELEMENTS = 200;
   var elements = [];
   
-  // Query all interactive elements
-  var selectors = [
-    'button', 'a[href]', 'input', 'textarea', 'select',
-    '[role="button"]', '[role="link"]', '[role="textbox"]',
-    '[onclick]', '[contenteditable]'
-  ];
+   // Query all interactive elements
+   var selectors = [
+     'button', 'a[href]', 'input', 'textarea', 'select', 'summary',
+     '[role="button"]', '[role="link"]', '[role="textbox"]',
+     '[onclick]', '[contenteditable]'
+   ];
   
   var nodes = document.querySelectorAll(selectors.join(', '));
   
@@ -106,11 +106,11 @@ const INTERACTIVE_DOM_SCRIPT = `(function() {
     
     if (!isVisible(el)) continue;
     
-    var tag = el.tagName.toLowerCase();
-    var interactive = {
-      index: elements.length + 1,
-      tag: tag,
-      type: el.type || undefined,
+     var tag = el.tagName.toLowerCase();
+     var interactive = {
+       index: elements.length + 1,
+       tag: tag,
+       type: tag === 'summary' ? (el.parentElement && el.parentElement.hasAttribute('open') ? 'expanded' : 'collapsed') : (el.type || undefined),
       id: el.id || undefined,
       name: el.name || undefined,
       placeholder: el.placeholder || undefined,
