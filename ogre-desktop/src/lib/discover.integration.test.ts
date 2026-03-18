@@ -68,7 +68,7 @@ import {
   getEmbeddedUrl,
 } from "./browser";
 import { detectGradingStructure } from "./heuristic-detector";
-import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+;
 import { discoverExtractionConfig } from "./extraction-config-discovery";
 
 // ── Typed Mock Aliases ──────────────────────────────────────────────────────

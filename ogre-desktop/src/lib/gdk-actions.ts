@@ -8,7 +8,7 @@
  * to GDK as a middle tier: CDP (Windows) → GDK (Linux) → evalScript (fallback).
  */
 
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from './electron-bridge';
 import type { ActionResult } from './agent-types';
 import { evalScriptJSON } from './browser';
 

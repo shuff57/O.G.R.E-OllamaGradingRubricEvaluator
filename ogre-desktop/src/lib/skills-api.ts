@@ -5,8 +5,8 @@
  * from GitHub raw content based on skills.sh search results.
  */
 
-import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
-import { invoke } from '@tauri-apps/api/core';
+;
+import { invoke } from './electron-bridge';
 
 type TauriResponseWithData = { data: unknown };
 
@@ -74,7 +74,7 @@ export function buildSkillContentUrl(source: string, skillId: string): string {
  */
 export async function searchSkills(query: string, limit = 20): Promise<SkillSearchResult[]> {
   try {
-    const response = await tauriFetch(
+    const response = await fetch(
       `${SKILLS_SH_SEARCH_URL}?q=${encodeURIComponent(query)}&limit=${limit}`
     );
     const rawData = getResponseData(response);
@@ -91,7 +91,7 @@ export async function searchSkills(query: string, limit = 20): Promise<SkillSear
  */
 export async function fetchTrendingSkills(): Promise<SkillSearchResult[]> {
   try {
-    const response = await tauriFetch('https://skills.sh/api/skills/trending/0');
+    const response = await fetch('https://skills.sh/api/skills/trending/0');
     const rawData = getResponseData(response);
     const data = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
     return data.skills ?? [];
@@ -109,7 +109,7 @@ export async function fetchTrendingSkills(): Promise<SkillSearchResult[]> {
  */
 export async function fetchSkillContent(source: string, skillId: string): Promise<string> {
   const url = buildSkillContentUrl(source, skillId);
-  const response = await tauriFetch(url);
+  const response = await fetch(url);
   const rawData = getResponseData(response);
   return typeof rawData === 'string' ? rawData : String(rawData);
 }

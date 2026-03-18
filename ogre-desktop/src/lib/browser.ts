@@ -1,5 +1,5 @@
-import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
+import { invoke } from './electron-bridge';
+import { listen } from './electron-bridge';
 import { generateAutoFillScript } from './autofill';
 import { isConnected, connectCDP, cdpScreenshot } from './cdp-actions';
 import { cdp } from './cdp-client';

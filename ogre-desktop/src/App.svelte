@@ -28,7 +28,7 @@
   import { checkForUpdates, type UpdateCheckResult } from './lib/updater';
   import { hideWebview, showWebview, getActiveTabId } from './lib/browser';
   import { syncSiteProfiles } from './lib/skills-api';
-  import type { Update } from '@tauri-apps/plugin-updater';
+  type Update = { version: string; body?: string | null; download: (cb?: unknown) => Promise<void>; installAndRelaunch: () => Promise<void> }
 
   // Webview layout constants (must match CSS variables in app.css)
   const SIDEBAR_EXPANDED_WIDTH = 250;

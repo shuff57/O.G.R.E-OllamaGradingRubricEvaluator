@@ -3,7 +3,7 @@
  * Calls the grading server's /api/rubrics endpoints using tauriFetch.
  */
 
-import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+;
 import { getHandshakeToken } from "./provider-sync";
 
 const SERVER_BASE = "http://localhost:3456";
@@ -35,7 +35,7 @@ function authHeaders(): Record<string, string> {
 }
 
 export async function listRubrics(): Promise<SavedRubric[]> {
-  const res = await tauriFetch(`${SERVER_BASE}/api/rubrics`, {
+  const res = await fetch(`${SERVER_BASE}/api/rubrics`, {
     method: "GET",
     headers: authHeaders(),
   });
@@ -47,7 +47,7 @@ export async function listRubrics(): Promise<SavedRubric[]> {
 export async function createRubric(
   rubric: Omit<SavedRubric, "id" | "createdAt" | "updatedAt">
 ): Promise<SavedRubric> {
-  const res = await tauriFetch(`${SERVER_BASE}/api/rubrics`, {
+  const res = await fetch(`${SERVER_BASE}/api/rubrics`, {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify(rubric),
@@ -61,7 +61,7 @@ export async function updateRubric(
   id: string,
   updates: Partial<SavedRubric>
 ): Promise<SavedRubric> {
-  const res = await tauriFetch(`${SERVER_BASE}/api/rubrics/${id}`, {
+  const res = await fetch(`${SERVER_BASE}/api/rubrics/${id}`, {
     method: "PUT",
     headers: authHeaders(),
     body: JSON.stringify(updates),
@@ -72,7 +72,7 @@ export async function updateRubric(
 }
 
 export async function deleteRubric(id: string): Promise<void> {
-  const res = await tauriFetch(`${SERVER_BASE}/api/rubrics/${id}`, {
+  const res = await fetch(`${SERVER_BASE}/api/rubrics/${id}`, {
     method: "DELETE",
     headers: authHeaders(),
   });

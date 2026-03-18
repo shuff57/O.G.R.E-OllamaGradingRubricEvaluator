@@ -1,12 +1,42 @@
 import { app, ipcMain } from 'electron'
-import Database from 'better-sqlite3'
 import path from 'node:path'
+// @ts-expect-error better-sqlite3 is bundled as a Node dependency in Electron main process
+import BetterSqlite3 from 'better-sqlite3'
 
-let db: Database.Database | null = null
+interface BetterSqlite3RunResult {
+  changes: number
+  lastInsertRowid: number | bigint
+}
 
-const MIGRATIONS: Array<{ version: number; sql: string }> = [
+interface BetterSqlite3Statement {
+  all(...params: unknown[]): unknown[]
+  run(...params: unknown[]): BetterSqlite3RunResult
+}
+
+interface BetterSqlite3Database {
+  exec(sql: string): void
+  prepare(sql: string): BetterSqlite3Statement
+  close(): void
+}
+
+type BetterSqlite3Constructor = new (filename: string) => BetterSqlite3Database
+const BetterSqlite3Ctor = BetterSqlite3 as BetterSqlite3Constructor
+
+interface Migration {
+  version: number
+  description: string
+  sql: string
+}
+
+interface QueryPayload {
+  sql: string
+  params?: unknown[]
+}
+
+const migrations: Migration[] = [
   {
     version: 1,
+    description: 'create_provider_configs_and_enable_wal',
     sql: `PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS provider_configs (
     id TEXT PRIMARY KEY NOT NULL,
@@ -20,6 +50,7 @@ CREATE TABLE IF NOT EXISTS provider_configs (
   },
   {
     version: 2,
+    description: 'create_grading_sessions',
     sql: `CREATE TABLE IF NOT EXISTS grading_sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     provider_id TEXT,
@@ -38,6 +69,7 @@ CREATE TABLE IF NOT EXISTS provider_configs (
   },
   {
     version: 3,
+    description: 'create_app_settings_with_defaults',
     sql: `CREATE TABLE IF NOT EXISTS app_settings (
     key TEXT PRIMARY KEY NOT NULL,
     value TEXT
@@ -47,6 +79,7 @@ INSERT OR IGNORE INTO app_settings (key, value) VALUES ('history_visible_columns
   },
   {
     version: 4,
+    description: 'create_oauth_tokens',
     sql: `CREATE TABLE IF NOT EXISTS oauth_tokens (
     provider TEXT PRIMARY KEY NOT NULL,
     access_token TEXT NOT NULL,
@@ -59,6 +92,7 @@ INSERT OR IGNORE INTO app_settings (key, value) VALUES ('history_visible_columns
   },
   {
     version: 5,
+    description: 'create_site_credentials',
     sql: `CREATE TABLE IF NOT EXISTS site_credentials (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     site_name TEXT NOT NULL,
@@ -72,6 +106,7 @@ INSERT OR IGNORE INTO app_settings (key, value) VALUES ('history_visible_columns
   },
   {
     version: 6,
+    description: 'create_site_profiles',
     sql: `CREATE TABLE IF NOT EXISTS site_profiles (
     id TEXT PRIMARY KEY NOT NULL,
     name TEXT NOT NULL,
@@ -86,6 +121,7 @@ INSERT OR IGNORE INTO app_settings (key, value) VALUES ('history_visible_columns
   },
   {
     version: 7,
+    description: 'create_batch_session',
     sql: `CREATE TABLE IF NOT EXISTS batch_session (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     url TEXT NOT NULL,
@@ -96,6 +132,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_batch_session_url ON batch_session(url);`,
   },
   {
     version: 8,
+    description: 'create_skills',
     sql: `CREATE TABLE IF NOT EXISTS skills (
     id TEXT PRIMARY KEY NOT NULL,
     name TEXT NOT NULL,
@@ -111,10 +148,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_skills_source ON skills(source, source_id)
   },
   {
     version: 9,
-    sql: `ALTER TABLE skills ADD COLUMN url_pattern TEXT;`,
+    description: 'add_url_pattern_to_skills',
+    sql: 'ALTER TABLE skills ADD COLUMN url_pattern TEXT;',
   },
   {
     version: 10,
+    description: 'create_response_embeddings_table',
     sql: `CREATE TABLE IF NOT EXISTS response_embeddings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id INTEGER REFERENCES grading_sessions(id),
@@ -131,62 +170,123 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_model ON response_embeddings(embedding
   },
   {
     version: 11,
-    sql: `ALTER TABLE site_profiles ADD COLUMN extraction TEXT DEFAULT NULL;`,
+    description: 'add_extraction_column_to_site_profiles',
+    sql: 'ALTER TABLE site_profiles ADD COLUMN extraction TEXT DEFAULT NULL;',
   },
   {
     version: 12,
-    sql: `ALTER TABLE skills ADD COLUMN learned_corrections TEXT DEFAULT NULL;`,
+    description: 'add_learned_corrections_to_skills',
+    sql: 'ALTER TABLE skills ADD COLUMN learned_corrections TEXT DEFAULT NULL;',
   },
 ]
 
-function getDb(): Database.Database {
-  if (!db) throw new Error('Database not initialized — call initDatabase() first')
-  return db
+let database: BetterSqlite3Database | null = null
+
+function normalizeSql(sql: string): string {
+  return sql.replace(/\$(\d+)/g, '?$1')
 }
 
-export function initDatabase(): void {
-  const userDataPath = app.getPath('userData')
-  const dbPath = path.join(userDataPath, 'ogre.db')
+function normalizeParam(param: unknown): unknown {
+  if (param instanceof Uint8Array) {
+    return Buffer.from(param.buffer, param.byteOffset, param.byteLength)
+  }
 
-  db = new Database(dbPath)
+  return param
+}
 
-  db.exec('CREATE TABLE IF NOT EXISTS _migrations (version INTEGER PRIMARY KEY)')
+function serializeValue(value: unknown): unknown {
+  if (Buffer.isBuffer(value)) {
+    return Array.from(value)
+  }
 
-  const applied = new Set<number>(
-    (db.prepare('SELECT version FROM _migrations').all() as Array<{ version: number }>).map(
-      (r) => r.version,
+  if (Array.isArray(value)) {
+    return value.map(serializeValue)
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, nestedValue]) => [
+        key,
+        serializeValue(nestedValue),
+      ]),
+    )
+  }
+
+  return value
+}
+
+function shouldIgnoreMigrationError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase()
+  return message.includes('duplicate column name')
+}
+
+function getDatabasePath(): string {
+  return path.join(app.getPath('userData'), 'ogre.db')
+}
+
+function applyMigrations(db: BetterSqlite3Database): void {
+  db.exec(`CREATE TABLE IF NOT EXISTS _migrations (
+    version INTEGER PRIMARY KEY,
+    description TEXT NOT NULL,
+    applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );`)
+
+  const applied = new Set(
+    (db.prepare('SELECT version FROM _migrations ORDER BY version').all() as Array<{ version: number }>).map(
+      (row) => row.version,
     ),
   )
+  const recordMigration = db.prepare(
+    'INSERT OR IGNORE INTO _migrations (version, description) VALUES (?1, ?2)',
+  )
 
-  for (const migration of MIGRATIONS) {
-    if (!applied.has(migration.version)) {
-      db.exec(migration.sql)
-      db.prepare('INSERT INTO _migrations (version) VALUES (?)').run(migration.version)
+  for (const migration of migrations) {
+    if (applied.has(migration.version)) {
+      continue
     }
+
+    try {
+      db.exec(migration.sql)
+    } catch (error) {
+      if (!shouldIgnoreMigrationError(error)) {
+        throw error
+      }
+    }
+
+    recordMigration.run(migration.version, migration.description)
   }
 }
 
-function normalizeSql(sql: string): string {
-  return sql.replace(/\$(\d+)/g, '?')
+export function initDatabase(): BetterSqlite3Database {
+  if (!database) {
+    database = new BetterSqlite3Ctor(getDatabasePath())
+    applyMigrations(database)
+  }
+
+  return database
 }
 
 export function registerDatabaseHandlers(): void {
-  ipcMain.handle(
-    'db_query',
-    async (_event, { sql, params }: { sql: string; params?: unknown[] }) => {
-      return getDb()
-        .prepare(normalizeSql(sql))
-        .all(...(params ?? []))
-    },
-  )
+  ipcMain.removeHandler('db_query')
+  ipcMain.removeHandler('db_execute')
 
-  ipcMain.handle(
-    'db_execute',
-    async (_event, { sql, params }: { sql: string; params?: unknown[] }) => {
-      const result = getDb()
-        .prepare(normalizeSql(sql))
-        .run(...(params ?? []))
-      return { rowsAffected: result.changes, lastInsertId: result.lastInsertRowid }
-    },
-  )
+  ipcMain.handle('db_query', (_event, payload: QueryPayload) => {
+    const db = initDatabase()
+    const params = (payload.params ?? []).map(normalizeParam)
+    const statement = db.prepare(normalizeSql(payload.sql))
+    const rows = statement.all(...params)
+    return serializeValue(rows)
+  })
+
+  ipcMain.handle('db_execute', (_event, payload: QueryPayload) => {
+    const db = initDatabase()
+    const params = (payload.params ?? []).map(normalizeParam)
+    const statement = db.prepare(normalizeSql(payload.sql))
+    const result = statement.run(...params)
+
+    return {
+      rowsAffected: result.changes,
+      lastInsertId: Number(result.lastInsertRowid ?? 0),
+    }
+  })
 }

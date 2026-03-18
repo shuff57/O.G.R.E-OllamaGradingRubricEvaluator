@@ -6,7 +6,7 @@
  * EventSource doesn't support custom Authorization headers.
  */
 
-import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+;
 import { getHandshakeToken } from "./provider-sync";
 import { fetchAvailableModels } from "./oauth";
 import { parseSSEStream, parseSSEText } from "./sse-parser";
@@ -210,7 +210,7 @@ export async function gradeStudent(req: GradeRequest): Promise<GradeResponse> {
 
   const data = await withRetry(
     async () => {
-      const response = await tauriFetch(`${SERVER_BASE}/api/chat`, {
+      const response = await fetch(`${SERVER_BASE}/api/chat`, {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify(body),
@@ -271,7 +271,7 @@ export async function sendSolverMessage(
 
   const response = await withRetry(
     async () => {
-      const res = await tauriFetch(`${SERVER_BASE}/api/chat`, {
+      const res = await fetch(`${SERVER_BASE}/api/chat`, {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify(body),
@@ -453,7 +453,7 @@ export async function fetchProviders(): Promise<ProviderConfig[]> {
 
   let res: Response;
   try {
-    res = await tauriFetch(`${SERVER_BASE}/api/providers`, {
+    res = await fetch(`${SERVER_BASE}/api/providers`, {
       method: "GET",
       headers: authHeaders(),
     });
@@ -493,7 +493,7 @@ export async function setActiveProvider(
 
   let res: Response;
   try {
-    res = await tauriFetch(`${SERVER_BASE}/api/providers/active`, {
+    res = await fetch(`${SERVER_BASE}/api/providers/active`, {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ provider_id: providerId, model }),
@@ -622,7 +622,7 @@ export function startBatchGrading(
           ? `${body.customInstructions}\n\n${skillInjection}`
           : skillInjection;
       }
-      const response = await tauriFetch(`${SERVER_BASE}/api/grade`, {
+      const response = await fetch(`${SERVER_BASE}/api/grade`, {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify(body),
@@ -741,7 +741,7 @@ export async function generateAnchors(
 
   let res: Response;
   try {
-    res = await tauriFetch(`${SERVER_BASE}/api/generate-anchors`, {
+    res = await fetch(`${SERVER_BASE}/api/generate-anchors`, {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({

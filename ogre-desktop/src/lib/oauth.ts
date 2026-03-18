@@ -1,5 +1,5 @@
-import { openUrl } from "@tauri-apps/plugin-opener";
-import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+const openUrl = (url: string) => window.open(url, '_blank')
+;
 import { saveOAuthToken, getOAuthToken, deleteOAuthToken } from "./db";
 import { pushProvidersToServer } from "./provider-sync";
 // ── Types ────────────────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ const GITHUB_DEVICE_CODE_URL = "https://github.com/login/device/code";
 const GITHUB_ACCESS_TOKEN_URL = "https://github.com/login/oauth/access_token";
 
 export async function startGitHubDeviceFlow(): Promise<DeviceFlowResult> {
-  const res = await tauriFetch(GITHUB_DEVICE_CODE_URL, {
+  const res = await fetch(GITHUB_DEVICE_CODE_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -93,7 +93,7 @@ export async function startGitHubDeviceFlow(): Promise<DeviceFlowResult> {
         await sleep(interval);
         if (cancelled) return { success: false, error: "Cancelled" };
 
-        const tokenRes = await tauriFetch(GITHUB_ACCESS_TOKEN_URL, {
+        const tokenRes = await fetch(GITHUB_ACCESS_TOKEN_URL, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -146,7 +146,7 @@ const OPENAI_TOKEN_EXCHANGE_URL = "https://auth.openai.com/oauth/token";
 const OPENAI_AUDIENCE = "https://api.openai.com/v1";
 
 export async function startChatGPTDeviceFlow(): Promise<DeviceFlowResult> {
-  const res = await tauriFetch(OPENAI_DEVICE_CODE_URL, {
+  const res = await fetch(OPENAI_DEVICE_CODE_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ client_id: OPENAI_CLIENT_ID }),
@@ -173,7 +173,7 @@ export async function startChatGPTDeviceFlow(): Promise<DeviceFlowResult> {
         await sleep(interval);
         if (cancelled) return { success: false, error: "Cancelled" };
 
-        const tokenRes = await tauriFetch(OPENAI_DEVICE_TOKEN_URL, {
+        const tokenRes = await fetch(OPENAI_DEVICE_TOKEN_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -200,7 +200,7 @@ export async function startChatGPTDeviceFlow(): Promise<DeviceFlowResult> {
         }
 
         // Step 2: Token exchange — id_token → access_token
-        const exchangeRes = await tauriFetch(OPENAI_TOKEN_EXCHANGE_URL, {
+        const exchangeRes = await fetch(OPENAI_TOKEN_EXCHANGE_URL, {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: new URLSearchParams({
@@ -261,7 +261,7 @@ async function fetchAnthropicModelsFromModelsDev(): Promise<string[]> {
   if (_modelsDevCache && Date.now() - _modelsDevCache.fetchedAt < MODELS_DEV_TTL_MS) {
     return _modelsDevCache.models;
   }
-  const res = await tauriFetch('https://models.dev/api.json');
+  const res = await fetch('https://models.dev/api.json');
   if (!res.ok) throw new Error(`models.dev fetch failed: ${res.status}`);
   const data: Record<string, any> = await res.json();
   const anthropicModels: Record<string, any> = data['anthropic']?.models ?? {};
@@ -307,7 +307,7 @@ export async function startClaudeOAuthFlow(): Promise<DeviceFlowResult> {
         const parts = pastedCode.split("#");
         const code = parts[0].trim();
         const pastedState = parts[1]?.trim() || state;
-        const res = await tauriFetch(ANTHROPIC_TOKEN_URL, {
+        const res = await fetch(ANTHROPIC_TOKEN_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -349,7 +349,7 @@ async function refreshAnthropicToken(refreshToken: string): Promise<{
   refresh_token?: string;
   expires_in?: number;
 }> {
-  const res = await tauriFetch(ANTHROPIC_TOKEN_URL, {
+  const res = await fetch(ANTHROPIC_TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -412,7 +412,7 @@ export async function startGoogleDeviceFlow(): Promise<DeviceFlowResult> {
     scope: GOOGLE_SCOPE,
   });
 
-  const res = await tauriFetch(GOOGLE_DEVICE_CODE_URL, {
+  const res = await fetch(GOOGLE_DEVICE_CODE_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
@@ -444,7 +444,7 @@ export async function startGoogleDeviceFlow(): Promise<DeviceFlowResult> {
         await sleep(interval);
         if (cancelled) return { success: false, error: "Cancelled" };
 
-        const tokenRes = await tauriFetch(GOOGLE_TOKEN_URL, {
+        const tokenRes = await fetch(GOOGLE_TOKEN_URL, {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: new URLSearchParams({
@@ -507,7 +507,7 @@ export async function fetchAvailableModels(
     }
 
     try {
-      const res = await tauriFetch(url, { headers });
+      const res = await fetch(url, { headers });
       if (!res.ok) throw new Error(`Ollama returned HTTP ${res.status}. Is Ollama running?`);
       const json = await res.json();
 
@@ -545,7 +545,7 @@ export async function fetchAvailableModels(
 
   switch (provider) {
     case "github": {
-      const res = await tauriFetch("https://api.githubcopilot.com/models", {
+      const res = await fetch("https://api.githubcopilot.com/models", {
         headers: { 
           Authorization: `Bearer ${accessToken}`,
           "Copilot-Integration-Id": "vscode-chat",
@@ -561,7 +561,7 @@ export async function fetchAvailableModels(
     }
 
     case "openai": {
-      const res = await tauriFetch("https://api.openai.com/v1/models", {
+      const res = await fetch("https://api.openai.com/v1/models", {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (!res.ok) throw new Error(`Failed to fetch OpenAI models: ${res.status}`);
@@ -587,7 +587,7 @@ export async function fetchAvailableModels(
       const anthropicAuthHeader = oauthData?.token_type === 'Bearer'
         ? { 'Authorization': `Bearer ${effectiveToken}` }
         : { 'x-api-key': effectiveToken };
-      const res = await tauriFetch("https://api.anthropic.com/v1/models", {
+      const res = await fetch("https://api.anthropic.com/v1/models", {
         headers: {
           ...anthropicAuthHeader,
           "anthropic-version": "2023-06-01",
@@ -602,7 +602,7 @@ export async function fetchAvailableModels(
     }
 
     case "google": {
-      const res = await tauriFetch("https://generativelanguage.googleapis.com/v1beta/models", {
+      const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models", {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (!res.ok) throw new Error(`Failed to fetch Google models: ${res.status}`);
@@ -623,7 +623,7 @@ export async function signOut(provider: string): Promise<void> {
     const tokenData = await getOAuthToken(provider);
     if (tokenData?.access_token) {
       try {
-        await tauriFetch(`https://oauth2.googleapis.com/revoke?token=${tokenData.access_token}`, {
+        await fetch(`https://oauth2.googleapis.com/revoke?token=${tokenData.access_token}`, {
           method: "POST",
         });
       } catch {

@@ -1,5 +1,4 @@
-import { check, type Update } from '@tauri-apps/plugin-updater';
-import { relaunch } from '@tauri-apps/plugin-process';
+const relaunch = () => (window as any).electronAPI.invoke('app_relaunch')
 
 export interface UpdateCheckResult {
   available: boolean;

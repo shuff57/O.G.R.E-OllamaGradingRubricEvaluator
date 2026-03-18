@@ -37,7 +37,7 @@
     testProfile,
     type ProfileTestReport
   } from '../../lib/profile-tester';
-  import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
+  ;
   import { getHandshakeToken } from '../../lib/provider-sync';
   import { parseSkillMarkdown } from '../../lib/skill-parser';
   import { saveSkill } from '../../lib/db';
@@ -379,7 +379,7 @@
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const response = await tauriFetch(`${SERVER_BASE}/api/generate-knowledge-profile`, {
+      const response = await fetch(`${SERVER_BASE}/api/generate-knowledge-profile`, {
         method: 'POST',
         headers,
         body: JSON.stringify({

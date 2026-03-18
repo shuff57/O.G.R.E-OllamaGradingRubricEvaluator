@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { getGradingSessions, getSetting, getProviderConfigs, initDB } from "../lib/db";
   import type { GradingSession } from "../lib/db";
-  import { openUrl } from "@tauri-apps/plugin-opener";
+  const openUrl = (url: string) => window.open(url, '_blank')
   import { deleteEmbeddingsBySessionId } from "../lib/vector-store";
   import { getEmbeddingStats, getSessionEmbeddingCounts, type EmbeddingStats } from "../lib/embedding-stats";
   import { reEmbedAll } from "../lib/re-embed";

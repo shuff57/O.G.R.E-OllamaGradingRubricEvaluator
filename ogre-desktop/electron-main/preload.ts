@@ -33,10 +33,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   getCdpPort: () => invoke<number | null>('get_cdp_port'),
   discoverCdpTarget: (port: number) => invoke<string | null>('discover_cdp_target', { port }),
+  captureAccessibilityTree: (tabId: string) => invoke<string>('capture_accessibility_tree', { tabId }),
+  cdpAttach: (tabId: string) => invoke('cdp_attach', { tabId }),
+  cdpSend: (tabId: string, method: string, params?: Record<string, unknown>) => invoke('cdp_send', { tabId, method, params }),
 
   dbQuery: (sql: string, params?: unknown[]) => invoke('db_query', { sql, params }),
   dbExecute: (sql: string, params?: unknown[]) => invoke('db_execute', { sql, params }),
 
   on: listen,
   emit: (event: string, payload: unknown) => ipcRenderer.send(event, payload),
+  invoke: (channel: string, args?: Record<string, unknown>) => ipcRenderer.invoke(channel, args),
 })

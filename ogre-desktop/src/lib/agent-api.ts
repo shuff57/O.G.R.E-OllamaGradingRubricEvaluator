@@ -5,7 +5,7 @@
  * Handles request/response formatting and parses various LLM output formats.
  */
 
-import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+;
 import { getHandshakeToken } from "./provider-sync";
 import type {
   AgentApiRequest,
@@ -36,7 +36,7 @@ function authHeaders(): Record<string, string> {
  * @throws Error if the server returns an error or is unreachable
  */
 export async function sendAgentRequest(request: AgentApiRequest): Promise<AgentApiResponse> {
-  const response = await tauriFetch(`${SERVER_BASE}/api/agent`, {
+  const response = await fetch(`${SERVER_BASE}/api/agent`, {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify(request),

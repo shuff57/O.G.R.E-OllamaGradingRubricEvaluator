@@ -17,7 +17,7 @@ vi.mock('./cdp-client', () => ({
   },
 }));
 
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from './electron-bridge';
 import { cdp } from './cdp-client';
 import {
   connectCDP, disconnectCDP, isConnected,

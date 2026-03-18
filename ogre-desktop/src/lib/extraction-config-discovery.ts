@@ -12,7 +12,7 @@
  * selector discovery call. This keeps the prompts focused and reduces hallucinations.
  */
 
-import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
+;
 import type { ExtractionConfig } from './site-profiles';
 import { getHandshakeToken } from './provider-sync';
 import { withRetry } from './ai-retry';
@@ -269,7 +269,7 @@ export async function discoverExtractionConfig(
   if (options?.model) body.model = options.model;
 
   const response = await withRetry(async () => {
-    const res = await tauriFetch(`${SERVER_BASE}/api/chat`, {
+    const res = await fetch(`${SERVER_BASE}/api/chat`, {
       method: 'POST',
       headers: authHeaders(),
       body: JSON.stringify(body),

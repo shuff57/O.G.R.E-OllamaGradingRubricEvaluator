@@ -10,7 +10,7 @@ vi.mock('./browser', () => ({
   evalScript: vi.fn(),
 }));
 
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from './electron-bridge';
 import { evalScriptJSON } from './browser';
 import {
   setGdkActiveTab,

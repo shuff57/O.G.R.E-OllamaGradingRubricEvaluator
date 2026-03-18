@@ -8,7 +8,7 @@
  * Types, prompt templates, and runDiscovery() workflow.
  */
 
-import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+;
 import { evalScriptJSON, captureWebviewScreenshot, getEmbeddedUrl } from "./browser";
 import { getHandshakeToken } from "./provider-sync";
 import type { RubricCriterion } from "./rubric-api";
@@ -620,7 +620,7 @@ async function callDiscoveryAI(
   if (options?.model) body.model = options.model;
 
   const response = await withRetry(async () => {
-    const res = await tauriFetch(`${SERVER_BASE}/api/chat`, {
+    const res = await fetch(`${SERVER_BASE}/api/chat`, {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify(body),
@@ -1428,7 +1428,7 @@ export async function generateRubricFromText(
   if (options?.model) body.model = options.model;
 
   const response = await withRetry(async () => {
-    const res = await tauriFetch(`${SERVER_BASE}/api/chat`, {
+    const res = await fetch(`${SERVER_BASE}/api/chat`, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
