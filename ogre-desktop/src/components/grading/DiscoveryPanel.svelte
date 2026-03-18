@@ -160,7 +160,7 @@
     testReport = null;
 
     try {
-      const intentHints = intentToDiscoveryHints(mode, mode === 'form' ? formInput : mode === 'chat' ? chatState.messages : exampleSelections);
+      const intentHints = intentToDiscoveryHints(mode, mode === 'form' ? formInput : mode === 'train' ? chatState.messages : exampleSelections);
 
       // Check for existing knowledge profile to use as hints
       let knownSelectors: Record<string, string> | undefined;
@@ -455,7 +455,7 @@
             <input id="estimated-students" type="number" bind:value={formInput.estimatedStudentCount} placeholder="e.g. 25">
           </div>
         </div>
-      {:else if mode === 'chat'}
+      {:else if mode === 'train'}
         <DiscoveryChat bind:chatState onChatSubmit={handleChatSubmit} />
       {:else if mode === 'example'}
         <div class="example-mode-ui"><p>Click elements on the page to teach the AI (Coming Soon)</p></div>
