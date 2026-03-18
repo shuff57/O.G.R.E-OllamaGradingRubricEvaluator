@@ -7,6 +7,7 @@ vi.mock('./agent-dom', () => ({
 
 vi.mock('./browser', () => ({
   captureWebviewScreenshot: vi.fn().mockResolvedValue('data:image/png;base64,abc'),
+  captureAccessibilityTree: vi.fn().mockResolvedValue(''),
   getEmbeddedUrl: vi.fn().mockResolvedValue(null),
 }));
 
@@ -42,6 +43,8 @@ beforeEach(async () => {
   (formatDomForPrompt as ReturnType<typeof vi.fn>).mockReturnValue('');
   const { captureWebviewScreenshot } = await import('./browser');
   (captureWebviewScreenshot as ReturnType<typeof vi.fn>).mockResolvedValue('data:image/png;base64,abc');
+  const { captureAccessibilityTree } = await import('./browser');
+  (captureAccessibilityTree as ReturnType<typeof vi.fn>).mockResolvedValue('');
   const { getEmbeddedUrl } = await import('./browser');
   (getEmbeddedUrl as ReturnType<typeof vi.fn>).mockResolvedValue(null);
   const { buildSiteContextInjection, buildSkillInjection } = await import('./skills-api');
@@ -298,6 +301,30 @@ describe('agent-loop: AI error', () => {
     const errorEvent = events.find((e) => e.type === 'error');
     expect(errorEvent).toBeDefined();
     expect(errorEvent.message).toBe('Network error');
+  });
+});
+
+describe('agent-loop: accessibility tree page state', () => {
+  test('prefers accessibility tree as dom prompt when tree has >20 nodes', async () => {
+    const { captureInteractiveDom, formatDomForPrompt } = await import('./agent-dom');
+    const { captureAccessibilityTree } = await import('./browser');
+
+    (captureInteractiveDom as ReturnType<typeof vi.fn>).mockResolvedValue([{ selector: '#btn' }]);
+    (formatDomForPrompt as ReturnType<typeof vi.fn>).mockReturnValue('DOM SNAPSHOT');
+
+    const axTree = Array.from({ length: 21 }, (_, i) => `- button \"Node ${i + 1}\"`).join('\n');
+    (captureAccessibilityTree as ReturnType<typeof vi.fn>).mockResolvedValue(axTree);
+
+    mockSend.mockResolvedValueOnce(DONE_RESPONSE);
+    mockExecute.mockResolvedValueOnce({ success: true, data: { message: 'Done!' } });
+
+    const controller = createAgentController();
+    const gen = controller.start({ mode: 'auto', initialMessage: 'Do a task', compact: false, config: { actionDelayMs: 0, maxSteps: 2, maxTimeMs: 30000, maxSameAction: 3 } });
+    await collectEvents(gen);
+
+    expect(mockSend).toHaveBeenCalled();
+    const firstCall = mockSend.mock.calls[0]?.[0] as { dom?: string };
+    expect(firstCall.dom).toBe(axTree);
   });
 });
 
