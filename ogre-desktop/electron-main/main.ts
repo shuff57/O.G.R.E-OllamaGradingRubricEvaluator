@@ -1,12 +1,9 @@
 import { app, BrowserWindow } from 'electron'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { registerIpcHandlers } from './ipc-handlers'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-
 if (process.platform === 'linux') {
+  app.disableHardwareAcceleration()
   app.commandLine.appendSwitch('disable-gpu')
   app.commandLine.appendSwitch('disable-software-rasterizer')
   app.commandLine.appendSwitch('no-sandbox')
@@ -24,7 +21,7 @@ function createWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      preload: path.join(__dirname, 'preload.mjs'),
+      preload: path.join(process.cwd(), 'dist-electron', 'preload.mjs'),
     },
   })
 
@@ -33,7 +30,7 @@ function createWindow(): BrowserWindow {
   } else if (isDev) {
     void win.loadURL('http://localhost:5173')
   } else {
-    void win.loadFile(path.join(__dirname, '../dist/index.html'))
+    void win.loadFile(path.join(process.cwd(), 'dist', 'index.html'))
   }
 
   return win

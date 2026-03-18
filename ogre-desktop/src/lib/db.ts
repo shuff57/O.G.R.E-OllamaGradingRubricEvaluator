@@ -1,5 +1,3 @@
-import Database from "@tauri-apps/plugin-sql";
-
 // ── Types ────────────────────────────────────────────────────────────────
 
 export interface ProviderConfig {
@@ -85,23 +83,24 @@ export interface ResponseEmbedding {
   student_response: string | null;
   score: number;
   feedback: string | null;
-  embedding: Uint8Array | number[];  // Tauri IPC deserializes BLOBs as number[]
+  embedding: Uint8Array | number[];
   embedding_model: string;
   created_at: string;
 }
-// ── Database Singleton ───────────────────────────────────────────────────
 
-let db: Database | null = null;
+// ── IPC Bridge ───────────────────────────────────────────────────────────
 
-/**
- * Initialize (or return existing) database connection.
- * Migrations run automatically on first load via tauri-plugin-sql.
- */
-export async function initDB(): Promise<Database> {
-  if (!db) {
-    db = await Database.load("sqlite:ogre.db");
-  }
-  return db;
+const eAPI = () => (window as unknown as { electronAPI: {
+  dbQuery: (sql: string, params?: unknown[]) => Promise<unknown[]>;
+  dbExecute: (sql: string, params?: unknown[]) => Promise<{ rowsAffected: number; lastInsertId: number | bigint }>;
+} }).electronAPI;
+
+async function dbQuery<T>(sql: string, params?: unknown[]): Promise<T[]> {
+  return eAPI().dbQuery(sql, params) as Promise<T[]>;
+}
+
+async function dbExecute(sql: string, params?: unknown[]): Promise<void> {
+  await eAPI().dbExecute(sql, params);
 }
 
 // ── Provider Configs ─────────────────────────────────────────────────────
@@ -110,8 +109,7 @@ export async function initDB(): Promise<Database> {
  * Get all provider configurations, ordered by id.
  */
 export async function getProviderConfigs(): Promise<ProviderConfig[]> {
-  const database = await initDB();
-  return await database.select<ProviderConfig[]>(
+  return dbQuery<ProviderConfig[]>(
     "SELECT * FROM provider_configs ORDER BY id"
   );
 }
@@ -122,8 +120,7 @@ export async function getProviderConfigs(): Promise<ProviderConfig[]> {
 export async function getProviderConfig(
   id: string
 ): Promise<ProviderConfig | null> {
-  const database = await initDB();
-  const rows = await database.select<ProviderConfig[]>(
+  const rows = dbQuery<ProviderConfig[]>(
     "SELECT * FROM provider_configs WHERE id = $1",
     [id]
   );
@@ -141,8 +138,7 @@ export async function saveProviderConfig(config: {
   model?: string | null;
   is_active?: number;
 }): Promise<void> {
-  const database = await initDB();
-  await database.execute(
+  dbExecute(
     `INSERT INTO provider_configs (id, api_url, api_key, model, is_active, created_at, updated_at)
      VALUES ($1, $2, $3, $4, $5, datetime('now'), datetime('now'))
      ON CONFLICT(id) DO UPDATE SET
@@ -165,8 +161,7 @@ export async function saveProviderConfig(config: {
  * Delete a provider configuration.
  */
 export async function deleteProviderConfig(id: string): Promise<void> {
-  const database = await initDB();
-  await database.execute("DELETE FROM provider_configs WHERE id = $1", [id]);
+  dbExecute("DELETE FROM provider_configs WHERE id = $1", [id]);
 }
 
 /**
@@ -174,9 +169,8 @@ export async function deleteProviderConfig(id: string): Promise<void> {
  * Sets is_active=0 for all providers, then is_active=1 + model for the specified provider.
  */
 export async function updateActiveProvider(providerId: string, model: string): Promise<void> {
-  const database = await initDB();
-  await database.execute("UPDATE provider_configs SET is_active = 0");
-  await database.execute(
+  dbExecute("UPDATE provider_configs SET is_active = 0");
+  dbExecute(
     "UPDATE provider_configs SET is_active = 1, model = $1, updated_at = datetime('now') WHERE id = $2",
     [model, providerId]
   );
@@ -188,8 +182,7 @@ export async function updateActiveProvider(providerId: string, model: string): P
  * Get all grading sessions, most recent first.
  */
 export async function getGradingSessions(): Promise<GradingSession[]> {
-  const database = await initDB();
-  return await database.select<GradingSession[]>(
+  return dbQuery<GradingSession[]>(
     "SELECT * FROM grading_sessions ORDER BY created_at DESC"
   );
 }
@@ -210,8 +203,7 @@ export async function insertGradingSession(session: {
   question_id?: string | null;
   custom_instructions?: string | null;
 }): Promise<number> {
-  const database = await initDB();
-  const result = await database.execute(
+  const result = dbExecute(
     `INSERT INTO grading_sessions
        (provider_id, model, student_count, mean_score, min_score, max_score,
         median_score, max_possible_score, page_url, question_id, custom_instructions)
@@ -239,8 +231,7 @@ export async function insertGradingSession(session: {
  * Get a setting value by key. Returns null if not found.
  */
 export async function getSetting(key: string): Promise<string | null> {
-  const database = await initDB();
-  const rows = await database.select<AppSetting[]>(
+  const rows = dbQuery<AppSetting[]>(
     "SELECT value FROM app_settings WHERE key = $1",
     [key]
   );
@@ -254,8 +245,7 @@ export async function setSetting(
   key: string,
   value: string
 ): Promise<void> {
-  const database = await initDB();
-  await database.execute(
+  dbExecute(
     `INSERT INTO app_settings (key, value) VALUES ($1, $2)
      ON CONFLICT(key) DO UPDATE SET value = $2`,
     [key, value]
@@ -279,8 +269,7 @@ export interface OAuthToken {
  * Get an OAuth token by provider.
  */
 export async function getOAuthToken(provider: string): Promise<OAuthToken | null> {
-  const database = await initDB();
-  const rows = await database.select<OAuthToken[]>(
+  const rows = dbQuery<OAuthToken[]>(
     "SELECT * FROM oauth_tokens WHERE provider = $1",
     [provider]
   );
@@ -297,8 +286,7 @@ export async function saveOAuthToken(token: {
   token_type?: string | null;
   expires_at?: number | null;
 }): Promise<void> {
-  const database = await initDB();
-  await database.execute(
+  dbExecute(
     `INSERT INTO oauth_tokens (provider, access_token, refresh_token, token_type, expires_at, created_at, updated_at)
      VALUES ($1, $2, $3, $4, $5, datetime('now'), datetime('now'))
      ON CONFLICT(provider) DO UPDATE SET
@@ -321,8 +309,7 @@ export async function saveOAuthToken(token: {
  * Delete an OAuth token by provider.
  */
 export async function deleteOAuthToken(provider: string): Promise<void> {
-  const database = await initDB();
-  await database.execute("DELETE FROM oauth_tokens WHERE provider = $1", [provider]);
+  dbExecute("DELETE FROM oauth_tokens WHERE provider = $1", [provider]);
 }
 
 // ── Site Credentials ────────────────────────────────────────────────────
@@ -331,8 +318,7 @@ export async function deleteOAuthToken(provider: string): Promise<void> {
  * Get all site credentials, ordered by site_name.
  */
 export async function getSiteCredentials(): Promise<SiteCredential[]> {
-  const database = await initDB();
-  return await database.select<SiteCredential[]>(
+  return dbQuery<SiteCredential[]>(
     "SELECT * FROM site_credentials ORDER BY site_name"
   );
 }
@@ -342,8 +328,7 @@ export async function getSiteCredentials(): Promise<SiteCredential[]> {
  * Returns all credentials where the given URL matches the url_pattern.
  */
 export async function getSiteCredentialsByUrl(url: string): Promise<SiteCredential[]> {
-  const database = await initDB();
-  return await database.select<SiteCredential[]>(
+  return dbQuery<SiteCredential[]>(
     "SELECT * FROM site_credentials WHERE $1 LIKE url_pattern ORDER BY site_name",
     [url]
   );
@@ -362,11 +347,10 @@ export async function saveSiteCredential(credential: {
   password: string;
   notes?: string | null;
 }): Promise<number> {
-  const database = await initDB();
   
   if (credential.id) {
     // Update existing credential
-    await database.execute(
+    dbExecute(
       `UPDATE site_credentials
        SET site_name = $1, url_pattern = $2, username = $3, password = $4, notes = $5, updated_at = datetime('now')
        WHERE id = $6`,
@@ -382,7 +366,7 @@ export async function saveSiteCredential(credential: {
     return credential.id;
   } else {
     // Insert new credential
-    const result = await database.execute(
+    const result = dbExecute(
       `INSERT INTO site_credentials (site_name, url_pattern, username, password, notes)
        VALUES ($1, $2, $3, $4, $5)`,
       [
@@ -401,8 +385,7 @@ export async function saveSiteCredential(credential: {
  * Delete a site credential by id.
  */
 export async function deleteSiteCredential(id: number): Promise<void> {
-  const database = await initDB();
-  await database.execute("DELETE FROM site_credentials WHERE id = $1", [id]);
+  dbExecute("DELETE FROM site_credentials WHERE id = $1", [id]);
 }
 
 // ── Site Profiles ───────────────────────────────────────────────────────
@@ -411,8 +394,7 @@ export async function deleteSiteCredential(id: number): Promise<void> {
  * Get all site profiles, ordered by name.
  */
 export async function getSiteProfiles(): Promise<SiteProfile[]> {
-  const database = await initDB();
-  return await database.select<SiteProfile[]>(
+  return dbQuery<SiteProfile[]>(
     "SELECT * FROM site_profiles ORDER BY name"
   );
 }
@@ -421,8 +403,7 @@ export async function getSiteProfiles(): Promise<SiteProfile[]> {
  * Get a single site profile by id.
  */
 export async function getSiteProfile(id: string): Promise<SiteProfile | null> {
-  const database = await initDB();
-  const rows = await database.select<SiteProfile[]>(
+  const rows = dbQuery<SiteProfile[]>(
     "SELECT * FROM site_profiles WHERE id = $1",
     [id]
   );
@@ -444,10 +425,9 @@ export async function saveSiteProfile(profile: {
   navigation: string;
   extraction?: string | null;
 }): Promise<string> {
-  const database = await initDB();
   const id = profile.id || crypto.randomUUID();
 
-  await database.execute(
+  dbExecute(
     `INSERT INTO site_profiles (id, name, url_patterns, selectors, feedback, save, navigation, extraction)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      ON CONFLICT(id) DO UPDATE SET
@@ -471,8 +451,7 @@ export async function saveSiteProfile(profile: {
  * Delete a site profile by id.
  */
 export async function deleteSiteProfile(id: string): Promise<void> {
-  const database = await initDB();
-  await database.execute("DELETE FROM site_profiles WHERE id = $1", [id]);
+  dbExecute("DELETE FROM site_profiles WHERE id = $1", [id]);
 }
 
 /**
@@ -480,8 +459,7 @@ export async function deleteSiteProfile(id: string): Promise<void> {
  * Returns all profiles where the URL matches any of the url_patterns.
  */
 export async function findSiteProfilesByUrl(url: string): Promise<SiteProfile[]> {
-  const database = await initDB();
-  return await database.select<SiteProfile[]>(
+  return dbQuery<SiteProfile[]>(
     "SELECT * FROM site_profiles WHERE $1 LIKE url_patterns ORDER BY name",
     [url]
   );
@@ -494,8 +472,7 @@ export async function findSiteProfilesByUrl(url: string): Promise<SiteProfile[]>
  * Returns null if no session exists for that URL.
  */
 export async function getBatchSession(url: string): Promise<BatchSession | null> {
-  const database = await initDB();
-  const rows = await database.select<BatchSession[]>(
+  const rows = dbQuery<BatchSession[]>(
     "SELECT * FROM batch_session WHERE url = $1",
     [url]
   );
@@ -507,8 +484,7 @@ export async function getBatchSession(url: string): Promise<BatchSession | null>
  * Records the last successfully graded student name so grading can resume.
  */
 export async function saveBatchSession(url: string, lastStudentName: string): Promise<void> {
-  const database = await initDB();
-  await database.execute(
+  dbExecute(
     `INSERT INTO batch_session (url, last_student_name, timestamp)
      VALUES ($1, $2, datetime('now'))
      ON CONFLICT(url) DO UPDATE SET
@@ -523,8 +499,7 @@ export async function saveBatchSession(url: string, lastStudentName: string): Pr
  * Called on batch completion or when user chooses "Start Fresh".
  */
 export async function clearBatchSession(url: string): Promise<void> {
-  const database = await initDB();
-  await database.execute("DELETE FROM batch_session WHERE url = $1", [url]);
+  dbExecute("DELETE FROM batch_session WHERE url = $1", [url]);
 }
 
 
@@ -534,24 +509,21 @@ export async function clearBatchSession(url: string): Promise<void> {
  * Get all skills, ordered by name.
  */
 export async function getSkills(): Promise<Skill[]> {
-  const database = await initDB();
-  return await database.select<Skill[]>("SELECT * FROM skills ORDER BY name");
+  return dbQuery<Skill[]>("SELECT * FROM skills ORDER BY name");
 }
 
 /**
  * Get only active skills (is_active = 1), ordered by name.
  */
 export async function getActiveSkills(): Promise<Skill[]> {
-  const database = await initDB();
-  return await database.select<Skill[]>("SELECT * FROM skills WHERE is_active = 1 ORDER BY name");
+  return dbQuery<Skill[]>("SELECT * FROM skills WHERE is_active = 1 ORDER BY name");
 }
 
 /**
  * Get a single skill by id. Returns null if not found.
  */
 export async function getSkill(id: string): Promise<Skill | null> {
-  const database = await initDB();
-  const rows = await database.select<Skill[]>("SELECT * FROM skills WHERE id = $1", [id]);
+  const rows = dbQuery<Skill[]>("SELECT * FROM skills WHERE id = $1", [id]);
   return rows.length > 0 ? rows[0] : null;
 }
 
@@ -570,16 +542,15 @@ export async function saveSkill(skill: {
   is_active?: number;
   url_pattern?: string | null;
 }): Promise<string> {
-  const database = await initDB();
   const id = skill.id || crypto.randomUUID();
   if (skill.id) {
-    await database.execute(
+    dbExecute(
       `UPDATE skills SET name = $1, description = $2, content = $3, source = $4, source_id = $5, is_active = $6, url_pattern = $7, updated_at = datetime('now') WHERE id = $8`,
       [skill.name, skill.description ?? '', skill.content ?? '', skill.source ?? null, skill.source_id ?? null, skill.is_active ?? 0, skill.url_pattern ?? null, skill.id]
     );
     return skill.id;
   } else {
-    await database.execute(
+    dbExecute(
       `INSERT INTO skills (id, name, description, content, source, source_id, is_active, url_pattern) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [id, skill.name, skill.description ?? '', skill.content ?? '', skill.source ?? null, skill.source_id ?? null, skill.is_active ?? 0, skill.url_pattern ?? null]
     );
@@ -592,8 +563,7 @@ export async function saveSkill(skill: {
  * Used for site-based profile injection in Agent Mode.
  */
 export async function getSkillsWithUrlPattern(): Promise<Skill[]> {
-  const database = await initDB();
-  return await database.select<Skill[]>(
+  return dbQuery<Skill[]>(
     "SELECT * FROM skills WHERE url_pattern IS NOT NULL AND url_pattern != '' ORDER BY name"
   );
 }
@@ -602,8 +572,7 @@ export async function getSkillsWithUrlPattern(): Promise<Skill[]> {
  * Toggle a skill's active state.
  */
 export async function updateSkillActive(id: string, isActive: number): Promise<void> {
-  const database = await initDB();
-  await database.execute(
+  dbExecute(
     "UPDATE skills SET is_active = $1, updated_at = datetime('now') WHERE id = $2",
     [isActive, id]
   );
@@ -613,8 +582,7 @@ export async function updateSkillActive(id: string, isActive: number): Promise<v
  * Delete a skill by id.
  */
 export async function deleteSkill(id: string): Promise<void> {
-  const database = await initDB();
-  await database.execute("DELETE FROM skills WHERE id = $1", [id]);
+  dbExecute("DELETE FROM skills WHERE id = $1", [id]);
 }
 
 /**
@@ -622,8 +590,7 @@ export async function deleteSkill(id: string): Promise<void> {
  * Useful for checking if a skill from a particular source already exists.
  */
 export async function getSkillBySource(source: string, sourceId: string): Promise<Skill | null> {
-  const database = await initDB();
-  const rows = await database.select<Skill[]>(
+  const rows = dbQuery<Skill[]>(
     "SELECT * FROM skills WHERE source = $1 AND source_id = $2",
     [source, sourceId]
   );
