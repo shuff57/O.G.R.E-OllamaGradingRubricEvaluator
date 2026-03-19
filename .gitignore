@@ -56,3 +56,6 @@ skills-lock.json
 
 # Git worktrees
 .worktrees/
+
+# Swarm Hive (local trial — do NOT commit during swarm-tools trial)
+.hive/
