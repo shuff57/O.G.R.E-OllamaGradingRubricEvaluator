@@ -1,43 +1,44 @@
 # O.G.R.E Desktop
 
-Native Windows desktop application for AI-powered grading with integrated server management.
+Native desktop application (Linux + Windows) for AI-powered grading with integrated server management.
 
 ## 📥 Download
 
 **[Latest Release](https://github.com/shuff57/O.G.R.E-OllamaGradingRubricEvaluator/releases/latest)**
 
 Choose your preferred installer:
-- **MSI Installer** (`.msi`) — Traditional Windows installer package
-- **NSIS Installer** (`.exe`) — Lightweight executable installer
+- **AppImage** (`.AppImage`) — Linux portable bundle
+- **NSIS Installer** (`.exe`) — Windows lightweight executable installer
 
 ## Features
 
-- 🖥️ **Native Windows Application** — Fast, responsive desktop experience
+- 🖥️ **Native Desktop Application** — Fast, responsive desktop experience (Linux + Windows)
 - 🔄 **Automatic Updates** — Get notified when new versions are available
 - ⚙️ **Integrated Grading Server** — Manages the backend server automatically
 - 🔒 **Secure** — Cryptographically signed updates
-- 🎨 **Modern UI** — Built with Svelte and Tauri for optimal performance
+- 🎨 **Modern UI** — Built with Svelte and Electron for optimal performance
+- 🌐 **CDP Browser Control** — Consistent, cross-platform browser automation via Chrome DevTools Protocol
 
 ## System Requirements
 
-- **OS:** Windows 10 or later (64-bit)
+- **Linux:** Ubuntu 18.04+ / Debian 10+ (64-bit) or **Windows 10+** (64-bit)
 - **RAM:** 4 GB minimum, 8 GB recommended
-- **Disk Space:** 100 MB for application + storage for grading data
+- **Disk Space:** 200 MB for application + storage for grading data
 - **Internet:** Required for AI provider connections
 
 ## Installation
 
 1. Download the installer from the [latest release page](https://github.com/shuff57/O.G.R.E-OllamaGradingRubricEvaluator/releases/latest)
-2. Run the downloaded `.msi` or `.exe` file
-3. Follow the installation wizard prompts
-4. Launch "O.G.R.E Desktop" from your Start Menu
+2. **Linux:** `chmod +x O.G.R.E-Desktop-*.AppImage && ./O.G.R.E-Desktop-*.AppImage`
+3. **Windows:** Run the downloaded `.exe` file and follow the installation wizard
+4. The app will automatically check for updates on startup
 
 ## Development
 
 ### Prerequisites
 
 - [Node.js](https://nodejs.org/) v20 or later
-- [Rust](https://www.rust-lang.org/tools/install) (latest stable)
+- npm v10 or later
 
 ### Setup
 
@@ -55,58 +56,62 @@ npm install
 
 ```bash
 # Run in development mode (hot-reload enabled)
-npm run tauri:dev
+npm run electron:dev
 ```
 
 This will:
 1. Start the Vite dev server (http://localhost:5173)
-2. Launch the Tauri app in development mode
+2. Launch the Electron app in development mode
 3. Enable hot-reload for frontend changes
 
 ### Building for Production
 
 ```bash
 # Build the production app
-npm run tauri:build
+npm run electron:build
 ```
 
 Installers will be created in:
-- `src-tauri/target/release/bundle/msi/` — MSI installer
-- `src-tauri/target/release/bundle/nsis/` — NSIS installer
+- `dist-electron/` — Compiled Electron main process
+- `release/` — AppImage (Linux) and NSIS installer (Windows)
 
 ### Project Structure
 
 ```
 ogre-desktop/
-├── src/                    # Svelte frontend source
-│   ├── App.svelte         # Main application component
-│   └── main.js            # Frontend entry point
-├── src-tauri/             # Rust backend
-│   ├── src/               # Rust source files
-│   ├── binaries/          # Bundled server resources
-│   ├── icons/             # App icons
-│   ├── Cargo.toml         # Rust dependencies
-│   └── tauri.conf.json    # Tauri configuration
-├── public/                # Static assets
-├── dist/                  # Build output (generated)
-├── package.json           # Node dependencies and scripts
-└── vite.config.js         # Vite configuration
+├── src/                        # Svelte frontend source
+│   ├── App.svelte             # Main application component
+│   ├── lib/                   # Shared libraries (browser, grading, agent loop)
+│   └── pages/                 # Page components
+├── electron-main/             # Electron main process (Node.js)
+│   ├── main.ts                # Entry point, BrowserWindow creation
+│   ├── preload.ts             # Secure contextBridge IPC bridge
+│   ├── browser-manager.ts     # WebContentsView + CDP management
+│   ├── cdp-bridge.ts          # CDP method allowlist + forwarding
+│   ├── database.ts            # SQLite via better-sqlite3
+│   ├── ipc-handlers.ts        # All IPC channel registrations
+│   ├── oauth-server.ts        # Local OAuth callback server
+│   ├── server-manager.ts      # Grading server lifecycle
+│   └── updater.ts             # electron-updater (auto-update)
+├── public/                    # Static assets
+├── dist-electron/             # Compiled main process (generated)
+├── electron-builder.yml       # electron-builder config (AppImage + NSIS)
+├── package.json               # Node dependencies and scripts
+└── vite.config.js             # Vite configuration with vite-plugin-electron
 ```
 
 ## Building and Releasing
 
 ### Creating a Release
 
-See **[RELEASE.md](./RELEASE.md)** in the ogre-desktop directory for complete instructions.
-
 **Quick reference:**
 
 ```bash
-# 1. Update version numbers
-# Edit package.json and src-tauri/tauri.conf.json
+# 1. Update version number
+# Edit package.json version field
 
 # 2. Commit and tag
-git add package.json src-tauri/tauri.conf.json
+git add package.json
 git commit -m "chore: bump version to 0.2.0"
 git push origin desktop
 
@@ -114,47 +119,44 @@ git tag -a v0.2.0 -m "Release v0.2.0"
 git push origin v0.2.0
 
 # 3. GitHub Actions will automatically:
-#    - Build installers
+#    - Build AppImage (Linux) + NSIS installer (Windows)
 #    - Create a GitHub Release
 #    - Upload all artifacts
 ```
 
 ### Automatic Updates
 
-The app includes an automatic updater that:
-- Checks for new versions on startup
+The app includes an automatic updater (electron-updater) that:
+- Checks for new versions on startup via GitHub Releases
 - Downloads updates in the background
 - Prompts users to install updates
 - Verifies update signatures for security
 
-Update configuration is in `src-tauri/tauri.conf.json`:
-```json
-{
-  "plugins": {
-    "updater": {
-      "endpoints": [
-        "https://github.com/shuff57/O.G.R.E-OllamaGradingRubricEvaluator/releases/latest/download/latest.json"
-      ]
-    }
-  }
-}
+Update endpoint is configured in `electron-builder.yml`:
+```yaml
+publish:
+  provider: github
+  owner: shuff57
+  repo: O.G.R.E-OllamaGradingRubricEvaluator
 ```
 
 ## Technology Stack
 
 - **Frontend:** Svelte 5 + Vite
-- **Backend:** Tauri v2 (Rust)
+- **Backend:** Electron (Node.js)
+- **Browser Control:** Chrome DevTools Protocol (CDP) via Electron's `webContents.debugger`
+- **Database:** SQLite via `better-sqlite3`
 - **Grading Server:** Bun/Node.js (spawned as child process)
-- **Updates:** Tauri updater plugin with signature verification
-- **Build:** GitHub Actions CI/CD
+- **Updates:** `electron-updater` with GitHub Releases
+- **Build:** electron-builder + GitHub Actions CI/CD
 
 ## Troubleshooting
 
 ### App Won't Launch
 
-- Check Windows Event Viewer for error details
-- Ensure you have the latest Windows updates installed
-- Try running as administrator
+- **Linux:** Ensure AppImage has execute permission: `chmod +x *.AppImage`
+- **Windows:** Check Windows Event Viewer for error details
+- Try running from terminal to see error output
 
 ### Update Fails
 
@@ -165,22 +167,22 @@ Update configuration is in `src-tauri/tauri.conf.json`:
 ### Grading Server Issues
 
 - The server runs automatically when the app starts
-- Check Task Manager to ensure `grading-server.exe` is running
-- Logs are stored in the app data directory
+- Check your system process list for the grading server process
+- Logs are stored in the app data directory (`~/.config/ogre-desktop/` on Linux)
 
 ### Build Errors
-
-**Rust compilation errors:**
-```bash
-# Update Rust toolchain
-rustup update stable
-```
 
 **Node/npm issues:**
 ```bash
 # Clear cache and reinstall
 rm -rf node_modules package-lock.json
 npm install
+```
+
+**TypeScript errors in electron-main/:**
+```bash
+cd electron-main
+npx tsc --noEmit
 ```
 
 ## Contributing
@@ -202,4 +204,3 @@ MIT License — see [LICENSE](../LICENSE) file for details.
 - 📖 [Main Documentation](../README.md)
 - 🐛 [Report Issues](https://github.com/shuff57/O.G.R.E-OllamaGradingRubricEvaluator/issues)
 - 📦 [Latest Releases](https://github.com/shuff57/O.G.R.E-OllamaGradingRubricEvaluator/releases)
- 📋 [Release Guide](./RELEASE.md)
