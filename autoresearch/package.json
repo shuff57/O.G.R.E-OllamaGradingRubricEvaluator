@@ -1,0 +1,10 @@
+{
+  "name": "autoresearch",
+  "type": "module",
+  "devDependencies": {
+    "vitest": "*"
+  },
+  "scripts": {
+    "test": "vitest run"
+  }
+}
