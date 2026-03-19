@@ -1,0 +1,125 @@
+{
+  "task": "task-22-e2e-grading",
+  "timestamp": "2026-03-18T17:40:26-07:00",
+  "worktree": "/home/shuff57/Documents/GitHub/O.G.R.E-OllamaGradingRubricEvaluator/.worktrees/electron-migration/ogre-desktop",
+  "constraints": {
+    "electron_launch_attempted": false,
+    "real_site_grade_submission_attempted": false,
+    "source_files_modified": false
+  },
+  "commands": {
+    "vitest": {
+      "command": "npm run test -- --run",
+      "log_file": ".sisyphus/evidence/task-22-e2e-grading-vitest.log",
+      "summary": {
+        "test_files_passed": 61,
+        "test_files_total": 61,
+        "tests_passed": 1252,
+        "tests_total": 1278,
+        "tests_todo": 26,
+        "status": "pass"
+      }
+    },
+    "tauri_grep_required": {
+      "command": "grep -r \"@tauri-apps\" src/ electron-main/ --include=\"*.ts\" --include=\"*.svelte\" | grep -v \".test.ts\"",
+      "log_file": ".sisyphus/evidence/task-22-e2e-grading-tauri-grep.txt",
+      "raw_match_count": 1,
+      "raw_matches": [
+        "src/lib/cdp-actions.ts: * Zero npm dependencies beyond ./cdp-client, ./agent-types, @tauri-apps/api/core."
+      ],
+      "interpretation": "single documentation comment mention; no import usage"
+    },
+    "tauri_import_check_additional": {
+      "command": "grep for import/from '@tauri-apps' across *.ts/*.svelte",
+      "result": "no matches"
+    },
+    "build_verification": {
+      "command": "npm run build",
+      "status": "pass"
+    }
+  },
+  "static_code_path_audit": {
+    "navigate_extract_grade_fill": {
+      "verdict": "wired",
+      "navigate": {
+        "path": [
+          "src/pages/Browser.svelte:342-354 handleNavigate()",
+          "src/lib/browser.ts:30-36 navigateEmbedded() -> invoke('navigate_embedded', ...)",
+          "src/lib/electron-bridge.ts:10-12 invoke() -> window.electronAPI.invoke",
+          "electron-main/browser-manager.ts:145-147 ipcMain.handle('navigate_embedded')"
+        ],
+        "channel_used": "navigate_embedded IPC channel (not eval_webview_script)"
+      },
+      "extract": {
+        "path": [
+          "src/components/grading/batch/BatchProgress.svelte:281 batchGrader.start(...)",
+          "src/lib/batch-grader.ts:1354 extractRubric(...), 1360 extractStudents(...)",
+          "src/lib/batch-grader.ts:264/318 evalScriptJSON(...)",
+          "src/lib/browser.ts:219-233 evalScriptJSON() -> evalScript()",
+          "src/lib/browser.ts:181-197 CDP Runtime.evaluate primary, 175/178 eval_webview_script fallback"
+        ]
+      },
+      "grade": {
+        "path": [
+          "src/components/grading/batch/BatchProgress.svelte:420 startBatchGrading(...)",
+          "src/lib/grading-api.ts:593-700 startBatchGrading()",
+          "src/lib/grading-api.ts:625 fetch POST http://localhost:3456/api/grade"
+        ]
+      },
+      "fill": {
+        "path": [
+          "src/components/grading/batch/BatchProgress.svelte:469-499 applyResult()",
+          "src/lib/batch-grader.ts:1479-1497 applyGrade()",
+          "src/lib/batch-grader.ts:752-834 fillGrade()",
+          "src/lib/batch-grader.ts:762 evalScriptJSON(...) -> browser.ts evalScript()",
+          "src/lib/browser.ts:181-197 CDP Runtime.evaluate primary, invoke('eval_webview_script') fallback"
+        ]
+      }
+    },
+    "agent_loop_accessibility_tree_primary_state": {
+      "verdict": "yes",
+      "evidence": [
+        "src/lib/agent-loop.ts:250 captureAccessibilityTree() called before screenshot",
+        "src/lib/agent-loop.ts:251-253 when AX tree node count > 20, dom is replaced by AX tree",
+        "src/lib/agent-loop.ts:257 screenshot captured after AX substitution"
+      ],
+      "primary_state_logic": "AX tree is preferred over interactive DOM when sufficiently populated"
+    },
+    "cdp_fill_dispatch_in_browser_actions": {
+      "verdict": "yes",
+      "evidence": {
+        "no_gdk_import": "src/lib/browser-actions.ts imports ./cdp-actions and ./cdp-client; no gdk-actions import",
+        "cdp_backed_dispatch": [
+          "click -> pwClick (cdp-actions)",
+          "type -> pwType (cdp-actions)",
+          "scroll -> pwScroll (cdp-actions)",
+          "readText -> pwReadText (cdp-actions)",
+          "waitFor -> pwWaitFor (cdp-actions)",
+          "navigate -> cdp.send('Page.navigate', ...)",
+          "pressKey -> pwPressKey (cdp-actions)",
+          "writeCodeMirror -> pwWriteCodeMirror (cdp-actions)",
+          "capturePopup -> pwCapturePopup (cdp-actions)"
+        ],
+        "fill_path_note": "type/fill operations in browser-actions route through CDP (pwType -> Input.insertText)."
+      }
+    },
+    "browser_ts_accessibility_export": {
+      "verdict": "yes",
+      "evidence": [
+        "src/lib/browser.ts:256 exports captureAccessibilityTree(tabId?)",
+        "src/lib/browser.ts:257 invoke('capture_accessibility_tree', { tabId: ... })"
+      ]
+    }
+  },
+  "checks": {
+    "no_tauri_imports_in_non_test_source": {
+      "verdict": "pass",
+      "detail": "No import/from '@tauri-apps' found in non-test source files. Required raw grep returns one comment-only string mention in src/lib/cdp-actions.ts."
+    }
+  },
+  "overall_verdict": "pass_with_note",
+  "notes": [
+    "Required tauri grep command is non-empty due to a comment string reference, not an active import.",
+    "Full vitest output captured at .sisyphus/evidence/task-22-e2e-grading-vitest.log."
+  ]
+}
