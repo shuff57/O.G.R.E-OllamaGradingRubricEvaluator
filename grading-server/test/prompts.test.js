@@ -267,8 +267,65 @@ describe('Tiered Prompt Architecture - Regression Tests (T12)', () => {
 
     it('includes student original score and name in prompt', () => {
       const prompt = buildOutlierReviewPrompt(baseRubric, mockOutlierStudents, mockAnchors, mockStats, 10);
-      expect(prompt).toContain('ORIGINAL SCORE');
-      expect(prompt).toContain('Carol');
-    });
+       expect(prompt).toContain('ORIGINAL SCORE');
+       expect(prompt).toContain('Carol');
+     });
+   });
+});
+
+describe('buildSingleGradePrompt - constants injection', () => {
+  const mockRubric = {
+    essayPrompt: 'Test question',
+    checklistItems: [
+      {
+        category: 'Understanding (5 points)',
+        points: 5,
+        items: ['Shows comprehension'],
+      },
+    ],
+    maxScore: '10',
+  };
+
+  it('with custom constants → custom gradingPhilosophy appears in prompt', () => {
+    const customConstants = {
+      gradingPhilosophy: 'CUSTOM_MARKER_XYZ_PHILOSOPHY',
+      scoringScaleDescriptors: [
+        { score: 0, descriptor: 'test descriptor' },
+      ],
+    };
+    const prompt = buildSingleGradePrompt(mockRubric, 'student work', '', customConstants);
+    expect(prompt).toContain('CUSTOM_MARKER_XYZ_PHILOSOPHY');
+  });
+
+  it('with custom constants → custom scoringScaleDescriptors appear in prompt', () => {
+    const customConstants = {
+      gradingPhilosophy: 'Default philosophy',
+      scoringScaleDescriptors: [
+        { score: 0, descriptor: 'CUSTOM_SCALE_MARKER_ABC' },
+      ],
+    };
+    const prompt = buildSingleGradePrompt(mockRubric, 'student work', '', customConstants);
+    expect(prompt).toContain('CUSTOM_SCALE_MARKER_ABC');
+  });
+
+  it('without constants (undefined) → default behavior preserved', () => {
+    const prompt1 = buildSingleGradePrompt(mockRubric, 'student work', '');
+    const prompt2 = buildSingleGradePrompt(mockRubric, 'student work', '', undefined);
+    expect(prompt1).toBe(prompt2);
+  });
+
+  it('with null constants → default behavior preserved', () => {
+    const prompt1 = buildSingleGradePrompt(mockRubric, 'student work', '');
+    const prompt2 = buildSingleGradePrompt(mockRubric, 'student work', '', null);
+    expect(prompt1).toBe(prompt2);
+  });
+
+  it('with partial constants (only gradingPhilosophy) → uses custom philosophy and default scale', () => {
+    const customConstants = {
+      gradingPhilosophy: 'CUSTOM_PHILOSOPHY_ONLY',
+    };
+    const prompt = buildSingleGradePrompt(mockRubric, 'student work', '', customConstants);
+    expect(prompt).toContain('CUSTOM_PHILOSOPHY_ONLY');
+    expect(prompt).toContain('SCORING SCALE');
   });
 });
