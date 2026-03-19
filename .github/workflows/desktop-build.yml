@@ -13,15 +13,11 @@ on:
       - main
   workflow_dispatch:
 
-env:
-  TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-  TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-
 jobs:
   build-desktop:
     name: Build Desktop App (Windows)
     runs-on: windows-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -31,73 +27,37 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
-          cache-dependency-path: |
-            ogre-desktop/package-lock.json
-            grading-server/package-lock.json
-
-      - name: Install grading-server dependencies (npm for pkg build)
-        run: |
-          cd grading-server
-          npm ci
-
-      - name: Build grading-server sidecar binary (pkg)
-        run: |
-          cd grading-server
-          node build.js windows
-          Copy-Item dist/grading-server-win.exe ../ogre-desktop/src-tauri/binaries/grading-server-x86_64-pc-windows-msvc.exe
-        shell: pwsh
-
-      - name: Verify sidecar binary
-        run: |
-          if (!(Test-Path ogre-desktop/src-tauri/binaries/grading-server-x86_64-pc-windows-msvc.exe)) {
-            Write-Error "Sidecar binary not found!"
-            exit 1
-          }
-          $size = (Get-Item ogre-desktop/src-tauri/binaries/grading-server-x86_64-pc-windows-msvc.exe).Length / 1MB
-          Write-Output "Sidecar binary size: $([math]::Round($size, 2)) MB"
-        shell: pwsh
+          cache-dependency-path: ogre-desktop/package-lock.json
 
       - name: Install desktop app dependencies
-        run: |
-          cd ogre-desktop
-          npm ci
+        run: npm ci
+        working-directory: ogre-desktop
 
-      - name: Build Tauri app
-        run: |
-          cd ogre-desktop
-          npm run tauri:build
+      - name: Build Electron app
+        run: npm run electron:build
+        working-directory: ogre-desktop
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: List build artifacts
         run: |
-          Get-ChildItem -Recurse ogre-desktop/src-tauri/target/release/bundle/ -Include *.msi,*.exe | ForEach-Object {
+          Get-ChildItem -Recurse ogre-desktop/dist-electron/ -Include *.exe,*.yml | ForEach-Object {
             Write-Output "$($_.FullName) - $([math]::Round($_.Length / 1MB, 2)) MB"
           }
         shell: pwsh
-
-      - name: Upload MSI installer
-        uses: actions/upload-artifact@v4
-        with:
-          name: ogre-desktop-windows-msi
-          path: ogre-desktop/src-tauri/target/release/bundle/msi/*.msi
-          if-no-files-found: warn
 
       - name: Upload NSIS installer
         uses: actions/upload-artifact@v4
         with:
           name: ogre-desktop-windows-nsis
-          path: ogre-desktop/src-tauri/target/release/bundle/nsis/*.exe
+          path: ogre-desktop/dist-electron/*.exe
           if-no-files-found: warn
 
-      - name: Upload updater artifacts
+      - name: Upload updater manifest
         uses: actions/upload-artifact@v4
         with:
           name: ogre-desktop-updater
-          path: |
-            ogre-desktop/src-tauri/target/release/bundle/**/latest.json
-            ogre-desktop/src-tauri/target/release/bundle/**/*.sig
+          path: ogre-desktop/dist-electron/latest.yml
           if-no-files-found: warn
 
   release:
@@ -107,7 +67,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -124,10 +84,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/ogre-desktop-windows-msi/*.msi
             artifacts/ogre-desktop-windows-nsis/*.exe
-            artifacts/ogre-desktop-updater/latest.json
-            artifacts/ogre-desktop-updater/**/*.sig
+            artifacts/ogre-desktop-updater/latest.yml
           draft: false
           prerelease: false
           generate_release_notes: true
