@@ -28,6 +28,14 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle('updater:check', async () => {
+    try {
+      return await autoUpdater.checkForUpdates()
+    } catch {
+      return null
+    }
+  })
+
   ipcMain.handle('updater:download', async () => {
     try {
       return await autoUpdater.downloadUpdate()

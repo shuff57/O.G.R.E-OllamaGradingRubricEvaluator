@@ -43,7 +43,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updaterDownload: () => invoke('updater:download'),
   updaterInstall: () => invoke('updater:install'),
 
+  invoke: <T>(channel: string, args?: Record<string, unknown>) => invoke<T>(channel, args),
   on: listen,
-  emit: (event: string, payload: unknown) => ipcRenderer.send(event, payload),
-  invoke: (channel: string, args?: Record<string, unknown>) => ipcRenderer.invoke(channel, args),
 })

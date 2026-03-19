@@ -182,6 +182,30 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_model ON response_embeddings(embedding
 
 let database: BetterSqlite3Database | null = null
 
+// DDL and dangerous SQL patterns that the renderer is not permitted to issue.
+// The renderer can only run SELECT, INSERT, UPDATE, DELETE on known app tables.
+const BLOCKED_SQL_PATTERNS = [
+  /\bDROP\b/i,
+  /\bCREATE\b/i,
+  /\bALTER\b/i,
+  /\bATTACH\b/i,
+  /\bDETACH\b/i,
+  /\bPRAGMA\b/i,
+  /\bVACUUM\b/i,
+  /\bREINDEX\b/i,
+  /\bANALYZE\b/i,
+  /--/, // inline comment (SQL injection marker)
+  /\/\*/, // block comment
+]
+
+function validateSql(sql: string): void {
+  for (const pattern of BLOCKED_SQL_PATTERNS) {
+    if (pattern.test(sql)) {
+      throw new Error(`Blocked SQL pattern: ${pattern}`)
+    }
+  }
+}
+
 function normalizeSql(sql: string): string {
   return sql.replace(/\$(\d+)/g, '?$1')
 }
@@ -271,6 +295,7 @@ export function registerDatabaseHandlers(): void {
   ipcMain.removeHandler('db_execute')
 
   ipcMain.handle('db_query', (_event, payload: QueryPayload) => {
+    validateSql(payload.sql)
     const db = initDatabase()
     const params = (payload.params ?? []).map(normalizeParam)
     const statement = db.prepare(normalizeSql(payload.sql))
@@ -279,6 +304,7 @@ export function registerDatabaseHandlers(): void {
   })
 
   ipcMain.handle('db_execute', (_event, payload: QueryPayload) => {
+    validateSql(payload.sql)
     const db = initDatabase()
     const params = (payload.params ?? []).map(normalizeParam)
     const statement = db.prepare(normalizeSql(payload.sql))

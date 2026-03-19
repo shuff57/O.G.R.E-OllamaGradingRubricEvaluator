@@ -52,10 +52,10 @@ export function registerOAuthHandlers(): void {
         resolve(result)
       }
 
-      cancelFn = () => finish({ code: null, state: null, error: 'OAuth cancelled', port })
+      cancelFn = () => finish({ code: null, state: null, error: 'OAuth cancelled', port: boundPort })
 
       const TIMEOUT_MS = 300_000
-      const timer = setTimeout(() => finish({ code: null, state: null, error: 'OAuth timeout (5 minutes)', port }), TIMEOUT_MS)
+      const timer = setTimeout(() => finish({ code: null, state: null, error: 'OAuth timeout (5 minutes)', port: boundPort }), TIMEOUT_MS)
 
       server.on('connection', (socket) => {
         let raw = ''
@@ -66,10 +66,10 @@ export function registerOAuthHandlers(): void {
             const params = parseHttpRequest(raw)
             if (params.error) {
               sendHtmlResponse(socket, 'Authorization Failed', `Error: ${params.error}`)
-              finish({ code: null, state: null, error: params.error, port })
+              finish({ code: null, state: null, error: params.error, port: boundPort })
             } else {
               sendHtmlResponse(socket, 'Authorization Complete', 'You may close this window and return to O.G.R.E.')
-              finish({ code: params.code ?? null, state: params.state ?? null, error: null, port })
+              finish({ code: params.code ?? null, state: params.state ?? null, error: null, port: boundPort })
             }
           }
         })
@@ -78,14 +78,14 @@ export function registerOAuthHandlers(): void {
 
       server.on('error', (e) => {
         clearTimeout(timer)
-        finish({ code: null, state: null, error: e.message, port })
+        finish({ code: null, state: null, error: e.message, port: boundPort })
       })
 
       let tryPort = port
+      let boundPort = port
       const tryListen = (): void => {
         server.listen(tryPort, '127.0.0.1', () => {
-          const addr = server.address() as net.AddressInfo
-          finish({ ...finish as unknown as OAuthCallbackResult, port: addr.port })
+          boundPort = (server.address() as net.AddressInfo).port
         })
       }
 

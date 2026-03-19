@@ -83,7 +83,34 @@ export async function downloadUpdate(): Promise<void> {
 }
 
 export async function checkForUpdates(): Promise<UpdateCheckResult> {
-  return { available: false }
+  const api = getElectronUpdaterAPI()
+  return new Promise<UpdateCheckResult>((resolve) => {
+    const unlisten = api.on('update-status', (payload) => {
+      const p = payload as UpdateStatusPayload
+      if (p.type === 'update-available') {
+        unlisten()
+        resolve({
+          available: true,
+          version: p.version,
+          notes: p.notes,
+          update: {
+            version: p.version ?? '',
+            body: p.notes ?? null,
+            download: async () => { await api.invoke('updater:download') },
+            installAndRelaunch: async () => { await api.invoke('updater:install') },
+          },
+        })
+      } else if (p.type === 'update-not-available' || p.type === 'error') {
+        unlisten()
+        resolve({ available: false })
+      }
+    })
+    // Trigger the check; main process will emit update-status events in response
+    void api.invoke('updater:check').catch(() => {
+      unlisten()
+      resolve({ available: false })
+    })
+  })
 }
 
 export async function installUpdate(

@@ -113,6 +113,34 @@ export async function captureAccessibilityTree(tabId: string): Promise<string> {
   return formatAXTree(result.nodes ?? [])
 }
 
+const ALLOWED_CDP_METHODS = new Set([
+  'Page.captureScreenshot',
+  'Page.enable',
+  'Page.navigate',
+  'Page.reload',
+  'Page.getFrameTree',
+  'Runtime.evaluate',
+  'Runtime.callFunctionOn',
+  'Runtime.enable',
+  'Runtime.getProperties',
+  'DOM.enable',
+  'DOM.getDocument',
+  'DOM.querySelector',
+  'DOM.querySelectorAll',
+  'DOM.getBoxModel',
+  'DOM.scrollIntoViewIfNeeded',
+  'DOM.setAttributeValue',
+  'Input.dispatchMouseEvent',
+  'Input.dispatchKeyEvent',
+  'Input.insertText',
+  'Accessibility.enable',
+  'Accessibility.getFullAXTree',
+  'Accessibility.getAXNodeAndAncestors',
+  'Network.enable',
+  'Network.getCookies',
+  'Network.deleteCookies',
+])
+
 export function registerCdpHandlers(): void {
   ipcMain.handle('cdp_attach', (_e, { tabId }: { tabId: string }) => {
     attachDebugger(tabId)
@@ -123,6 +151,9 @@ export function registerCdpHandlers(): void {
   })
 
   ipcMain.handle('cdp_send', async (_e, { tabId, method, params }: { tabId: string; method: string; params?: Record<string, unknown> }) => {
+    if (!ALLOWED_CDP_METHODS.has(method)) {
+      throw new Error(`CDP method not allowed: ${method}`)
+    }
     const wc = getViewWebContents(tabId)
     if (!wc) throw new Error(`Tab ${tabId} not found`)
     if (!attachedTabs.has(tabId)) attachDebugger(tabId)
