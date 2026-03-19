@@ -1,0 +1,36 @@
+appId: com.ogre.app
+productName: OGRE
+
+directories:
+  output: dist-electron
+
+asar: true
+npmRebuild: true
+
+files:
+  - dist/**
+  - dist-electron/**
+  - node_modules/**
+  - package.json
+
+extraResources:
+  - from: ../grading-server
+    to: server-bundle
+    filter:
+      - '**/*'
+
+linux:
+  target:
+    - AppImage
+
+win:
+  target:
+    - nsis
+
+nsis:
+  oneClick: false
+
+publish:
+  provider: github
+  owner: shuff57
+  repo: O.G.R.E-OllamaGradingRubricEvaluator

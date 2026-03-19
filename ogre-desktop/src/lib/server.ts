@@ -1,5 +1,5 @@
-import { listen } from '@tauri-apps/api/event';
-import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
+import { listen } from './electron-bridge';
+;
 import { getHandshakeToken } from './provider-sync';
 import type { SiteProfile } from './batch-grader';
 
@@ -82,7 +82,7 @@ export async function syncProfileToServer(profile: SiteProfile): Promise<void> {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    await tauriFetch(`${SERVER_BASE}/api/profiles/sync`, {
+    await fetch(`${SERVER_BASE}/api/profiles/sync`, {
       method: 'POST',
       headers,
       body: JSON.stringify(profile),

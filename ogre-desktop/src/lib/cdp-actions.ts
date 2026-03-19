@@ -8,7 +8,7 @@
  * Zero npm dependencies beyond ./cdp-client, ./agent-types, @tauri-apps/api/core.
  */
 
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from './electron-bridge';
 import { cdp, CDPClient, MAIN_APP_PATTERNS, type CDPTarget } from './cdp-client';
 import type { ActionResult } from './agent-types';
 import { DANGEROUS_JS_PATTERNS } from './agent-types';

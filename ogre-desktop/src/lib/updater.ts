@@ -1,71 +1,129 @@
-import { check, type Update } from '@tauri-apps/plugin-updater';
-import { relaunch } from '@tauri-apps/plugin-process';
+type UnlistenFn = () => void
+
+type ElectronUpdaterAPI = {
+  invoke: (channel: string, args?: Record<string, unknown>) => Promise<unknown>
+  on: (event: string, callback: (payload: unknown) => void) => UnlistenFn
+}
+
+type UpdateAvailablePayload = {
+  type: 'update-available'
+  version?: string
+  notes?: string
+}
+
+type UpdateProgressPayload = {
+  type: 'update-progress'
+  percent?: number
+  transferred?: number
+  total?: number
+  bytesPerSecond?: number
+}
+
+type UpdateReadyPayload = {
+  type: 'update-ready'
+  version?: string
+  notes?: string
+}
+
+type UpdateNotAvailablePayload = {
+  type: 'update-not-available'
+  version?: string
+}
+
+type UpdateErrorPayload = {
+  type: 'error'
+  message?: string
+}
+
+export type UpdateStatusPayload =
+  | UpdateAvailablePayload
+  | UpdateProgressPayload
+  | UpdateReadyPayload
+  | UpdateNotAvailablePayload
+  | UpdateErrorPayload
+
+type UpdateStatusCallback = (payload: UpdateStatusPayload) => void
+
+export interface Update {
+  version: string
+  body?: string | null
+  download: () => Promise<void>
+  installAndRelaunch: () => Promise<void>
+}
 
 export interface UpdateCheckResult {
-  available: boolean;
-  version?: string;
-  notes?: string;
-  update?: Update;
+  available: boolean
+  version?: string
+  notes?: string
+  update?: Update
 }
 
 export interface DownloadProgress {
-  /** 0-100 percent */
-  percent: number;
-  /** Total bytes expected (if known) */
-  total?: number;
-  /** Bytes downloaded so far */
-  downloaded: number;
+  percent: number
+  total?: number
+  downloaded: number
 }
 
-/**
- * Check GitHub Releases for a newer version.
- * Returns update metadata if available, or { available: false }.
- */
-export async function checkForUpdates(): Promise<UpdateCheckResult> {
-  try {
-    const update = await check();
-
-    if (update) {
-      return {
-        available: true,
-        version: update.version,
-        notes: update.body ?? undefined,
-        update,
-      };
-    }
-
-    return { available: false };
-  } catch (err) {
-    // Network errors, rate limits, no releases yet — all acceptable
-    return { available: false };
+function getElectronUpdaterAPI(): ElectronUpdaterAPI {
+  const api = (window as unknown as { electronAPI?: ElectronUpdaterAPI }).electronAPI
+  if (!api) {
+    throw new Error('electronAPI updater bridge is unavailable')
   }
+  return api
 }
 
-/**
- * Download, install, and relaunch the app.
- * Calls `onProgress` during download so callers can drive a progress bar.
- */
+export function listenForUpdateStatus(callback: UpdateStatusCallback): UnlistenFn {
+  const api = getElectronUpdaterAPI()
+  return api.on('update-status', (payload) => callback(payload as UpdateStatusPayload))
+}
+
+export async function downloadUpdate(): Promise<void> {
+  const api = getElectronUpdaterAPI()
+  await api.invoke('updater:download')
+}
+
+export async function checkForUpdates(): Promise<UpdateCheckResult> {
+  const api = getElectronUpdaterAPI()
+  return new Promise<UpdateCheckResult>((resolve) => {
+    const unlisten = api.on('update-status', (payload) => {
+      const p = payload as UpdateStatusPayload
+      if (p.type === 'update-available') {
+        unlisten()
+        resolve({
+          available: true,
+          version: p.version,
+          notes: p.notes,
+          update: {
+            version: p.version ?? '',
+            body: p.notes ?? null,
+            download: async () => { await api.invoke('updater:download') },
+            installAndRelaunch: async () => { await api.invoke('updater:install') },
+          },
+        })
+      } else if (p.type === 'update-not-available' || p.type === 'error') {
+        unlisten()
+        resolve({ available: false })
+      }
+    })
+    // Trigger the check; main process will emit update-status events in response
+    void api.invoke('updater:check').catch(() => {
+      unlisten()
+      resolve({ available: false })
+    })
+  })
+}
+
 export async function installUpdate(
-  update: Update,
+  update?: Update,
   onProgress?: (progress: DownloadProgress) => void,
 ): Promise<void> {
-  let downloaded = 0;
-  let contentLength: number | undefined;
+  if (!update) {
+    const api = getElectronUpdaterAPI()
+    await api.invoke('updater:install')
+    return
+  }
 
-  await update.downloadAndInstall((event) => {
-    if (event.event === 'Started' && event.data.contentLength) {
-      contentLength = event.data.contentLength;
-    } else if (event.event === 'Progress') {
-      downloaded += event.data.chunkLength;
-      const percent = contentLength
-        ? Math.min(100, Math.round((downloaded / contentLength) * 100))
-        : 0;
-      onProgress?.({ percent, total: contentLength, downloaded });
-    } else if (event.event === 'Finished') {
-      onProgress?.({ percent: 100, total: contentLength, downloaded });
-    }
-  });
-
-  // Relaunch into the new version
-  await relaunch();
+  await update.download()
+  onProgress?.({ percent: 100, downloaded: 0 })
+  await update.installAndRelaunch()
 }

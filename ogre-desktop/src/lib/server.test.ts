@@ -1,16 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// ── Mock @tauri-apps/plugin-http ──────────────────────────────────────────
 const { mockFetch } = vi.hoisted(() => ({
   mockFetch: vi.fn(),
 }));
 
-vi.mock('@tauri-apps/plugin-http', () => ({
-  fetch: mockFetch,
-}));
-
-// ── Mock @tauri-apps/api/event ────────────────────────────────────────────
-vi.mock('@tauri-apps/api/event', () => ({
+vi.mock('./electron-bridge', () => ({
   listen: vi.fn(),
 }));
 
@@ -52,6 +46,7 @@ const TEST_PROFILE: SiteProfile = {
 describe('syncProfileToServer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetch as typeof fetch);
     mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({ ok: true }) });
   });
 

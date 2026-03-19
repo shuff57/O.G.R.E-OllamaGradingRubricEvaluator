@@ -5,7 +5,7 @@
  * to the local grading server via the handshake → Bearer token flow.
  */
 
-import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+;
 import { getProviderConfigs, getOAuthToken } from "./db";
 
 const SERVER_BASE = "http://localhost:3456";
@@ -34,7 +34,7 @@ export async function waitForServerHealth(
 ): Promise<boolean> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const res = await tauriFetch(`${SERVER_BASE}/health`, {
+      const res = await fetch(`${SERVER_BASE}/health`, {
         method: "GET",
       });
       if (res.ok) {
@@ -92,7 +92,7 @@ export async function pushProvidersToServer(): Promise<boolean> {
     //    or generate a new one if we haven't fetched it yet
     if (!handshakeToken) {
       try {
-        const hsRes = await tauriFetch(`${SERVER_BASE}/api/handshake`);
+        const hsRes = await fetch(`${SERVER_BASE}/api/handshake`);
         if (hsRes.ok) {
           const hsData = await hsRes.json();
           handshakeToken = hsData.token;
@@ -106,7 +106,7 @@ export async function pushProvidersToServer(): Promise<boolean> {
     }
 
     // 4. POST to grading server (server persists to config file automatically)
-    const res = await tauriFetch(`${SERVER_BASE}/internal/providers`, {
+    const res = await fetch(`${SERVER_BASE}/internal/providers`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

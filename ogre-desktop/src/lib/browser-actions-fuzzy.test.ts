@@ -26,17 +26,22 @@ vi.mock('./cdp-actions', () => ({
   pwScroll: vi.fn(),
 }));
 
-import { evalScriptJSON } from './browser';
 import { captureInteractiveDom } from './agent-dom';
 import { findFuzzyMatch } from './agent-dom-fuzzy';
+import { pwClick, pwType, pwScroll } from './cdp-actions';
 import { executeAction } from './browser-actions';
 
-const mockEvalScriptJSON = evalScriptJSON as ReturnType<typeof vi.fn>;
 const mockCaptureInteractiveDom = captureInteractiveDom as ReturnType<typeof vi.fn>;
 const mockFindFuzzyMatch = findFuzzyMatch as ReturnType<typeof vi.fn>;
+const mockPwClick = pwClick as ReturnType<typeof vi.fn>;
+const mockPwType = pwType as ReturnType<typeof vi.fn>;
+const mockPwScroll = pwScroll as ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockPwClick.mockResolvedValue({ success: true });
+  mockPwType.mockResolvedValue({ success: true });
+  mockPwScroll.mockResolvedValue({ success: true });
 });
 
 describe('executeAction: fuzzy retry integration', () => {
@@ -46,7 +51,7 @@ describe('executeAction: fuzzy retry integration', () => {
     };
 
     // First click fails, second succeeds (with substituted selector)
-    mockEvalScriptJSON
+    mockPwClick
       .mockResolvedValueOnce({ success: false, error: 'Element not found: #bad' })
       .mockResolvedValueOnce({ success: true });
 
@@ -64,7 +69,7 @@ describe('executeAction: fuzzy retry integration', () => {
   });
 
   test('scroll action does NOT trigger fuzzy retry', async () => {
-    mockEvalScriptJSON.mockResolvedValueOnce({ success: false, error: 'Scroll failed' });
+    mockPwScroll.mockResolvedValueOnce({ success: false, error: 'Scroll failed' });
 
     await executeAction({ action: 'scroll', direction: 'down', amount: 300 });
 
@@ -73,7 +78,7 @@ describe('executeAction: fuzzy retry integration', () => {
   });
 
   test('click with bad selector and no fuzzy match returns original failure', async () => {
-    mockEvalScriptJSON.mockResolvedValueOnce({ success: false, error: 'Element not found: #bad' });
+    mockPwClick.mockResolvedValueOnce({ success: false, error: 'Element not found: #bad' });
     mockFindFuzzyMatch.mockReturnValueOnce(null); // no match found
 
     const result = await executeAction({ action: 'click', selector: '#totally-missing' });
@@ -86,7 +91,7 @@ describe('executeAction: fuzzy retry integration', () => {
       index: 0, tag: 'input', text: '', selector: 'input[name=email]', visible: true, disabled: false,
     };
 
-    mockEvalScriptJSON
+    mockPwType
       .mockResolvedValueOnce({ success: false, error: 'Element not found: #email-input' })
       .mockResolvedValueOnce({ success: true });
 

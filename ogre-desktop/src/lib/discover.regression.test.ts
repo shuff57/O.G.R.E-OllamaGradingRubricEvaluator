@@ -23,10 +23,6 @@ import type {
 
 // ── Module Mocks (hoisted by vitest) ────────────────────────────────────────
 
-vi.mock("@tauri-apps/plugin-http", () => ({
-  fetch: vi.fn(),
-}));
-
 vi.mock("./browser", () => ({
   evalScript: vi.fn(),
   evalScriptJSON: vi.fn(),
@@ -63,7 +59,7 @@ import {
   getEmbeddedUrl,
 } from "./browser";
 import { detectGradingStructure } from "./heuristic-detector";
-import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+;
 
 // ── Typed Mock Aliases ──────────────────────────────────────────────────────
 
@@ -71,7 +67,7 @@ const mockEvalJSON = evalScriptJSON as unknown as Mock;
 const mockScreenshot = captureWebviewScreenshot as unknown as Mock;
 const mockGetUrl = getEmbeddedUrl as unknown as Mock;
 const mockDetect = detectGradingStructure as unknown as Mock;
-const mockFetch = tauriFetch as unknown as Mock;
+const mockFetch = vi.fn();
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -203,6 +199,7 @@ function setupAiPathMocks() {
 describe("Discovery Pipeline (Regression)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetch as typeof fetch);
     mockScreenshot.mockResolvedValue(SCREENSHOT);
     mockGetUrl.mockResolvedValue(PAGE_URL);
   });
@@ -314,11 +311,16 @@ describe("Discovery Pipeline (Regression)", () => {
     setupAiPathMocks();
 
     const result: DiscoveryWorkflow = await runDiscovery();
+    const screenshot = result.screenshot;
 
     expect(result.draft).toBeDefined();
     expect(result.validation).toBeDefined();
-    expect(typeof result.screenshot).toBe("string");
-    expect(result.screenshot.length).toBeGreaterThan(0);
+    expect(screenshot).toBeTruthy();
+    expect(typeof screenshot).toBe("string");
+    if (screenshot === null) {
+      throw new Error('expected screenshot to be present');
+    }
+    expect(screenshot.length).toBeGreaterThan(0);
   });
 
   // ── Error: invalid AI response ────────────────────────────────────────

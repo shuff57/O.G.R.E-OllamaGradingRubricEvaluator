@@ -10,7 +10,7 @@
  */
 
 import { captureInteractiveDom, formatDomForPrompt } from './agent-dom';
-import { captureWebviewScreenshot, getEmbeddedUrl } from './browser';
+import { captureAccessibilityTree, captureWebviewScreenshot, getEmbeddedUrl } from './browser';
 import { sendAgentRequest, parseAgentResponse } from './agent-api';
 import { executeAction } from './browser-actions';
 import { AGENT_SYSTEM_PROMPT } from './agent-prompt';
@@ -75,6 +75,14 @@ const CHARS_PER_TOKEN = 4;
  * Must match the default in pruneHistory() so compaction detection is accurate.
  */
 const PRUNE_WINDOW = 16;
+
+function countAccessibilityNodes(tree: string): number {
+  return tree
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .length;
+}
 
 /**
  * Estimate the token count of a set of messages plus optional DOM/screenshot.
@@ -237,6 +245,13 @@ export function createAgentController(): AgentController {
       } catch {
         /* webview not open yet — continue with empty dom */
       }
+
+      try {
+        const axTree = await captureAccessibilityTree();
+        if (typeof axTree === 'string' && countAccessibilityNodes(axTree) > 20) {
+          dom = axTree;
+        }
+      } catch {}
 
       try {
         screenshot = await captureWebviewScreenshot();

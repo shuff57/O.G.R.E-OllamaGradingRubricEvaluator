@@ -1,8 +1,9 @@
-import { describe, test, expect, vi, beforeEach } from 'vitest';
+import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock dependencies before module import
-vi.mock('@tauri-apps/api/core', () => ({
+vi.mock('./electron-bridge', () => ({
   invoke: vi.fn().mockResolvedValue(9222),
+  listen: vi.fn(),
 }));
 
 vi.mock('./cdp-client', () => ({
@@ -17,7 +18,7 @@ vi.mock('./cdp-client', () => ({
   },
 }));
 
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from './electron-bridge';
 import { cdp } from './cdp-client';
 import {
   connectCDP, disconnectCDP, isConnected,
@@ -27,7 +28,7 @@ import {
 } from './cdp-actions';
 
 const mockInvoke = invoke as ReturnType<typeof vi.fn>;
-const mockCdp = cdp as {
+const mockCdp = cdp as unknown as {
   connect: ReturnType<typeof vi.fn>;
   connectToUrl: ReturnType<typeof vi.fn>;
   disconnect: ReturnType<typeof vi.fn>;
@@ -199,7 +200,7 @@ describe('cdp-actions: pwPressKey when connected', () => {
   test('sends keyDown and keyUp events', async () => {
     const result = await pwPressKey('Tab');
     expect(result.success).toBe(true);
-    const calls = mockCdp.send.mock.calls.map((c: [string, unknown]) => c[0]);
+    const calls = mockCdp.send.mock.calls.map((c) => c[0]);
     expect(calls).toContain('Input.dispatchKeyEvent');
     expect(mockCdp.send).toHaveBeenCalledTimes(2);
   });

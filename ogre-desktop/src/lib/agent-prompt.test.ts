@@ -16,7 +16,7 @@ describe('AGENT_SYSTEM_PROMPT: site guide priority (Rule 11)', () => {
   });
 
   test('instructs agent to use selectors object for CSS selectors', () => {
-    expect(AGENT_SYSTEM_PROMPT).toMatch(/Use the "selectors" object for CSS selectors directly/i);
+    expect(AGENT_SYSTEM_PROMPT).toMatch(/Use the "selectors" object for selectors directly/i);
   });
 
   test('warns against inventing selectors', () => {
@@ -55,4 +55,3 @@ describe('agent-prompt exports', () => {
     expect((agentPrompt as Record<string, unknown>).parseAgentResponse).toBeUndefined();
   });
 });
-

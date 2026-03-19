@@ -9,7 +9,7 @@
     startGoogleDeviceFlow
   } from '../lib/oauth';
   import type { DeviceFlowResult } from '../lib/oauth';
-  import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
+  ;
 
   const dispatch = createEventDispatcher();
 
@@ -104,7 +104,7 @@
   async function detectOllamaLocal() {
     try {
       // Must set Origin header — Ollama rejects Tauri's default Origin (http://tauri.localhost)
-      const response = await tauriFetch('http://localhost:11434/api/tags', {
+      const response = await fetch('http://localhost:11434/api/tags', {
         headers: { 'Origin': 'http://localhost:11434' }
       });
       if (response.ok) {
@@ -219,7 +219,7 @@
           headers['Authorization'] = `Bearer ${provider.apiKey}`;
         }
 
-        const response = await tauriFetch(url, { headers });
+        const response = await fetch(url, { headers });
         if (!response.ok) {
           throw new Error(`Failed to fetch models: ${response.status} ${response.statusText}`);
         }

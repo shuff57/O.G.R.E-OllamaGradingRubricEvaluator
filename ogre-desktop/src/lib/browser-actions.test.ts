@@ -28,21 +28,31 @@ vi.mock('./cdp-client', () => ({
   },
 }));
 
-import { evalScript, evalScriptJSON, captureWebviewScreenshot, navigateEmbedded, getActiveTabId } from './browser';
+import { evalScript, captureWebviewScreenshot, navigateEmbedded } from './browser';
 import { cdp } from './cdp-client';
-import { isConnected } from './cdp-actions';
+import { isConnected, pwClick, pwType, pwReadText, pwWaitFor, pwScroll, pwPressKey } from './cdp-actions';
 import { executeAction } from './browser-actions';
 
-const mockEvalScriptJSON = evalScriptJSON as ReturnType<typeof vi.fn>;
 const mockEvalScript = evalScript as ReturnType<typeof vi.fn>;
 const mockScreenshot = captureWebviewScreenshot as ReturnType<typeof vi.fn>;
 const mockNavigate = navigateEmbedded as ReturnType<typeof vi.fn>;
-const mockGetActiveTabId = getActiveTabId as ReturnType<typeof vi.fn>;
 const mockIsConnected = isConnected as ReturnType<typeof vi.fn>;
-const mockCdpSend = (cdp as { send: ReturnType<typeof vi.fn> }).send;
+const mockCdpSend = cdp.send as ReturnType<typeof vi.fn>;
+const mockPwClick = pwClick as ReturnType<typeof vi.fn>;
+const mockPwType = pwType as ReturnType<typeof vi.fn>;
+const mockPwReadText = pwReadText as ReturnType<typeof vi.fn>;
+const mockPwWaitFor = pwWaitFor as ReturnType<typeof vi.fn>;
+const mockPwScroll = pwScroll as ReturnType<typeof vi.fn>;
+const mockPwPressKey = pwPressKey as ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockPwClick.mockResolvedValue({ success: true });
+  mockPwType.mockResolvedValue({ success: true });
+  mockPwReadText.mockResolvedValue({ success: true, data: 'text' });
+  mockPwWaitFor.mockResolvedValue({ success: true });
+  mockPwScroll.mockResolvedValue({ success: true });
+  mockPwPressKey.mockResolvedValue({ success: true });
 });
 
 // ---------------------------------------------------------------------------
@@ -52,17 +62,15 @@ beforeEach(() => {
 describe('executeAction: click', () => {
   test('returns result from evalScriptJSON on success', async () => {
     const expected = { success: true, data: { tagName: 'BUTTON', text: 'Submit' } };
-    mockEvalScriptJSON.mockResolvedValueOnce(expected);
+    mockPwClick.mockResolvedValueOnce(expected);
     const result = await executeAction({ action: 'click', selector: '#submit' });
     expect(result).toEqual(expected);
-    expect(mockEvalScriptJSON).toHaveBeenCalledOnce();
+    expect(mockPwClick).toHaveBeenCalledWith('#submit');
   });
 
   test('returns error result when evalScriptJSON throws', async () => {
-    mockEvalScriptJSON.mockRejectedValueOnce(new Error('IPC failed'));
-    const result = await executeAction({ action: 'click', selector: '#btn' });
-    expect(result.success).toBe(false);
-    expect(result.error).toBe('IPC failed');
+    mockPwClick.mockRejectedValueOnce(new Error('IPC failed'));
+    await expect(executeAction({ action: 'click', selector: '#btn' })).rejects.toThrow('IPC failed');
   });
 });
 
@@ -72,18 +80,18 @@ describe('executeAction: click', () => {
 
 describe('executeAction: type', () => {
   test('calls evalScriptJSON and returns success', async () => {
-    mockEvalScriptJSON.mockResolvedValueOnce({ success: true });
+    mockPwType.mockResolvedValueOnce({ success: true });
     const result = await executeAction({
       action: 'type',
       selector: '#input',
       text: 'hello world',
     });
     expect(result.success).toBe(true);
-    expect(mockEvalScriptJSON).toHaveBeenCalledOnce();
+    expect(mockPwType).toHaveBeenCalledWith('#input', 'hello world', undefined);
   });
 
   test('passes clear: true flag', async () => {
-    mockEvalScriptJSON.mockResolvedValueOnce({ success: true });
+    mockPwType.mockResolvedValueOnce({ success: true });
     const result = await executeAction({
       action: 'type',
       selector: '#input',
@@ -91,20 +99,16 @@ describe('executeAction: type', () => {
       clear: true,
     });
     expect(result.success).toBe(true);
-    // The code passed to evalScriptJSON should contain the clear logic
-    const code = mockEvalScriptJSON.mock.calls[0][0];
-    expect(code).toContain('true');
+    expect(mockPwType).toHaveBeenCalledWith('#input', 'new value', true);
   });
 
   test('returns error result when evalScriptJSON throws', async () => {
-    mockEvalScriptJSON.mockRejectedValueOnce(new Error('Type failed'));
-    const result = await executeAction({
+    mockPwType.mockRejectedValueOnce(new Error('Type failed'));
+    await expect(executeAction({
       action: 'type',
       selector: '#input',
       text: 'text',
-    });
-    expect(result.success).toBe(false);
-    expect(result.error).toBe('Type failed');
+    })).rejects.toThrow('Type failed');
   });
 });
 
@@ -114,32 +118,28 @@ describe('executeAction: type', () => {
 
 describe('executeAction: scroll', () => {
   test('down direction uses positive yVal', async () => {
-    mockEvalScriptJSON.mockResolvedValueOnce({ success: true, data: { scrollX: 0, scrollY: 300 } });
+    mockPwScroll.mockResolvedValueOnce({ success: true, data: { scrollX: 0, scrollY: 300 } });
     const result = await executeAction({ action: 'scroll', direction: 'down', amount: 300 });
     expect(result.success).toBe(true);
-    const code = mockEvalScriptJSON.mock.calls[0][0];
-    expect(code).toContain('window.scrollBy(0, 300)');
+    expect(mockPwScroll).toHaveBeenCalledWith('down', 300);
   });
 
   test('up direction uses negative yVal', async () => {
-    mockEvalScriptJSON.mockResolvedValueOnce({ success: true, data: { scrollX: 0, scrollY: 0 } });
+    mockPwScroll.mockResolvedValueOnce({ success: true, data: { scrollX: 0, scrollY: 0 } });
     await executeAction({ action: 'scroll', direction: 'up', amount: 200 });
-    const code = mockEvalScriptJSON.mock.calls[0][0];
-    expect(code).toContain('window.scrollBy(0, -200)');
+    expect(mockPwScroll).toHaveBeenCalledWith('up', 200);
   });
 
   test('left direction uses negative xVal', async () => {
-    mockEvalScriptJSON.mockResolvedValueOnce({ success: true, data: { scrollX: 0, scrollY: 0 } });
+    mockPwScroll.mockResolvedValueOnce({ success: true, data: { scrollX: 0, scrollY: 0 } });
     await executeAction({ action: 'scroll', direction: 'left', amount: 100 });
-    const code = mockEvalScriptJSON.mock.calls[0][0];
-    expect(code).toContain('window.scrollBy(-100, 0)');
+    expect(mockPwScroll).toHaveBeenCalledWith('left', 100);
   });
 
   test('right direction uses positive xVal', async () => {
-    mockEvalScriptJSON.mockResolvedValueOnce({ success: true, data: { scrollX: 100, scrollY: 0 } });
+    mockPwScroll.mockResolvedValueOnce({ success: true, data: { scrollX: 100, scrollY: 0 } });
     await executeAction({ action: 'scroll', direction: 'right', amount: 100 });
-    const code = mockEvalScriptJSON.mock.calls[0][0];
-    expect(code).toContain('window.scrollBy(100, 0)');
+    expect(mockPwScroll).toHaveBeenCalledWith('right', 100);
   });
 });
 
@@ -149,20 +149,18 @@ describe('executeAction: scroll', () => {
 
 describe('executeAction: readText', () => {
   test('with selector: calls evalScriptJSON with selector query', async () => {
-    mockEvalScriptJSON.mockResolvedValueOnce({ success: true, data: 'Section text' });
+    mockPwReadText.mockResolvedValueOnce({ success: true, data: 'Section text' });
     const result = await executeAction({ action: 'readText', selector: '.content' });
     expect(result.success).toBe(true);
     expect(result.data).toBe('Section text');
-    const code = mockEvalScriptJSON.mock.calls[0][0];
-    expect(code).toContain('.content');
+    expect(mockPwReadText).toHaveBeenCalledWith('.content');
   });
 
   test('without selector: reads full page body text', async () => {
-    mockEvalScriptJSON.mockResolvedValueOnce({ success: true, data: 'Full page text' });
+    mockPwReadText.mockResolvedValueOnce({ success: true, data: 'Full page text' });
     const result = await executeAction({ action: 'readText' });
     expect(result.success).toBe(true);
-    const code = mockEvalScriptJSON.mock.calls[0][0];
-    expect(code).toContain('document.body.innerText');
+    expect(mockPwReadText).toHaveBeenCalledWith(undefined);
   });
 });
 
@@ -192,13 +190,14 @@ describe('executeAction: screenshot', () => {
 
 describe('executeAction: waitFor', () => {
   test('returns success from evalScriptJSON', async () => {
-    mockEvalScriptJSON.mockResolvedValueOnce({ success: true });
+    mockPwWaitFor.mockResolvedValueOnce({ success: true });
     const result = await executeAction({ action: 'waitFor', selector: '#modal' });
     expect(result.success).toBe(true);
+    expect(mockPwWaitFor).toHaveBeenCalledWith('#modal', undefined);
   });
 
   test('returns timeout error from evalScriptJSON', async () => {
-    mockEvalScriptJSON.mockResolvedValueOnce({
+    mockPwWaitFor.mockResolvedValueOnce({
       success: false,
       error: 'Timeout waiting for: #modal',
     });
@@ -213,15 +212,15 @@ describe('executeAction: waitFor', () => {
 // ---------------------------------------------------------------------------
 
 describe('executeAction: navigate', () => {
-  test('calls navigateEmbedded with tabId and url, returns success', async () => {
-    mockNavigate.mockResolvedValueOnce(undefined);
+  test('uses CDP Page.navigate and returns success', async () => {
+    mockCdpSend.mockResolvedValueOnce({});
     const result = await executeAction({ action: 'navigate', url: 'https://example.com' });
     expect(result.success).toBe(true);
-    expect(mockNavigate).toHaveBeenCalledWith('test-tab-1', 'https://example.com');
+    expect(mockCdpSend).toHaveBeenCalledWith('Page.navigate', { url: 'https://example.com' });
   });
 
-  test('returns error result when navigateEmbedded throws', async () => {
-    mockNavigate.mockRejectedValueOnce(new Error('Navigation blocked'));
+  test('returns error result when CDP navigate throws', async () => {
+    mockCdpSend.mockRejectedValueOnce(new Error('Navigation blocked'));
     const result = await executeAction({ action: 'navigate', url: 'https://example.com' });
     expect(result.success).toBe(false);
     expect(result.error).toBe('Navigation blocked');
@@ -331,33 +330,26 @@ describe('executeAction: sleep', () => {
 
 describe('executeAction: pressKey', () => {
   test('calls evalScriptJSON to dispatch KeyboardEvent', async () => {
-    mockEvalScriptJSON.mockResolvedValueOnce({ success: true });
+    mockPwPressKey.mockResolvedValueOnce({ success: true });
     const result = await executeAction({ action: 'pressKey', key: 'Tab' });
     expect(result.success).toBe(true);
-    expect(mockEvalScriptJSON).toHaveBeenCalledOnce();
+    expect(mockPwPressKey).toHaveBeenCalledWith('Tab');
   });
 
-  test('embeds key name in dispatched code', async () => {
-    mockEvalScriptJSON.mockResolvedValueOnce({ success: true });
+  test('passes key name to cdp press action', async () => {
+    mockPwPressKey.mockResolvedValueOnce({ success: true });
     await executeAction({ action: 'pressKey', key: 'Enter' });
-    const code = mockEvalScriptJSON.mock.calls[0][0];
-    expect(code).toContain("'Enter'");
-    expect(code).toContain('KeyboardEvent');
+    expect(mockPwPressKey).toHaveBeenCalledWith('Enter');
   });
 
-  test('dispatches keydown, keypress, and keyup', async () => {
-    mockEvalScriptJSON.mockResolvedValueOnce({ success: true });
+  test('supports arbitrary key names', async () => {
+    mockPwPressKey.mockResolvedValueOnce({ success: true });
     await executeAction({ action: 'pressKey', key: 'Escape' });
-    const code = mockEvalScriptJSON.mock.calls[0][0];
-    expect(code).toContain('keydown');
-    expect(code).toContain('keypress');
-    expect(code).toContain('keyup');
+    expect(mockPwPressKey).toHaveBeenCalledWith('Escape');
   });
 
   test('returns error result when evalScriptJSON throws', async () => {
-    mockEvalScriptJSON.mockRejectedValueOnce(new Error('KeyEvent failed'));
-    const result = await executeAction({ action: 'pressKey', key: 'Tab' });
-    expect(result.success).toBe(false);
-    expect(result.error).toBe('KeyEvent failed');
+    mockPwPressKey.mockRejectedValueOnce(new Error('KeyEvent failed'));
+    await expect(executeAction({ action: 'pressKey', key: 'Tab' })).rejects.toThrow('KeyEvent failed');
   });
 });

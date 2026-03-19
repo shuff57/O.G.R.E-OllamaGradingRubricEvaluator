@@ -23,18 +23,12 @@ vi.mock('./db', () => {
   };
 });
 
-vi.mock('@tauri-apps/plugin-sql', () => ({
-  Database: vi.fn(),
-}));
-
 // Import AFTER mocks
 import {
   refreshPageData,
   buildBatchResetState,
   stopActiveBatch,
   createDebouncedRefresh,
-  type RefreshPageDataResult,
-  type BatchResetState,
 } from './page-refresh';
 import type { SiteProfile } from './batch-grader';
 import * as siteProfilesModule from './site-profiles';
@@ -57,9 +51,19 @@ describe('page-refresh.ts — refreshPageData()', () => {
 
   it('Test 1: Profile found → detectedProfile is first match, pageUrl matches input', async () => {
     const mockProfile: SiteProfile = {
+      id: 'myopenmath',
       name: 'MyOpenMath',
-      urlPattern: 'myopenmath.com',
-      selectors: { studentName: '.student-name', score: '.score' },
+      isBuiltIn: false,
+      urlPatterns: ['myopenmath.com'],
+      selectors: {
+        studentSection: null,
+        studentName: '.student-name',
+        scoreInput: '.score',
+        feedbackBox: null,
+      },
+      feedback: { type: 'textarea', requiresHiddenSync: false, htmlWrap: false },
+      save: { buttonText: 'Save', fallbackText: 'Save Changes' },
+      navigation: { mode: 'batch' },
     };
 
     mockFindProfilesByUrl.mockResolvedValueOnce([mockProfile]);
@@ -130,9 +134,19 @@ describe('page-refresh.ts — refreshPageData()', () => {
 
   it('Both profile and session found → returns both', async () => {
     const mockProfile: SiteProfile = {
+      id: 'canvas',
       name: 'Canvas',
-      urlPattern: 'canvas.instructure.com',
-      selectors: { studentName: '.student', score: '.grade' },
+      isBuiltIn: false,
+      urlPatterns: ['canvas.instructure.com'],
+      selectors: {
+        studentSection: null,
+        studentName: '.student',
+        scoreInput: '.grade',
+        feedbackBox: null,
+      },
+      feedback: { type: 'textarea', requiresHiddenSync: false, htmlWrap: false },
+      save: { buttonText: 'Save', fallbackText: 'Save Changes' },
+      navigation: { mode: 'batch' },
     };
 
     mockFindProfilesByUrl.mockResolvedValueOnce([mockProfile]);

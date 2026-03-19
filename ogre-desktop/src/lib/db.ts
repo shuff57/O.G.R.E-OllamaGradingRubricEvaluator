@@ -1,6 +1,33 @@
-import Database from "@tauri-apps/plugin-sql";
+type QueryParams = unknown[];
 
-// ── Types ────────────────────────────────────────────────────────────────
+export interface ExecuteResult {
+  rowsAffected: number;
+  lastInsertId: number;
+}
+
+interface DatabaseBridge {
+  select<T>(sql: string, params?: QueryParams): Promise<T>;
+  execute(sql: string, params?: QueryParams): Promise<ExecuteResult>;
+}
+
+interface ElectronDatabaseAPI {
+  dbQuery<T>(sql: string, params?: QueryParams): Promise<T>;
+  dbExecute(sql: string, params?: QueryParams): Promise<ExecuteResult>;
+}
+
+function getElectronAPI(): ElectronDatabaseAPI {
+  const api =
+    (globalThis as { electronAPI?: ElectronDatabaseAPI }).electronAPI ??
+    ((typeof window !== "undefined" ? (window as any).electronAPI : undefined) as
+      | ElectronDatabaseAPI
+      | undefined);
+
+  if (!api) {
+    throw new Error("electronAPI database bridge is unavailable");
+  }
+
+  return api;
+}
 
 export interface ProviderConfig {
   id: string;
@@ -64,7 +91,6 @@ export interface BatchSession {
   timestamp: string;
 }
 
-
 export interface Skill {
   id: string;
   name: string;
@@ -86,30 +112,23 @@ export interface ResponseEmbedding {
   student_response: string | null;
   score: number;
   feedback: string | null;
-  embedding: Uint8Array | number[];  // Tauri IPC deserializes BLOBs as number[]
+  embedding: Uint8Array | number[];
   embedding_model: string;
   created_at: string;
 }
-// ── Database Singleton ───────────────────────────────────────────────────
 
-let db: Database | null = null;
-
-/**
- * Initialize (or return existing) database connection.
- * Migrations run automatically on first load via tauri-plugin-sql.
- */
-export async function initDB(): Promise<Database> {
-  if (!db) {
-    db = await Database.load("sqlite:ogre.db");
-  }
-  return db;
+export async function initDB(): Promise<DatabaseBridge> {
+  const api = getElectronAPI();
+  return {
+    select<T>(sql: string, params: QueryParams = []): Promise<T> {
+      return api.dbQuery<T>(sql, params);
+    },
+    execute(sql: string, params: QueryParams = []): Promise<ExecuteResult> {
+      return api.dbExecute(sql, params);
+    },
+  };
 }
 
-// ── Provider Configs ─────────────────────────────────────────────────────
-
-/**
- * Get all provider configurations, ordered by id.
- */
 export async function getProviderConfigs(): Promise<ProviderConfig[]> {
   const database = await initDB();
   return await database.select<ProviderConfig[]>(
@@ -117,9 +136,6 @@ export async function getProviderConfigs(): Promise<ProviderConfig[]> {
   );
 }
 
-/**
- * Get a single provider config by id.
- */
 export async function getProviderConfig(
   id: string
 ): Promise<ProviderConfig | null> {
@@ -131,10 +147,6 @@ export async function getProviderConfig(
   return rows.length > 0 ? rows[0] : null;
 }
 
-/**
- * Save (upsert) a provider configuration.
- * Uses INSERT OR REPLACE for simplicity.
- */
 export async function saveProviderConfig(config: {
   id: string;
   api_url?: string | null;
@@ -162,18 +174,11 @@ export async function saveProviderConfig(config: {
   );
 }
 
-/**
- * Delete a provider configuration.
- */
 export async function deleteProviderConfig(id: string): Promise<void> {
   const database = await initDB();
   await database.execute("DELETE FROM provider_configs WHERE id = $1", [id]);
 }
 
-/**
- * Update the active provider and model based on provider-changed events.
- * Sets is_active=0 for all providers, then is_active=1 + model for the specified provider.
- */
 export async function updateActiveProvider(providerId: string, model: string): Promise<void> {
   const database = await initDB();
   await database.execute("UPDATE provider_configs SET is_active = 0");
@@ -183,11 +188,6 @@ export async function updateActiveProvider(providerId: string, model: string): P
   );
 }
 
-// ── Grading Sessions ────────────────────────────────────────────────────
-
-/**
- * Get all grading sessions, most recent first.
- */
 export async function getGradingSessions(): Promise<GradingSession[]> {
   const database = await initDB();
   return await database.select<GradingSession[]>(
@@ -195,9 +195,6 @@ export async function getGradingSessions(): Promise<GradingSession[]> {
   );
 }
 
-/**
- * Insert a new grading session. Returns the inserted row id.
- */
 export async function insertGradingSession(session: {
   provider_id?: string | null;
   model?: string | null;
@@ -237,11 +234,6 @@ export async function insertGradingSession(session: {
   return result.lastInsertId;
 }
 
-// ── App Settings ────────────────────────────────────────────────────────
-
-/**
- * Get a setting value by key. Returns null if not found.
- */
 export async function getSetting(key: string): Promise<string | null> {
   const database = await initDB();
   const rows = await database.select<AppSetting[]>(
@@ -251,9 +243,6 @@ export async function getSetting(key: string): Promise<string | null> {
   return rows.length > 0 ? rows[0].value : null;
 }
 
-/**
- * Set a setting value. Upserts (creates or updates).
- */
 export async function setSetting(
   key: string,
   value: string
@@ -266,9 +255,6 @@ export async function setSetting(
   );
 }
 
-// ── OAuth Tokens ────────────────────────────────────────────────────────
-
-// Re-export for convenience if needed
 export interface OAuthToken {
   provider: string;
   access_token: string;
@@ -279,9 +265,6 @@ export interface OAuthToken {
   updated_at: string;
 }
 
-/**
- * Get an OAuth token by provider.
- */
 export async function getOAuthToken(provider: string): Promise<OAuthToken | null> {
   const database = await initDB();
   const rows = await database.select<OAuthToken[]>(
@@ -291,9 +274,6 @@ export async function getOAuthToken(provider: string): Promise<OAuthToken | null
   return rows.length > 0 ? rows[0] : null;
 }
 
-/**
- * Save (upsert) an OAuth token.
- */
 export async function saveOAuthToken(token: {
   provider: string;
   access_token: string;
@@ -321,19 +301,11 @@ export async function saveOAuthToken(token: {
   );
 }
 
-/**
- * Delete an OAuth token by provider.
- */
 export async function deleteOAuthToken(provider: string): Promise<void> {
   const database = await initDB();
   await database.execute("DELETE FROM oauth_tokens WHERE provider = $1", [provider]);
 }
 
-// ── Site Credentials ────────────────────────────────────────────────────
-
-/**
- * Get all site credentials, ordered by site_name.
- */
 export async function getSiteCredentials(): Promise<SiteCredential[]> {
   const database = await initDB();
   return await database.select<SiteCredential[]>(
@@ -341,10 +313,6 @@ export async function getSiteCredentials(): Promise<SiteCredential[]> {
   );
 }
 
-/**
- * Get site credentials by URL pattern match.
- * Returns all credentials where the given URL matches the url_pattern.
- */
 export async function getSiteCredentialsByUrl(url: string): Promise<SiteCredential[]> {
   const database = await initDB();
   return await database.select<SiteCredential[]>(
@@ -353,11 +321,6 @@ export async function getSiteCredentialsByUrl(url: string): Promise<SiteCredenti
   );
 }
 
-/**
- * Save (upsert) a site credential.
- * If id is provided and exists, updates the credential.
- * Otherwise, inserts a new credential.
- */
 export async function saveSiteCredential(credential: {
   id?: number;
   site_name: string;
@@ -367,9 +330,8 @@ export async function saveSiteCredential(credential: {
   notes?: string | null;
 }): Promise<number> {
   const database = await initDB();
-  
+
   if (credential.id) {
-    // Update existing credential
     await database.execute(
       `UPDATE site_credentials
        SET site_name = $1, url_pattern = $2, username = $3, password = $4, notes = $5, updated_at = datetime('now')
@@ -402,21 +364,26 @@ export async function saveSiteCredential(credential: {
     }
     return result.lastInsertId;
   }
+
+  const result = await database.execute(
+    `INSERT INTO site_credentials (site_name, url_pattern, username, password, notes)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [
+      credential.site_name,
+      credential.url_pattern,
+      credential.username,
+      credential.password,
+      credential.notes ?? null,
+    ]
+  );
+  return result.lastInsertId;
 }
 
-/**
- * Delete a site credential by id.
- */
 export async function deleteSiteCredential(id: number): Promise<void> {
   const database = await initDB();
   await database.execute("DELETE FROM site_credentials WHERE id = $1", [id]);
 }
 
-// ── Site Profiles ───────────────────────────────────────────────────────
-
-/**
- * Get all site profiles, ordered by name.
- */
 export async function getSiteProfiles(): Promise<SiteProfile[]> {
   const database = await initDB();
   return await database.select<SiteProfile[]>(
@@ -424,9 +391,6 @@ export async function getSiteProfiles(): Promise<SiteProfile[]> {
   );
 }
 
-/**
- * Get a single site profile by id.
- */
 export async function getSiteProfile(id: string): Promise<SiteProfile | null> {
   const database = await initDB();
   const rows = await database.select<SiteProfile[]>(
@@ -436,11 +400,6 @@ export async function getSiteProfile(id: string): Promise<SiteProfile | null> {
   return rows.length > 0 ? rows[0] : null;
 }
 
-/**
- * Save (upsert) a site profile.
- * If id is provided and exists, updates the profile.
- * Otherwise, inserts a new profile.
- */
 export async function saveSiteProfile(profile: {
   id?: string;
   name: string;
@@ -474,18 +433,11 @@ export async function saveSiteProfile(profile: {
   return id;
 }
 
-/**
- * Delete a site profile by id.
- */
 export async function deleteSiteProfile(id: string): Promise<void> {
   const database = await initDB();
   await database.execute("DELETE FROM site_profiles WHERE id = $1", [id]);
 }
 
-/**
- * Find site profiles matching a given URL.
- * Returns all profiles where the URL matches any of the url_patterns.
- */
 export async function findSiteProfilesByUrl(url: string): Promise<SiteProfile[]> {
   const database = await initDB();
   return await database.select<SiteProfile[]>(
@@ -494,12 +446,6 @@ export async function findSiteProfilesByUrl(url: string): Promise<SiteProfile[]>
   );
 }
 
-// ── Batch Session (Resume Persistence) ─────────────────────────────────
-
-/**
- * Get the batch session for a given URL.
- * Returns null if no session exists for that URL.
- */
 export async function getBatchSession(url: string): Promise<BatchSession | null> {
   const database = await initDB();
   const rows = await database.select<BatchSession[]>(
@@ -509,10 +455,6 @@ export async function getBatchSession(url: string): Promise<BatchSession | null>
   return rows.length > 0 ? rows[0] : null;
 }
 
-/**
- * Save (upsert) the batch session resume point for a URL.
- * Records the last successfully graded student name so grading can resume.
- */
 export async function saveBatchSession(url: string, lastStudentName: string): Promise<void> {
   const database = await initDB();
   await database.execute(
@@ -525,48 +467,27 @@ export async function saveBatchSession(url: string, lastStudentName: string): Pr
   );
 }
 
-/**
- * Clear the batch session for a given URL.
- * Called on batch completion or when user chooses "Start Fresh".
- */
 export async function clearBatchSession(url: string): Promise<void> {
   const database = await initDB();
   await database.execute("DELETE FROM batch_session WHERE url = $1", [url]);
 }
 
-
-// ── Skills ──────────────────────────────────────────────────────────────
-
-/**
- * Get all skills, ordered by name.
- */
 export async function getSkills(): Promise<Skill[]> {
   const database = await initDB();
   return await database.select<Skill[]>("SELECT * FROM skills ORDER BY name");
 }
 
-/**
- * Get only active skills (is_active = 1), ordered by name.
- */
 export async function getActiveSkills(): Promise<Skill[]> {
   const database = await initDB();
   return await database.select<Skill[]>("SELECT * FROM skills WHERE is_active = 1 ORDER BY name");
 }
 
-/**
- * Get a single skill by id. Returns null if not found.
- */
 export async function getSkill(id: string): Promise<Skill | null> {
   const database = await initDB();
   const rows = await database.select<Skill[]>("SELECT * FROM skills WHERE id = $1", [id]);
   return rows.length > 0 ? rows[0] : null;
 }
 
-/**
- * Save (upsert) a skill.
- * If id is provided and exists, updates the skill.
- * Otherwise, inserts a new skill with a generated UUID.
- */
 export async function saveSkill(skill: {
   id?: string;
   name: string;
@@ -585,19 +506,15 @@ export async function saveSkill(skill: {
       [skill.name, skill.description ?? '', skill.content ?? '', skill.source ?? null, skill.source_id ?? null, skill.is_active ?? 0, skill.url_pattern ?? null, skill.id]
     );
     return skill.id;
-  } else {
-    await database.execute(
-      `INSERT INTO skills (id, name, description, content, source, source_id, is_active, url_pattern) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [id, skill.name, skill.description ?? '', skill.content ?? '', skill.source ?? null, skill.source_id ?? null, skill.is_active ?? 0, skill.url_pattern ?? null]
-    );
-    return id;
   }
+
+  await database.execute(
+    `INSERT INTO skills (id, name, description, content, source, source_id, is_active, url_pattern) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [id, skill.name, skill.description ?? '', skill.content ?? '', skill.source ?? null, skill.source_id ?? null, skill.is_active ?? 0, skill.url_pattern ?? null]
+  );
+  return id;
 }
 
-/**
- * Get all skills that have a url_pattern set (non-null, non-empty).
- * Used for site-based profile injection in Agent Mode.
- */
 export async function getSkillsWithUrlPattern(): Promise<Skill[]> {
   const database = await initDB();
   return await database.select<Skill[]>(
@@ -662,18 +579,11 @@ export async function updateSkillActive(id: string, isActive: number): Promise<v
   );
 }
 
-/**
- * Delete a skill by id.
- */
 export async function deleteSkill(id: string): Promise<void> {
   const database = await initDB();
   await database.execute("DELETE FROM skills WHERE id = $1", [id]);
 }
 
-/**
- * Find a skill by its source and source_id.
- * Useful for checking if a skill from a particular source already exists.
- */
 export async function getSkillBySource(source: string, sourceId: string): Promise<Skill | null> {
   const database = await initDB();
   const rows = await database.select<Skill[]>(

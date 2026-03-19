@@ -13,14 +13,11 @@ import {
   evalScript,
   evalScriptJSON,
   captureWebviewScreenshot,
-  navigateEmbedded,
-  getActiveTabId,
   getEmbeddedUrl,
 } from './browser';
 import { findFuzzyMatch, fuzzyMatchReason } from './agent-dom-fuzzy';
 import { captureInteractiveDom } from './agent-dom';
-import { isConnected, pwClick, pwType, pwReadText, pwWaitFor, pwScroll, pwPressKey, pwWriteCodeMirror, pwCapturePopup } from './cdp-actions';
-import { isGdkAvailable, gdkClick, gdkType, gdkPressKey, gdkScroll, setGdkActiveTab } from './gdk-actions';
+import { pwClick, pwType, pwReadText, pwWaitFor, pwScroll, pwPressKey, pwWriteCodeMirror, pwCapturePopup } from './cdp-actions';
 import { cdp } from './cdp-client';
 import { runDiscovery } from './discover';
 import { testProfile } from './profile-tester';
@@ -91,24 +88,7 @@ async function showCursorDot(selector: string, color = '#3b82f6'): Promise<void>
  * Click an element matching the CSS selector.
  */
 async function clickAction(selector: string): Promise<ActionResult> {
-  try {
-    const escaped = escapeSelector(selector);
-    const result = await evalScriptJSON<ActionResult>(`
-(function() {
-  try {
-    var el = document.querySelector('${escaped}');
-    if (!el) return { success: false, error: 'Element not found: ' + '${escaped}' };
-    el.click();
-    return { success: true, data: { tagName: el.tagName, text: (el.textContent || '').trim().substring(0, 100) } };
-  } catch(e) {
-    return { success: false, error: e.message };
-  }
-})()
-    `);
-    return result;
-  } catch (err: unknown) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) };
-  }
+  return pwClick(selector);
 }
 
 /**
@@ -121,55 +101,7 @@ async function typeAction(
   text: string,
   clear?: boolean,
 ): Promise<ActionResult> {
-  try {
-    const escaped = escapeSelector(selector);
-    const safeText = escapeSelector(text);
-    const clearFlag = clear ? 'true' : 'false';
-    const result = await evalScriptJSON<ActionResult>(`
-(function() {
-  try {
-    var el = document.querySelector('${escaped}');
-    if (!el) return { success: false, error: 'Element not found: ' + '${escaped}' };
-    var isContentEditable = el.hasAttribute('contenteditable');
-    if (isContentEditable) {
-      // contenteditable div (rich-text editors, TinyMCE inline, feedback boxes)
-      el.focus();
-      if (${clearFlag}) { el.innerHTML = ''; }
-      document.execCommand('insertText', false, '${safeText}');
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-    } else {
-      // <input> or <textarea> — pick the right prototype to avoid "Illegal invocation"
-      var proto = el.tagName === 'TEXTAREA'
-        ? window.HTMLTextAreaElement.prototype
-        : window.HTMLInputElement.prototype;
-      if (${clearFlag}) {
-        var clearSetter = Object.getOwnPropertyDescriptor(proto, 'value');
-        if (clearSetter && clearSetter.set) {
-          clearSetter.set.call(el, '');
-        } else {
-          el.value = '';
-        }
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-      var nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value');
-      if (nativeSetter && nativeSetter.set) {
-        nativeSetter.set.call(el, '${safeText}');
-      } else {
-        el.value = '${safeText}';
-      }
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-    return { success: true };
-  } catch(e) {
-    return { success: false, error: e.message };
-  }
-})()`);
-    return result;
-  } catch (err: unknown) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) };
-  }
+  return pwType(selector, text, clear);
 }
 
 /**
@@ -212,66 +144,14 @@ async function scrollAction(
   direction: 'up' | 'down' | 'left' | 'right',
   amount: number,
 ): Promise<ActionResult> {
-  try {
-    var xVal = 0;
-    var yVal = 0;
-    switch (direction) {
-      case 'up': yVal = -amount; break;
-      case 'down': yVal = amount; break;
-      case 'left': xVal = -amount; break;
-      case 'right': xVal = amount; break;
-    }
-    const result = await evalScriptJSON<ActionResult>(`
-(function() {
-  try {
-    window.scrollBy(${xVal}, ${yVal});
-    return { success: true, data: { scrollX: window.scrollX, scrollY: window.scrollY } };
-  } catch(e) {
-    return { success: false, error: e.message };
-  }
-})()
-    `);
-    return result;
-  } catch (err: unknown) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) };
-  }
+  return pwScroll(direction, amount);
 }
 
 /**
  * Read text content from a specific element or the full page body.
  */
 async function readTextAction(selector?: string): Promise<ActionResult> {
-  try {
-    if (selector) {
-      const escaped = escapeSelector(selector);
-      const result = await evalScriptJSON<ActionResult>(`
-(function() {
-  try {
-    var el = document.querySelector('${escaped}');
-    if (!el) return { success: false, error: 'Element not found: ' + '${escaped}' };
-    return { success: true, data: (el.textContent || '') };
-  } catch(e) {
-    return { success: false, error: e.message };
-  }
-})()
-      `);
-      return result;
-    } else {
-      const result = await evalScriptJSON<ActionResult>(`
-(function() {
-  try {
-    var text = (document.body.innerText || '').substring(0, 5000);
-    return { success: true, data: text };
-  } catch(e) {
-    return { success: false, error: e.message };
-  }
-})()
-      `);
-      return result;
-    }
-  } catch (err: unknown) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) };
-  }
+  return pwReadText(selector);
 }
 
 /**
@@ -294,28 +174,7 @@ async function waitForAction(
   selector: string,
   timeoutMs?: number,
 ): Promise<ActionResult> {
-  try {
-    const escaped = escapeSelector(selector);
-    const limit = Math.min(timeoutMs ?? 5000, 10000);
-    const result = await evalScriptJSON<ActionResult>(`
-(function() {
-  return new Promise(function(resolve) {
-    var start = Date.now();
-    var limit = ${limit};
-    function check() {
-      var el = document.querySelector('${escaped}');
-      if (el) { resolve({ success: true }); return; }
-      if (Date.now() - start >= limit) { resolve({ success: false, error: 'Timeout waiting for: ${escaped}' }); return; }
-      setTimeout(check, 200);
-    }
-    check();
-  });
-})()
-    `);
-    return result;
-  } catch (err: unknown) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) };
-  }
+  return pwWaitFor(selector, timeoutMs);
 }
 
 /**
@@ -323,7 +182,7 @@ async function waitForAction(
  */
 async function navigateAction(url: string): Promise<ActionResult> {
   try {
-    await navigateEmbedded(getActiveTabId(), url);
+    await cdp.send('Page.navigate', { url });
     return { success: true };
   } catch (err: unknown) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
@@ -365,60 +224,16 @@ async function sleepAction(ms: number): Promise<ActionResult> {
   return { success: true, data: { sleptMs: capped } };
 }
 
-/**
- * Write content into a CodeMirror editor via evalScript.
- * Falls back to evalScript when CDP is not connected.
- * Uses JSON.stringify to safely embed PHP/math content regardless of special chars.
- */
 async function writeCodeMirrorAction(selector: string, value: string): Promise<ActionResult> {
-  try {
-    const escaped = escapeSelector(selector);
-    const safeValue = JSON.stringify(value);
-    const result = await evalScriptJSON<ActionResult>(`(function(val) {
-  try {
-    var el = document.querySelector('${escaped}');
-    if (!el) return { success: false, error: 'Element not found: ${escaped}' };
-    var cm = el.CodeMirror
-      || (el.querySelector && el.querySelector('.CodeMirror') && el.querySelector('.CodeMirror').CodeMirror)
-      || (el.parentElement && el.parentElement.CodeMirror)
-      || (el.classList && el.classList.contains('CodeMirror') && el.CodeMirror);
-    if (!cm) return { success: false, error: 'No CodeMirror instance found on ${escaped}' };
-    cm.setValue(val);
-    cm.refresh();
-    return { success: true, data: { lines: cm.lineCount() } };
-  } catch(e) { return { success: false, error: e.message }; }
-})(${safeValue})`);
-    return result;
-  } catch (err: unknown) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) };
-  }
+  return pwWriteCodeMirror(selector, value);
 }
 
 /**
- * Dispatch a keyboard key press on the currently focused element.
- * Fires keydown, keypress, and keyup synthetic events via evalScript.
- * CDP path uses pwPressKey (Input.dispatchKeyEvent) when connected.
+ * Dispatch a keyboard key press via CDP Input.dispatchKeyEvent.
  * Common keys: 'Tab', 'Enter', 'Escape', 'ArrowDown', 'ArrowUp'.
  */
 async function pressKeyAction(key: string): Promise<ActionResult> {
-  try {
-    const safeKey = escapeSelector(key);
-    const result = await evalScriptJSON<ActionResult>(`(function() {
-  try {
-    var el = document.activeElement || document.body;
-    var init = { key: '${safeKey}', bubbles: true, cancelable: true };
-    el.dispatchEvent(new KeyboardEvent('keydown',  init));
-    el.dispatchEvent(new KeyboardEvent('keypress', init));
-    el.dispatchEvent(new KeyboardEvent('keyup',    init));
-    return { success: true };
-  } catch(e) {
-    return { success: false, error: e.message };
-  }
-})()`);
-    return result;
-  } catch (err: unknown) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) };
-  }
+  return pwPressKey(key);
 }
 
 // ============================================================================
@@ -429,7 +244,7 @@ async function pressKeyAction(key: string): Promise<ActionResult> {
  * Run AI-powered page structure discovery on the current page.
  * Returns a DiscoveryResult with selectors, feedback config, etc.
  */
-async function discoverPageAction(hints?: DiscoveryHints): Promise<ActionResult> {
+async function discoverPageAction(_hints?: DiscoveryHints): Promise<ActionResult> {
   try {
     const result = await runDiscovery({ /* hints are for future use */ });
     return { success: true, data: result };
@@ -503,49 +318,7 @@ async function saveProfileAction(
  * @returns ActionResult — always resolves, never throws
  */
 export async function executeAction(params: ActionParams): Promise<ActionResult> {
-  // ---- inner dispatch: CDP → evalScript, no retry ----
   async function dispatch(p: ActionParams): Promise<ActionResult> {
-    // CDP path: use Playwright when connected
-    if (isConnected()) {
-      switch (p.action) {
-        case 'click':
-          return pwClick(p.selector);
-        case 'type':
-          return pwType(p.selector, p.text, p.clear);
-        case 'readText':
-          return pwReadText(p.selector);
-        case 'waitFor':
-          return pwWaitFor(p.selector, p.timeoutMs);
-        case 'scroll':
-          return pwScroll(p.direction, p.amount);
-        case 'pressKey':
-          return pwPressKey(p.key);
-        case 'writeCodeMirror':
-          return pwWriteCodeMirror(p.selector, p.value);
-        case 'capturePopup':
-          return pwCapturePopup(p.timeoutMs);
-        case 'navigate':
-          return cdp.send('Page.navigate', { url: p.url }).then(() => ({ success: true as const })).catch((err: unknown) => ({ success: false as const, error: err instanceof Error ? err.message : String(err) }));
-        // All other actions fall through to evalScript below
-      }
-    }
-
-    if (isGdkAvailable()) {
-      setGdkActiveTab(getActiveTabId());
-      switch (p.action) {
-        case 'click':
-          return gdkClick(p.selector);
-        case 'type':
-          return gdkType(p.selector, p.text, p.clear);
-        case 'pressKey':
-          return gdkPressKey(p.key);
-        case 'scroll':
-          return gdkScroll(p.direction, p.amount);
-        // All other actions fall through to evalScript below
-      }
-    }
-
-    // evalScript path
     switch (p.action) {
       case 'click':
         return clickAction(p.selector);
@@ -570,7 +343,7 @@ export async function executeAction(params: ActionParams): Promise<ActionResult>
       case 'writeCodeMirror':
         return writeCodeMirrorAction(p.selector, p.value);
       case 'capturePopup':
-        return { success: false, error: 'capturePopup requires CDP — not available in evalScript mode' };
+        return pwCapturePopup(p.timeoutMs);
       case 'discover_page':
         return discoverPageAction(p.hints);
       case 'test_profile':

@@ -6,12 +6,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockInvoke = vi.fn().mockResolvedValue(undefined);
 const mockListen = vi.fn().mockResolvedValue(vi.fn());
+const mockCdpScreenshot = vi.fn();
 
-vi.mock('@tauri-apps/api/core', () => ({
+vi.mock('./electron-bridge', () => ({
   invoke: (...args: unknown[]) => mockInvoke(...args),
-}));
-
-vi.mock('@tauri-apps/api/event', () => ({
   listen: (...args: unknown[]) => mockListen(...args),
 }));
 
@@ -30,7 +28,7 @@ vi.mock('./cdp-client', () => ({
 vi.mock('./cdp-actions', () => ({
   isConnected: () => mockCdpIsConnected(),
   connectCDP: vi.fn().mockResolvedValue(true),
-  cdpScreenshot: vi.fn().mockRejectedValue(new Error('fallback')),
+  cdpScreenshot: (...args: unknown[]) => mockCdpScreenshot(...args),
 }));
 
 // Mock autofill since browser.ts imports it
@@ -94,6 +92,7 @@ describe('browser.ts — Function exports', () => {
 describe('browser.ts — URL normalization', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockInvoke.mockResolvedValue(undefined);
   });
 
   // ── createEmbeddedBrowser ────────────────────────────────────────────
@@ -139,6 +138,7 @@ describe('browser.ts — URL normalization', () => {
 describe('browser.ts — Navigation commands', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockInvoke.mockResolvedValue(undefined);
   });
 
   it('goBack invokes the correct command', async () => {
@@ -187,6 +187,7 @@ describe('browser.ts — Navigation commands', () => {
 describe('browser.ts — Event listeners', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockListen.mockResolvedValue(vi.fn());
   });
 
   it('listenBrowserUrlChanged registers listener', async () => {
@@ -205,6 +206,7 @@ describe('browser.ts — Event listeners', () => {
 describe('browser.ts — Autofill injection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockInvoke.mockResolvedValue(undefined);
   });
 
   it('injectAutofill invokes inject_autofill with generated script', async () => {
@@ -230,95 +232,50 @@ describe('browser.ts — Screenshot capture exports', () => {
 });
 
 describe('browser.ts — captureWebviewScreenshot', () => {
-  // Helper to build a CDP Runtime.evaluate result
-  function cdpResult(value: unknown) {
-    return { result: { type: typeof value, value } };
-  }
-  function cdpException(msg: string) {
-    return { result: { type: 'undefined' }, exceptionDetails: { text: msg, exception: { description: msg } } };
-  }
-
   beforeEach(() => {
     vi.clearAllMocks();
-    // Default: CDP is connected, cdpScreenshot falls through to html2canvas path
+    mockInvoke.mockResolvedValue(undefined);
     mockCdpIsConnected.mockReturnValue(true);
+    mockCdpScreenshot.mockResolvedValue('data:image/jpeg;base64,abc123');
   });
-  it('loads html2canvas when not already present, then captures', async () => {
-    // 1st CDP call: typeof html2canvas → false (not loaded)
-    mockCdpSend.mockResolvedValueOnce(cdpResult(false));
-    // 2nd CDP call: load html2canvas CDN → 'loaded'
-    mockCdpSend.mockResolvedValueOnce(cdpResult('loaded'));
-    // 3rd CDP call: capture screenshot → data URL
-    mockCdpSend.mockResolvedValueOnce(cdpResult('data:image/jpeg;base64,abc123'));
+  it('captures screenshot via cdpScreenshot when connected', async () => {
+    mockCdpScreenshot.mockResolvedValueOnce('data:image/jpeg;base64,abc123');
 
     const result = await captureWebviewScreenshot();
     expect(result).toBe('data:image/jpeg;base64,abc123');
-    expect(mockCdpSend).toHaveBeenCalledTimes(3);
-
-    // All three calls go through Runtime.evaluate
-    for (let i = 0; i < 3; i++) {
-      expect(mockCdpSend.mock.calls[i][0]).toBe('Runtime.evaluate');
-    }
+    expect(mockCdpScreenshot).toHaveBeenCalledTimes(1);
   });
-  it('skips CDN load when html2canvas is already present', async () => {
-    // 1st CDP call: html2canvas already loaded → true
-    mockCdpSend.mockResolvedValueOnce(cdpResult(true));
-    // 2nd CDP call: capture screenshot
-    mockCdpSend.mockResolvedValueOnce(cdpResult('data:image/jpeg;base64,xyz789'));
+  it('connects CDP when disconnected and then captures screenshot', async () => {
+    mockCdpIsConnected.mockReturnValue(false);
+    vi.mocked(connectCDP).mockResolvedValueOnce(true);
+    mockCdpScreenshot.mockResolvedValueOnce('data:image/jpeg;base64,xyz789');
 
     const result = await captureWebviewScreenshot();
     expect(result).toBe('data:image/jpeg;base64,xyz789');
-    // Only 2 calls: check + capture (no CDN load)
-    expect(mockCdpSend).toHaveBeenCalledTimes(2);
+    expect(mockCdpScreenshot).toHaveBeenCalledTimes(1);
   });
-  it('throws when capture returns invalid data', async () => {
-    mockCdpSend.mockResolvedValueOnce(cdpResult(true));    // html2canvas present
-    mockCdpSend.mockResolvedValueOnce(cdpResult(''));        // empty string from capture
-
-    await expect(captureWebviewScreenshot()).rejects.toThrow('invalid image data');
-  });
-  it('throws when capture returns null', async () => {
-    mockCdpSend.mockResolvedValueOnce(cdpResult(true));    // html2canvas present
-    mockCdpSend.mockResolvedValueOnce(cdpResult(null));     // null from capture
-
-    await expect(captureWebviewScreenshot()).rejects.toThrow('invalid image data');
-  });
-  it('propagates CDN load errors', async () => {
-    mockCdpSend.mockResolvedValueOnce(cdpResult(false));   // not loaded
-    mockCdpSend.mockResolvedValueOnce(cdpException('CDN unreachable'));
-    await expect(captureWebviewScreenshot()).rejects.toThrow('CDN unreachable');
+  it('propagates cdpScreenshot errors', async () => {
+    mockCdpScreenshot.mockRejectedValueOnce(new Error('capture failed'));
+    await expect(captureWebviewScreenshot()).rejects.toThrow('capture failed');
   });
 
-  it('propagates eval errors when CDP not connected and IPC fails', async () => {
+  it('throws when CDP cannot connect for screenshot capture', async () => {
     mockCdpIsConnected.mockReturnValue(false);
     vi.mocked(connectCDP).mockResolvedValueOnce(false);
-    resetEvalScriptCache();
-    mockInvoke.mockRejectedValueOnce(new Error('Tab not found'));
-    await expect(captureWebviewScreenshot()).rejects.toThrow('Tab not found');
+    await expect(captureWebviewScreenshot()).rejects.toThrow('CDP not connected for screenshot capture');
   });
 });
 
 describe('browser.ts — captureWebviewArea', () => {
-  function cdpResult(value: unknown) {
-    return { result: { type: typeof value, value } };
-  }
-
   beforeEach(() => {
     vi.clearAllMocks();
     mockCdpIsConnected.mockReturnValue(true);
+    mockCdpScreenshot.mockResolvedValue('data:image/jpeg;base64,fullpage');
   });
 
-  it('calls captureWebviewScreenshot internally (verifies CDP chain)', async () => {
-    // Mock the full chain: check + capture
-    mockCdpSend.mockResolvedValueOnce(cdpResult(true));
-    mockCdpSend.mockResolvedValueOnce(cdpResult('data:image/jpeg;base64,fullpage'));
-    // captureWebviewArea calls captureWebviewScreenshot then cropImageData.
-    // cropImageData uses new Image() / canvas which don't exist in node env.
-    // So we expect it to reject at the crop step.
+  it('calls captureWebviewScreenshot internally before crop', async () => {
     await expect(captureWebviewArea(10, 20, 100, 80)).rejects.toThrow();
-    // But it should have called CDP eval first
-    expect(mockCdpSend).toHaveBeenCalledTimes(2);
-    expect(mockCdpSend.mock.calls[0][0]).toBe('Runtime.evaluate');
+    expect(mockCdpScreenshot).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -340,10 +297,10 @@ describe('browser.ts — evalScript IPC fallback (Linux)', () => {
     resetEvalScriptCache();
     mockCdpIsConnected.mockReturnValue(false);
     vi.mocked(connectCDP).mockResolvedValue(false);
+    mockInvoke.mockResolvedValue(undefined);
   });
 
-  it('returns actual value from Tauri IPC when CDP unavailable', async () => {
-    // Mock Tauri IPC to return a stringified value
+  it('returns actual value from IPC when CDP unavailable', async () => {
     mockInvoke.mockResolvedValueOnce(JSON.stringify('My Page Title'));
 
     const result = await evalScript('document.title');
@@ -355,8 +312,7 @@ describe('browser.ts — evalScript IPC fallback (Linux)', () => {
     });
   });
 
-  it('propagates errors from Tauri IPC fallback', async () => {
-    // Mock Tauri IPC to reject with an error
+  it('propagates errors from IPC fallback', async () => {
     mockInvoke.mockRejectedValueOnce(new Error('Script execution failed'));
 
     await expect(evalScript('throw new Error("test")')).rejects.toThrow(
@@ -389,4 +345,3 @@ describe('browser.ts — evalScript IPC fallback (Linux)', () => {
     expect(mockInvoke).toHaveBeenCalledTimes(2);
   });
 });
-

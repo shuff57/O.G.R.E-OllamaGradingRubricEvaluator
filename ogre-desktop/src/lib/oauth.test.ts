@@ -1,12 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// ── Mock @tauri-apps/plugin-http ──────────────────────────────────────────
-const { mockFetch } = vi.hoisted(() => ({ mockFetch: vi.fn() }));
-vi.mock("@tauri-apps/plugin-http", () => ({ fetch: mockFetch }));
-
-// ── Mock @tauri-apps/plugin-opener ─────────────────────────────────────────
-const { mockOpen } = vi.hoisted(() => ({ mockOpen: vi.fn() }));
-vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: mockOpen }));
+const { mockFetch, mockOpen } = vi.hoisted(() => ({
+  mockFetch: vi.fn(),
+  mockOpen: vi
+    .fn<(url?: string | URL, target?: string, features?: string) => Window | null>()
+    .mockReturnValue(null),
+}));
 
 // ── Mock ./db ─────────────────────────────────────────────────────────────
 const {
@@ -67,13 +66,20 @@ function failRes(status = 500) {
   };
 }
 
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetch as typeof fetch);
+  vi.stubGlobal('window', {
+    open: (url?: string | URL, target?: string, features?: string) =>
+      mockOpen(url, target, features),
+  });
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // fetchAvailableModels
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("fetchAvailableModels", () => {
-  beforeEach(() => vi.clearAllMocks());
-
   // ── Ollama ──────────────────────────────────────────────────────────
 
   describe("ollama", () => {
@@ -315,8 +321,6 @@ describe("fetchAvailableModels", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("signOut", () => {
-  beforeEach(() => vi.clearAllMocks());
-
   it("deletes OAuth token for non-google provider", async () => {
     await signOut("github");
 
@@ -362,8 +366,6 @@ describe("signOut", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("getValidAnthropicToken", () => {
-  beforeEach(() => vi.clearAllMocks());
-
   it("returns null when no token stored", async () => {
     mockGetOAuthToken.mockResolvedValue(null);
 
@@ -466,8 +468,6 @@ describe("getValidAnthropicToken", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("startGitHubDeviceFlow", () => {
-  beforeEach(() => vi.clearAllMocks());
-
   it("returns DeviceFlowResult with correct shape", async () => {
     mockFetch.mockResolvedValue(
       okJson({
@@ -498,7 +498,7 @@ describe("startGitHubDeviceFlow", () => {
 
     await startGitHubDeviceFlow();
 
-    expect(mockOpen).toHaveBeenCalledWith("https://github.com/login/device");
+    expect(mockOpen).toHaveBeenCalledWith("https://github.com/login/device", "_blank", undefined);
   });
 
   it("sends correct POST body to device code endpoint", async () => {
@@ -533,8 +533,6 @@ describe("startGitHubDeviceFlow", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("startChatGPTDeviceFlow", () => {
-  beforeEach(() => vi.clearAllMocks());
-
   it("returns DeviceFlowResult with correct shape and opens browser", async () => {
     mockFetch.mockResolvedValue(
       okJson({
@@ -552,6 +550,8 @@ describe("startChatGPTDeviceFlow", () => {
     expect(typeof result.cancel).toBe("function");
     expect(mockOpen).toHaveBeenCalledWith(
       expect.stringContaining("user_code=XYZ-789"),
+      "_blank",
+      undefined,
     );
   });
 
@@ -569,8 +569,6 @@ describe("startChatGPTDeviceFlow", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("startGoogleDeviceFlow", () => {
-  beforeEach(() => vi.clearAllMocks());
-
   it("returns DeviceFlowResult and opens verification URL", async () => {
     mockFetch.mockResolvedValue(
       okJson({
@@ -587,7 +585,7 @@ describe("startGoogleDeviceFlow", () => {
     expect(result.verificationUrl).toBe("https://www.google.com/device");
     expect(typeof result.poll).toBe("function");
     expect(typeof result.cancel).toBe("function");
-    expect(mockOpen).toHaveBeenCalledWith("https://www.google.com/device");
+    expect(mockOpen).toHaveBeenCalledWith("https://www.google.com/device", "_blank", undefined);
   });
 
   it("throws when device code request fails", async () => {

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
-  import type { Update } from '@tauri-apps/plugin-updater';
+  type Update = { version: string; body?: string | null; download: (cb?: unknown) => Promise<void>; installAndRelaunch: () => Promise<void> }
   import { installUpdate, type DownloadProgress } from '../lib/updater';
 
   export let isOpen = false;

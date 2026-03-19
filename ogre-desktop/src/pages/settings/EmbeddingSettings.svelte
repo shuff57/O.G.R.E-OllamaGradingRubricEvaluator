@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
+  ;
   import { onMount } from 'svelte';
   import { getSetting, setSetting } from '../../lib/db';
   import { getEmbeddingCount } from '../../lib/vector-store';
@@ -25,7 +25,7 @@
       const token = getHandshakeToken();
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await tauriFetch('http://localhost:3456/api/embed', {
+      const res = await fetch('http://localhost:3456/api/embed', {
         method: 'POST',
         headers,
         body: JSON.stringify({ provider: 'local', text: 'embedding test' }),
