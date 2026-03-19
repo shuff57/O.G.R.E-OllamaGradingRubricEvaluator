@@ -1,0 +1,42 @@
+{
+  "timestamp": "2026-03-18T20:42:18.998Z",
+  "checks": {
+    "sqlite": {
+      "pass": true,
+      "detail": "better-sqlite3 works with Electron ABI"
+    },
+    "debugger_attach": {
+      "pass": true,
+      "detail": "webContents.debugger.attach(1.3) succeeded"
+    },
+    "runtime_evaluate": {
+      "pass": true,
+      "detail": "Runtime.evaluate returned: SpikeTest"
+    },
+    "screenshot": {
+      "pass": true,
+      "detail": "Screenshot data length: 142444"
+    },
+    "accessibility_tree": {
+      "pass": true,
+      "detail": "AX tree has 12 nodes",
+      "sample_roles": [
+        "RootWebArea",
+        "none",
+        "none",
+        "heading",
+        "button",
+        "textbox",
+        "StaticText",
+        "StaticText",
+        "none",
+        "generic"
+      ]
+    },
+    "cors_localhost": {
+      "pass": true,
+      "detail": "CORS fetch succeeded: HTTP 200 {\"status\":\"ok\"}"
+    }
+  },
+  "verdict": "GO"
+}
