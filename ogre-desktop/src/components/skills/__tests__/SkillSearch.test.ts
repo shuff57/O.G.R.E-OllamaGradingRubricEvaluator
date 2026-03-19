@@ -6,9 +6,9 @@ const { mockFetch } = vi.hoisted(() => ({
   mockFetch: vi.fn(),
 }));
 
-vi.mock("@tauri-apps/plugin-http", () => ({
-  fetch: mockFetch,
-}));
+beforeEach(() => {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetch as typeof fetch);
+});
 
 const { mockGetSkillBySource, mockSaveSkill } = vi.hoisted(() => ({
   mockGetSkillBySource: vi.fn(),

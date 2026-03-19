@@ -2,14 +2,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as profileJsonConverter from './profile-json-converter';
 import { AGENT_SYSTEM_PROMPT } from './agent-prompt';
 
-// ── Mock @tauri-apps/plugin-http ──────────────────────────────────────────
 const { mockFetch } = vi.hoisted(() => ({
   mockFetch: vi.fn(),
 }));
 
-vi.mock("@tauri-apps/plugin-http", () => ({
-  fetch: mockFetch,
-}));
+beforeEach(() => {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetch as typeof fetch);
+});
 
 // Import AFTER mocks are set up
 import { buildSkillContentUrl, SKILLS_SH_SEARCH_URL, searchSkills, fetchSkillContent, fetchTrendingSkills, installSkill, buildSkillInjection, getSkillInjectionSize, findMatchingProfiles, buildSiteContextInjection, syncSiteProfiles, BUNDLED_PROFILES, getMatchingSkillsForUrl } from "./skills-api";
@@ -714,7 +713,7 @@ describe('AGENT_SYSTEM_PROMPT', () => {
   });
 
   it('instructs agent to use selectors object from JSON guide', () => {
-    expect(AGENT_SYSTEM_PROMPT).toContain('Use the "selectors" object for CSS selectors directly');
+    expect(AGENT_SYSTEM_PROMPT).toContain('Use the "selectors" object for selectors directly');
   });
 });
 

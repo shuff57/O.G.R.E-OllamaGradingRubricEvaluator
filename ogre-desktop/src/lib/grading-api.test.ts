@@ -1,13 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// ── Mock @tauri-apps/plugin-http ──────────────────────────────────────────
 const { mockFetch } = vi.hoisted(() => ({
   mockFetch: vi.fn(),
 }));
 
-vi.mock("@tauri-apps/plugin-http", () => ({
-  fetch: mockFetch,
-}));
+beforeEach(() => {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetch as typeof fetch);
+});
 
 // ── Mock provider-sync ──────────────────────────────────────────────────
 const { mockGetHandshakeToken } = vi.hoisted(() => ({

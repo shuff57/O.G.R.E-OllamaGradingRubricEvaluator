@@ -28,10 +28,6 @@ import aeriesProfileRaw from "../assets/profiles/aeries.md?raw";
 
 // ── Module Mocks (hoisted by vitest) ────────────────────────────────────────
 
-vi.mock("@tauri-apps/plugin-http", () => ({
-  fetch: vi.fn(),
-}));
-
 vi.mock("./browser", () => ({
   evalScript: vi.fn(),
   evalScriptJSON: vi.fn(),
@@ -78,7 +74,7 @@ const mockEvalJSON = evalScriptJSON as unknown as Mock;
 const mockScreenshot = captureWebviewScreenshot as unknown as Mock;
 const mockGetUrl = getEmbeddedUrl as unknown as Mock;
 const mockDetect = detectGradingStructure as unknown as Mock;
-const mockFetch = tauriFetch as unknown as Mock;
+const mockFetch = vi.fn();
 const mockDiscoverExt = discoverExtractionConfig as unknown as Mock;
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
@@ -222,6 +218,7 @@ function mockHttpResponse(content: string) {
 describe("Discovery Pipeline (Integration)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetch as typeof fetch);
     mockScreenshot.mockResolvedValue(SCREENSHOT);
     mockGetUrl.mockResolvedValue(PAGE_URL);
   });
@@ -248,6 +245,7 @@ describe("Discovery Pipeline (Integration)", () => {
     expect(result.draft.selectors.scoreInput).toBe("input[name^='score']");
     // Validation & screenshot present
     expect(result.validation).toBeDefined();
+    expect(result.screenshot).toBeTruthy();
     expect(result.screenshot).toBe(SCREENSHOT);
   });
 
