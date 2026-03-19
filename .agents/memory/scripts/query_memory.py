@@ -58,7 +58,7 @@ async def main():
         rag = LightRAG(
             working_dir=str(WORKING_DIR),
             llm_model_func=ollama_model_complete,
-            llm_model_name="llama3.2",
+            llm_model_name="nemotron-3-super:cloud",
             llm_model_kwargs={
                 "host": "http://localhost:11434",
                 "options": {"num_ctx": 8192},

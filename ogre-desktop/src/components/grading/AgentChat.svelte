@@ -8,7 +8,6 @@
   import type { AgentMode, AgentState } from '../../lib/agent-types';
   import ProviderSelector from './ProviderSelector.svelte';
   import { getMatchingSkillsForUrl } from '../../lib/skills-api';
-  import { selectBestProfile } from '../../lib/profile-precedence';
   import { getEmbeddedUrl } from '../../lib/browser';
   import { saveSkill, type Skill } from '../../lib/db';
 
@@ -16,7 +15,11 @@
   // Props
   // ============================================================================
 
-  let { pageLoadedUrl = '' }: { pageLoadedUrl?: string } = $props();
+  let {
+    pageLoadedUrl = '',
+    activeProfileName = null as string | null,
+    onRequestDiscovery = () => {},
+  }: { pageLoadedUrl?: string; activeProfileName?: string | null; onRequestDiscovery?: () => void } = $props();
 
   // ============================================================================
   // Message Types
@@ -72,47 +75,12 @@
   let pendingAction: PendingAction | null = $state(null);
   let chatContainer: HTMLElement | undefined = $state(undefined);
   let controller: AgentController = $state(createAgentController());
-  let activeProfileName: string | null = $state(null);
-  let showDiscoveryBanner: boolean = $state(false);
-
   let matchingSkills: Skill[] = $state([]);
   let selectedSkillId: string | null = $state(null);
 
   // ============================================================================
   // Helpers
   // ============================================================================
-
-  /** Check if the current embedded browser URL matches any site profile. */
-  async function checkActiveProfile(urlHint?: string) {
-    try {
-      const url = urlHint || await getEmbeddedUrl();
-      if (!url) {
-        activeProfileName = null;
-        showDiscoveryBanner = false;
-        return;
-      }
-      const matches = await getMatchingSkillsForUrl(url);
-      const best = selectBestProfile(matches);
-      if (best) {
-        activeProfileName = best.name;
-        showDiscoveryBanner = false;
-      } else {
-        activeProfileName = null;
-        showDiscoveryBanner = true;
-      }
-    } catch (e) {
-      console.warn('checkActiveProfile: profile detection failed', e);
-      activeProfileName = null;
-      showDiscoveryBanner = false;
-    }
-  }
-
-  /** Handle "Discover Page" button click. */
-  function handleDiscoverPage() {
-    showDiscoveryBanner = false;
-    // Dispatch a custom event so parent (GradingPanel) can switch to discovery mode
-    document.dispatchEvent(new CustomEvent('ogre:switch-to-discovery', { bubbles: true }));
-  }
 
   /** Extract a short target label from action params for compact badge display. */
   function getBadgeTarget(action: string, params: Record<string, unknown>): string {
@@ -348,10 +316,9 @@
     selectedSkillId = newSkillId;
   }
 
-  // Check for active profile on mount and when URL changes
+  // Refresh matching skills when URL changes
   $effect(() => {
     const url = pageLoadedUrl; // synchronous read → Svelte 5 tracks this as reactive dep
-    checkActiveProfile(url);
     refreshMatchingSkills(url);
   });
 </script>
@@ -446,12 +413,6 @@
   </div>
 
   <div class="chat-interface">
-    {#if showDiscoveryBanner}
-      <div class="discovery-banner">
-        <span class="discovery-banner-text">No site profile found for this page.</span>
-        <button class="btn-discover" onclick={handleDiscoverPage}>Discover Page</button>
-      </div>
-    {/if}
     <div class="chat-messages" bind:this={chatContainer}>
       {#each messages as msg}
         {#if msg.type === 'text'}

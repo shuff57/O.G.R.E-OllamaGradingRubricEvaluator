@@ -63,6 +63,7 @@ export function buildOllamaRequest(config, messages) {
     keep_alive: '60m',
     options: {
       temperature: config.temperature ?? 0.2,
+      num_ctx: 8192,
     },
   };
 

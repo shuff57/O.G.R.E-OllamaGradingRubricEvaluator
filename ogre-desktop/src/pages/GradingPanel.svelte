@@ -11,9 +11,11 @@
   import { captureWebviewScreenshot, hideWebview, showWebview, getActiveTabId } from '../lib/browser';
   import type { SavedRubric } from '../lib/rubric-api';
   import type { GradeRubric } from '../lib/grading-api';
-  import type { Rubric } from '../lib/batch-grader';
+  import type { Rubric, SiteProfile } from '../lib/batch-grader';
+  import { DEFAULT_MYOPENMATH_PROFILE, BUILT_IN_PROFILES } from '../lib/batch-grader';
+  import { ProfileStorageImpl } from '../lib/site-profiles';
   import { ICON_STRIP_WIDTH } from '../lib/constants';
-  import { createDebouncedRefresh } from '../lib/page-refresh';
+  import { createDebouncedRefresh, refreshPageData } from '../lib/page-refresh';
 
   let {
     isCollapsed = $bindable(false),
@@ -64,6 +66,43 @@
 
   let returnToBatch = $state(false);
   let preselectedProfileId = $state<string | null>(null);
+
+  // ── Global site profile state ────────────────────────────────────────────
+  let globalActiveProfile = $state<SiteProfile>(DEFAULT_MYOPENMATH_PROFILE);
+  let globalAllProfiles = $state<SiteProfile[]>([...BUILT_IN_PROFILES]);
+  let globalSelectedProfileId = $state('auto');
+  let globalDetectedProfile = $state<SiteProfile | null>(null);
+  let globalProfileWarning = $state('');
+
+  let globalComputedProfile = $derived<SiteProfile>(
+    globalSelectedProfileId === 'auto'
+      ? (globalDetectedProfile ?? DEFAULT_MYOPENMATH_PROFILE)
+      : globalAllProfiles.find(p => p.id === globalSelectedProfileId) ?? DEFAULT_MYOPENMATH_PROFILE
+  );
+
+  $effect(() => { globalActiveProfile = globalComputedProfile; });
+
+  async function detectGlobalProfile(url: string) {
+    if (!url) {
+      globalDetectedProfile = null;
+      globalProfileWarning = '';
+      return;
+    }
+    try {
+      const result = await refreshPageData(url);
+      globalDetectedProfile = result.detectedProfile;
+      globalProfileWarning = result.detectedProfile ? '' : '⚠ No profile found for this page.';
+    } catch {
+      globalDetectedProfile = null;
+      globalProfileWarning = '';
+    }
+  }
+
+  // Re-detect whenever the page URL changes (debounced via refreshKey)
+  $effect(() => {
+    const url = pageLoadedUrl;
+    if (url) detectGlobalProfile(url);
+  });
 
   /** Switch to Discover tab; return to batch mode when done. */
   function onRequestDiscovery(profileId?: string) {
@@ -263,6 +302,12 @@
 
   onMount(() => {
     window.addEventListener('keydown', handleKeydown);
+    // Load all profiles (built-in + user-saved) for the global selector
+    new ProfileStorageImpl().listProfiles().then(profiles => {
+      globalAllProfiles = profiles;
+    }).catch(() => {
+      globalAllProfiles = [...BUILT_IN_PROFILES];
+    });
   });
 
   onDestroy(() => {
@@ -323,6 +368,36 @@
       {/if}
     </button>
   </div>
+
+  <!-- Global Site Profile Row -->
+  {#if !isCollapsed}
+    <div class="global-profile-row">
+      {#if globalComputedProfile}
+        <span class="global-profile-label" title="Site Profile">🗂</span>
+        <select
+          class="global-profile-select"
+          bind:value={globalSelectedProfileId}
+          disabled={batchRunning}
+        >
+          <option value="auto">Auto-detect</option>
+          {#each globalAllProfiles as profile (profile.id)}
+            <option value={profile.id}>{profile.name}{profile.isBuiltIn ? ' ✦' : ''}</option>
+          {/each}
+        </select>
+        {#if globalProfileWarning}
+          <button
+            class="btn-discover-global"
+            onclick={() => onRequestDiscovery()}
+            title={globalProfileWarning}
+          >Discover</button>
+        {:else}
+          <span class="global-profile-name" title="Active profile: {globalComputedProfile.name}">
+            {globalComputedProfile.name}
+          </span>
+        {/if}
+      {/if}
+    </div>
+  {/if}
 
   <!-- Mode Tabs -->
   <div class="mode-tabs">
@@ -397,6 +472,7 @@
             {refreshKey}
             {selectedRubric}
             {onRequestDiscovery}
+            externalProfile={globalActiveProfile}
             bind:rubricText
             bind:rubricMaxScore
             bind:extractedRubric
@@ -407,7 +483,7 @@
         {/if}
       {/if}
       {#if activeMode === 'agent'}
-        <AgentChat {pageLoadedUrl} />
+        <AgentChat {pageLoadedUrl} activeProfileName={globalComputedProfile.name} {onRequestDiscovery} />
       {/if}
       {#if activeMode === 'discovery'}
         <ProviderSelector bind:provider={activeProvider} bind:model={activeModel} />
@@ -595,5 +671,66 @@
 
   .toggle-option:disabled {
     cursor: not-allowed;
+  }
+
+  .global-profile-row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    padding: 6px var(--spacing-4);
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg-sidebar);
+    flex-shrink: 0;
+    min-height: 36px;
+  }
+
+  .global-profile-label {
+    font-size: 0.85rem;
+    flex-shrink: 0;
+    opacity: 0.7;
+  }
+
+  .global-profile-select {
+    flex: 1;
+    min-width: 0;
+    background: var(--color-bg-main);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-primary);
+    border-radius: var(--radius-sm);
+    padding: 2px var(--spacing-2);
+    font-size: 0.8rem;
+    font-family: var(--font-body);
+  }
+
+  .global-profile-select:focus {
+    outline: none;
+    border-color: var(--color-primary);
+  }
+
+  .global-profile-name {
+    font-size: 0.75rem;
+    color: #22c55e;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 90px;
+    flex-shrink: 0;
+  }
+
+  .btn-discover-global {
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid #f59e0b;
+    background: transparent;
+    color: #f59e0b;
+    font-size: 0.75rem;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: background 0.15s;
+  }
+
+  .btn-discover-global:hover {
+    background: rgba(245, 158, 11, 0.1);
   }
 </style>

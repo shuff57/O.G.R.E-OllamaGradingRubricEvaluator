@@ -33,11 +33,17 @@
     sourceRubricId = $bindable<string | null>(null),
     batchPhase = $bindable<BatchPhase>('idle'),
     essayPrompt = $bindable(''),
+    externalProfile = null as SiteProfile | null,
   } = $props();
 
   // ── Bridging state between sub-components ──────────────────────────────
   // ProfileSelector → shell → Progress
   let activeProfile = $state<SiteProfile>(DEFAULT_MYOPENMATH_PROFILE);
+
+  // When GradingPanel provides a globally-selected profile, override local selection
+  $effect(() => {
+    if (externalProfile) activeProfile = externalProfile;
+  });
   let currentPageUrl = $state('');
   let savedSessionStudent = $state<string | null>(null);
   let resumeAfter = $state('');
@@ -82,6 +88,7 @@
     {onRequestDiscovery}
     {batchPhase}
     {sourceRubricId}
+    {externalProfile}
     bind:activeProfile
     bind:currentPageUrl
     bind:savedSessionStudent

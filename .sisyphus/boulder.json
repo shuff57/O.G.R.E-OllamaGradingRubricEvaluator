@@ -1,10 +1,11 @@
 {
-  "active_plan": "/home/shuff57/Documents/GitHub/O.G.R.E-OllamaGradingRubricEvaluator/.sisyphus/plans/linux-gdk-input-injection.md",
-  "started_at": "2026-03-17T02:57:14.302Z",
+  "active_plan": "/home/shuff57/Documents/GitHub/O.G.R.E-OllamaGradingRubricEvaluator/.sisyphus/plans/electron-cdp-migration.md",
+  "started_at": "2026-03-18T20:23:05.868Z",
   "session_ids": [
-    "ses_306461fcbffeuFY8EX58Nfwe7x"
+    "ses_2fd8c62cfffeXfrJoSAHy7gWK3",
+    "ses_2fd9a0624ffeUSQB2Zj4Mqyg23"
   ],
-  "plan_name": "linux-gdk-input-injection",
+  "plan_name": "electron-cdp-migration",
   "agent": "atlas",
-  "worktree_path": "/home/shuff57/Documents/GitHub/O.G.R.E-OllamaGradingRubricEvaluator/.worktrees/linux-gdk-input-injection"
+  "worktree_path": "/home/shuff57/Documents/GitHub/O.G.R.E-OllamaGradingRubricEvaluator/.worktrees/electron-migration"
 }

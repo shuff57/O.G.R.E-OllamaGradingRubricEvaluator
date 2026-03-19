@@ -28,7 +28,7 @@ Flow:
 1. Run setup:
    `bash .agents/memory/scripts/setup.sh`
 2. Ensure Ollama is running (`ollama serve`).
-3. Ensure models are available: `llama3.2` and `bge-m3`.
+3. Ensure models are available: `nemotron-3-super:cloud` and `bge-m3`.
 4. Index a reflection:
    `python3 .agents/memory/scripts/index_reflection.py path/to/reflection.md`
 5. Query memory:
@@ -57,6 +57,6 @@ If dependencies are unavailable, behavior remains safe and useful:
 
 - Python 3.8+
 - Ollama running locally (`ollama serve`)
-- Ollama model: `llama3.2`
+- Ollama model: `nemotron-3-super:cloud`
 - Ollama embedding model: `bge-m3`
 - PyPI access to install `lightrag-hku`

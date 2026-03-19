@@ -72,7 +72,28 @@ export async function handleAgentRequest(c, { callProviderDirect, resolveProvide
     const providerConfig = resolveProviderConfig(providerId, effectiveModel);
     console.log(`[${timestamp()}] [agent] provider=${providerId} model=${effectiveModel} messages=${agentMessages.length}`);
 
-    const aiText = await callProviderDirect(providerId, providerConfig, agentMessages, timestamp());
+    // Strip base64 images from all messages except the last to prevent context overflow.
+    // Ollama returns 500 (not 413) when the context window is exceeded by accumulated screenshots.
+    const trimmedMessages = agentMessages.map((msg, idx) => {
+      if (idx === agentMessages.length - 1) return msg;
+      if (Array.isArray(msg.content)) {
+        const textOnly = msg.content
+          .filter(p => p.type === 'text')
+          .map(p => p.text)
+          .join('');
+        return { role: msg.role, content: textOnly };
+      }
+      return msg;
+    });
+
+    // Cap total payload at ~120KB by dropping oldest non-system messages.
+    const MAX_PAYLOAD_BYTES = 120 * 1024;
+    let finalMessages = trimmedMessages;
+    while (JSON.stringify(finalMessages).length > MAX_PAYLOAD_BYTES && finalMessages.length > 2) {
+      finalMessages = [finalMessages[0], ...finalMessages.slice(2)];
+    }
+
+    const aiText = await callProviderDirect(providerId, providerConfig, finalMessages, timestamp());
 
     return c.json({ response: aiText });
   } catch (error) {

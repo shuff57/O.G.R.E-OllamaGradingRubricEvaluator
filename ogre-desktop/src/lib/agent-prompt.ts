@@ -17,7 +17,7 @@ export interface ToolDefinition {
   params: Record<string, string>; // param name → description
 }
 
-/** All 15 tools the browser agent can invoke. */
+/** All 16 tools the browser agent can invoke. */
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: 'click',
@@ -40,10 +40,17 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: 'scroll',
-    description: 'Scroll the page',
+    description: 'Scroll the page by a fixed pixel amount',
     params: {
       direction: '"up", "down", "left", or "right"',
       amount: 'Pixels to scroll (number)'
+    }
+  },
+  {
+    name: 'scrollIntoView',
+    description: 'Scroll a specific element into view by matching its visible text content. More reliable than scroll when targeting a named element (student name, section heading, label).',
+    params: {
+      text: 'Text content of the element to scroll into view (e.g. student name, section heading)'
     }
   },
   {
@@ -148,9 +155,14 @@ AVAILABLE ACTIONS AND PARAMETERS:
    {"action": "type", "params": {"selector": "CSS selector", "text": "text to type", "clear": true}, "reasoning": "..."}
    Note: "clear" is optional, set to true to clear existing value first
 
-3. scroll — Scroll the page
+3. scroll — Scroll the page by a fixed pixel amount
    {"action": "scroll", "params": {"direction": "down", "amount": 300}, "reasoning": "..."}
    Direction: "up", "down", "left", "right"
+
+3.5. scrollIntoView — Scroll to a named element by its visible text content
+   {"action": "scrollIntoView", "params": {"text": "Juliet"}, "reasoning": "..."}
+   Use this INSTEAD of scroll when targeting a specific named element (student name, heading, label).
+   More reliable than pixel-based scroll — finds the element and centers it without guessing pixels.
 
 4. readText — Read text from an element or the full page
    {"action": "readText", "params": {"selector": "#optional-selector"}, "reasoning": "..."}

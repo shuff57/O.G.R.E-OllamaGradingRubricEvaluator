@@ -27,6 +27,7 @@
     onRequestDiscovery = () => {},
     batchPhase = 'idle' as string,
     sourceRubricId = null as string | null,
+    externalProfile = null as SiteProfile | null,
     // Bindable — exposed to shell
     activeProfile = $bindable<SiteProfile>(DEFAULT_MYOPENMATH_PROFILE),
     currentPageUrl = $bindable(''),
@@ -54,9 +55,11 @@
 
   // ── Derived ────────────────────────────────────────────────────────────
   let computedActiveProfile = $derived<SiteProfile>(
-    selectedProfileId === 'auto'
-      ? (detectedProfile ?? DEFAULT_MYOPENMATH_PROFILE)
-      : allProfiles.find(p => p.id === selectedProfileId) ?? DEFAULT_MYOPENMATH_PROFILE
+    externalProfile
+      ? externalProfile
+      : selectedProfileId === 'auto'
+        ? (detectedProfile ?? DEFAULT_MYOPENMATH_PROFILE)
+        : allProfiles.find(p => p.id === selectedProfileId) ?? DEFAULT_MYOPENMATH_PROFILE
   );
 
   let profileDescription = $derived(
@@ -208,6 +211,7 @@
 {/if}
 
 <!-- ── Site Profile Selection ──────────────────────────────────────── -->
+{#if !externalProfile}
 <details class="section-details">
   <summary class="section-summary">
     <span>Site Profile</span>
@@ -246,6 +250,7 @@
     </div>
   </div>
 </details>
+{/if}
 
 <!-- ── Resume After ────────────────────────────────────────────────── -->
 {#if batchPhase === 'idle'}

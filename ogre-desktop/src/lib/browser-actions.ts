@@ -236,6 +236,40 @@ async function pressKeyAction(key: string): Promise<ActionResult> {
   return pwPressKey(key);
 }
 
+/**
+ * Scroll a named element into view by matching its visible text content.
+ * More reliable than pixel-based scroll when targeting a specific student name,
+ * heading, or label. Case-insensitive, matches the first leaf node whose
+ * trimmed text contains the search string.
+ */
+async function scrollIntoViewAction(text: string): Promise<ActionResult> {
+  try {
+    const safeText = escapeSelector(text);
+    const result = await evalScriptJSON<ActionResult>(`(function() {
+  try {
+    var needle = '${safeText}'.toLowerCase();
+    var all = document.querySelectorAll('*');
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i];
+      if (el.children.length === 0 && el.textContent) {
+        var trimmed = el.textContent.trim();
+        if (trimmed.toLowerCase().indexOf(needle) !== -1) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          return { success: true, data: { matched: trimmed.substring(0, 100) } };
+        }
+      }
+    }
+    return { success: false, error: 'No element found with text: ${safeText}' };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+})()`);
+    return result;
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 // ============================================================================
 // Discovery & Profile Actions
 // ============================================================================
@@ -319,6 +353,7 @@ async function saveProfileAction(
  */
 export async function executeAction(params: ActionParams): Promise<ActionResult> {
   async function dispatch(p: ActionParams): Promise<ActionResult> {
+
     switch (p.action) {
       case 'click':
         return clickAction(p.selector);
@@ -344,6 +379,8 @@ export async function executeAction(params: ActionParams): Promise<ActionResult>
         return writeCodeMirrorAction(p.selector, p.value);
       case 'capturePopup':
         return pwCapturePopup(p.timeoutMs);
+      case 'scrollIntoView':
+        return scrollIntoViewAction(p.text);
       case 'discover_page':
         return discoverPageAction(p.hints);
       case 'test_profile':
@@ -386,11 +423,12 @@ export async function executeAction(params: ActionParams): Promise<ActionResult>
   const result = await dispatch(params);
 
   // ---- Fuzzy DOM retry: selector-based failures only, max 1 retry ----
+  // Also catches SyntaxError from invalid pseudo-selectors like :has-text(), :contains(), :nth-match()
   if (
     originalSelector &&
     !result.success &&
     result.error &&
-    /not found|element not found/i.test(result.error)
+    /not found|element not found|not a valid selector|syntaxerror|failed to execute/i.test(result.error)
   ) {
     try {
       const elements = await captureInteractiveDom();
