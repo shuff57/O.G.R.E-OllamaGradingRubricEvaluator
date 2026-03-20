@@ -385,9 +385,10 @@ function getScaleInfo(maxScore) {
 }
 
 // Build scoring scale string from shared constant
-function getScoringScaleString() {
+function getScoringScaleString(customDescriptors = null) {
+  const descriptors = customDescriptors ?? SCORING_SCALE_DESCRIPTORS;
   return 'SCORING SCALE (use integers 0-10 — server converts to actual points):\n' +
-    SCORING_SCALE_DESCRIPTORS.map(s => `${s.score.toString().padStart(2)} – ${s.descriptor}`).join('\n');
+    descriptors.map(s => `${s.score.toString().padStart(2)} – ${s.descriptor}`).join('\n');
 }
 
 function validateBatchResults(parsed, students, maxScore) {
@@ -759,18 +760,19 @@ CRITICAL: Only flag genuine inconsistencies. Do NOT adjust scores just to create
  * @param {string} instructions - Additional grading instructions or message from the user
  * @returns {string} - Complete prompt for AI grading
  */
-export function buildSingleGradePrompt(rubric, studentWork, instructions) {
+export function buildSingleGradePrompt(rubric, studentWork, instructions, constants = null) {
   const maxScore = rubric.maxScore || '10';
   const { virtualMax } = getScaleInfo(maxScore);
   const _sScoreHint = scoreFormatHint(virtualMax);
   const essayPrompt = rubric.essayPrompt || '(No prompt provided)';
   const customInstructions = rubric.customInstructions || '';
   const { calibration, overrideInstructions } = extractCustomInstructions(customInstructions);
+  const _gradingPhilosophy = constants?.gradingPhilosophy ?? GRADING_PHILOSOPHY;
 
   let prompt = `You are an expert grading assistant. Grade this student's work against the provided rubric. Output: JSON object only.
 
 ${overrideInstructions ? `INSTRUCTOR OVERRIDE INSTRUCTIONS (you MUST follow these \u2014 they take absolute precedence):\n${overrideInstructions}\n\n` : ''}GRADING PHILOSOPHY:
-${GRADING_PHILOSOPHY}
+${_gradingPhilosophy}
 
 MAX SCORE: ${virtualMax}
 
@@ -811,7 +813,7 @@ ${essayPrompt}
   }
 
   // Tier 5: Scoring scale + calibration (before student work)
-  prompt += '\n' + getScoringScaleString() + '\n';
+  prompt += '\n' + getScoringScaleString(constants?.scoringScaleDescriptors) + '\n';
   if (calibration) {
     prompt += `\nSCORING CALIBRATION EXAMPLES (use to calibrate score levels only \u2014 grade against rubric criteria and SCORING SCALE above, not these examples):\n${calibration}\n`;
   }

@@ -1,0 +1,2 @@
+DRY RUN: iteration 1 | composite: 0.6743 | status: discard
+Completed 1 iterations. Best composite: 0.5000. Reason: budget_iterations
