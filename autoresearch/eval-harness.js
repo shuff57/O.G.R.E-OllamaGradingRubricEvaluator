@@ -12,6 +12,10 @@ import {
 const CAPTURED_RUBRIC_PATH = '/home/shuff57/Documents/GitHub/shuff57-llm-finetune/ogre/test-data/captured-rubric.json';
 const CAPTURED_STUDENTS_PATH = '/home/shuff57/Documents/GitHub/shuff57-llm-finetune/ogre/test-data/captured-students.json';
 
+const COPILOT_AUTH_PATH = '/home/shuff57/.local/share/opencode/auth.json';
+const COPILOT_BASE_URL = 'https://api.githubcopilot.com/chat/completions';
+const COPILOT_MODEL = 'claude-sonnet-4.6';
+
 const DEFAULT_CONFIG = {
   model: 'claude-sonnet-4-6',
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -81,6 +85,47 @@ function matchCapturedStudent(student, capturedStudents) {
   );
 }
 
+async function loadCopilotToken() {
+  try {
+    const raw = await readFile(COPILOT_AUTH_PATH, 'utf-8');
+    const auth = JSON.parse(raw);
+    const token = auth?.['github-copilot']?.access;
+    if (!token) throw new Error('No github-copilot access token in auth.json');
+    return token;
+  } catch (err) {
+    throw new Error(`Cannot load Copilot token from ${COPILOT_AUTH_PATH}: ${err.message}`);
+  }
+}
+
+async function callCopilot(prompt) {
+  const token = await loadCopilotToken();
+
+  const response = await fetch(COPILOT_BASE_URL, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'Copilot-Integration-Id': 'vscode-chat',
+      'editor-version': 'vscode/1.85.0',
+    },
+    body: JSON.stringify({
+      model: COPILOT_MODEL,
+      max_tokens: 256,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Copilot request failed (${response.status}): ${errorText.slice(0, 300)}`);
+  }
+
+  const data = await response.json();
+  const content = data?.choices?.[0]?.message?.content;
+  if (!content) throw new Error('Copilot response missing content');
+  return content;
+}
+
 async function callAnthropic(prompt, config) {
   if (!config.apiKey) {
     throw new Error('Missing Anthropic API key');
@@ -116,6 +161,10 @@ async function callAnthropic(prompt, config) {
 async function invokeLlm(prompt, config, llmProvider) {
   if (llmProvider) {
     return llmProvider(prompt);
+  }
+  // Use GitHub Copilot (claude-sonnet-4.6) if no Anthropic key — no config needed
+  if (!config.apiKey) {
+    return callCopilot(prompt);
   }
   return callAnthropic(prompt, config);
 }
