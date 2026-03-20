@@ -20,7 +20,8 @@ const DEFAULT_CONFIG = {
   model: 'claude-sonnet-4-6',
   apiKey: process.env.ANTHROPIC_API_KEY,
   runs: 3,
-  maxConcurrent: 5,
+  // GitHub Copilot API does not support concurrent requests; keep at 1
+  maxConcurrent: 1,
   timeout: 60000,
 };
 
