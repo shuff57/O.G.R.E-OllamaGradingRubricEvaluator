@@ -39,7 +39,10 @@ export async function listRubrics(): Promise<SavedRubric[]> {
     method: "GET",
     headers: authHeaders(),
   });
-  if (!res.ok) throw new Error(`Failed to list rubrics: ${res.status}`);
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Failed to list rubrics: ${res.status} ${body}`);
+  }
   const data = await res.json();
   return data.rubrics ?? [];
 }
@@ -52,7 +55,10 @@ export async function createRubric(
     headers: authHeaders(),
     body: JSON.stringify(rubric),
   });
-  if (!res.ok) throw new Error(`Failed to create rubric: ${res.status}`);
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Failed to create rubric: ${res.status} ${body}`);
+  }
   const data = await res.json();
   return data.rubric;
 }
@@ -66,7 +72,10 @@ export async function updateRubric(
     headers: authHeaders(),
     body: JSON.stringify(updates),
   });
-  if (!res.ok) throw new Error(`Failed to update rubric: ${res.status}`);
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Failed to update rubric: ${res.status} ${body}`);
+  }
   const data = await res.json();
   return data.rubric;
 }
@@ -76,5 +85,8 @@ export async function deleteRubric(id: string): Promise<void> {
     method: "DELETE",
     headers: authHeaders(),
   });
-  if (!res.ok) throw new Error(`Failed to delete rubric: ${res.status}`);
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Failed to delete rubric: ${res.status} ${body}`);
+  }
 }

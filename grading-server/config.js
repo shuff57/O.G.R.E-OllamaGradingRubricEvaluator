@@ -24,11 +24,11 @@ export function getConfigDir() {
 
   const platform = process.platform;
   if (platform === 'win32') {
-    return join(process.env.APPDATA || join(homedir(), 'AppData', 'Roaming'), 'com.ogre.desktop');
+    return join(process.env.APPDATA || join(homedir(), 'AppData', 'Roaming'), 'ogre-desktop');
   } else if (platform === 'darwin') {
-    return join(homedir(), 'Library', 'Application Support', 'com.ogre.desktop');
+    return join(homedir(), 'Library', 'Application Support', 'ogre-desktop');
   } else {
-    return join(homedir(), '.config', 'com.ogre.desktop');
+    return join(homedir(), '.config', 'ogre-desktop');
   }
 }
 

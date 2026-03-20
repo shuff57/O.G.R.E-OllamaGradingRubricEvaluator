@@ -22,7 +22,8 @@
     SettingsIcon,
   } from './components/icons/index';
   import { getSetting, insertGradingSession } from './lib/db';
-  import { listenSessionComplete, listenProviderChanged } from './lib/server';
+  import { listenSessionComplete, listenProviderChanged, listenServerStatus } from './lib/server';
+  import { pushOnStartup } from './lib/provider-sync';
   import type { SessionCompletePayload } from './lib/server';
   import { updateActiveProvider } from './lib/db';
   import { checkForUpdates, type UpdateCheckResult } from './lib/updater';
@@ -51,6 +52,7 @@
   let sessionVersion = $state(0);
   let unlistenSession = $state<(() => void) | undefined>(undefined);
   let unlistenProviderChange = $state<(() => void) | undefined>(undefined);
+  let unlistenServerStatus = $state<(() => void) | undefined>(undefined);
 
   // Modal z-ordering: native webview renders ON TOP of all DOM elements,
   // so it must be hidden when modals appear to avoid covering them.
@@ -104,6 +106,13 @@
       }
     });
 
+    // Listen for server-status events and trigger handshake when server is running
+    unlistenServerStatus = await listenServerStatus(async (status) => {
+      if (status === 'running') {
+        await pushOnStartup();
+      }
+    });
+
     // Listen for cross-component navigation events (e.g. RubricCard → Rubrics page)
     window.addEventListener('ogre:navigate', handleNavigateEvent as EventListener);
 
@@ -124,6 +133,7 @@
   onDestroy(() => {
     if (unlistenSession) unlistenSession();
     if (unlistenProviderChange) unlistenProviderChange();
+    if (unlistenServerStatus) unlistenServerStatus();
     window.removeEventListener('ogre:navigate', handleNavigateEvent as EventListener);
   });
 
