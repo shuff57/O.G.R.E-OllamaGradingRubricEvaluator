@@ -338,7 +338,7 @@ async function main() {
 
   if (flags.dryRun) {
     await runDryRun(config);
-    return;
+    process.exit(0);
   }
 
   await runStandard(config);
