@@ -110,7 +110,7 @@ async function callCopilot(prompt) {
     },
     body: JSON.stringify({
       model: COPILOT_MODEL,
-      max_tokens: 256,
+      max_tokens: 1024,
       messages: [{ role: 'user', content: prompt }],
     }),
   });
@@ -223,13 +223,23 @@ function estimateCostUSD(prompts, responses) {
 export function parseScore(llmResponseText) {
   if (typeof llmResponseText !== 'string') return null;
 
+  // First try strict JSON parse (works when response is well-formed)
   try {
     const parsed = JSON.parse(llmResponseText);
     const value = parsed?.score;
-    return typeof value === 'number' && Number.isFinite(value) ? value : null;
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
   } catch {
-    return null;
+    // fall through to regex extraction
   }
+
+  // Regex fallback: extract "score": N from potentially truncated/prose JSON
+  const match = llmResponseText.match(/"score"\s*:\s*(\d+(?:\.\d+)?)/);
+  if (match) {
+    const value = Number(match[1]);
+    return Number.isFinite(value) ? value : null;
+  }
+
+  return null;
 }
 
 export async function runEvaluation(constants, goldData, config, llmProvider = null) {
