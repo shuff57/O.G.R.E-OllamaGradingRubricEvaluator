@@ -1,0 +1,233 @@
+{
+  "rubric": {
+    "essayPrompt": "Explain how the Central Limit Theorem (CLT) relates sample size to the margin of error. In your response:\n- State what the CLT says about the sampling distribution of the sample mean\n- Explain the formula for standard error and how it depends on sample size\n- Connect standard error to the margin of error formula\n- Describe the practical implications of this relationship for researchers",
+    "checklistItems": [
+      {
+        "category": "CLT Statement (2 pts)",
+        "points": 2,
+        "items": [
+          "States sampling distribution of x\u0304 approaches normality",
+          "Mentions condition: sufficiently large n"
+        ]
+      },
+      {
+        "category": "Standard Error (3 pts)",
+        "points": 3,
+        "items": [
+          "Provides formula SE = \u03c3/\u221an",
+          "Explains SE decreases as n increases"
+        ]
+      },
+      {
+        "category": "MOE Connection (3 pts)",
+        "points": 3,
+        "items": [
+          "Provides MOE formula: MOE = z* \u00d7 SE",
+          "Explains MOE decreases as SE decreases"
+        ]
+      },
+      {
+        "category": "Practical Implications (2 pts)",
+        "points": 2,
+        "items": [
+          "Discusses inverse square root relationship or diminishing returns",
+          "Provides concrete example or application"
+        ]
+      }
+    ],
+    "rubricItems": [
+      {
+        "category": "CLT Statement (2 pts)",
+        "items": [
+          "Full (2): Clearly states sampling distribution of x\u0304 approaches normal distribution as n increases",
+          "Partial (1): Mentions normality or CLT but vague or incomplete",
+          "Missing (0): No mention of what CLT states"
+        ]
+      },
+      {
+        "category": "Standard Error (3 pts)",
+        "items": [
+          "Full (3): Correct formula SE = \u03c3/\u221an AND explains SE decreases with n",
+          "Partial (2): Formula OR explanation but not both",
+          "Minimal (1): Mentions SE without formula or clear explanation",
+          "Missing (0): No discussion of standard error"
+        ]
+      },
+      {
+        "category": "MOE Connection (3 pts)",
+        "items": [
+          "Full (3): Correct MOE formula AND clear logical chain: \u2191n \u2192 \u2193SE \u2192 \u2193MOE",
+          "Partial (2): Shows connection but incomplete formula or chain",
+          "Minimal (1): States MOE decreases with n but no mechanism",
+          "Missing (0): No connection made"
+        ]
+      },
+      {
+        "category": "Practical Implications (2 pts)",
+        "items": [
+          "Full (2): Discusses diminishing returns / inverse \u221an AND gives example",
+          "Partial (1): Mentions one practical aspect",
+          "Missing (0): No practical discussion"
+        ]
+      }
+    ],
+    "modelText": "The Central Limit Theorem states that the sampling distribution of the sample mean x\u0304 approaches a normal distribution N(\u03bc, \u03c3\u00b2/n) as the sample size n increases, regardless of the shape of the underlying population distribution. The standard error SE = \u03c3/\u221an quantifies the spread of this sampling distribution and decreases as n increases. Since the margin of error is calculated as MOE = z* \u00d7 SE = z* \u00d7 \u03c3/\u221an, an increase in sample size directly reduces the margin of error. This relationship follows an inverse square root pattern \u2014 to halve the margin of error, the sample size must be quadrupled. For researchers, this means there are diminishing returns to increasing sample size: going from n=100 to n=400 halves the MOE, but achieving another halving requires n=1,600. National polls typically use n \u2248 1,000\u20131,500 as a practical balance between cost and a margin of error around \u00b13% at the 95% confidence level.",
+    "maxScore": "10"
+  },
+  "students": [
+    {
+      "index": 0,
+      "name": "Anderson, Marcus",
+      "response": "The Central Limit Theorem (CLT) states that regardless of the population distribution, the sampling distribution of the sample mean approaches a normal distribution as the sample size n increases. The standard error is calculated as SE = \u03c3/\u221an. Since the margin of error is MOE = z* \u00d7 SE, increasing n makes SE smaller and therefore shrinks the margin of error. For example, quadrupling the sample size from 100 to 400 cuts the margin of error in half because \u221a400/\u221a100 = 20/10 = 2. This inverse square root relationship means there are diminishing returns \u2014 to get a 10\u00d7 improvement in precision, you need 100\u00d7 the sample size. This is why most national polls use around 1,000\u20131,500 respondents, balancing cost with acceptable precision."
+    },
+    {
+      "index": 1,
+      "name": "Brooks, Jaylen",
+      "response": "The CLT says that sample means follow a normal distribution when n is large enough. Standard error = \u03c3/\u221an, so bigger samples give smaller SE. Since margin of error depends on SE (MOE = z* \u00d7 SE), a larger sample reduces the margin of error. This is why researchers want large samples \u2014 they produce more precise estimates of population parameters. The relationship follows an inverse square root pattern."
+    },
+    {
+      "index": 2,
+      "name": "Chen, Lily",
+      "response": "According to the Central Limit Theorem, the sampling distribution of x-bar becomes approximately normal as n increases. The standard error \u03c3/\u221an decreases with larger n. Because the margin of error equals the critical value times the standard error, it decreases too. If you double n, the margin of error decreases by a factor of \u221a2 \u2248 1.41. To halve the margin of error, you need to quadruple n. This explains why polling organizations must balance sample size against cost \u2014 each incremental improvement in precision requires proportionally more data."
+    },
+    {
+      "index": 3,
+      "name": "Davis, Amara",
+      "response": "Larger sample sizes decrease the margin of error. The CLT shows that sample means are normally distributed with standard error \u03c3/\u221an. Since MOE = z* \u00d7 SE, when n goes up, SE goes down, and so does the margin of error. This is fundamental to statistical inference \u2014 larger samples give tighter confidence intervals around our estimates."
+    },
+    {
+      "index": 4,
+      "name": "Evans, Tyler",
+      "response": "The Central Limit Theorem tells us that the distribution of sample means becomes normal as sample size grows. The standard error is sigma over square root of n. The margin of error uses standard error in its formula, so when standard error shrinks from a bigger sample, the margin of error also shrinks. You need about 4 times the sample size to cut margin of error in half."
+    },
+    {
+      "index": 5,
+      "name": "Flores, Isabella",
+      "response": "When we take larger samples, the Central Limit Theorem guarantees that the sampling distribution is approximately normal. The spread of this distribution is measured by standard error SE = \u03c3/\u221an. Margin of error = z* \u00d7 SE. So increasing n \u2192 decreasing SE \u2192 decreasing MOE. The practical implication is that researchers can get more precise estimates (narrower confidence intervals) by sampling more individuals, though with diminishing returns due to the square root."
+    },
+    {
+      "index": 6,
+      "name": "Garcia, Diego",
+      "response": "The CLT says sample means are normal for large n. Standard error is \u03c3 divided by \u221an so it gets smaller with more data. Margin of error depends on standard error so it also gets smaller. This means bigger samples are more accurate. To reduce margin of error by half you need 4x the sample size."
+    },
+    {
+      "index": 7,
+      "name": "Harris, Kayla",
+      "response": "Sample size affects margin of error through the Central Limit Theorem. Bigger samples have smaller standard errors because SE = \u03c3/\u221an. The margin of error formula includes SE, so when SE decreases, MOE decreases too. That's why polls with more people are more reliable \u2014 they have tighter margins of error and narrower confidence intervals."
+    },
+    {
+      "index": 8,
+      "name": "Ibrahim, Fatima",
+      "response": "The Central Limit Theorem is about how sample means form a normal distribution. When you have a large sample, your estimate of the mean is better because the standard error (\u03c3/\u221an) is smaller. This connects to margin of error since MOE uses SE in its calculation. Larger n means smaller MOE which means more confidence in results."
+    },
+    {
+      "index": 9,
+      "name": "Johnson, Devin",
+      "response": "The CLT explains that with large enough samples, the sampling distribution of the mean is approximately normal regardless of the underlying population shape. Standard error = \u03c3/\u221an decreases as n increases. Margin of error = z* \u00d7 (\u03c3/\u221an) also decreases. The key insight is the inverse square root relationship \u2014 doubling n only reduces MOE by about 29% (factor of 1/\u221a2). This has practical implications for survey design: there are diminishing returns to increasing sample size, which is why most surveys find an optimal n that balances cost and precision."
+    },
+    {
+      "index": 10,
+      "name": "Kim, Sarah",
+      "response": "The Central Limit Theorem states that sample means will be normally distributed. With larger samples, the standard error gets smaller since SE equals sigma over root n. This matters because the margin of error includes the standard error in its formula. When SE is smaller, the margin of error is smaller too, giving more precise results. This is why sample size matters in statistics."
+    },
+    {
+      "index": 11,
+      "name": "Lopez, Miguel",
+      "response": "Bigger samples = smaller margin of error. The CLT proves this because the standard error \u03c3/\u221an gets smaller when n increases. Since MOE = z \u00d7 SE, the margin of error decreases with larger n. A sample of 1000 has a much smaller margin than a sample of 100."
+    },
+    {
+      "index": 12,
+      "name": "Martinez, Sofia",
+      "response": "The Central Limit Theorem is a fundamental concept that explains why larger samples produce more reliable estimates. As sample size increases, the sampling distribution of the mean becomes more tightly clustered around the true population mean. This happens because the standard error (\u03c3/\u221an) decreases with n. Since margin of error is calculated as z* \u00d7 SE, a smaller SE directly translates to a smaller margin of error. For practical applications like opinion polls, this means that increasing from 500 to 2000 respondents would cut the margin of error roughly in half (since \u221a(2000/500) = 2)."
+    },
+    {
+      "index": 13,
+      "name": "Nguyen, Kevin",
+      "response": "According to the CLT, the distribution of sample means approaches normality as n increases. The standard error \u03c3/\u221an quantifies the spread of this distribution. Margin of error is directly proportional to SE through the formula MOE = z* \u00d7 SE. Therefore, increasing n reduces SE, which in turn reduces MOE. However, the relationship follows an inverse square root, meaning each doubling of n only gives about a 30% improvement in precision."
+    },
+    {
+      "index": 14,
+      "name": "O'Brien, Patrick",
+      "response": "The Central Limit Theorem says that means from samples are normally distributed when n is big. Standard error goes down when n goes up because of the \u221an in the denominator. Margin of error also goes down because it depends on standard error. That's basically how sample size affects precision in statistics."
+    },
+    {
+      "index": 15,
+      "name": "Patel, Priya",
+      "response": "Sample size and margin of error are inversely related through the CLT framework. The standard error SE = \u03c3/\u221an establishes this mathematical relationship. As n increases, SE decreases proportionally to 1/\u221an. The margin of error (MOE = z_\u03b1/2 \u00d7 SE) inherits this inverse square root relationship. Practically, to achieve a desired margin of error, we solve for n: n = (z \u00d7 \u03c3 / E)\u00b2. This formula is foundational in determining appropriate sample sizes for surveys, clinical trials, and quality control processes."
+    },
+    {
+      "index": 16,
+      "name": "Quinn, Aiden",
+      "response": "The CLT is important for understanding samples. When you take a bigger sample, you get closer to the real answer. This reduces the margin of error because there's less chance of being wrong. The formula involves dividing by the square root of n, which is why bigger n means less error."
+    },
+    {
+      "index": 17,
+      "name": "Rivera, Carmen",
+      "response": "Larger sample sizes lead to smaller margins of error because of the Central Limit Theorem. The theorem shows that SE = \u03c3/\u221an, so as n grows, SE shrinks. Margin of error is calculated using SE, so it shrinks too. This is why opinion polls report margins like \u00b13% \u2014 they've chosen a sample size that produces that level of precision."
+    },
+    {
+      "index": 18,
+      "name": "Smith, Jordan",
+      "response": "The margin of error gets bigger when you have more samples because you have more data to be uncertain about. The Central Limit Theorem says things become normal with large samples. Standard error is \u03c3 times \u221an so it increases with more data.",
+      "note": "misconception: claims MOE increases with sample size"
+    },
+    {
+      "index": 19,
+      "name": "Thompson, Brianna",
+      "response": "The CLT tells us that the sampling distribution of x\u0304 is approximately N(\u03bc, \u03c3\u00b2/n) for large n. The standard error \u03c3/\u221an decreases as n increases. Since MOE = z* \u00d7 \u03c3/\u221an, it follows that MOE decreases as well. The key mathematical insight is the 1/\u221an proportionality \u2014 margin of error is inversely proportional to the square root of sample size. This has an important practical consequence: there are diminishing returns to increasing n. Going from n=100 to n=400 halves the MOE, but getting another halving requires going to n=1600."
+    },
+    {
+      "index": 20,
+      "name": "Uribe, Daniel",
+      "response": "According to the Central Limit Theorem, the mean of a sufficiently large number of independent random variables will be approximately normally distributed. This means that as we increase our sample size n, the standard error (calculated as \u03c3 divided by \u221an) decreases. Because margin of error is found by multiplying the critical value z* by the standard error, a decrease in SE directly causes a decrease in MOE. In practice this means that for a 95% confidence level, a sample of about 1,000 yields a margin of error around \u00b13%."
+    },
+    {
+      "index": 21,
+      "name": "Vargas, Elena",
+      "response": "Sample size matters because of the Central Limit Theorem. Bigger samples have smaller standard errors (SE = \u03c3/\u221an) and therefore smaller margins of error. The inverse square root relationship means you get diminishing returns \u2014 each additional participant helps less than the previous one."
+    },
+    {
+      "index": 22,
+      "name": "Washington, Malik",
+      "response": "The CLT states sample means are normally distributed. Standard error = \u03c3/\u221an. Margin of error = z \u00d7 SE. Bigger n \u2192 smaller SE \u2192 smaller margin. Need 4x n to halve the margin. This is the foundation of sample size calculations in survey research."
+    },
+    {
+      "index": 23,
+      "name": "Xu, Michelle",
+      "response": "The Central Limit Theorem says that when you collect samples, the average of those samples forms a bell curve. With more data points, this curve gets narrower because the standard error decreases. Standard error is \u03c3/\u221an. The margin of error depends on standard error, so it also narrows. This explains why larger studies produce more precise estimates \u2014 their confidence intervals are tighter."
+    },
+    {
+      "index": 24,
+      "name": "Young, Caleb",
+      "response": "I think the Central Limit Theorem has something to do with normal distributions and large samples. Margin of error probably goes down with more data because you have more information. Statistics uses this for surveys and polls.",
+      "note": "very brief, vague response"
+    },
+    {
+      "index": 25,
+      "name": "Zhang, Amy",
+      "response": "The relationship between sample size and margin of error is mediated by the standard error, as described by the CLT. SE = \u03c3/\u221an captures how the spread of the sampling distribution shrinks with larger n. Since MOE = z* \u00d7 SE, the margin of error inherits this inverse square root decay. For researchers, this means: (1) larger samples always improve precision, but (2) the improvement has diminishing marginal returns, and (3) the required sample size scales quadratically with desired precision improvements. A practical rule: to estimate a proportion within \u00b13% at 95% confidence, you need about n \u2248 1,068 regardless of population size (for large populations)."
+    },
+    {
+      "index": 26,
+      "name": "Adams, Hailey",
+      "response": "The CLT shows that sample means have a normal distribution. The standard error gets smaller with larger n. Margin of error uses standard error so it also gets smaller. This is why we prefer large samples in research \u2014 they give us more accurate estimates of what we're trying to measure."
+    },
+    {
+      "index": 27,
+      "name": "Bennett, Chase",
+      "response": "",
+      "note": "empty response — no submission"
+    },
+    {
+      "index": 28,
+      "name": "Cooper, Maya",
+      "response": "Central Limit Theorem. Margin of error. Sample size. These are related. More samples is better for accuracy.",
+      "note": "very minimal response"
+    },
+    {
+      "index": 29,
+      "name": "Diaz, Roberto",
+      "response": "The Central Limit Theorem is probably the most important theorem in statistics. It says that no matter what the population looks like \u2014 skewed, bimodal, uniform \u2014 the distribution of sample means will be approximately normal if n is large enough (usually n \u2265 30). The standard error SE = \u03c3/\u221an measures the typical distance between a sample mean and the population mean. Since margin of error equals z* \u00d7 SE, increasing n shrinks SE which shrinks MOE. This means we get narrower confidence intervals and more precise estimates. For example, in medical trials, this principle guides how many patients are needed to detect a treatment effect with acceptable precision."
+    }
+  ]
+}
