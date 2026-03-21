@@ -161,8 +161,9 @@ async function callProviderDirect(provider, config, messages, timestamp, options
   console.log(`[${timestamp}] [direct] Calling ${provider} AI (${config.model})...`);
   const start = Date.now();
   
-  // Timeout: 120s for cloud (cold start tolerance), 30s for local
-  const timeoutMs = provider.toLowerCase() === 'ollama-cloud' ? 120000 : 30000;
+  // Timeout: 600s for local Ollama (large batches can take minutes), 120s for cloud
+  const providerLc = provider.toLowerCase();
+  const timeoutMs = providerLc === 'ollama-cloud' ? 120000 : providerLc === 'ollama' || providerLc === 'ollama-local' ? 600000 : 30000;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   

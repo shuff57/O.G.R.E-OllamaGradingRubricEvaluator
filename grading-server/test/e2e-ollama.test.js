@@ -244,10 +244,8 @@ describe('E2E: Ollama LFM2 grading pipeline', () => {
           rubric,
           students,
           strategy: 'serial',
-          // chunkSize: 5 — local Ollama has a 30s per-call timeout; each chunk
-          // of 5 students completes well within that window (~15-20s each),
-          // while still exercising multi-chunk consistency sweep logic.
-          chunkSize: 5,
+          // All 30 students in one chunk — local Ollama timeout is 600s
+          chunkSize: 30,
           sweep: 'none',
           customInstructions: '',
         }),
