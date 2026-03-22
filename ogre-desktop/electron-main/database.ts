@@ -9,7 +9,9 @@ interface BetterSqlite3RunResult {
 }
 
 interface BetterSqlite3Statement {
+  all(params: Record<number, unknown>): unknown[]
   all(...params: unknown[]): unknown[]
+  run(params: Record<number, unknown>): BetterSqlite3RunResult
   run(...params: unknown[]): BetterSqlite3RunResult
 }
 
@@ -210,6 +212,50 @@ function normalizeSql(sql: string): string {
   return sql.replace(/\$(\d+)/g, '?$1')
 }
 
+function usesNumberedParameters(sql: string): boolean {
+  return /\?[1-9]\d*/.test(sql)
+}
+
+function buildStatementBindings(
+  sql: string,
+  params: unknown[],
+): { normalizedSql: string; bindings: unknown[] | Record<number, unknown> } {
+  const normalizedSql = normalizeSql(sql)
+
+  if (!usesNumberedParameters(normalizedSql)) {
+    return { normalizedSql, bindings: params }
+  }
+
+  const bindings: Record<number, unknown> = {}
+  for (const [index, param] of params.entries()) {
+    bindings[index + 1] = param
+  }
+
+  return { normalizedSql, bindings }
+}
+
+function executeAll(
+  statement: BetterSqlite3Statement,
+  bindings: unknown[] | Record<number, unknown>,
+): unknown[] {
+  if (Array.isArray(bindings)) {
+    return statement.all(...bindings)
+  }
+
+  return statement.all(bindings)
+}
+
+function executeRun(
+  statement: BetterSqlite3Statement,
+  bindings: unknown[] | Record<number, unknown>,
+): BetterSqlite3RunResult {
+  if (Array.isArray(bindings)) {
+    return statement.run(...bindings)
+  }
+
+  return statement.run(bindings)
+}
+
 function normalizeParam(param: unknown): unknown {
   if (param instanceof Uint8Array) {
     return Buffer.from(param.buffer, param.byteOffset, param.byteLength)
@@ -261,7 +307,7 @@ function applyMigrations(db: BetterSqlite3Database): void {
     ),
   )
   const recordMigration = db.prepare(
-    'INSERT OR IGNORE INTO _migrations (version, description) VALUES (?1, ?2)',
+    'INSERT OR IGNORE INTO _migrations (version, description) VALUES (?, ?)',
   )
 
   for (const migration of migrations) {
@@ -298,8 +344,9 @@ export function registerDatabaseHandlers(): void {
     validateSql(payload.sql)
     const db = initDatabase()
     const params = (payload.params ?? []).map(normalizeParam)
-    const statement = db.prepare(normalizeSql(payload.sql))
-    const rows = statement.all(...params)
+    const { normalizedSql, bindings } = buildStatementBindings(payload.sql, params)
+    const statement = db.prepare(normalizedSql)
+    const rows = executeAll(statement, bindings)
     return serializeValue(rows)
   })
 
@@ -307,8 +354,9 @@ export function registerDatabaseHandlers(): void {
     validateSql(payload.sql)
     const db = initDatabase()
     const params = (payload.params ?? []).map(normalizeParam)
-    const statement = db.prepare(normalizeSql(payload.sql))
-    const result = statement.run(...params)
+    const { normalizedSql, bindings } = buildStatementBindings(payload.sql, params)
+    const statement = db.prepare(normalizedSql)
+    const result = executeRun(statement, bindings)
 
     return {
       rowsAffected: result.changes,
