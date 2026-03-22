@@ -16,6 +16,7 @@
     "build:turndown": "node scripts/build-turndown-bundle.js"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.0.3",
     "@sveltejs/vite-plugin-svelte": "^6.2.1",
     "@types/turndown": "^5.0.6",
     "@vitest/ui": "^4.0.18",
