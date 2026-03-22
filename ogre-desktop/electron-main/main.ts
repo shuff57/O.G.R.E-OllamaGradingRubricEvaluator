@@ -26,7 +26,7 @@ function createWindow(): BrowserWindow {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
       preload: path.join(process.cwd(), 'dist-electron', 'preload.mjs'),
     },
   })
