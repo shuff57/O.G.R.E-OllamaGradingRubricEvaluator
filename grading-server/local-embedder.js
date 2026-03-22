@@ -50,6 +50,7 @@ let tokenizer = null;
 let session = null;
 /** @type {Promise<void> | null} */
 let initPromise = null;
+let lastEmbedError = null;
 
 // ─── Download helper ──────────────────────────────────────────────────────────
 
@@ -80,6 +81,7 @@ export async function initLocalEmbedder() {
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
+    lastEmbedError = null; // clear stale error at start of new init attempt
     console.log(`[local-embedder] Loading model ${MODEL_ID}...`);
     const start = Date.now();
 
@@ -94,11 +96,14 @@ export async function initLocalEmbedder() {
   })();
 
   try {
-    return await initPromise;
+    const result = await initPromise;
+    lastEmbedError = null;
+    return result;
   } catch (err) {
     initPromise = null;
     tokenizer   = null;
     session     = null;
+    lastEmbedError = err.message || String(err);
     throw new Error(`Failed to load local embedding model: ${err.message}`);
   }
 }
@@ -158,4 +163,12 @@ export async function generateLocalEmbedding(text) {
  */
 export function isModelLoaded() {
   return session !== null && tokenizer !== null;
+}
+
+/**
+ * Returns the last error message from a failed init attempt, or null if none.
+ * @returns {string|null}
+ */
+export function getEmbedError() {
+  return lastEmbedError;
 }

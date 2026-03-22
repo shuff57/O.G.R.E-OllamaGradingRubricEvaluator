@@ -45,7 +45,7 @@ import { loadRubrics, createRubric, updateRubric, deleteRubric } from './rubric-
 import { withRetry } from './ai-retry.js';
 import { handleAgentRequest } from './agent.js';
 import { buildEmbedRequest, parseEmbedResponse } from './embedding-adapters.js';
-import { generateLocalEmbedding, initLocalEmbedder, isModelLoaded } from './local-embedder.js';
+import { generateLocalEmbedding, initLocalEmbedder, isModelLoaded, getEmbedError } from './local-embedder.js';
 import {
   buildKnowledgeProfilePrompts,
   extractKnowledgeProfileSiteName,
@@ -300,8 +300,8 @@ app.use('/*', cors({
 
 // ── Bearer token auth middleware for /api/* (except /api/handshake) ──
 app.use('/api/*', async (c, next) => {
-  // Skip auth for handshake and read-only status endpoints
-  if (c.req.path === '/api/handshake' || c.req.path === '/api/embed-status') {
+  // Skip auth for handshake, read-only status endpoints, and fire-and-forget warm-up
+  if (c.req.path === '/api/handshake' || c.req.path === '/api/embed-status' || c.req.path === '/api/warm-embed') {
     return next();
   }
 
@@ -493,7 +493,7 @@ app.get('/api/profiles/match', (c) => {
   return c.json({ profile: null });
 });
 app.get('/api/embed-status', (c) => {
-  return c.json({ modelLoaded: isModelLoaded() });
+  return c.json({ modelLoaded: isModelLoaded(), error: getEmbedError() });
 });
 
 app.post('/api/warm-embed', async (c) => {

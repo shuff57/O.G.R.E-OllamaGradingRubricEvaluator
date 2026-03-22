@@ -51,6 +51,9 @@
   let selectedProfileId = $state('auto');
   let detectedProfile = $state<SiteProfile | null>(null);
   let allProfiles = $state<SiteProfile[]>([]);
+  let embedPollAttempts = 0;
+  const MAX_EMBED_POLL_ATTEMPTS = 30;
+  let embedLoadFailed = $state(false);
   let embedStatusInterval: ReturnType<typeof setInterval> | null = null;
 
   // ── Derived ────────────────────────────────────────────────────────────
@@ -166,6 +169,14 @@
         fetch('http://localhost:3456/api/warm-embed', { method: 'POST' }).catch(() => {});
 
         embedStatusInterval = setInterval(async () => {
+          embedPollAttempts++;
+          if (embedPollAttempts >= MAX_EMBED_POLL_ATTEMPTS) {
+            clearInterval(embedStatusInterval);
+            embedStatusInterval = null;
+            embedLoadFailed = true;    // show failure warning (spinner hidden via template)
+            localEmbedEnabled = false; // disable local embedding
+            return;
+          }
           try {
             const res = await fetch('http://localhost:3456/api/embed-status');
             if (res.ok) {
@@ -176,6 +187,12 @@
                   clearInterval(embedStatusInterval);
                   embedStatusInterval = null;
                 }
+              } else if (data.error) {
+                // Server reports a definitive load failure — stop polling immediately
+                clearInterval(embedStatusInterval);
+                embedStatusInterval = null;
+                embedLoadFailed = true;    // show failure warning (spinner hidden via template)
+                localEmbedEnabled = false; // disable local embedding
               }
             }
           } catch (e) {
@@ -203,10 +220,14 @@
 </script>
 
 <!-- ── Local Model Banner ──────────────────────────────────────────── -->
-{#if localEmbedEnabled && !localModelLoaded}
+{#if localEmbedEnabled && !localModelLoaded && !embedLoadFailed}
   <div class="local-model-banner">
     <span class="spinner">⏳</span>
     Loading local embedding model... (first use only)
+  </div>
+{:else if embedLoadFailed}
+  <div class="local-model-banner local-model-banner--error">
+    ⚠️ Local embedding model failed to load. Falling back to cloud embeddings.
   </div>
 {/if}
 
