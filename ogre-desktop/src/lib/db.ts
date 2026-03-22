@@ -159,10 +159,10 @@ export async function saveProviderConfig(config: {
     `INSERT INTO provider_configs (id, api_url, api_key, model, is_active, created_at, updated_at)
      VALUES ($1, $2, $3, $4, $5, datetime('now'), datetime('now'))
      ON CONFLICT(id) DO UPDATE SET
-       api_url = $2,
-       api_key = $3,
-       model = $4,
-       is_active = $5,
+       api_url = excluded.api_url,
+       api_key = excluded.api_key,
+       model = excluded.model,
+       is_active = excluded.is_active,
        updated_at = datetime('now')`,
     [
       config.id,
@@ -250,7 +250,7 @@ export async function setSetting(
   const database = await initDB();
   await database.execute(
     `INSERT INTO app_settings (key, value) VALUES ($1, $2)
-     ON CONFLICT(key) DO UPDATE SET value = $2`,
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
     [key, value]
   );
 }
@@ -286,10 +286,10 @@ export async function saveOAuthToken(token: {
     `INSERT INTO oauth_tokens (provider, access_token, refresh_token, token_type, expires_at, created_at, updated_at)
      VALUES ($1, $2, $3, $4, $5, datetime('now'), datetime('now'))
      ON CONFLICT(provider) DO UPDATE SET
-       access_token = $2,
-       refresh_token = $3,
-       token_type = $4,
-       expires_at = $5,
+       access_token = excluded.access_token,
+       refresh_token = excluded.refresh_token,
+       token_type = excluded.token_type,
+       expires_at = excluded.expires_at,
        updated_at = datetime('now')`,
     [
       token.provider,
@@ -417,8 +417,8 @@ export async function saveSiteProfile(profile: {
     `INSERT INTO site_profiles (id, name, url_patterns, selectors, feedback, save, navigation, extraction)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      ON CONFLICT(id) DO UPDATE SET
-       name = $2, url_patterns = $3, selectors = $4, feedback = $5,
-       save = $6, navigation = $7, extraction = $8, updated_at = datetime('now')`,
+       name = excluded.name, url_patterns = excluded.url_patterns, selectors = excluded.selectors, feedback = excluded.feedback,
+       save = excluded.save, navigation = excluded.navigation, extraction = excluded.extraction, updated_at = datetime('now')`,
     [
       id,
       profile.name,
@@ -461,7 +461,7 @@ export async function saveBatchSession(url: string, lastStudentName: string): Pr
     `INSERT INTO batch_session (url, last_student_name, timestamp)
      VALUES ($1, $2, datetime('now'))
      ON CONFLICT(url) DO UPDATE SET
-       last_student_name = $2,
+       last_student_name = excluded.last_student_name,
        timestamp = datetime('now')`,
     [url, lastStudentName]
   );

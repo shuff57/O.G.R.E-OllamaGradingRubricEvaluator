@@ -290,6 +290,8 @@ describe('browser.ts — cropImageData', () => {
 
 // ── evalScript IPC Fallback Tests (Linux) ────────────────────────────────────
 // When CDP is not connected (Linux), evalScript should fall back to Tauri IPC.
+// Electron's executeJavaScript returns raw JS values (not pre-stringified).
+// evalScript must JSON.stringify() the result so evalScriptJSON can JSON.parse() it.
 
 describe('browser.ts — evalScript IPC fallback (Linux)', () => {
   beforeEach(() => {
@@ -300,16 +302,28 @@ describe('browser.ts — evalScript IPC fallback (Linux)', () => {
     mockInvoke.mockResolvedValue(undefined);
   });
 
-  it('returns actual value from IPC when CDP unavailable', async () => {
-    mockInvoke.mockResolvedValueOnce(JSON.stringify('My Page Title'));
+  it('returns JSON-stringified value from IPC when CDP unavailable', async () => {
+    // Electron's executeJavaScript returns the raw JS value (a plain string here)
+    mockInvoke.mockResolvedValueOnce('My Page Title');
 
     const result = await evalScript('document.title');
 
+    // evalScript must JSON.stringify the raw value so evalScriptJSON can parse it
     expect(result).toBe(JSON.stringify('My Page Title'));
     expect(mockInvoke).toHaveBeenCalledWith('eval_webview_script', {
       tabId: expect.any(String),
       script: 'document.title',
     });
+  });
+
+  it('returns JSON-stringified object from IPC when CDP unavailable', async () => {
+    // Electron's executeJavaScript returns the raw JS value (an object here)
+    const rawObj = { students: ['Alice', 'Bob'], count: 2 };
+    mockInvoke.mockResolvedValueOnce(rawObj);
+
+    const result = await evalScript('someScript()');
+
+    expect(result).toBe(JSON.stringify(rawObj));
   });
 
   it('propagates errors from IPC fallback', async () => {
@@ -322,7 +336,8 @@ describe('browser.ts — evalScript IPC fallback (Linux)', () => {
 
   it('passes script correctly to invoke', async () => {
     const testScript = 'document.querySelectorAll(".answer").length';
-    mockInvoke.mockResolvedValueOnce(JSON.stringify(5));
+    // Electron returns a raw number
+    mockInvoke.mockResolvedValueOnce(5);
 
     await evalScript(testScript);
 
@@ -333,7 +348,7 @@ describe('browser.ts — evalScript IPC fallback (Linux)', () => {
   });
 
   it('does not re-attempt CDP connection on repeated failures', async () => {
-    mockInvoke.mockResolvedValue(JSON.stringify('result'));
+    mockInvoke.mockResolvedValue('result');
 
     // Call evalScript twice
     await evalScript('script1');

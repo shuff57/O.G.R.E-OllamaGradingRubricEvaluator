@@ -172,10 +172,12 @@ export async function evalScript(script: string): Promise<string> {
     const ok = await connectCDP();
     if (!ok) {
       _evalScriptCdpUnavailable = true;
-      return invoke<string>('eval_webview_script', { tabId: _activeTabId, script });
+      const val = await invoke<unknown>('eval_webview_script', { tabId: _activeTabId, script });
+      return val === undefined ? 'undefined' : JSON.stringify(val);
     }
   } else {
-    return invoke<string>('eval_webview_script', { tabId: _activeTabId, script });
+    const val = await invoke<unknown>('eval_webview_script', { tabId: _activeTabId, script });
+    return val === undefined ? 'undefined' : JSON.stringify(val);
   }
 
   const result = await cdp.send('Runtime.evaluate', {

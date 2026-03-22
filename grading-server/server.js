@@ -209,7 +209,13 @@ async function callProviderDirect(provider, config, messages, timestamp, options
     throw err;
   }
 
-  const data = await response.json();
+  const responseText = await response.text();
+  let data;
+  try {
+    data = JSON.parse(responseText);
+  } catch (parseErr) {
+    throw new Error(`${provider} returned non-JSON response (${responseText.length} chars): ${responseText.slice(0, 200)}`);
+  }
   const elapsed = ((Date.now() - start) / 1000).toFixed(1);
   console.log(`[${timestamp}] [direct] AI response received in ${elapsed}s`);
 
