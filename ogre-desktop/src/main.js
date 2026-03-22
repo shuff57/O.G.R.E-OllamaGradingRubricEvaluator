@@ -1,3 +1,6 @@
+import { Buffer } from 'buffer'
+globalThis.Buffer = Buffer
+
 import { mount } from 'svelte'
 import './app.css'
 import App from './App.svelte'

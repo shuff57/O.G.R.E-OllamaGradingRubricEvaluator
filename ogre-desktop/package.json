@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "electron:dev": "NODE_ENV=development vite",
+    "electron:dev": "vite",
     "build": "npm run build:turndown && vite build",
     "electron:build": "vite build && electron-builder",
     "preview": "vite preview",

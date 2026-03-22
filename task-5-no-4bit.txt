@@ -1,1 +1,0 @@
-    "    load_in_4bit=False,      # QLoRA NOT recommended for MoE (per Unsloth docs)\n",

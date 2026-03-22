@@ -4,6 +4,10 @@ import { createInterface } from 'node:readline'
 import path from 'node:path'
 import os from 'node:os'
 import fs from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 const MAX_RESTART_ATTEMPTS = 3
 const SERVER_PORT = 3456
@@ -16,7 +20,7 @@ function getServerBundlePath(): string {
   const candidates = [
     path.join(process.resourcesPath ?? '', 'server-bundle', 'server.js'),
     path.join(__dirname, '..', '..', 'src-tauri', 'binaries', 'server-bundle', 'server.js'),
-    path.join(__dirname, '..', '..', '..', 'grading-server', 'server.js'),
+    path.join(__dirname, '..', '..', 'grading-server', 'server.js'),
   ]
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) return path.dirname(candidate)

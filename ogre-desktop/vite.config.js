@@ -22,11 +22,24 @@ export default defineConfig(() => ({
         vite: {
           build: {
             outDir: 'dist-electron',
+            rollupOptions: {
+              output: {
+                format: 'cjs',
+                entryFileNames: '[name].cjs',
+              },
+            },
           },
         },
       },
     }),
   ],
+  define: {
+    // Polyfill Buffer for renderer process (gray-matter and other Node libs need it)
+    global: 'globalThis',
+  },
+  optimizeDeps: {
+    include: ['buffer'],
+  },
   server: {
     watch: {
       usePolling: true,

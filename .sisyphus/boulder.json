@@ -1,11 +1,14 @@
 {
-  "active_plan": "/home/shuff57/Documents/GitHub/O.G.R.E-OllamaGradingRubricEvaluator/.sisyphus/plans/electron-cdp-migration.md",
-  "started_at": "2026-03-18T20:23:05.868Z",
+  "active_plan": "C:\\Users\\shuff\\Documents\\GitHub\\O.G.R.E-OllamaGradingRubricEvaluator\\.sisyphus\\plans\\fix-spinner-bugs.md",
+  "started_at": "2026-03-22T15:54:11.000Z",
   "session_ids": [
-    "ses_2fd8c62cfffeXfrJoSAHy7gWK3",
-    "ses_2fd9a0624ffeUSQB2Zj4Mqyg23"
+    "ses_2e9e68632ffeC1kAleUbjgNkCj",
+    "ses_2e9bc6573ffeygBSua7ih5eZyz",
+    "ses_2e9bc947cffeckI8MzbDyMfd0x",
+    "ses_2e9b9af4effe0YIiFYdRXOFygt",
+    "ses_2e9b9d3b7ffe0JCHzyQ1iaqCuH",
+    "ses_2e9a2b014ffe46JW2wdRVLY8F2"
   ],
-  "plan_name": "electron-cdp-migration",
-  "agent": "atlas",
-  "worktree_path": "/home/shuff57/Documents/GitHub/O.G.R.E-OllamaGradingRubricEvaluator/.worktrees/electron-migration"
+  "plan_name": "fix-spinner-bugs",
+  "agent": "atlas"
 }
