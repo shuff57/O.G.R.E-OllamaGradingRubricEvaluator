@@ -266,6 +266,13 @@
     }
   });
 
+  // ── Dismiss anchor spinner when leaving review phase ──────────────────
+  $effect(() => {
+    if (batchPhase !== 'review' && anchorGenerating) {
+      anchorGenerating = false;
+    }
+  });
+
   // ── Phase 1: Extract ───────────────────────────────────────────────────
   export async function handleExtract() {
     isAutoStopped = false;
