@@ -1,5 +1,34 @@
 const openUrl = (url: string) => window.open(url, '_blank')
-;
+
+/**
+ * Make a fetch-like HTTP request via the Electron main process.
+ * Bypasses renderer-side CORS so we can reach OAuth token endpoints
+ * (e.g. console.anthropic.com) that don't allow localhost/file:// origins.
+ */
+async function mainFetch(
+  url: string,
+  options: { method?: string; headers?: Record<string, string>; body?: string } = {},
+): Promise<{ ok: boolean; status: number; text: () => Promise<string>; json: () => Promise<unknown> }> {
+  const eAPI = (window as any).electronAPI
+  if (!eAPI?.invoke) {
+    // Fallback to normal fetch (browser dev / test contexts)
+    const r = await fetch(url, options)
+    return r
+  }
+  const result = await eAPI.invoke('oauth:fetch', {
+    url,
+    method: options.method ?? 'POST',
+    headers: options.headers ?? {},
+    body: options.body,
+  }) as { ok: boolean; status: number; body: string }
+  return {
+    ok: result.ok,
+    status: result.status,
+    text: async () => result.body,
+    json: async () => JSON.parse(result.body),
+  }
+}
+
 import { saveOAuthToken, getOAuthToken, deleteOAuthToken } from "./db";
 import { pushProvidersToServer } from "./provider-sync";
 // ── Types ────────────────────────────────────────────────────────────────
@@ -307,23 +336,33 @@ export async function startClaudeOAuthFlow(): Promise<DeviceFlowResult> {
         const parts = pastedCode.split("#");
         const code = parts[0].trim();
         const pastedState = parts[1]?.trim() || state;
-        const res = await fetch(ANTHROPIC_TOKEN_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            grant_type: "authorization_code",
-            client_id: ANTHROPIC_CLIENT_ID,
-            code,
-            redirect_uri: ANTHROPIC_REDIRECT_URI,
-            code_verifier,
-            state: pastedState,
-          }),
-        });
-        if (!res.ok) {
-          const errText = await res.text();
-          return { success: false, error: `Token exchange failed (${res.status}): ${errText}` };
+
+        // Retry up to 3 times with backoff on 429 rate-limit responses
+        let res: Awaited<ReturnType<typeof mainFetch>> | null = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          if (attempt > 0) await sleep(5000 * attempt); // 5s, 10s
+          res = await mainFetch(ANTHROPIC_TOKEN_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              grant_type: "authorization_code",
+              client_id: ANTHROPIC_CLIENT_ID,
+              code,
+              redirect_uri: ANTHROPIC_REDIRECT_URI,
+              code_verifier,
+              state: pastedState,
+            }),
+          });
+          if (res.status !== 429) break;
         }
-        const data = await res.json();
+        if (!res!.ok) {
+          const errText = await res!.text();
+          if (res!.status === 429) {
+            return { success: false, error: "Anthropic rate limited the login. Wait 60 seconds and try again." };
+          }
+          return { success: false, error: `Token exchange failed (${res!.status}): ${errText}` };
+        }
+        const data = await res!.json() as Record<string, any>;
         if (!data.access_token) {
           return { success: false, error: "No access_token in response" };
         }
@@ -349,7 +388,7 @@ async function refreshAnthropicToken(refreshToken: string): Promise<{
   refresh_token?: string;
   expires_in?: number;
 }> {
-  const res = await fetch(ANTHROPIC_TOKEN_URL, {
+  const res = await mainFetch(ANTHROPIC_TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -359,7 +398,7 @@ async function refreshAnthropicToken(refreshToken: string): Promise<{
     }),
   });
   if (!res.ok) throw new Error(`Token refresh failed: ${res.status}`);
-  return await res.json();
+  return await res.json() as { access_token: string; refresh_token?: string; expires_in?: number };
 }
 
 /**

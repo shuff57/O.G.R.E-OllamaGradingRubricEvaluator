@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain, net } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 import { autoUpdater } from 'electron-updater'
@@ -12,6 +12,29 @@ export function registerIpcHandlers(): void {
   registerBrowserHandlers()
   registerCdpHandlers()
   registerOAuthHandlers()
+
+  // Proxy HTTP requests through the main process so the renderer can reach
+  // endpoints (e.g. Anthropic token exchange) that block CORS from a
+  // localhost/file:// origin.
+  ipcMain.handle('oauth:fetch', async (_e, {
+    url,
+    method = 'POST',
+    headers = {},
+    body,
+  }: {
+    url: string
+    method?: string
+    headers?: Record<string, string>
+    body?: string
+  }) => {
+    const res = await net.fetch(url, {
+      method,
+      headers,
+      body: body ?? undefined,
+    })
+    const text = await res.text()
+    return { ok: res.ok, status: res.status, body: text }
+  })
 
   ipcMain.handle('scan_local_skills', async (_e, { dir }: { dir: string }) => {
     try {

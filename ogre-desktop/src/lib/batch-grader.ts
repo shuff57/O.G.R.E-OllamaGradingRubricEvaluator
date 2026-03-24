@@ -420,6 +420,19 @@ export async function extractRubric(selectors: SiteSelectors, studentIndex: numb
  * Students with identical fingerprints share the same question version.
  * Runs as a single evalScriptJSON call for efficiency.
  *
+ * Two normalizations are applied so that students on the same version collapse
+ * to the same fingerprint even when MOM randomises numeric values per-student:
+ *
+ *   1. Only the prompt+checklist area (part1.children[0]) is fingerprinted —
+ *      NOT the full Part 1 div, which also contains the student's unique response
+ *      text.  Using the full Part 1 div was the original bug: every student had a
+ *      unique fingerprint simply because their answers differed.
+ *
+ *   2. Numeric tokens are stripped from the prompt text.  MOM injects different
+ *      randomised values (e.g. "$47,200", "12.5%", "350 bacteria") into the same
+ *      version's prompt for each student.  Stripping digits collapses those
+ *      per-student variants back to a single structural fingerprint per version.
+ *
  * @param selectors - CSS selectors from the active site profile
  * @returns Record mapping student index to their normalized prompt fingerprint
  */
@@ -432,8 +445,23 @@ export async function extractPromptFingerprints(selectors: SiteSelectors): Promi
     for (var i = 0; i < sections.length; i++) {
       var region = sel.questionRegion ? sections[i].querySelector(sel.questionRegion) : null;
       if (!region) { fingerprints[i] = ''; continue; }
-      var promptDiv = region.querySelector(':scope > div'); // First direct div = Part 1 content
-      var text = promptDiv ? promptDiv.textContent.replace(/\\s+/g, ' ').trim().substring(0, 500) : '';
+      // part1Div is the first direct child of the question region (= Part 1 container).
+      // children[0] of part1Div is the prompt+checklist area — it excludes the student
+      // response div (children[1]), which is unique per student and must NOT be included
+      // in the fingerprint.
+      var part1Div = region.querySelector(':scope > div');
+      var promptArea = part1Div ? part1Div.children[0] : null;
+      var raw = promptArea ? promptArea.textContent : (part1Div ? part1Div.textContent : '');
+      // Strip numeric tokens (integers, decimals, comma-separated numbers, currency
+      // prefixes) so per-student randomised values don't split a single version into
+      // many.  The structural words that distinguish real versions are preserved.
+      var text = raw
+        .replace(/[$][\\d,]+\\.?\\d*/g, '#')
+        .replace(/\\b[\\d,]+\\.?\\d*\\b/g, '#')
+        .replace(/(#[\\s]*)+/g, '# ')
+        .replace(/\\s+/g, ' ')
+        .trim()
+        .substring(0, 500);
       fingerprints[i] = text;
     }
     return fingerprints;
