@@ -1,3 +1,0 @@
-=== QA Scenario 3: GET /api/providers - 503 (no token) ===
-{"error":"No provider configuration available"}
-HTTP_STATUS: 503

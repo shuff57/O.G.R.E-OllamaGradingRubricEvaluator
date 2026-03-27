@@ -1,7 +1,0 @@
-=== QA Scenario 14: Backward compat - /health ===
-{"status":"ok"}
-HTTP_STATUS: 200
-
-=== /session endpoint ===
-{"ok":true}
-HTTP_STATUS: 200

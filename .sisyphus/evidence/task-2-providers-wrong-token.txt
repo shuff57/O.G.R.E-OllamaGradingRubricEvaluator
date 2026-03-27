@@ -1,3 +1,0 @@
-=== QA Scenario 9: GET /api/providers - 403 (wrong token) ===
-{"error":"Invalid token"}
-HTTP_STATUS: 403

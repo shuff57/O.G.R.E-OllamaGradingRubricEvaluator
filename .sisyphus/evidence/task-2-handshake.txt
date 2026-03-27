@@ -1,3 +1,0 @@
-=== QA Scenario 1: GET /api/handshake - 503 (no token yet) ===
-{"error":"Desktop has not registered yet"}
-HTTP_STATUS: 503

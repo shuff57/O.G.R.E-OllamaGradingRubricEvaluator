@@ -1,3 +1,0 @@
-=== QA Scenario 2: GET /api/handshake - 403 (non-extension origin) ===
-{"error":"Forbidden: extension origin required"}
-HTTP_STATUS: 403

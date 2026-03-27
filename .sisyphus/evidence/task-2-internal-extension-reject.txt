@@ -1,3 +1,0 @@
-=== QA Scenario 5: POST /internal/providers - Extension origin rejected (403) ===
-{"error":"Forbidden: extensions cannot push provider config"}
-HTTP_STATUS: 403

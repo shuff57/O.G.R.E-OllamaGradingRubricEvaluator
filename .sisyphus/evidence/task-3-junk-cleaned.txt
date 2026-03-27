@@ -1,2 +1,0 @@
-Task 3: Junk Cleaned - gitignored artifacts removed via filesystem rm
-Deleted: nul, ./%APPDATA%/, UsersshuffAppDataLocalTempopencode/, tmp/, test-data/, test-results/, tests/, .ruff_cache/, .playwright-mcp/

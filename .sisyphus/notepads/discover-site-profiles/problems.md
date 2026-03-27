@@ -1,1 +1,0 @@
-- 2026-03-15: No unresolved parser blockers. Future improvement opportunity: add richer selector key naming by table-column semantic parsing to reduce generic normalized keys.

@@ -1,2 +1,0 @@
-- 2026-03-15: Chose pragmatic parser heuristics over strict schema parsing: selectors from inline code spans + selector-like filter, navigation from inline/backticked and plain URL patterns, workflows from contiguous ordered lists under nearest heading, gotchas from Tips/Gotchas heading bullets.
-- 2026-03-15: Keys for selector/navigation records are normalized human-readable derivatives (with uniqueness suffixes) to keep JSON compact and deterministic for prompt injection.

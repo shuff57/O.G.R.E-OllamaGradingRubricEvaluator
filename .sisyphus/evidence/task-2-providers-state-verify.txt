@@ -1,3 +1,0 @@
-=== QA Scenario 13: Verify providers state updated after active switch ===
-{"providers":[{"id":"ollama-local","api_url":"http://localhost:11434","model":"llama3.2","is_active":false,"credentials":{}},{"id":"openai-prod","api_url":"https://api.openai.com","model":"gpt-4o-mini","is_active":true,"credentials":{"api_key":"sk-fake-key"}}]}
-HTTP_STATUS: 200

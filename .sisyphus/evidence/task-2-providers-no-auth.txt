@@ -1,3 +1,0 @@
-=== QA Scenario 8: GET /api/providers - 401 (no auth header) ===
-{"error":"Missing or invalid Authorization header"}
-HTTP_STATUS: 401

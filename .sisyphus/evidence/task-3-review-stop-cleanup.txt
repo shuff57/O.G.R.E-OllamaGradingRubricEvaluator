@@ -1,3 +1,0 @@
-600-    if (reviewResolve) {
-601-      reviewResolve({ action: 'skip' });
-603-      reviewResolve = null;

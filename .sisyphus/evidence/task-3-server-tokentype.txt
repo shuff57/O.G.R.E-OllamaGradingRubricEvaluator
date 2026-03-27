@@ -1,2 +1,0 @@
-1072:  const tokenType = p?.credentials?.token_type || null;
-1085:  return { apiUrl: effectiveApiUrl, apiKey, model, tokenType };

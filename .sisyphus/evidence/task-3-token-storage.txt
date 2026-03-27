@@ -1,5 +1,0 @@
-312:          refresh_token: data.refresh_token ?? null,
-314:          expires_at: data.expires_in ? Date.now() + data.expires_in * 1000 : null,
-397:            refresh_token: tokenData.refresh_token ?? null,
-399:            expires_at: tokenData.expires_in
-400:              ? Date.now() + tokenData.expires_in * 1000

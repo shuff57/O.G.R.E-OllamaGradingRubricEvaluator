@@ -1,3 +1,0 @@
-=== QA Scenario 10: POST /api/providers/active - 200 (switch provider) ===
-{"ok":true}
-HTTP_STATUS: 200

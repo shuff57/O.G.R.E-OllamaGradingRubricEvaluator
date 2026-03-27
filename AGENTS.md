@@ -2,7 +2,7 @@
 
 Shared behavioral rules for every agent working in this repository.
 This file defines **how agents should behave**.
-Skill routing and project conventions live in `.agents/routing.md` — read it for capability routing, skill names, and directory layout.
+Capability routing lives in `.agents/README.md` — read it for domain folders, skill names, and directory layout.
 
 ## 1) Agent Identity
 
@@ -64,7 +64,7 @@ When you need a CLI: `Read .agents/cli/<name>.md` for working directory, command
 - Batch fills/updates when the interface supports it safely.
 - Re-observe page state before and after any important browser mutation.
 - Prefer dry-run, preview, or report-first patterns before applying changes.
-- Load reusable behaviors by **skill name** rather than re-inventing workflows ad hoc.
+- Load reusable behaviors by **capability name** rather than re-inventing workflows ad hoc.
 - Reuse project conventions, selectors, and state files before adding new ones.
 - Never hardcode absolute file paths when a workspace-relative or discovered path will do.
 - Keep evidence in repo-local files when the task calls for traceability.
@@ -98,8 +98,8 @@ When you need a CLI: `Read .agents/cli/<name>.md` for working directory, command
 - Capture patterns, guardrails, verification lessons, and workflow improvements.
 - Prefer generalized lessons over one-off anecdotes.
 - Separate durable rules from temporary workarounds.
-- If the same manual pattern repeats, suggest a dedicated skill or reusable workflow.
-- If a skill exists but keeps needing the same correction, note the improvement opportunity.
+- If the same manual pattern repeats, suggest a dedicated capability document or reusable workflow.
+- If a capability exists but keeps needing the same correction, note the improvement opportunity.
 - Keep learnings concise, actionable, and relevant to future agent behavior.
 
 ## 7) Forbidden Actions

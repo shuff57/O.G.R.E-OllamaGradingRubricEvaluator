@@ -1,2 +1,0 @@
-- 2026-03-15: Real profile markdown is not template-regular; resilient extraction works best by scanning full content for inline code selectors, URL-like paths, numbered lists, and Tips/Gotchas bullets instead of strict heading assumptions.
-- 2026-03-15: Frontmatter parsing should be wrapped in a safe fallback (`gray-matter` try/catch) so malformed YAML still returns a valid minimal `SiteGuideJSON`.

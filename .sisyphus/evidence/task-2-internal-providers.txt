@@ -1,3 +1,0 @@
-=== QA Scenario 4: POST /internal/providers - Desktop push (200) ===
-{"ok":true,"count":2}
-HTTP_STATUS: 200

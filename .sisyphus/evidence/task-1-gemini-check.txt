@@ -1,4 +1,0 @@
-=== VERIFICATION: Bare 'gemini' in grading-server ===
-Expected: Zero matches (all renamed to google-gemini)
-
-No matches found - PASS

@@ -33,11 +33,7 @@ tests/
 # MCP cache
 .playwright-mcp/
 
-# Sisyphus evidence (local only)
-.sisyphus/evidence/
-
-# Per-session scratch (transient — flushed to .agents/memory/ at session end)
-.claude/session.md
+# Per-session scratch
 ogre-desktop/.sisyphus/
 
 # Tauri build artifacts

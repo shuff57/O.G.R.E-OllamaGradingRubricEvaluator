@@ -1,3 +1,0 @@
-=== QA Scenario 11: POST /api/providers/active - 404 (unknown provider) ===
-{"error":"Provider not found: nonexistent"}
-HTTP_STATUS: 404
