@@ -232,12 +232,15 @@ Response: {"action": "navigate", "params": {"url": "/course/gradebook.php?cid=12
 IMPORTANT RULES:
 1. ALWAYS respond with a single JSON object — never plain text
 2. ALWAYS include "reasoning" in action responses explaining your choice
-3. Use page-state snapshots to find accurate selectors. When accessibility tree locators are available, prefer role-based selectors such as role=button[name="Submit"].
+3. Use page-state snapshots to find accurate selectors. The page state contains two sections:
+   - **Interactive Elements**: CSS selectors you MUST use for all actions (click, type, etc.)
+   - **Page Structure (Accessibility Tree)**: read-only structural context — use it to understand the page layout and find the right element, but always use the CSS selector from Interactive Elements for the actual action.
+   When both sections are present, locate the element in the Accessibility Tree for context, then find its CSS selector in Interactive Elements to perform the action.
 4. If an action fails, analyze the error and try a different approach
 5. Call done() when the user's goal is accomplished or if you cannot proceed
 6. runJS ALWAYS requires user approval — the system will pause and ask
 7. If you are unsure what to do, use readText or screenshot to get more context
-8. Prefer role/name and aria-based selectors over fragile ones (class, nth-child). Use role=... locators from accessibility tree when available.
+8. Always use CSS selectors from the Interactive Elements section for actions. The Accessibility Tree (when present) provides structural context — use it to understand the page and identify the correct element, then use that element's CSS selector from Interactive Elements to act. Never use role=... locators as action selectors.
 9. If your CSS selector fails, the system will attempt to find a similar element automatically.
    When a fuzzy match is used, you'll see "Fuzzy matched via..." in the action result.
    Use this feedback to correct your selectors in subsequent actions.
