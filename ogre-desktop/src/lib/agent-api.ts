@@ -155,23 +155,6 @@ export function parseAgentResponse(rawText: string): AgentApiResponse {
     }
   }
   
-  // Step 7: Look for action keyword in the text
-  const actionMatch = text.match(/^(click|type|scroll|readText|screenshot|waitFor|navigate|runJS|done)\s*\(/i);
-  if (actionMatch) {
-    // Try to extract action and params from text format like "click(#selector)"
-    const action = actionMatch[1].toLowerCase();
-    const paramsStr = text.slice(actionMatch[0].length).replace(/\)?\s*$/, "");
-    
-    try {
-      // Attempt to parse params as JSON
-      const params = JSON.parse(`{${paramsStr}}`);
-      return { action, params } as AgentActionResponse;
-    } catch {
-      // Couldn't parse params, return as text
-      return { text: originalText } as AgentTextResponse;
-    }
-  }
-  
   // Fallback: treat entire response as plain text
   return { text: originalText } as AgentTextResponse;
 }
