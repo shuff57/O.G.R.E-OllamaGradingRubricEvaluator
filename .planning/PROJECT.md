@@ -75,7 +75,8 @@ Codebase map: `.planning/codebase/` (7 documents, 1,335 lines)
 | Use Electron safeStorage for credential encryption | OS-native keychain (DPAPI on Windows), no external dependencies | — Pending |
 | Migrate existing credentials on first launch | Teacher shouldn't need to re-enter passwords | — Pending |
 | Restrict CORS to localhost rather than adding CSRF tokens | Simpler, sufficient for local-only server | — Pending |
-| Disable debug port via build flag, not removal | Developers still need it in dev mode | — Pending |
+| Migrate CDP from raw port to webContents.debugger API | Eliminates network-exposed debug port entirely; external agents access via IPC relay | — Pending |
+| Keep raw debug port in dev builds only | Developers still need chrome://inspect for debugging | — Pending |
 
 ---
-*Last updated: 2026-03-28 after initialization*
+*Last updated: 2026-03-29 after requirements definition*
