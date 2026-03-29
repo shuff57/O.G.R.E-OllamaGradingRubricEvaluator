@@ -68,32 +68,32 @@ Deferred to future release. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CRED-01 | Pending | Pending |
-| CRED-02 | Pending | Pending |
-| CRED-03 | Pending | Pending |
-| CRED-04 | Pending | Pending |
-| CRED-05 | Pending | Pending |
-| CRED-06 | Pending | Pending |
-| XSS-01 | Pending | Pending |
-| XSS-02 | Pending | Pending |
-| XSS-03 | Pending | Pending |
-| AUTH-01 | Pending | Pending |
-| AUTH-02 | Pending | Pending |
-| AUTH-03 | Pending | Pending |
-| AUTH-04 | Pending | Pending |
-| IPC-01 | Pending | Pending |
-| IPC-02 | Pending | Pending |
-| IPC-03 | Pending | Pending |
-| IPC-04 | Pending | Pending |
-| PORT-01 | Pending | Pending |
-| PORT-02 | Pending | Pending |
-| PORT-03 | Pending | Pending |
+| IPC-01 | Phase 1: Quick Wins | Not started |
+| IPC-04 | Phase 1: Quick Wins | Not started |
+| PORT-02 | Phase 1: Quick Wins | Not started |
+| AUTH-01 | Phase 2: Server Auth & CORS | Not started |
+| AUTH-02 | Phase 2: Server Auth & CORS | Not started |
+| AUTH-03 | Phase 2: Server Auth & CORS | Not started |
+| XSS-01 | Phase 3: XSS Prevention | Not started |
+| XSS-02 | Phase 3: XSS Prevention | Not started |
+| XSS-03 | Phase 3: XSS Prevention | Not started |
+| CRED-01 | Phase 4: Credential Encryption | Not started |
+| CRED-02 | Phase 4: Credential Encryption | Not started |
+| CRED-03 | Phase 4: Credential Encryption | Not started |
+| CRED-04 | Phase 4: Credential Encryption | Not started |
+| CRED-05 | Phase 4: Credential Encryption | Not started |
+| CRED-06 | Phase 4: Credential Encryption | Not started |
+| PORT-01 | Phase 5: CDP Migration & IPC Hardening | Not started |
+| IPC-02 | Phase 5: CDP Migration & IPC Hardening | Not started |
+| IPC-03 | Phase 5: CDP Migration & IPC Hardening | Not started |
+| PORT-03 | Phase 6: Port Management & Rate Limiting | Not started |
+| AUTH-04 | Phase 6: Port Management & Rate Limiting | Not started |
 
 **Coverage:**
 - v1 requirements: 20 total
-- Mapped to phases: 0 ⚠️
-- Unmapped: 20
+- Mapped to phases: 20 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-29*
-*Last updated: 2026-03-29 after initial definition*
+*Last updated: 2026-03-29 after roadmap phase assignment*
