@@ -13,8 +13,8 @@ vi.mock('./agent-dom', () => ({
 }));
 
 vi.mock('./agent-dom-fuzzy', () => ({
-  findFuzzyMatch: vi.fn().mockReturnValue(null),
-  fuzzyMatchReason: vi.fn().mockReturnValue('Fuzzy matched via text: Submit → #submit-btn'),
+   findFuzzyMatch: vi.fn().mockReturnValue(null),
+   fuzzyMatchReason: vi.fn().mockReturnValue('Fuzzy matched via text: Submit → #submit-btn'),
 }));
 
 vi.mock('./cdp-actions', () => ({
@@ -56,7 +56,7 @@ describe('executeAction: fuzzy retry integration', () => {
       .mockResolvedValueOnce({ success: true });
 
     mockCaptureInteractiveDom.mockResolvedValueOnce([matchedElement]);
-    mockFindFuzzyMatch.mockReturnValueOnce(matchedElement);
+    mockFindFuzzyMatch.mockReturnValueOnce({ element: matchedElement, strategyIndex: 0 });
 
     const result = await executeAction({ action: 'click', selector: '#bad-submit' });
 
@@ -96,7 +96,7 @@ describe('executeAction: fuzzy retry integration', () => {
       .mockResolvedValueOnce({ success: true });
 
     mockCaptureInteractiveDom.mockResolvedValueOnce([matchedElement]);
-    mockFindFuzzyMatch.mockReturnValueOnce(matchedElement);
+    mockFindFuzzyMatch.mockReturnValueOnce({ element: matchedElement, strategyIndex: 3 });
 
     const result = await executeAction({ action: 'type', selector: '#email-input', text: 'test@example.com' });
 

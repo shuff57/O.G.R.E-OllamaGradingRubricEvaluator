@@ -96,8 +96,11 @@ function matchByIdOrClass(
 
   const classes = extractClasses(selector);
   for (const cls of classes) {
+    // Prefer checking the actual captured class list (works even when selector is nth-child)
     const byClass = elements.find(
-      (el) => el.selector?.includes(`.${cls}`),
+      (el) =>
+        el.classes?.includes(cls) ||
+        el.selector?.includes(`.${cls}`),
     );
     if (byClass) return byClass;
   }
@@ -164,12 +167,12 @@ const strategyNames = [
 export function findFuzzyMatch(
   failedSelector: string,
   elements: InteractiveElement[],
-): InteractiveElement | null {
+): { element: InteractiveElement; strategyIndex: number } | null {
   if (!failedSelector || !elements?.length) return null;
 
-  for (const strategy of strategies) {
-    const match = strategy(failedSelector, elements);
-    if (match) return match;
+  for (const [strategyIndex, strategy] of strategies.entries()) {
+    const element = strategy(failedSelector, elements);
+    if (element) return { element, strategyIndex };
   }
 
   return null;

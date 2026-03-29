@@ -32,13 +32,15 @@ describe('findFuzzyMatch', () => {
       // Selector with quoted text hint
       const result = findFuzzyMatch('button:has-text("Submit")', elements);
       expect(result).not.toBeNull();
-      expect(result!.selector).toBe('#submit-btn');
+      expect(result!.element.selector).toBe('#submit-btn');
+      expect(result!.strategyIndex).toBe(0);
     });
 
     test('text match is case-insensitive', () => {
       const elements = [el({ tag: 'button', selector: '#ok-btn', text: 'OK Button' })];
       const result = findFuzzyMatch('button:has-text("ok button")', elements);
       expect(result).not.toBeNull();
+      expect(result!.strategyIndex).toBe(0);
     });
   });
 
@@ -50,15 +52,49 @@ describe('findFuzzyMatch', () => {
       ];
       const result = findFuzzyMatch('#login', elements);
       expect(result).not.toBeNull();
-      expect(result!.selector).toBe('#login-button');
+      expect(result!.element.selector).toBe('#login-button');
+      expect(result!.strategyIndex).toBe(1);
     });
 
-    test('matches element by class substring', () => {
+    test('matches element by class substring in selector', () => {
       const elements = [
         el({ tag: 'button', selector: 'button.submit-btn.primary', text: '' }),
       ];
       const result = findFuzzyMatch('.submit-btn', elements);
       expect(result).not.toBeNull();
+      expect(result!.strategyIndex).toBe(1);
+    });
+
+    test('matches element by class via el.classes when selector is nth-child (Bug #5)', () => {
+      // The element has classes=['btn','primary'] but its selector is nth-child (no classes in selector string)
+      const elements = [
+        el({ tag: 'div', selector: 'div:nth-child(3)', classes: ['btn', 'primary'], text: '' }),
+      ];
+      const result = findFuzzyMatch('.btn', elements);
+      expect(result).not.toBeNull();
+      expect(result!.element.selector).toBe('div:nth-child(3)');
+      expect(result!.strategyIndex).toBe(1);
+    });
+
+    test('matches second class in el.classes list when selector is nth-child', () => {
+      const elements = [
+        el({ tag: 'button', selector: 'button:nth-child(2)', classes: ['icon', 'close-dialog'], text: '' }),
+      ];
+      const result = findFuzzyMatch('.close-dialog', elements);
+      expect(result).not.toBeNull();
+      expect(result!.strategyIndex).toBe(1);
+    });
+
+    test('does not match when class not in el.classes or selector', () => {
+      const elements = [
+        el({ tag: 'div', selector: 'div:nth-child(1)', classes: ['foo', 'bar'], text: '' }),
+      ];
+      const result = findFuzzyMatch('.nonexistent-class', elements);
+      // Should not match via class — may fall through to tag heuristic (strategy 3/4) or null
+      // Key: strategy 1 (class) must NOT incorrectly return this element
+      if (result !== null) {
+        expect(result.strategyIndex).toBeGreaterThan(1);
+      }
     });
   });
 
@@ -70,7 +106,8 @@ describe('findFuzzyMatch', () => {
       ];
       const result = findFuzzyMatch('[aria-label="Close dialog"]', elements);
       expect(result).not.toBeNull();
-      expect(result!.selector).toContain('aria-label');
+      expect(result!.element.selector).toContain('aria-label');
+      expect(result!.strategyIndex).toBe(2);
     });
   });
 
@@ -82,7 +119,8 @@ describe('findFuzzyMatch', () => {
       ];
       const result = findFuzzyMatch('input', elements);
       expect(result).not.toBeNull();
-      expect(result!.visible).toBe(true);
+      expect(result!.element.visible).toBe(true);
+      expect(result!.strategyIndex).toBe(3);
     });
 
     test('skips invisible elements in tag heuristic', () => {
@@ -102,6 +140,28 @@ describe('findFuzzyMatch', () => {
     ];
     const result = findFuzzyMatch('#totally-unique-xyz-12345', elements);
     expect(result).toBeNull();
+  });
+});
+
+describe('findFuzzyMatch strategy index coverage', () => {
+  test('returns strategyIndex 0 for text content match', () => {
+    const result = findFuzzyMatch('button:has-text("Submit")', [el({ tag: 'button', selector: '#s', text: 'Submit' })]);
+    expect(result?.strategyIndex).toBe(0);
+  });
+
+  test('returns strategyIndex 1 for id/class match', () => {
+    const result = findFuzzyMatch('#login', [el({ tag: 'button', selector: '#login-button', id: 'login-button' })]);
+    expect(result?.strategyIndex).toBe(1);
+  });
+
+  test('returns strategyIndex 2 for aria-label match', () => {
+    const result = findFuzzyMatch('[aria-label="Close"]', [el({ tag: 'button', selector: 'button[aria-label="Close"]' })]);
+    expect(result?.strategyIndex).toBe(2);
+  });
+
+  test('returns strategyIndex 3 for tag position match', () => {
+    const result = findFuzzyMatch('input', [el({ tag: 'input', selector: 'input[name=x]', visible: true })]);
+    expect(result?.strategyIndex).toBe(3);
   });
 });
 
