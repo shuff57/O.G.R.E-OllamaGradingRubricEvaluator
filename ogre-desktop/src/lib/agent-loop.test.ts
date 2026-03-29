@@ -30,7 +30,7 @@ vi.mock('./skills-api', () => ({
 
 import { sendAgentRequest } from './agent-api';
 import { executeAction } from './browser-actions';
-import { createAgentController } from './agent-loop';
+import { createAgentController, mergeDomWithAxTree } from './agent-loop';
 
 const mockSend = sendAgentRequest as ReturnType<typeof vi.fn>;
 const mockExecute = executeAction as ReturnType<typeof vi.fn>;
@@ -124,6 +124,42 @@ const CLICK_RESPONSE = {
   params: { selector: '#btn' },
   reasoning: 'click the button',
 };
+
+// ---------------------------------------------------------------------------
+// mergeDomWithAxTree — pure unit tests
+// ---------------------------------------------------------------------------
+
+describe('mergeDomWithAxTree', () => {
+  test('returns merged string with Interactive Elements first then AX tree', () => {
+    const dom = 'button#submit';
+    const axTree = Array.from({ length: 25 }, (_, i) => `- button "Node ${i + 1}"`).join('\n');
+    const result = mergeDomWithAxTree(dom, axTree);
+    expect(result).toContain('## Interactive Elements');
+    expect(result).toContain(dom);
+    expect(result).toContain('## Page Structure (Accessibility Tree)');
+    expect(result).toContain(axTree);
+    const domIdx = result.indexOf('## Interactive Elements');
+    const axIdx = result.indexOf('## Page Structure (Accessibility Tree)');
+    expect(domIdx).toBeLessThan(axIdx);
+  });
+
+  test('truncates AX tree when combined exceeds 8000 token limit', () => {
+    // Create a large AX tree that, combined with dom, exceeds 32000 chars
+    const dom = 'button#submit'; // 13 chars
+    const bigAxTree = 'x'.repeat(40_000); // well over the limit
+    const result = mergeDomWithAxTree(dom, bigAxTree);
+    expect(result.length).toBeLessThanOrEqual(32_000 + 60); // slight tolerance for headers
+    expect(result).toContain('## Interactive Elements');
+    expect(result).toContain(dom);
+  });
+
+  test('returns just dom when dom alone exceeds budget', () => {
+    const hugeDom = 'y'.repeat(35_000); // bigger than 32000 char limit alone
+    const axTree = 'some ax content';
+    const result = mergeDomWithAxTree(hugeDom, axTree);
+    expect(result).toBe(hugeDom);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Auto mode — done action
@@ -305,7 +341,7 @@ describe('agent-loop: AI error', () => {
 });
 
 describe('agent-loop: accessibility tree page state', () => {
-  test('prefers accessibility tree as dom prompt when tree has >20 nodes', async () => {
+  test('merges interactive DOM and AX tree when tree has >20 nodes', async () => {
     const { captureInteractiveDom, formatDomForPrompt } = await import('./agent-dom');
     const { captureAccessibilityTree } = await import('./browser');
 
@@ -324,7 +360,64 @@ describe('agent-loop: accessibility tree page state', () => {
 
     expect(mockSend).toHaveBeenCalled();
     const firstCall = mockSend.mock.calls[0]?.[0] as { dom?: string };
-    expect(firstCall.dom).toBe(axTree);
+    // DOM must come FIRST, AX tree appended as supplementary section
+    expect(firstCall.dom).toContain('## Interactive Elements');
+    expect(firstCall.dom).toContain('DOM SNAPSHOT');
+    expect(firstCall.dom).toContain('## Page Structure (Accessibility Tree)');
+    expect(firstCall.dom).toContain(axTree);
+    // Interactive Elements must come before the AX tree
+    const domIdx = firstCall.dom!.indexOf('## Interactive Elements');
+    const axIdx = firstCall.dom!.indexOf('## Page Structure (Accessibility Tree)');
+    expect(domIdx).toBeLessThan(axIdx);
+  });
+
+  test('uses only interactive DOM when AX tree has ≤20 nodes', async () => {
+    const { captureInteractiveDom, formatDomForPrompt } = await import('./agent-dom');
+    const { captureAccessibilityTree } = await import('./browser');
+
+    (captureInteractiveDom as ReturnType<typeof vi.fn>).mockResolvedValue([{ selector: '#btn' }]);
+    (formatDomForPrompt as ReturnType<typeof vi.fn>).mockReturnValue('DOM SNAPSHOT');
+
+    // Only 5 nodes — below threshold
+    const smallAxTree = Array.from({ length: 5 }, (_, i) => `- button \"Node ${i + 1}\"`).join('\n');
+    (captureAccessibilityTree as ReturnType<typeof vi.fn>).mockResolvedValue(smallAxTree);
+
+    mockSend.mockResolvedValueOnce(DONE_RESPONSE);
+    mockExecute.mockResolvedValueOnce({ success: true, data: { message: 'Done!' } });
+
+    const controller = createAgentController();
+    const gen = controller.start({ mode: 'auto', initialMessage: 'Do a task', compact: false, config: { actionDelayMs: 0, maxSteps: 2, maxTimeMs: 30000, maxSameAction: 3 } });
+    await collectEvents(gen);
+
+    expect(mockSend).toHaveBeenCalled();
+    const firstCall = mockSend.mock.calls[0]?.[0] as { dom?: string };
+    // Small AX tree → no merge, plain DOM string
+    expect(firstCall.dom).toBe('DOM SNAPSHOT');
+    expect(firstCall.dom).not.toContain('## Page Structure (Accessibility Tree)');
+  });
+
+  test('does not append empty AX tree', async () => {
+    const { captureInteractiveDom, formatDomForPrompt } = await import('./agent-dom');
+    const { captureAccessibilityTree } = await import('./browser');
+
+    (captureInteractiveDom as ReturnType<typeof vi.fn>).mockResolvedValue([{ selector: '#btn' }]);
+    (formatDomForPrompt as ReturnType<typeof vi.fn>).mockReturnValue('DOM SNAPSHOT');
+
+    // Empty AX tree
+    (captureAccessibilityTree as ReturnType<typeof vi.fn>).mockResolvedValue('');
+
+    mockSend.mockResolvedValueOnce(DONE_RESPONSE);
+    mockExecute.mockResolvedValueOnce({ success: true, data: { message: 'Done!' } });
+
+    const controller = createAgentController();
+    const gen = controller.start({ mode: 'auto', initialMessage: 'Do a task', compact: false, config: { actionDelayMs: 0, maxSteps: 2, maxTimeMs: 30000, maxSameAction: 3 } });
+    await collectEvents(gen);
+
+    expect(mockSend).toHaveBeenCalled();
+    const firstCall = mockSend.mock.calls[0]?.[0] as { dom?: string };
+    // Empty AX tree → plain DOM, no merge section
+    expect(firstCall.dom).toBe('DOM SNAPSHOT');
+    expect(firstCall.dom).not.toContain('## Page Structure (Accessibility Tree)');
   });
 });
 

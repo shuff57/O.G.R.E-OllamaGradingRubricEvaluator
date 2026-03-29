@@ -85,6 +85,35 @@ function countAccessibilityNodes(tree: string): number {
 }
 
 /**
+ * Merge interactive DOM with AX tree as supplementary context.
+ *
+ * The interactive DOM comes FIRST because it contains CSS selectors needed for
+ * CDP actions. The AX tree is appended as read-only structural context.
+ *
+ * Token budget: if the combined string exceeds ~8000 tokens (≈32 000 chars at
+ * 4 chars/token), the AX tree is truncated to keep the DOM intact.
+ */
+const AX_MERGE_TOKEN_LIMIT = 8_000;
+const AX_CHARS_LIMIT = AX_MERGE_TOKEN_LIMIT * CHARS_PER_TOKEN; // 32 000
+
+export function mergeDomWithAxTree(dom: string, axTree: string): string {
+  const header = '## Page Structure (Accessibility Tree)';
+  const combined = `## Interactive Elements\n${dom}\n\n${header}\n${axTree}`;
+
+  if (combined.length <= AX_CHARS_LIMIT) return combined;
+
+  // Truncate AX tree so total stays within budget
+  const fixedPart = `## Interactive Elements\n${dom}\n\n${header}\n`;
+  const budget = AX_CHARS_LIMIT - fixedPart.length;
+  if (budget <= 0) {
+    // DOM alone already exceeds limit — return it without AX tree
+    return dom;
+  }
+  const truncatedAx = axTree.slice(0, budget);
+  return `${fixedPart}${truncatedAx}`;
+}
+
+/**
  * Estimate the token count of a set of messages plus optional DOM/screenshot.
  *
  * Approximation: 1 token ≈ 4 characters (text). Screenshots are estimated at
@@ -248,8 +277,8 @@ export function createAgentController(): AgentController {
 
       try {
         const axTree = await captureAccessibilityTree();
-        if (typeof axTree === 'string' && countAccessibilityNodes(axTree) > 20) {
-          dom = axTree;
+        if (typeof axTree === 'string' && axTree.trim().length > 0 && countAccessibilityNodes(axTree) > 20) {
+          dom = mergeDomWithAxTree(dom, axTree);
         }
       } catch {}
 
