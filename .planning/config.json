@@ -1,0 +1,15 @@
+{
+  "mode": "yolo",
+  "depth": "standard",
+  "parallelization": true,
+  "gates": {
+    "confirm_project": false,
+    "confirm_phases": false,
+    "confirm_roadmap": true,
+    "confirm_breakdown": false,
+    "confirm_plan": false,
+    "execute_next_plan": false,
+    "issues_review": true,
+    "confirm_transition": false
+  }
+}
