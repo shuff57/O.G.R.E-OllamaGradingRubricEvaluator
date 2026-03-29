@@ -1,0 +1,15 @@
+Focused run:
+
+> npx vitest run src/lib/agent-api.test.ts
+
+Result: 10 tests passed, 0 failures.
+
+Full suite run:
+
+> npx vitest run
+
+Result: 63 test files passed, 1266 tests passed, 0 failures.
+
+Notes:
+- Existing stderr output came from unrelated tests that intentionally log handled failures.
+- Baseline test documents current regex fallback behavior: `parseAgentResponse('click(#foo)')` returns `{ text: 'click(#foo)' }`.

@@ -1,0 +1,54 @@
+## Task 10: Merge AX Tree with DOM — Bug #3 Fix
+## Date: 2026-03-28
+
+### Summary
+Fixed agent-loop.ts to MERGE the accessibility tree with the interactive DOM instead of
+replacing it. Previously, when axTree had >20 nodes, `dom = axTree` caused the LLM to
+generate role-based locators (role=button[name="Submit"]) that CDP actions cannot use.
+
+### Changes Made
+
+1. ogre-desktop/src/lib/agent-loop.ts
+   - Added `mergeDomWithAxTree(dom, axTree)` export function with token budget truncation
+   - Changed `dom = axTree` → `dom = mergeDomWithAxTree(dom, axTree)`
+   - Added empty-string guard: `axTree.trim().length > 0` before merge
+   - Token budget: 8000 tokens (32000 chars); truncates AX tree if combined exceeds limit
+   - Format: `## Interactive Elements\n{dom}\n\n## Page Structure (Accessibility Tree)\n{axTree}`
+
+2. ogre-desktop/src/lib/agent-prompt.ts
+   - Updated rule 3: clarified AX tree is structural context ONLY; use CSS selectors from Interactive Elements for actions
+   - Updated rule 8: removed "Prefer role/name and aria-based selectors" — replaced with clear directive to use CSS selectors for actions
+
+3. ogre-desktop/src/lib/agent-loop.test.ts
+   - Updated existing test "prefers accessibility tree as dom prompt when tree has >20 nodes" → now tests merge behavior
+   - Added test: large AX tree (>20 nodes) → merged output with both sections
+   - Added test: small AX tree (≤20 nodes) → plain DOM string, no AX section  
+   - Added test: empty AX tree → plain DOM string, no crash
+   - Added 3 pure unit tests for `mergeDomWithAxTree`: normal merge, token truncation, DOM-exceeds-budget
+
+### Test Results
+
+Agent-loop test files (6 files, 52 tests):
+  ✓ src/lib/agent-loop.test.ts (23 tests)
+  ✓ src/lib/agent-loop.integration.test.ts (6 tests)
+  ✓ src/lib/agent-loop.diagnostic.test.ts (5 tests)
+  ✓ src/lib/agent-loop.text-resilience.test.ts (3 tests)
+  ✓ src/lib/agent-loop.skill-injection.test.ts (4 tests)
+  ✓ src/lib/agent-loop-compact.test.ts (11 tests)
+
+Full suite:
+  Test Files: 63 passed (63)
+  Tests: 1293 passed | 26 todo (1319)
+  0 failures, 0 regressions
+
+### Format Verification
+Large page (>20 AX nodes) DOM sent to LLM:
+  ## Interactive Elements
+  {interactive dom with CSS selectors}
+
+  ## Page Structure (Accessibility Tree)
+  {AX tree in role/name/value format}
+
+Small page (≤20 AX nodes) DOM sent to LLM:
+  {interactive dom with CSS selectors}
+  (no AX section)

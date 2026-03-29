@@ -1,0 +1,9 @@
+Task 4 evidence — Bug #6 scrollIntoViewAction TreeWalker fix
+
+Changed:
+- Replaced `document.querySelectorAll('*')` traversal in `ogre-desktop/src/lib/browser-actions.ts` with `document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)`.
+- Kept matching semantics the same: first text node whose trimmed text contains the needle, case-insensitive, scroll parent element into view.
+
+Verification:
+- `npx vitest run src/lib/browser-actions.test.ts` — PASS (30 tests, 0 failures)
+- `npx vitest run` — PASS (63 test files, 1270 tests passed, 0 failures)

@@ -1,0 +1,79 @@
+## Task 7 — Bug #4: Fix getSelector CSS Escaping and Multi-class Support
+
+Date: 2026-03-28
+
+### Changes Made
+
+**File: ogre-desktop/src/lib/agent-dom.ts**
+
+1. Added `cssEscape()` ES5 helper function inside INTERACTIVE_DOM_SCRIPT:
+   - Escapes: `.` `:` `[` `]` `(` `)` `#` `,` `>` `+` `~` ` ` `!` `"` `'` `;` `{` `}` `@` `/`
+   - No arrow functions, no const/let, pure ES5 with `var` and character loops
+
+2. Fixed Priority 1 (ID selector):
+   - Now: `'#' + cssEscape(el.id)` + uniqueness test
+   - Before: manual replace for `:` and `.` only, no uniqueness check
+
+3. Fixed Priority 2 (name attribute):
+   - Now: `tag + '[name="' + quotedValue + '"]'` + uniqueness test
+   - Before: `tag + '[name=' + el.name + ']'` (unquoted, no uniqueness check)
+
+4. Fixed Priority 3 (semantic attributes):
+   - Now: attribute values quoted with double quotes + uniqueness test
+   - Before: attribute values unquoted, no uniqueness check
+
+5. Fixed Priority 4 (class-based selector):
+   - Now: up to 3 classes joined as `tag.cls1.cls2.cls3` + uniqueness test, falls through if non-unique
+   - Before: only first class, no uniqueness check
+
+6. All priorities now fall through to next if selector is non-unique (multiple matches) or throws
+
+### Test Results
+
+**agent-dom.test.ts — 17 tests, 0 failures**
+```
+✓ src/lib/agent-dom.test.ts (17 tests) 8ms
+```
+
+New tests added:
+- renders element with colon-escaped ID selector (#foo\:bar)
+- renders element with dot-escaped ID selector (#user\.name)
+- renders multi-class selector with 3 classes (button.btn.primary.large)
+- renders multi-class selector with 2 classes (button.submit-btn.active)
+- renders quoted name attribute selector (input[name="my field"])
+- renders quoted name attribute with special characters (input[name="score[0]"])
+- INTERACTIVE_DOM_SCRIPT does not contain arrow functions
+- INTERACTIVE_DOM_SCRIPT does not contain const or let declarations
+- INTERACTIVE_DOM_SCRIPT does not contain template literals
+
+**agent-dom-fuzzy.test.ts — 17 tests, 0 failures**
+```
+✓ src/lib/agent-dom-fuzzy.test.ts (17 tests) 4ms
+```
+
+**Full suite — 63 test files, 1293 tests, 0 failures**
+```
+Test Files  63 passed (63)
+Tests  1293 passed | 26 todo (1319)
+```
+
+### ES5 Compliance Verification
+
+The INTERACTIVE_DOM_SCRIPT section:
+- ✅ No arrow functions (`=>`)
+- ✅ No `const` or `let` declarations (only `var`)
+- ✅ No template literals (no backticks inside the script string)
+- ✅ No `CSS.escape()` — uses inline `cssEscape()` ES5 helper
+- ✅ All loops use `for` with `var`
+- ✅ All string concatenation (no template literals)
+
+### Acceptance Criteria Verification
+
+- [x] IDs with special chars (`:`, `.`) are escaped: `#foo\:bar` ✓
+- [x] Class-based selectors use 2-3 classes: `button.btn.primary` ✓
+- [x] Attribute values properly quoted: `[name="my field"]` ✓
+- [x] Non-unique selectors fall through to nth-child ✓
+- [x] ALL code in INTERACTIVE_DOM_SCRIPT uses ES5 syntax only ✓
+- [x] npx vitest run src/lib/agent-dom.test.ts → PASS (17 tests) ✓
+- [x] npx vitest run src/lib/agent-dom-fuzzy.test.ts → PASS (17 tests, no regressions) ✓
+- [x] npx vitest run → 0 regressions (1293 passed) ✓

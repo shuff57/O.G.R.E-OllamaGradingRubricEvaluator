@@ -1,0 +1,18 @@
+Task 2 evidence — dead regex action fallback removed
+
+Changed files:
+- ogre-desktop/src/lib/agent-api.ts
+- ogre-desktop/src/lib/agent-api.test.ts
+
+What changed:
+- Removed the dead `^(click|type|scroll|readText|screenshot|waitFor|navigate|runJS|done)\s*\(` fallback branch from `parseAgentResponse`.
+- Kept the final plain-text fallback intact.
+- Updated the `click(#foo)` test name to document passthrough behavior.
+
+Verification:
+- `npx vitest run src/lib/agent-api.test.ts` → 10 tests passed
+- `npx vitest run` → 63 files passed, 1270 tests passed, 26 todo
+- Grep for `^\(click\|type\|scroll` in `ogre-desktop/src/lib/agent-api.ts` → no matches found
+
+Note:
+- `lsp_diagnostics` could not run because the configured TypeScript LSP is not installed in this environment.
