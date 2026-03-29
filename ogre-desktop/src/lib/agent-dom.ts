@@ -29,34 +29,80 @@ const INTERACTIVE_DOM_SCRIPT = `(function() {
   
   var nodes = document.querySelectorAll(selectors.join(', '));
   
+  // Helper: escape CSS identifier special characters (ES5, no CSS.escape)
+  function cssEscape(str) {
+    var result = '';
+    for (var i = 0; i < str.length; i++) {
+      var ch = str.charAt(i);
+      if (ch === '.' || ch === ':' || ch === '[' || ch === ']' || ch === '(' || ch === ')' ||
+          ch === '#' || ch === ',' || ch === '>' || ch === '+' || ch === '~' || ch === ' ' ||
+          ch === '!' || ch === '"' || ch === "'" || ch === ';' || ch === '{' || ch === '}' ||
+          ch === '@' || ch === '/') {
+        result += '\\\\' + ch;
+      } else {
+        result += ch;
+      }
+    }
+    return result;
+  }
+
   // Helper: generate CSS selector for an element
   function getSelector(el) {
     // Priority 1: id
     if (el.id) {
-      return '#' + el.id.replace(/:/g, '\\\\:').replace(/\\./g, '\\\\.');
+      var idSel = '#' + cssEscape(el.id);
+      try {
+        if (document.querySelectorAll(idSel).length === 1) {
+          return idSel;
+        }
+      } catch (e) { /* invalid selector, fall through */ }
     }
     
-    // Priority 2: name attribute
+    // Priority 2: name attribute (value quoted to handle spaces and special chars)
     if (el.name) {
       var tag = el.tagName.toLowerCase();
-      return tag + '[name=' + el.name + ']';
+      var nameSel = tag + '[name="' + el.name.replace(/\\\\/g, '\\\\\\\\').replace(/"/g, '\\\\"') + '"]';
+      try {
+        if (document.querySelectorAll(nameSel).length === 1) {
+          return nameSel;
+        }
+      } catch (e) { /* invalid selector, fall through */ }
     }
     
     // Priority 3: semantic attributes (data-testid, aria-label, data-id)
     var semanticAttrs = ['data-testid', 'aria-label', 'data-id', 'data-cy'];
     for (var i = 0; i < semanticAttrs.length; i++) {
       var attr = semanticAttrs[i];
-      if (el.getAttribute(attr)) {
+      var attrVal = el.getAttribute(attr);
+      if (attrVal) {
         var tag = el.tagName.toLowerCase();
-        return tag + '[' + attr + '=' + el.getAttribute(attr) + ']';
+        var attrSel = tag + '[' + attr + '="' + attrVal.replace(/\\\\/g, '\\\\\\\\').replace(/"/g, '\\\\"') + '"]';
+        try {
+          if (document.querySelectorAll(attrSel).length === 1) {
+            return attrSel;
+          }
+        } catch (e) { /* invalid selector, fall through */ }
       }
     }
     
-    // Priority 4: tag + class
+    // Priority 4: tag + up to 3 classes for uniqueness
     if (el.className && typeof el.className === 'string' && el.className.trim()) {
       var tag = el.tagName.toLowerCase();
-      var cls = el.className.trim().split(/\\s+/)[0];
-      return tag + '.' + cls.replace(/\\./g, '\\\\.');
+      var classes = el.className.trim().split(/\\s+/);
+      var escapedClasses = [];
+      for (var k = 0; k < classes.length && k < 3; k++) {
+        if (classes[k]) {
+          escapedClasses.push(cssEscape(classes[k]));
+        }
+      }
+      if (escapedClasses.length > 0) {
+        var classSel = tag + '.' + escapedClasses.join('.');
+        try {
+          if (document.querySelectorAll(classSel).length === 1) {
+            return classSel;
+          }
+        } catch (e) { /* invalid selector, fall through */ }
+      }
     }
     
     // Priority 5: nth-child fallback
@@ -75,7 +121,7 @@ const INTERACTIVE_DOM_SCRIPT = `(function() {
     return el.tagName.toLowerCase();
   }
   
-  // Helper: check if element is visible
+  // Helper: check if element is visible (excludes hidden/zero-size, includes below-fold)
   function isVisible(el) {
     var style = window.getComputedStyle(el);
     if (style.display === 'none') return false;
@@ -84,13 +130,6 @@ const INTERACTIVE_DOM_SCRIPT = `(function() {
     
     var rect = el.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return false;
-    
-    // Check if element is in viewport
-    var viewWidth = window.innerWidth || document.documentElement.clientWidth;
-    var viewHeight = window.innerHeight || document.documentElement.clientHeight;
-    
-    if (rect.right < 0 || rect.bottom < 0) return false;
-    if (rect.left > viewWidth || rect.top > viewHeight) return false;
     
     return true;
   }
@@ -101,16 +140,23 @@ const INTERACTIVE_DOM_SCRIPT = `(function() {
   }
   
   // Process each element
+  var viewWidth = window.innerWidth || document.documentElement.clientWidth;
+  var viewHeight = window.innerHeight || document.documentElement.clientHeight;
+
   for (var idx = 0; idx < nodes.length && elements.length < MAX_ELEMENTS; idx++) {
     var el = nodes[idx];
     
     if (!isVisible(el)) continue;
     
-     var tag = el.tagName.toLowerCase();
-     var interactive = {
-       index: elements.length + 1,
-       tag: tag,
-       type: tag === 'summary' ? (el.parentElement && el.parentElement.hasAttribute('open') ? 'expanded' : 'collapsed') : (el.type || undefined),
+    var rect = el.getBoundingClientRect();
+    var inViewport = rect.top >= 0 && rect.bottom <= viewHeight && rect.left >= 0 && rect.right <= viewWidth;
+
+    var tag = el.tagName.toLowerCase();
+    var rawClasses = (el.className && typeof el.className === 'string') ? el.className.trim().split(/\s+/).filter(function(c) { return c.length > 0; }) : [];
+    var interactive = {
+      index: elements.length + 1,
+      tag: tag,
+      type: tag === 'summary' ? (el.parentElement && el.parentElement.hasAttribute('open') ? 'expanded' : 'collapsed') : (el.type || undefined),
       id: el.id || undefined,
       name: el.name || undefined,
       placeholder: el.placeholder || undefined,
@@ -119,6 +165,8 @@ const INTERACTIVE_DOM_SCRIPT = `(function() {
       href: el.href || undefined,
       disabled: el.disabled || false,
       visible: true,
+      inViewport: inViewport,
+      classes: rawClasses.length > 0 ? rawClasses : undefined,
       selector: getSelector(el)
     };
     
@@ -185,6 +233,11 @@ export function formatDomForPrompt(elements: InteractiveElement[]): string {
     // Selector in parentheses
     if (el.selector) {
       parts.push(`(${el.selector})`);
+    }
+    
+    // Offscreen indicator
+    if (el.inViewport === false) {
+      parts.push('[offscreen]');
     }
     
     return parts.join(' ');
