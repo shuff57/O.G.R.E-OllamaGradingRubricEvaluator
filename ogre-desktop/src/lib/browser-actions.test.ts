@@ -25,6 +25,8 @@ vi.mock('./cdp-actions', () => ({
 vi.mock('./cdp-client', () => ({
   cdp: {
     send: vi.fn(),
+    on: vi.fn(),
+    off: vi.fn(),
   },
 }));
 
@@ -38,6 +40,8 @@ const mockScreenshot = captureWebviewScreenshot as ReturnType<typeof vi.fn>;
 const mockNavigate = navigateEmbedded as ReturnType<typeof vi.fn>;
 const mockIsConnected = isConnected as ReturnType<typeof vi.fn>;
 const mockCdpSend = cdp.send as ReturnType<typeof vi.fn>;
+const mockCdpOn = cdp.on as ReturnType<typeof vi.fn>;
+const mockCdpOff = cdp.off as ReturnType<typeof vi.fn>;
 const mockPwClick = pwClick as ReturnType<typeof vi.fn>;
 const mockPwType = pwType as ReturnType<typeof vi.fn>;
 const mockPwReadText = pwReadText as ReturnType<typeof vi.fn>;
@@ -71,6 +75,111 @@ describe('executeAction: click', () => {
   test('returns error result when evalScriptJSON throws', async () => {
     mockPwClick.mockRejectedValueOnce(new Error('IPC failed'));
     await expect(executeAction({ action: 'click', selector: '#btn' })).rejects.toThrow('IPC failed');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// triple_click
+// ---------------------------------------------------------------------------
+
+describe('executeAction: triple_click', () => {
+  test('dispatches mousePressed/mouseReleased three times with incrementing clickCount', async () => {
+    mockCdpSend.mockImplementation(async (method: string) => {
+      switch (method) {
+        case 'Runtime.evaluate':
+          return { result: { objectId: 'obj-1' } };
+        case 'DOM.scrollIntoViewIfNeeded':
+          return {};
+        case 'DOM.getBoxModel':
+          return { model: { content: [0, 0, 100, 0, 100, 100, 0, 100] } };
+        case 'Input.dispatchMouseEvent':
+          return {};
+        default:
+          return {};
+      }
+    });
+
+    const result = await executeAction({ action: 'triple_click', selector: '#field' });
+
+    expect(result.success).toBe(true);
+    const mouseCalls = mockCdpSend.mock.calls.filter((call) => call[0] === 'Input.dispatchMouseEvent');
+    expect(mouseCalls).toHaveLength(6);
+    expect(mouseCalls[0][1]).toMatchObject({ type: 'mousePressed', clickCount: 1 });
+    expect(mouseCalls[1][1]).toMatchObject({ type: 'mouseReleased', clickCount: 1 });
+    expect(mouseCalls[2][1]).toMatchObject({ type: 'mousePressed', clickCount: 2 });
+    expect(mouseCalls[3][1]).toMatchObject({ type: 'mouseReleased', clickCount: 2 });
+    expect(mouseCalls[4][1]).toMatchObject({ type: 'mousePressed', clickCount: 3 });
+    expect(mouseCalls[5][1]).toMatchObject({ type: 'mouseReleased', clickCount: 3 });
+  });
+
+  test('runs input/textarea select fallback after the mouse sequence', async () => {
+    mockCdpSend.mockImplementation(async (method: string, params?: { expression?: string; returnByValue?: boolean }) => {
+      switch (method) {
+        case 'Runtime.evaluate':
+          if (params?.returnByValue) {
+            return { result: { value: { tagName: 'INPUT', isContentEditable: false } } };
+          }
+          return { result: { objectId: 'obj-1' } };
+        case 'DOM.scrollIntoViewIfNeeded':
+          return {};
+        case 'DOM.getBoxModel':
+          return { model: { content: [0, 0, 100, 0, 100, 100, 0, 100] } };
+        case 'Input.dispatchMouseEvent':
+          return {};
+        default:
+          return {};
+      }
+    });
+
+    const result = await executeAction({ action: 'triple_click', selector: '#field' });
+
+    expect(result.success).toBe(true);
+    const runtimeCalls = mockCdpSend.mock.calls.filter((call) => call[0] === 'Runtime.evaluate');
+    const selectCallIndex = mockCdpSend.mock.calls.findIndex(
+      (call) => call[0] === 'Runtime.evaluate' && String(call[1]?.expression).includes('.select()'),
+    );
+    const lastMouseCallIndex = mockCdpSend.mock.calls
+      .map((call, index) => (call[0] === 'Input.dispatchMouseEvent' ? index : -1))
+      .filter((index) => index >= 0)
+      .at(-1) ?? -1;
+
+    expect(runtimeCalls.some((call) => String(call[1]?.expression).includes('.select()'))).toBe(true);
+    expect(selectCallIndex).toBeGreaterThan(lastMouseCallIndex);
+  });
+
+  test('runs contenteditable range fallback after the mouse sequence', async () => {
+    mockCdpSend.mockImplementation(async (method: string, params?: { expression?: string; returnByValue?: boolean }) => {
+      switch (method) {
+        case 'Runtime.evaluate':
+          if (params?.returnByValue) {
+            return { result: { value: { tagName: 'DIV', isContentEditable: true } } };
+          }
+          return { result: { objectId: 'obj-1' } };
+        case 'DOM.scrollIntoViewIfNeeded':
+          return {};
+        case 'DOM.getBoxModel':
+          return { model: { content: [0, 0, 100, 0, 100, 100, 0, 100] } };
+        case 'Input.dispatchMouseEvent':
+          return {};
+        default:
+          return {};
+      }
+    });
+
+    const result = await executeAction({ action: 'triple_click', selector: '[contenteditable="true"]' });
+
+    expect(result.success).toBe(true);
+    const runtimeCalls = mockCdpSend.mock.calls.filter((call) => call[0] === 'Runtime.evaluate');
+    const rangeCallIndex = mockCdpSend.mock.calls.findIndex(
+      (call) => call[0] === 'Runtime.evaluate' && String(call[1]?.expression).includes('createRange'),
+    );
+    const lastMouseCallIndex = mockCdpSend.mock.calls
+      .map((call, index) => (call[0] === 'Input.dispatchMouseEvent' ? index : -1))
+      .filter((index) => index >= 0)
+      .at(-1) ?? -1;
+
+    expect(runtimeCalls.some((call) => String(call[1]?.expression).includes('createRange'))).toBe(true);
+    expect(rangeCallIndex).toBeGreaterThan(lastMouseCallIndex);
   });
 });
 
@@ -212,23 +321,116 @@ describe('executeAction: waitFor', () => {
 // ---------------------------------------------------------------------------
 
 describe('executeAction: navigate', () => {
-  test('uses CDP Page.navigate and returns success', async () => {
-    mockCdpSend.mockResolvedValueOnce({});
+  beforeEach(() => {
+    // Default: Page.enable and Page.navigate both succeed, no errorText.
+    mockCdpSend.mockImplementation(async (method: string) => {
+      if (method === 'Page.enable') return {};
+      if (method === 'Page.navigate') return {};
+      return {};
+    });
+
+    // cdp.on captures the callback so tests can fire the load event manually.
+    mockCdpOn.mockImplementation((_event: string, cb: () => void) => {
+      // Store the callback; fire it synchronously to simulate immediate load.
+      cb();
+    });
+
+    mockCdpOff.mockImplementation(() => {});
+  });
+
+  test('sends Page.enable then Page.navigate and returns success', async () => {
     const result = await executeAction({ action: 'navigate', url: 'https://example.com' });
     expect(result.success).toBe(true);
+    expect(mockCdpSend).toHaveBeenCalledWith('Page.enable');
     expect(mockCdpSend).toHaveBeenCalledWith('Page.navigate', { url: 'https://example.com' });
   });
 
-  test('returns error result when CDP navigate throws', async () => {
-    mockCdpSend.mockRejectedValueOnce(new Error('Navigation blocked'));
-    const result = await executeAction({ action: 'navigate', url: 'https://example.com' });
+  test('registers Page.loadEventFired listener before navigating', async () => {
+    const callOrder: string[] = [];
+    mockCdpOn.mockImplementation((event: string, cb: () => void) => {
+      callOrder.push(`on:${event}`);
+      cb(); // fire immediately
+    });
+    mockCdpSend.mockImplementation(async (method: string) => {
+      callOrder.push(`send:${method}`);
+      return {};
+    });
+
+    await executeAction({ action: 'navigate', url: 'https://example.com' });
+
+    const onIdx = callOrder.indexOf('on:Page.loadEventFired');
+    const navIdx = callOrder.indexOf('send:Page.navigate');
+    expect(onIdx).toBeGreaterThanOrEqual(0);
+    expect(navIdx).toBeGreaterThanOrEqual(0);
+    expect(onIdx).toBeLessThan(navIdx);
+  });
+
+  test('unregisters the listener after load fires (no leak)', async () => {
+    let capturedCb: (() => void) | undefined;
+    mockCdpOn.mockImplementation((_event: string, cb: () => void) => {
+      capturedCb = cb;
+      cb(); // fire immediately to resolve
+    });
+
+    await executeAction({ action: 'navigate', url: 'https://example.com' });
+
+    expect(mockCdpOff).toHaveBeenCalledWith('Page.loadEventFired', capturedCb);
+  });
+
+  test('returns { success: false, error } when Page.navigate rejects', async () => {
+    mockCdpOn.mockImplementation(() => {}); // do NOT fire — should not reach load wait
+    mockCdpSend.mockImplementation(async (method: string) => {
+      if (method === 'Page.enable') return {};
+      if (method === 'Page.navigate') throw new Error('Navigation blocked');
+      return {};
+    });
+
+    const result = await executeAction({ action: 'navigate', url: 'https://blocked.com' });
     expect(result.success).toBe(false);
     expect(result.error).toBe('Navigation blocked');
+    // Listener must be cleaned up even on error.
+    expect(mockCdpOff).toHaveBeenCalledWith('Page.loadEventFired', expect.any(Function));
+  });
+
+  test('returns { success: false } when Page.navigate response has errorText', async () => {
+    mockCdpOn.mockImplementation(() => {}); // do NOT fire
+    mockCdpSend.mockImplementation(async (method: string) => {
+      if (method === 'Page.enable') return {};
+      if (method === 'Page.navigate') return { errorText: 'net::ERR_NAME_NOT_RESOLVED' };
+      return {};
+    });
+
+    const result = await executeAction({ action: 'navigate', url: 'https://nonexistent.invalid' });
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('net::ERR_NAME_NOT_RESOLVED');
+    expect(mockCdpOff).toHaveBeenCalledWith('Page.loadEventFired', expect.any(Function));
+  });
+
+  test('resolves with warning when load times out', async () => {
+    vi.useFakeTimers();
+
+    mockCdpOn.mockImplementation(() => {}); // never fires the load event
+    mockCdpSend.mockImplementation(async (method: string) => {
+      if (method === 'Page.enable') return {};
+      if (method === 'Page.navigate') return {};
+      return {};
+    });
+
+    const promise = executeAction({ action: 'navigate', url: 'https://slow.com' });
+
+    // Advance past the 10 000ms default timeout.
+    await vi.advanceTimersByTimeAsync(11_000);
+
+    const result = await promise;
+    vi.useRealTimers();
+
+    expect(result.success).toBe(true);
+    expect((result as { warning?: string }).warning).toMatch(/timed out/i);
+    expect(mockCdpOff).toHaveBeenCalledWith('Page.loadEventFired', expect.any(Function));
   });
 
   test('uses CDP Page.navigate when CDP is connected', async () => {
     mockIsConnected.mockReturnValueOnce(true);
-    mockCdpSend.mockResolvedValueOnce({});
     const result = await executeAction({ action: 'navigate', url: 'https://example.com' });
     expect(result.success).toBe(true);
     expect(mockCdpSend).toHaveBeenCalledWith('Page.navigate', { url: 'https://example.com' });

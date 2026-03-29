@@ -111,27 +111,80 @@ async function typeAction(
 async function tripleClickAction(selector: string): Promise<ActionResult> {
   try {
     const escaped = escapeSelector(selector);
-    const result = await evalScriptJSON<ActionResult>(`
-(function() {
-  try {
-    var el = document.querySelector('${escaped}');
-    if (!el) return { success: false, error: 'Element not found: ' + '${escaped}' };
-    el.focus();
-    if (typeof el.select === 'function') {
-      el.select();
-    } else {
-      var range = document.createRange();
-      range.selectNodeContents(el);
-      var sel = window.getSelection();
-      if (sel) { sel.removeAllRanges(); sel.addRange(range); }
+    const remoteResult = await cdp.send('Runtime.evaluate', {
+      expression: `document.querySelector('${escaped}')`,
+      returnByValue: false,
+    }) as { result: { objectId?: string } };
+
+    const objectId = remoteResult.result?.objectId;
+    if (!objectId) return { success: false, error: 'Element not found: ' + selector };
+
+    await cdp.send('DOM.scrollIntoViewIfNeeded', { objectId });
+    const boxResult = await cdp.send('DOM.getBoxModel', { objectId }) as {
+      model: { content: number[] };
+    };
+    const content = boxResult.model.content;
+    const x = (content[0] + content[4]) / 2;
+    const y = (content[1] + content[5]) / 2;
+
+    for (let clickCount = 1; clickCount <= 3; clickCount += 1) {
+      await cdp.send('Input.dispatchMouseEvent', {
+        type: 'mousePressed',
+        x,
+        y,
+        button: 'left',
+        clickCount,
+      });
+      await cdp.send('Input.dispatchMouseEvent', {
+        type: 'mouseReleased',
+        x,
+        y,
+        button: 'left',
+        clickCount,
+      });
     }
-    el.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 3 }));
+
+    const elementInfoResult = await cdp.send('Runtime.evaluate', {
+      expression: `(function(){
+        var el = document.querySelector('${escaped}');
+        if (!el) return null;
+        return {
+          tagName: (el.tagName || '').toUpperCase(),
+          isContentEditable: !!el.isContentEditable,
+        };
+      })()`,
+      returnByValue: true,
+    }) as {
+      result?: { value?: { tagName?: string; isContentEditable?: boolean } | null };
+    };
+
+    const elementInfo = elementInfoResult.result?.value;
+    if (elementInfo?.tagName === 'INPUT' || elementInfo?.tagName === 'TEXTAREA') {
+      await cdp.send('Runtime.evaluate', {
+        expression: `(function(){
+          var el = document.querySelector('${escaped}');
+          if (el && typeof el.select === 'function') el.select();
+        })()`,
+        returnByValue: false,
+      });
+    }
+
+    if (elementInfo?.isContentEditable) {
+      await cdp.send('Runtime.evaluate', {
+        expression: `(function(){
+          var el = document.querySelector('${escaped}');
+          if (!el) return;
+          var r = document.createRange();
+          r.selectNodeContents(el);
+          var s = window.getSelection();
+          s.removeAllRanges();
+          s.addRange(r);
+        })()`,
+        returnByValue: false,
+      });
+    }
+
     return { success: true, data: { selected: true } };
-  } catch(e) {
-    return { success: false, error: e.message };
-  }
-})()`);
-    return result;
   } catch (err: unknown) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
@@ -178,11 +231,60 @@ async function waitForAction(
 }
 
 /**
- * Navigate the embedded browser to a URL.
+ * Navigate the embedded browser to a URL and wait for the page to fully load.
+ *
+ * Registers a one-shot `Page.loadEventFired` listener BEFORE sending `Page.navigate`
+ * to avoid a race condition where the load fires before we start listening.
+ * Times out gracefully — never throws, never hangs.
+ *
+ * @param url - The URL to navigate to.
+ * @param timeout - Max ms to wait for `Page.loadEventFired` (default 10 000ms).
  */
-async function navigateAction(url: string): Promise<ActionResult> {
+async function navigateAction(url: string, timeout = 10_000): Promise<ActionResult> {
   try {
-    await cdp.send('Page.navigate', { url });
+    // Enable the Page domain so we receive Page.* events.
+    await cdp.send('Page.enable');
+
+    let loadResolve: () => void;
+    const loadPromise = new Promise<void>((res) => { loadResolve = res; });
+
+    const onLoad = () => { loadResolve(); };
+
+    // Register the listener BEFORE navigating to avoid missing the event.
+    cdp.on('Page.loadEventFired', onLoad);
+
+    // Send navigation command; check immediately for hard navigation errors.
+    let navResult: unknown;
+    try {
+      navResult = await cdp.send('Page.navigate', { url });
+    } catch (err: unknown) {
+      cdp.off('Page.loadEventFired', onLoad);
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+
+    // If the CDP response itself contained an errorText, fail immediately.
+    const navResponse = navResult as Record<string, unknown> | undefined;
+    if (navResponse?.errorText) {
+      cdp.off('Page.loadEventFired', onLoad);
+      return { success: false, error: String(navResponse.errorText) };
+    }
+
+    // Race the load event against the timeout.
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<'timeout'>((res) => {
+      timeoutHandle = setTimeout(() => res('timeout'), timeout);
+    });
+
+    const winner = await Promise.race([loadPromise.then(() => 'loaded' as const), timeoutPromise]);
+
+    // Always clean up — listener and timer.
+    cdp.off('Page.loadEventFired', onLoad);
+    clearTimeout(timeoutHandle);
+
+    if (winner === 'timeout') {
+      return { success: true, warning: `Page load timed out after ${timeout}ms` };
+    }
+
     return { success: true };
   } catch (err: unknown) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
@@ -248,16 +350,17 @@ async function scrollIntoViewAction(text: string): Promise<ActionResult> {
     const result = await evalScriptJSON<ActionResult>(`(function() {
   try {
     var needle = '${safeText}'.toLowerCase();
-    var all = document.querySelectorAll('*');
-    for (var i = 0; i < all.length; i++) {
-      var el = all[i];
-      if (el.children.length === 0 && el.textContent) {
-        var trimmed = el.textContent.trim();
-        if (trimmed.toLowerCase().indexOf(needle) !== -1) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    var node = walker.nextNode();
+    while (node) {
+      var trimmed = node.textContent ? node.textContent.trim() : '';
+      if (trimmed.toLowerCase().indexOf(needle) !== -1) {
+        if (node.parentElement) {
+          node.parentElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
           return { success: true, data: { matched: trimmed.substring(0, 100) } };
         }
       }
+      node = walker.nextNode();
     }
     return { success: false, error: 'No element found with text: ${safeText}' };
   } catch(e) {
@@ -434,14 +537,15 @@ export async function executeAction(params: ActionParams): Promise<ActionResult>
       const elements = await captureInteractiveDom();
       const match = findFuzzyMatch(originalSelector, elements);
       if (match) {
-        const retryParams = { ...params, selector: match.selector } as ActionParams;
+        const { element: fuzzyElement, strategyIndex } = match;
+        const retryParams = { ...params, selector: fuzzyElement.selector } as ActionParams;
         const retryResult = await dispatch(retryParams);
         if (retryResult.success) {
           return {
             ...retryResult,
             data: {
               ...((retryResult.data as object) || {}),
-              fuzzyMatch: fuzzyMatchReason(originalSelector, match, 0),
+              fuzzyMatch: fuzzyMatchReason(originalSelector, fuzzyElement, strategyIndex),
             },
           };
         }
