@@ -1,4 +1,5 @@
-# LightRAG auto-generated knowledge graph data
-lightrag_workdir/
-# Python venv (recreated by setup.sh)
-.venv/
+# Python bytecode
+__pycache__/
+
+# Weekly maintenance reports (local only, verbose)
+meta/reports/

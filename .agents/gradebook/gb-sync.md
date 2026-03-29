@@ -139,9 +139,9 @@
 
 ## State Management
 
-- **Session directory:** keep one repo-local session folder per gradebook sync run.
-- **Main state file:** store assignment scope, resume info, completed batches, halt reason, and verification summary.
-- **Per-student files:** `gb-sync-student-{safe-name}.json`
+- **Session directory:** `grade-cloning/temp/gb-sync/{gradebookNum}/` — one folder per gradebook sync run.
+- **Main state file:** `grade-cloning/temp/gb-sync/{gradebookNum}/gb-sync-state-{gradebookNum}.json` — stores assignment scope, resume info, completed batches, halt reason, and verification summary.
+- **Per-student files:** `grade-cloning/temp/gb-sync/{gradebookNum}/gb-sync-student-{safe-name}.json`
 - **Recommended student file shape:**
 
 ```json

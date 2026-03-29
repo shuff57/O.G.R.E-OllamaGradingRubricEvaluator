@@ -1,6 +1,6 @@
-# python3 (LightRAG memory scripts)
+# python3 (Hivemind memory scripts)
 
-Python scripts for agent memory indexing and retrieval.
+Python scripts for agent memory indexing and retrieval via Hivemind JSONL.
 
 ## Working directory
 
@@ -10,24 +10,25 @@ Run from repo root. Scripts live in `.agents/memory/scripts/`.
 
 | Command | Purpose |
 |---------|---------|
-| `bash .agents/memory/scripts/setup.sh` | Bootstrap: install LightRAG, check Ollama models |
-| `python3 .agents/memory/scripts/index_reflection.py <file>` | Index a reflection markdown file into the knowledge graph |
-| `python3 .agents/memory/scripts/query_memory.py "<query>"` | Query the knowledge graph for past learnings |
+| `bash .agents/memory/scripts/setup.sh` | Check Ollama, ensure `nomic-embed-text` model |
+| `python3 .agents/memory/scripts/index_reflection.py <file>` | Parse reflection markdown into JSONL entries with embeddings |
+| `python3 .agents/memory/scripts/query_memory.py "<query>"` | Cosine-similarity search over memories (substring fallback) |
 
 ## Prerequisites
 
-- Python 3.8+
+- Python 3.8+ (stdlib only, no pip packages)
 - `ollama serve` running
-- Models: `llama3.2`, `nomic-embed-text`
-- `lightrag-hku` pip package (installed by `setup.sh`)
+- Model: `nomic-embed-text`
 
 ## File layout
 
 - `pending/` — reflections waiting to be indexed
-- `lightrag_workdir/` — auto-generated graph state (gitignored)
+- `pending/indexed/` — reflections already indexed
+- Memory store: `~/pi-memories/hivemind/memories.jsonl`
 
 ## Notes
 
-- Scripts degrade gracefully if deps are missing — they print guidance instead of crashing.
+- Scripts use only Python stdlib — no venv or pip install needed.
+- Ollama unavailable: entries stored without embeddings, substring search still works.
 - Memory writes always require explicit user confirmation.
 - See `.agents/memory/README.md` for the full protocol.

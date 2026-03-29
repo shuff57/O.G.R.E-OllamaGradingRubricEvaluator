@@ -19,8 +19,7 @@ Any (system-wide CLI).
 
 ## Project-specific models
 
-- `llama3.2` — default model for LightRAG memory queries
-- `nomic-embed-text` — embedding model for LightRAG indexing
+- `nomic-embed-text` — embedding model for Hivemind memory
 - Fine-tuned Modelfiles live in `../shuff57-llm-finetune/ogre/fine-tuned-model/`:
   - `Modelfile-qwen3.5-9B-stat-grader`
   - `Modelfile-qwen3.5-35B-A3B-stat-grader`
@@ -35,4 +34,4 @@ ollama create stat-grader -f ../shuff57-llm-finetune/ogre/fine-tuned-model/Model
 
 - Ollama must be running for the grading-server to use local models.
 - The grading-server's `ollama` provider connects to `http://localhost:11434` by default.
-- Memory scripts also require Ollama for both LLM and embedding calls.
+- Memory scripts use Ollama for embedding calls (`nomic-embed-text`).

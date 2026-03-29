@@ -13,7 +13,7 @@ Read a file here only when you need that specific CLI — don't load them all up
 | `ollama.md` | `ollama` | Local model serving, model management, fine-tuned model creation |
 | `vitest.md` | `vitest` | Running tests in grading-server or ogre-desktop |
 | `gh.md` | `gh` | GitHub releases, PRs, issues, Actions workflows |
-| `python-memory.md` | `python3` | LightRAG memory scripts (index, query, setup) |
+| `python-memory.md` | `python3` | Hivemind memory scripts (index, query, setup) |
 | `cli-anything.md` | `cli-anything` | Generating CLI harnesses for GUI software (agent-native control) |
 | `gws.md` | `gws` | Google Workspace: Drive, Gmail, Calendar, Sheets, Docs, Chat, Admin |
 

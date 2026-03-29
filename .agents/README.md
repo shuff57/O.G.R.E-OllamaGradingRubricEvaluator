@@ -22,6 +22,7 @@ Key directories:
 | `.agents/meta/` | Agent meta-utilities (skill creation, memory, discovery) |
 | `.agents/cli/` | CLI tool references — lazy-load only |
 | `.agents/memory/` | Cross-session learnings and reflections |
+| `.planning/` | Project roadmap, milestones, requirements, and phase plans (GSD) |
 
 ## Capability Index
 
@@ -29,7 +30,7 @@ Key directories:
 
 | Capability | File | When to use |
 |-----------|------|-------------|
-| `grade` | `.agents/grading/grade.md` | Default batch grading entrypoint for rubric-driven grading on supported web grading pages |
+| `grade-frq-aio` | `.agents/grading/grade-frq-aio.md` | All-in-one FRQ grading: extract rubric + students, grade locally, fill scores/feedback in batches |
 | `grade-selectors` | `.agents/grading/grade-selectors.md` | DOM selectors and page-structure reference for grading page automation |
 | `grade-show-work` | `.agents/grading/grade-show-work.md` | Evaluate uploaded show-your-work images; suggest bonus partial-credit adjustments (+2/+1) before any grade changes |
 
@@ -66,6 +67,21 @@ References: `.agents/authoring/references/`
 
 ---
 
+### Project Planning (GSD)
+
+| Capability | File | When to use |
+|-----------|------|-------------|
+| `gsd:progress` | `.planning/STATE.md` | Check current milestone, active phase, and what's next |
+| `gsd:plan-phase` | `.planning/phases/` | Create detailed execution plan for the next phase |
+| `gsd:execute-phase` | `.planning/phases/` | Execute all plans in a phase with verification checkpoints |
+| `gsd:pause-work` | `.planning/STATE.md` | Capture session handoff context when stopping mid-phase |
+| `gsd:resume-work` | `.planning/STATE.md` | Restore context from previous session |
+
+Durable artifacts: `PROJECT.md`, `REQUIREMENTS.md`, `ROADMAP.md`, `MILESTONES.md` (committed to git)
+Ephemeral state: `STATE.md`, `todos/` (gitignored)
+
+---
+
 ### Meta and Utility
 
 | Capability | File | When to use |
@@ -74,6 +90,7 @@ References: `.agents/authoring/references/`
 | `session-reflector` | `.agents/meta/session-reflector.md` | Capture end-of-session learnings for later cross-session reuse |
 | `find-skills` | `.agents/meta/find-skills.md` | Discover additional community or installable skills when no existing capability fits |
 | `model-roster` | `.agents/meta/model-roster.md` | Manage agent model assignments in the OMO configuration |
+| `memory-agent` | `.agents/memory/memory-agent.md` | Self-improving memory maintenance: analyze, consolidate, de-duplicate, and suggest improvements for the Hivemind store |
 
 ---
 

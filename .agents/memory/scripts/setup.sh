@@ -2,26 +2,34 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MEMORY_DIR="$(dirname "$SCRIPT_DIR")"
-VENV_DIR="$MEMORY_DIR/.venv"
+MEMORIES_DIR="$HOME/pi-memories/hivemind"
 
-if [ ! -d "$VENV_DIR" ]; then
-    echo "Creating Python venv at $VENV_DIR..."
-    python3 -m venv "$VENV_DIR"
+echo "=== Hivemind Memory Setup ==="
+
+# Ensure memories directory
+mkdir -p "$MEMORIES_DIR"
+touch "$MEMORIES_DIR/memories.jsonl"
+echo "  Memories file: $MEMORIES_DIR/memories.jsonl"
+
+# Check Ollama
+echo "Checking Ollama..."
+if curl -s localhost:11434/api/tags > /dev/null 2>&1; then
+    echo "  Ollama: running"
+else
+    echo "  WARNING: Ollama not running. Start with: ollama serve"
+    echo "  Memory will still work (no embeddings until Ollama available)"
 fi
 
-echo "Installing LightRAG into venv..."
-"$VENV_DIR/bin/pip" install -q lightrag-hku
+# Check/pull embedding model
+echo "Checking nomic-embed-text model..."
+if ollama list 2>/dev/null | grep -q "nomic-embed-text"; then
+    echo "  nomic-embed-text: available"
+else
+    echo "  Pulling nomic-embed-text..."
+    ollama pull nomic-embed-text 2>/dev/null || echo "  WARNING: Could not pull. Run 'ollama pull nomic-embed-text' manually."
+fi
 
-echo "Verifying Ollama connectivity..."
-curl -s localhost:11434/api/tags > /dev/null || { echo "ERROR: Ollama is not running. Start with: ollama serve"; exit 1; }
-
-echo "Pulling bge-m3 embedding model..."
-ollama pull bge-m3 2>/dev/null || echo "WARNING: Could not pull bge-m3. Run 'ollama pull bge-m3' manually."
-
-echo "Creating working directory..."
-mkdir -p "$MEMORY_DIR/lightrag_workdir"
-
-echo "Setup complete."
-echo "  venv: $VENV_DIR"
-echo "  Run scripts with: $VENV_DIR/bin/python3 scripts/index_reflection.py <file>"
+echo ""
+echo "Setup complete. No Python venv required."
+echo "  Index:  python3 $SCRIPT_DIR/index_reflection.py <file.md>"
+echo "  Query:  python3 $SCRIPT_DIR/query_memory.py '<query>'"

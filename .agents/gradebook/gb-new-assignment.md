@@ -61,9 +61,9 @@ const gradebookNum = state.aeries.url().match(/gradebook\/(\d+)/)?.[1] ?? 'unkno
 - **INPUT:** `gradebookNum` and optional user-provided assignments
 - **ACTION:**
   - Read the Stage 1 temp file first.
-  - Preserve the legacy temp-file references exactly:
-    - Input: `C:\Users\shuff\grade-cloning\temp\gb_compare_${gradebookNum}.json`
-    - Output: `C:\Users\shuff\grade-cloning\temp\gb_new_assignment_${gradebookNum}.json`
+  - Preserve the temp-file references:
+    - Input: `grade-cloning/temp/gb_compare_${gradebookNum}.json`
+    - Output: `grade-cloning/temp/gb_new_assignment_${gradebookNum}.json`
   - If the compare file exists, use `compareData.missing` directly.
   - If the compare file is absent, fall back to a manual assignment list supplied by the user.
   - Normalize every item into this shape:
@@ -72,7 +72,8 @@ const gradebookNum = state.aeries.url().match(/gradebook\/(\d+)/)?.[1] ?? 'unkno
 
 ```javascript
 const fs = require('fs');
-const comparePath = `C:\\Users\\shuff\\grade-cloning\\temp\\gb_compare_${gradebookNum}.json`;
+const path = require('path');
+const comparePath = path.join(process.cwd(), 'grade-cloning', 'temp', `gb_compare_${gradebookNum}.json`);
 
 let assignments;
 if (fs.existsSync(comparePath)) {
@@ -171,10 +172,33 @@ if (i === 0) {
 |-----------|--------------|----------|------------|
 | `name` | Name | `#Assignment_Description` | `.fill(name)` |
 | `category` | Category | `#Assignment_Category` | Kendo DropDownList, match by displayed `.name` |
-| `assignedDate` | Assigned On | `#Assignment_DateAssigned` | Kendo DatePicker `.value(new Date(...))` |
-| `dueDate` | Due On | `#Assignment_DateDue` | Kendo DatePicker `.value(new Date(...))` |
+| `assignedDate` | Assigned On | `#Assignment_DateAssigned` | Kendo DatePicker `.value(new Date(...))` — skip if null |
+| `dueDate` | Due On | `#Assignment_DateDue` | Kendo DatePicker `.value(new Date(...))` — skip if null |
 | `pts` | Points Possible | `#Assignment_MaxScore` | Use the exact MOM point value |
 | pipeline scoring scale | Number Correct Possible | `#Assignment_MaxNumberCorrect` | Set to `100` for percentage-based Stage 3 sync |
+
+#### Category Alias Map
+
+MOM and Aeries may use different names for the same category. Before exact matching, try alias resolution:
+
+```javascript
+const CATEGORY_ALIASES = {
+  'HW': 'Homework',
+  'Homework': 'HW',
+  'Quiz': 'Quizzes',
+  'Quizzes': 'Quiz',
+  'Test': 'Tests',
+  'Tests': 'Test',
+  'Exam': 'Exams',
+  'Exams': 'Exam',
+};
+```
+
+Override or extend this map per course if needed. The matching order is:
+1. Exact match by displayed name
+2. Alias lookup
+3. Case-insensitive match
+4. Stop and ask the user
 
 ```javascript
 await state.aeries.locator('#Assignment_Description').fill(a.name);
@@ -186,7 +210,18 @@ const catOptions = await state.aeries.evaluate(() => {
     return { idx, name: obj.Name || obj.name };
   });
 });
-const catIdx = catOptions.findIndex(o => o.name === a.category);
+
+// 1. Exact match
+let catIdx = catOptions.findIndex(o => o.name === a.category);
+// 2. Alias lookup
+if (catIdx === -1 && CATEGORY_ALIASES[a.category]) {
+  catIdx = catOptions.findIndex(o => o.name === CATEGORY_ALIASES[a.category]);
+}
+// 3. Case-insensitive match
+if (catIdx === -1) {
+  const lower = a.category.toLowerCase();
+  catIdx = catOptions.findIndex(o => o.name.toLowerCase() === lower);
+}
 if (catIdx === -1) throw new Error(`Category "${a.category}" not found. Available: ${catOptions.map(o => o.name).join(', ')}`);
 await state.aeries.evaluate((idx) => {
   const ddl = jQuery('#Assignment_Category').data('kendoDropDownList');
@@ -195,10 +230,14 @@ await state.aeries.evaluate((idx) => {
 }, catIdx);
 
 await state.aeries.evaluate(({ ad, dd }) => {
-  const assigned = jQuery('#Assignment_DateAssigned').data('kendoDatePicker');
-  assigned.value(new Date(ad)); assigned.trigger('change');
-  const due = jQuery('#Assignment_DateDue').data('kendoDatePicker');
-  due.value(new Date(dd)); due.trigger('change');
+  if (ad) {
+    const assigned = jQuery('#Assignment_DateAssigned').data('kendoDatePicker');
+    assigned.value(new Date(ad)); assigned.trigger('change');
+  }
+  if (dd) {
+    const due = jQuery('#Assignment_DateDue').data('kendoDatePicker');
+    due.value(new Date(dd)); due.trigger('change');
+  }
 }, { ad: a.assignedDate, dd: a.dueDate });
 
 await state.aeries.locator('#Assignment_MaxNumberCorrect').click({ clickCount: 3 });
@@ -280,8 +319,9 @@ for (const assignment of toCreate) {
 - **OUTPUT:** Stage 2 temp file for the pipeline.
 
 ```javascript
-const tempPath = `C:\\Users\\shuff\\grade-cloning\\temp\\gb_new_assignment_${gradebookNum}.json`;
-fs.mkdirSync('C:\\Users\\shuff\\grade-cloning\\temp', { recursive: true });
+const tempDir = path.join(process.cwd(), 'grade-cloning', 'temp');
+fs.mkdirSync(tempDir, { recursive: true });
+const tempPath = path.join(tempDir, `gb_new_assignment_${gradebookNum}.json`);
 fs.writeFileSync(tempPath, JSON.stringify({
   metadata: {
     gradebookNum,
@@ -324,8 +364,8 @@ console.log('Completion temp file written: ' + tempPath);
 
 | File | Producer | Consumer | Purpose |
 |------|----------|----------|---------|
-| `C:\Users\shuff\grade-cloning\temp\gb_compare_{gradebookNum}.json` | `gb-compare` | `gb-new-assignment` | Stage 1 input containing `missing` assignments with MOM metadata |
-| `C:\Users\shuff\grade-cloning\temp\gb_new_assignment_{gradebookNum}.json` | `gb-new-assignment` | `gb-pipeline` / human operator | Stage 2 output recording created, skipped, and failed assignments |
+| `grade-cloning/temp/gb_compare_{gradebookNum}.json` | `gb-compare` | `gb-new-assignment` | Stage 1 input containing `missing` assignments with MOM metadata |
+| `grade-cloning/temp/gb_new_assignment_{gradebookNum}.json` | `gb-new-assignment` | `gb-pipeline` / human operator | Stage 2 output recording created, skipped, and failed assignments |
 
 ### Input shape from Stage 1
 

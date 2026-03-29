@@ -80,22 +80,22 @@
   - Always preserve the temp-file chain:
     - Read Stage 1 scope from `grade-cloning/temp/gb_compare_{gradebookNum}.json`
     - Reuse sync cache at `grade-cloning/temp/gb_sync_{gradebookNum}.json`
-    - Allow per-student progress files under `grade-cloning/temp/students/{gradebookNum}/`
+    - Allow per-student progress files under `grade-cloning/temp/gb-sync/{gradebookNum}/`
   - Start with a dry run before any writeback.
   - Read `.agents/gradebook/gb-sync.md` and execute Stage 3.
     - Description: Stage 3: Sync MOM scores to Aeries
-    - Prompt: "Run gb-sync Phases 1-7. Both tabs are already open: MyOpenMath gradebook and Aeries gradebook. Read grade-cloning/temp/gb_compare_{gradebookNum}.json for the pipeline scope, then use the temp cache at grade-cloning/temp/gb_sync_{gradebookNum}.json to reuse fresh extraction work when possible. Always start with dryRun: true, show the dry-run output to the user, and wait for confirmation before applying with dryRun: false. Phase 4.6 writes per-student JSON files in grade-cloning/temp/students/{gradebookNum}/. Resume from syncProgress.completedStudents if interrupted. Final acceptance criterion: 0 mismatches and 0 missing after verification."
+    - Prompt: "Run gb-sync Phases 1-7. Both tabs are already open: MyOpenMath gradebook and Aeries gradebook. Read grade-cloning/temp/gb_compare_{gradebookNum}.json for the pipeline scope, then use the temp cache at grade-cloning/temp/gb_sync_{gradebookNum}.json to reuse fresh extraction work when possible. Always start with dryRun: true, show the dry-run output to the user, and wait for confirmation before applying with dryRun: false. Phase 4.6 writes per-student JSON files in grade-cloning/temp/gb-sync/{gradebookNum}/. Resume from syncProgress.completedStudents if interrupted. Final acceptance criterion: 0 mismatches and 0 missing after verification."
 - **OUTPUT:** Stage 3 writes or updates `grade-cloning/temp/gb_sync_{gradebookNum}.json` plus per-student status files.
 
-### Phase 6: Stage 3 Single-Assignment Variant
+### Phase 5B: Stage 3 Single-Assignment Variant (alternative to Phase 5)
 - **INPUT:** User requested a single assignment by name or number
 - **ACTION:** Read `.agents/gradebook/gb-sync.md` and execute Stage 3 in single-assignment mode using this prompt:
   - Description: Stage 3: Sync single assignment scores to Aeries
   - Prompt: "Run gb-sync Phases 1-7 in SINGLE-ASSIGNMENT MODE. Target assignment: {TARGET_ASSIGNMENT}. Both tabs are already open. Read grade-cloning/temp/gb_compare_{gradebookNum}.json for the pipeline scope, set targetAssignment = \"{TARGET_ASSIGNMENT}\" during target resolution, and use grade-cloning/temp/gb_sync_{gradebookNum}.json for cache/progress. Always start with dryRun: true, show the dry-run output to the user, and wait for confirmation before applying with dryRun: false. Only process the resolved target assignment in Phases 5-7. Student files may end in partial-verified rather than verified."
 - **OUTPUT:** A single-assignment sync run that still respects dry-run confirmation and partial-verification reporting.
 
-### Phase 7: Verify Stage 3 Result Before Reporting Completion
-- **INPUT:** `grade-cloning/temp/gb_sync_{gradebookNum}.json` and `grade-cloning/temp/students/{gradebookNum}/*.json`
+### Phase 6: Verify Stage 3 Result Before Reporting Completion
+- **INPUT:** `grade-cloning/temp/gb_sync_{gradebookNum}.json` and `grade-cloning/temp/gb-sync/{gradebookNum}/*.json`
 - **ACTION:**
   - Read the main sync cache and check `pipelineHalted`.
   - If `pipelineHalted === true`, report `haltReason`, `haltStudents`, and `haltAssignments`, then stop without any success message.
@@ -117,7 +117,7 @@
 | `grade-cloning/temp/gb_compare_{gradebookNum}.json` | Stage 1 (`gb-compare`) | Orchestrator, Stage 2, Stage 3 | Canonical compare result and pipeline scope |
 | `grade-cloning/temp/gb_new_assignment_{gradebookNum}.json` | Stage 2 (`gb-new-assignment`) | Orchestrator | Assignment-creation completion record |
 | `grade-cloning/temp/gb_sync_{gradebookNum}.json` | Stage 3 (`gb-sync`) | Orchestrator, Stage 3 reruns | Sync cache, progress, halt state |
-| `grade-cloning/temp/students/{gradebookNum}/*.json` | Stage 3 verification phases | Orchestrator, Stage 3 reruns | Per-student verification status |
+| `grade-cloning/temp/gb-sync/{gradebookNum}/gb-sync-student-{name}.json` | Stage 3 verification phases | Orchestrator, Stage 3 reruns | Per-student verification status |
 
 ### Resume Rules
 - Extract `gradebookNum` from the Aeries URL and reuse it consistently across all stages.

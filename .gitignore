@@ -53,5 +53,9 @@ skills-lock.json
 # Git worktrees
 .worktrees/
 
+# GSD planning — commit durable artifacts, ignore ephemeral session state
+.planning/STATE.md
+.planning/todos/
+
 # Swarm Hive (local trial — do NOT commit during swarm-tools trial)
 .hive/

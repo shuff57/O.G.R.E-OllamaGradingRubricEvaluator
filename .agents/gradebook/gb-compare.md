@@ -8,7 +8,7 @@
 - Source of truth for missing assignments: current MOM gradebook page vs current Aeries gradebook page
 - Main outputs:
   - `grade-cloning/gradebook-comparison.md`
-  - `C:\Users\shuff\grade-cloning\temp\gb_compare_{gradebookNum}.json`
+  - `grade-cloning/temp/gb_compare_{gradebookNum}.json`
 - Matching rule: assignment numbers are the strongest signal; names are secondary
 - Mutation policy: read-only and idempotent; reruns only refresh local report/temp outputs
 
@@ -309,13 +309,15 @@ Use this report format:
 ### Phase 7: Write the Temp JSON Contract for the Next Stage
 - **INPUT:** `gradebookNum`, `aeriesBase`, `catMap`, MOM assignments, Aeries assignments, `matched`, `missing`
 - **ACTION:** Immediately after the markdown report, write the structured temp JSON artifact with the exact top-level keys shown below.
-- **OUTPUT:** `C:\Users\shuff\grade-cloning\temp\gb_compare_${gradebookNum}.json`
+- **OUTPUT:** `grade-cloning/temp/gb_compare_${gradebookNum}.json`
 
 ```javascript
 const fs = require('fs');
-fs.mkdirSync('C:\\Users\\shuff\\grade-cloning\\temp', { recursive: true });
+const path = require('path');
+const tempDir = path.join(process.cwd(), 'grade-cloning', 'temp');
+fs.mkdirSync(tempDir, { recursive: true });
 
-const tempPath = `C:\\Users\\shuff\\grade-cloning\\temp\\gb_compare_${gradebookNum}.json`;
+const tempPath = path.join(tempDir, `gb_compare_${gradebookNum}.json`);
 fs.writeFileSync(
   tempPath,
   JSON.stringify(

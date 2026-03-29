@@ -1,5 +1,5 @@
 
-# Autonomous Grading
+# Grade FRQ AIO (Free Response Questions — All-in-One)
 
 > Grade student work directly on a web-based grading page. This command extracts the rubric and all student responses in one batch, grades generously for high school seniors, then fills scores and feedback visually in batches of 5 with Quick Save protection and resume support.
 

@@ -255,6 +255,35 @@ mismatch === 0
 - Any missing or mismatched score blocks completion.
 - Keep the temp files as the audit trail even after success.
 
+## Retry and Timeout Policy
+
+### Default timeouts
+| Wait context | Duration | Why |
+|--------------|----------|-----|
+| After MOM filter/expand action | 1500ms | MOM re-renders the gradebook table |
+| After Kendo modal open | 1500ms | Modal animation + widget initialization |
+| After Save and Add New | 2000ms | Aeries async save + form reset |
+| After Save and Close / page reload | 3000ms | Full page re-render |
+| After clicking a score cell (dynamic input) | 500ms | Input element appears in-place |
+
+### Retry policy for DOM-readiness checks
+- **Max retries:** 3 attempts
+- **Backoff:** 1s between attempts (fixed, not exponential — these are short UI waits)
+- **What to retry:** missing expected element after a click or navigation (e.g., `#Assignment_Description` after opening modal, `input.edit-text` after clicking score cell, Kendo widget `.data()` returning undefined)
+- **What NOT to retry:** login redirects, HTTP errors, save verification failures — these are halt conditions, not transient issues
+
+### Example retry pattern
+```javascript
+async function waitForElement(page, selector, { retries = 3, delay = 1000 } = {}) {
+  for (let i = 0; i < retries; i++) {
+    const found = await page.evaluate((sel) => !!document.querySelector(sel), selector);
+    if (found) return true;
+    if (i < retries - 1) await new Promise(r => setTimeout(r, delay));
+  }
+  return false; // caller decides: halt or throw
+}
+```
+
 ## Common Selector Pitfalls to Preserve
 
 | Pitfall | Correct handling |

@@ -6,7 +6,7 @@
 ## Prerequisites
 - Write access to `.agents/`
 - Confirmed skill intent from user
-- Destination path: `.agents/{domain}/{name}.md` (e.g. `.agents/grading/grade.md`, `.agents/meta/session-reflector.md`)
+- Destination path: `.agents/{domain}/{name}.md` (e.g. `.agents/grading/grade-frq-aio.md`, `.agents/meta/session-reflector.md`)
 
 ## When to Use
 - User asks to create a new skill

@@ -1,12 +1,11 @@
 
 # Session Reflector
 
-> This skill standardizes end-of-session reflection capture and next-session memory retrieval for agent continuity. It always confirms with the user before writing, writes durable markdown first, then opportunistically indexes into LightRAG. If Ollama or LightRAG is unavailable, the workflow still succeeds by preserving pending reflections for later indexing.
+> This skill standardizes end-of-session reflection capture and next-session memory retrieval for agent continuity. It always confirms with the user before writing, writes durable markdown first, then opportunistically indexes into Hivemind JSONL. If Ollama is unavailable, entries are stored without embeddings and substring search still works.
 
 ## Prerequisites
 - Write access to `.agents/memory/pending/`
-- LightRAG venv at `.agents/memory/.venv/` (run `bash .agents/memory/scripts/setup.sh` if missing)
-- Optional for indexing/query: Ollama running locally (`ollama serve`)
+- Optional for embedding: Ollama running locally with `nomic-embed-text` model
 
 ## When to Use
 - Session is ending and key learnings should be preserved
@@ -21,7 +20,7 @@
 
 > ⚠️ **Must NOT:**
 > - Write to `.agents/memory/pending/` without explicit user confirmation [y/n]
-> - Block session end on LightRAG/Ollama availability
+> - Block session end on Ollama availability
 > - Skip writing a reflection because indexing failed
 > - Delete pending reflections before successful indexing
 > - Move files out of `pending/` unless indexing confirmed success
@@ -54,13 +53,25 @@ Required reflection content:
 - **INPUT:** Current task summary + any files in `.agents/memory/pending/`
 - **ACTION A (Recall First):**
    `python3 .agents/memory/scripts/query_memory.py "<current task summary>"`
-   Note: The script auto-activates the .venv if available. No manual venv activation needed.
 - **ACTION B (Deferred Indexing):** For each file in `pending/`:
    1. Run `python3 .agents/memory/scripts/index_reflection.py <file>`
    2. On success: move to `.agents/memory/pending/indexed/`
    3. On failure: keep in `pending/`, continue
-   Note: The script auto-activates the .venv if available. No manual venv activation needed.
 - **OUTPUT:** Relevant memory recalled; indexed files archived; failed files preserved.
+
+### Phase 2.5: Post-Index Duplicate Check (After Phase 2)
+- **INPUT:** ID of the newly indexed entry (from Phase 2 output)
+- **ACTION A (Duplicate Check):**
+   `python3 .agents/memory/scripts/memory_agent.py dedupe --threshold 0.85 --dry-run`
+   If any pair includes the new entry with >0.85 similarity: warn the user.
+   > "This new reflection is very similar to an existing entry (X% match). Consolidate? [y/n/skip]"
+   On yes: `python3 .agents/memory/scripts/memory_agent.py consolidate --ids <new-id,existing-id>`
+- **ACTION B (Quick Suggest):**
+   `python3 .agents/memory/scripts/memory_agent.py suggest --new-only --since <new-id>`
+   Present any suggestions to the user (non-blocking).
+- **ACTION C (Meta-Reflection):**
+   Append entry to `.agents/memory/meta/improvement-log.jsonl` recording this Phase 2.5 run.
+- **OUTPUT:** Duplicates caught early; suggestions surfaced; improvement log updated.
 
 ## Asking for Confirmation
 
@@ -74,7 +85,7 @@ Any coding agent can trigger this workflow by invoking the session-reflector at 
 
 ## Graceful Degradation
 
-If Ollama or LightRAG is down/unavailable:
+If Ollama is down/unavailable:
 - Still write session reflection markdown to `pending/`
 - Do not fail session shutdown
 - Defer indexing to a later session
@@ -84,10 +95,9 @@ If Ollama or LightRAG is down/unavailable:
 
 | Problem | Action |
 |---------|--------|
-| Ollama not running | Keep reflections in `pending/`; retry indexing next session |
-| LightRAG dependency missing | Run `bash .agents/memory/scripts/setup.sh` to create venv; preserve flat markdown until then |
+| Ollama not running | Entries stored without embeddings; substring search still works |
 | `index_reflection.py` fails | Leave file in `pending/`, log reason, continue |
-| `query_memory.py` — no graph data | Proceed with work; index pending files when possible |
+| `query_memory.py` — no memories | Proceed with work; index pending files when possible |
 | User says no to saving | End cleanly with no changes |
 
 ## Common Mistakes
@@ -102,9 +112,11 @@ If Ollama or LightRAG is down/unavailable:
 ## State Management
 - **Pending queue:** `.agents/memory/pending/{YYYY-MM-DD}-{slug}.md`
 - **Indexed archive:** `.agents/memory/pending/indexed/`
-- **Knowledge graph:** `.agents/memory/lightrag_workdir/` (gitignored)
+- **Memory store:** `~/pi-memories/hivemind/memories.jsonl` (shared with Pi)
 
 ## References
 - Index script: `.agents/memory/scripts/index_reflection.py`
 - Query script: `.agents/memory/scripts/query_memory.py`
-- LightRAG setup: `.agents/memory/scripts/setup.sh`
+- Memory agent: `.agents/memory/scripts/memory_agent.py`
+- Memory agent skill: `.agents/memory/memory-agent.md`
+- Setup: `.agents/memory/scripts/setup.sh`

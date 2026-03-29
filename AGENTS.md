@@ -50,7 +50,7 @@ Quick index (read `.agents/cli/README.md` for the full table):
 - `ollama` — local model serving and fine-tuned model creation
 - `vitest` — test runner for both workspaces
 - `gh` — GitHub releases, PRs, Actions
-- `python3` — LightRAG memory scripts (`.agents/memory/scripts/`)
+- `python3` — Hivemind memory scripts (`.agents/memory/scripts/`)
 - `cli-anything` — generate CLI harnesses for GUI software (agent-native control)
 - `gws` — Google Workspace CLI (Drive, Gmail, Calendar, Sheets, Docs, Chat, Admin)
 
@@ -89,17 +89,34 @@ When you need a CLI: `Read .agents/cli/<name>.md` for working directory, command
 - If a browser action could affect many records, confirm scope before proceeding.
 - Never hide risk: call out irreversible effects, broad writes, and overwrite behavior in advance.
 
-## 6) Learning Protocol
+## 6) Session Lifecycle
 
-- At session start, check `.agents/memory/pending/` for unreviewed reflections when that directory exists.
-- Treat unresolved reflections as context that may change how you work.
-- At session end, record durable insights through the session-reflector process.
-- Write learnings that will help future agents avoid repeated mistakes.
-- Capture patterns, guardrails, verification lessons, and workflow improvements.
-- Prefer generalized lessons over one-off anecdotes.
-- Separate durable rules from temporary workarounds.
+### Session Start
+Follow this sequence at the beginning of every new conversation:
+1. Check `.agents/memory/pending/` for unreviewed reflections when that directory exists. Treat unresolved reflections as context that may change how you work.
+2. If `.planning/STATE.md` exists, check project planning progress (current milestone, active phase, what's next). This provides instant context restoration for ongoing development work.
+
+See `PROJECT-AGENT-CONFIG.md` for the full session-start specification and feature-routing rules.
+
+### During Work
+- Capture patterns, guardrails, verification lessons, and workflow improvements as you go.
 - If the same manual pattern repeats, suggest a dedicated capability document or reusable workflow.
 - If a capability exists but keeps needing the same correction, note the improvement opportunity.
+
+### Session End
+Follow this sequence when wrapping up:
+1. If mid-phase on a planning milestone, run the planning pause workflow (e.g., `/gsd:pause-work`) to capture session handoff context in `.planning/STATE.md`.
+2. Run `session-reflector` to record durable insights in `.agents/memory/pending/`.
+
+### Memory Boundaries
+- `.agents/memory/pending/` = long-term durable learnings (multi-session, indexed into LightRAG). Only `session-reflector` writes here.
+- `.planning/STATE.md` = session handoff context (milestone position, what's next). Only the planning workflow writes here.
+- These systems complement each other — do not merge or cross-write between them.
+
+### Learning Quality
+- Write learnings that will help future agents avoid repeated mistakes.
+- Prefer generalized lessons over one-off anecdotes.
+- Separate durable rules from temporary workarounds.
 - Keep learnings concise, actionable, and relevant to future agent behavior.
 
 ## 7) Forbidden Actions
