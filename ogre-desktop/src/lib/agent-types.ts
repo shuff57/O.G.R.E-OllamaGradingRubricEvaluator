@@ -66,6 +66,7 @@ export interface ActionResult {
   success: boolean;
   error?: string;
   data?: unknown;
+  warning?: string;
 }
 
 // ============================================================================
@@ -145,6 +146,10 @@ export interface InteractiveElement {
   disabled: boolean;
   /** Whether the element is visible */
   visible: boolean;
+  /** Whether the element is within the current viewport bounds (false = offscreen, needs scrolling) */
+  inViewport?: boolean;
+  /** Raw class list from the element's className (for fuzzy matching when selector is nth-child) */
+  classes?: string[];
   /** CSS selector for targeting this element */
   selector: string;
 }
