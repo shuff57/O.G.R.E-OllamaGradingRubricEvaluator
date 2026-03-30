@@ -2,7 +2,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MEMORIES_DIR="$HOME/pi-memories/hivemind"
+MEMORIES_DIR="$HOME/agent-memories/hivemind"
 
 echo "=== Hivemind Memory Setup ==="
 

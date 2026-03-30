@@ -4,7 +4,7 @@
 > Self-improving memory maintenance — analyze, consolidate, de-duplicate, and suggest improvements for the Hivemind JSONL memory store. Inspired by Hyperagents' meta-agent pattern: each invocation reads its own improvement log, applies prior corrections, and appends a new meta-reflection.
 
 ## Prerequisites
-- `~/pi-memories/hivemind/memories.jsonl` exists with indexed entries
+- `~/agent-memories/hivemind/memories.jsonl` exists with indexed entries
 - Optional: Ollama running with `nomic-embed-text` for similarity operations
 - Script: `.agents/memory/scripts/memory_agent.py`
 
@@ -166,7 +166,7 @@ This creates a `.bak` backup then rewrites the file without archived entries. **
 | Improvement log missing | Start at generation 1 with default heuristics |
 
 ## State Management
-- **Memory store:** `~/pi-memories/hivemind/memories.jsonl` (shared, append-only)
+- **Memory store:** `~/agent-memories/hivemind/memories.jsonl` (shared, append-only)
 - **Improvement log:** `.agents/memory/meta/improvement-log.jsonl` (tracked in git)
 - **Maintenance reports:** `.agents/memory/meta/reports/{date}.md` (local only, gitignored)
 

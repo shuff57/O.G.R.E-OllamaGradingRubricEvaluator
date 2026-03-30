@@ -31,7 +31,7 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="repla
 
 OLLAMA_BASE = "http://localhost:11434"
 EMBED_MODEL = "nomic-embed-text"
-MEMORIES_FILE = Path.home() / "pi-memories" / "hivemind" / "memories.jsonl"
+MEMORIES_FILE = Path.home() / "agent-memories" / "hivemind" / "memories.jsonl"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent  # .agents/memory/scripts -> repo root
 PENDING_DIR = Path(__file__).resolve().parent.parent / "pending"
 

@@ -3,7 +3,7 @@
 ## What is this?
 
 Persistent agent memory using Hivemind JSONL backed by Ollama embeddings.
-Shared between Claude Code and Pi sessions via `~/pi-memories/hivemind/memories.jsonl`.
+Shared between Claude Code and Pi sessions via `~/agent-memories/hivemind/memories.jsonl`.
 
 Local-first, file-based. No Python venv, no pip packages, no Docker.
 
@@ -11,10 +11,10 @@ Local-first, file-based. No Python venv, no pip packages, no Docker.
 
 1. Reflections are written as markdown files in `pending/`.
 2. `scripts/index_reflection.py` parses reflections into JSONL entries with Ollama embeddings.
-3. Entries are appended to `~/pi-memories/hivemind/memories.jsonl`.
+3. Entries are appended to `~/agent-memories/hivemind/memories.jsonl`.
 4. `scripts/query_memory.py` searches memories via cosine similarity (falls back to substring).
 
-Flow: `pending/ -> index_reflection.py -> ~/pi-memories/hivemind/memories.jsonl <- query_memory.py`
+Flow: `pending/ -> index_reflection.py -> ~/agent-memories/hivemind/memories.jsonl <- query_memory.py`
 
 ## Quick start
 
@@ -37,18 +37,18 @@ Flow: `pending/ -> index_reflection.py -> ~/pi-memories/hivemind/memories.jsonl 
 ## Shared memory pool
 
 Both Claude Code and Pi write to the same file:
-`~/pi-memories/hivemind/memories.jsonl`
+`~/agent-memories/hivemind/memories.jsonl`
 
 Pi's `hivemind.ts` extension writes here via `/memory store`.
 Claude Code's session-reflector writes here via `index_reflection.py`.
 
-Cross-device sync is handled by the `pi-memories` git repo + Syncthing.
+Cross-device sync is handled by the `agent-memories` git repo + Syncthing.
 
 ## Prerequisites
 
 - Python 3.8+ (stdlib only, no pip packages)
 - Ollama running locally with `nomic-embed-text` model
-- `~/pi-memories/hivemind/` directory (created by setup.sh)
+- `~/agent-memories/hivemind/` directory (created by setup.sh)
 
 ## Memory agent (self-improving maintenance)
 

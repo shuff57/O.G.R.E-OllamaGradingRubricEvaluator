@@ -14,7 +14,7 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="repla
 
 OLLAMA_BASE = "http://localhost:11434"
 EMBED_MODEL = "nomic-embed-text"
-MEMORIES_FILE = Path.home() / "pi-memories" / "hivemind" / "memories.jsonl"
+MEMORIES_FILE = Path.home() / "agent-memories" / "hivemind" / "memories.jsonl"
 TOP_K = 10
 
 

@@ -112,7 +112,7 @@ If Ollama is down/unavailable:
 ## State Management
 - **Pending queue:** `.agents/memory/pending/{YYYY-MM-DD}-{slug}.md`
 - **Indexed archive:** `.agents/memory/pending/indexed/`
-- **Memory store:** `~/pi-memories/hivemind/memories.jsonl` (shared with Pi)
+- **Memory store:** `~/agent-memories/hivemind/memories.jsonl`
 
 ## References
 - Index script: `.agents/memory/scripts/index_reflection.py`

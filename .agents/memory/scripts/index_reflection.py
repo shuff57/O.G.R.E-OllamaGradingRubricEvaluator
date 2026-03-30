@@ -10,7 +10,7 @@ from pathlib import Path
 
 OLLAMA_BASE = "http://localhost:11434"
 EMBED_MODEL = "nomic-embed-text"
-MEMORIES_FILE = Path.home() / "pi-memories" / "hivemind" / "memories.jsonl"
+MEMORIES_FILE = Path.home() / "agent-memories" / "hivemind" / "memories.jsonl"
 
 
 def get_embedding(text: str) -> list[float] | None:

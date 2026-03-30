@@ -24,7 +24,7 @@ Run from repo root. Scripts live in `.agents/memory/scripts/`.
 
 - `pending/` — reflections waiting to be indexed
 - `pending/indexed/` — reflections already indexed
-- Memory store: `~/pi-memories/hivemind/memories.jsonl`
+- Memory store: `~/agent-memories/hivemind/memories.jsonl`
 
 ## Notes
 
