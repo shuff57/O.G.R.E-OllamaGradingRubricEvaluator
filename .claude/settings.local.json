@@ -1,0 +1,17 @@
+{
+  "autoDreamEnabled": true,
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .agents/memory/scripts/memory_agent.py report --oneline",
+            "timeout": 10,
+            "statusMessage": "Checking memory health..."
+          }
+        ]
+      }
+    ]
+  }
+}

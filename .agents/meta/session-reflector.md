@@ -73,6 +73,19 @@ Required reflection content:
    Append entry to `.agents/memory/meta/improvement-log.jsonl` recording this Phase 2.5 run.
 - **OUTPUT:** Duplicates caught early; suggestions surfaced; improvement log updated.
 
+### Phase 2.75: Skill Evolution Routing (After Phase 2.5)
+- **INPUT:** Phase 1 reflection content — specifically the "Skill improvement suggestions" and "Patterns noticed" sections
+- **ACTION:** Scan the reflection for skill-related findings:
+  1. Explicit "Skill improvement suggestions" entries → each becomes a `skill-evolver` invocation candidate
+  2. "Patterns noticed" entries that reference a specific skill failing or needing correction → same routing
+  3. Reflections with `type: skill-evolution` frontmatter from a prior `skill-evolver` run → flag as already-processed, skip
+  4. For each candidate, check improvement log for prior evolutions on the same skill to avoid re-proposing rejected changes
+  5. Present the candidate list: **"These skills have improvement signals. Invoke skill-evolver now? [y/n/defer]"**
+     - **y:** Invoke `skill-evolver` for each candidate in sequence (one proposal per skill per session)
+     - **n:** Skip — no evolution this session
+     - **defer:** Write candidates to a `pending/evolve-queue-{date}.md` file for next session pickup
+- **OUTPUT:** Skill evolution invoked, skipped, or deferred with queue file written
+
 ## Asking for Confirmation
 
 Ask the user for confirmation using plain text or the tool's native dialog mechanism:

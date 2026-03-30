@@ -1,7 +1,7 @@
 {
-  "timestamp": "2026-03-20T15:24:39.541Z",
+  "timestamp": "2026-03-30T00:44:47.855Z",
   "constants": {
-    "gradingPhilosophy": "Grade each response against the rubric criteria provided:\n- Award credit proportional to how thoroughly each rubric criterion is met, not response length\n- Evaluate what the student demonstrated, not what they omitted\n- Use the full scoring range (0-10) as defined by the scoring anchors — do not compress toward the middle\n- Treat scoring-scale descriptors as calibration references when assigning a score\n- Off-topic, empty, or nonsensical responses receive a score of 0\n- When no custom instructions are provided, grade solely on rubric alignment\n- Instructor custom instructions (if any) take absolute precedence over this base philosophy\n- A concise answer that addresses all rubric criteria is equivalent to a longer one that does the same\n- When a student correctly identifies the expected value and states that observed counts are close or not close to expected, award partial credit for comparison even without listing each individual observed value\n- A rubric-required element not evidenced in the response is treated as not demonstrated for that criterion",
+    "gradingPhilosophy": "Grade each response against the rubric criteria provided:\n- Award credit proportional to how thoroughly each rubric criterion is met — a concise answer covering all criteria is equivalent to a longer one that does the same\n- Evaluate what the student demonstrated, not what they omitted\n- Award partial credit on any criterion where the student shows understanding of the concept, even if the wording is imprecise or informal — do not require textbook phrasing\n- Use the full scoring range (0-10) as defined by the scoring anchors — do not compress toward the middle\n- Treat scoring-scale descriptors as calibration references when assigning a score\n- Off-topic, empty, or nonsensical responses receive a score of 0\n- When no custom instructions are provided, grade solely on rubric alignment\n- Instructor custom instructions (if any) take absolute precedence over this base philosophy\n- When a student correctly identifies the expected value and states that observed counts are close or not close to expected, award partial credit for comparison even without listing each individual observed value",
     "scoringScaleDescriptors": [
       {
         "score": 0,
@@ -29,15 +29,15 @@
       },
       {
         "score": 6,
-        "descriptor": "Approaching: addresses main ideas but with notable gaps or errors"
+        "descriptor": "Approaching: addresses main ideas with some gaps or minor errors, but does not fully satisfy all core rubric criteria"
       },
       {
         "score": 7,
-        "descriptor": "Competent: addresses most rubric criteria adequately"
+        "descriptor": "Competent: addresses all core rubric criteria at least adequately, with minor gaps"
       },
       {
         "score": 8,
-        "descriptor": "Proficient: correctly addresses all rubric criteria"
+        "descriptor": "Proficient: correctly and completely addresses all rubric criteria with minimal error"
       },
       {
         "score": 9,
@@ -50,12 +50,12 @@
     ]
   },
   "metric": {
-    "composite": 0.6832222222222223,
+    "composite": 0.8000000000000002,
     "components": {
-      "generosityShift": -1.1755555555555564,
-      "runVariance": 0.05333333333333334,
-      "edgeCaseReliability": 0.13333333333333336,
-      "within1Rate": 0.68,
+      "generosityShift": 0,
+      "runVariance": 0,
+      "edgeCaseReliability": 0,
+      "within1Rate": 1,
       "promptConciseness": 1
     },
     "perStudent": [
@@ -64,304 +64,304 @@
         "name": "Alvarez, Emiliano",
         "goldScore": 8,
         "predictedScores": [
-          7,
-          7,
-          7
+          null,
+          null,
+          null
         ],
-        "mean": 7,
-        "error": null
+        "mean": null,
+        "error": "Anthropic request failed (404): {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-sonnet-4.6 was not found. Did you mean claude-sonnet-4-6?\"},\"request_id\":\"req_011CZYLdkG9Fu4Rxk75PiKHe\"}"
       },
       {
         "index": 1,
         "name": "Cartwright, Juliet",
         "goldScore": 7,
         "predictedScores": [
-          6,
-          6,
-          6
+          null,
+          null,
+          null
         ],
-        "mean": 6,
-        "error": null
+        "mean": null,
+        "error": "Anthropic request failed (404): {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-sonnet-4.6 was not found. Did you mean claude-sonnet-4-6?\"},\"request_id\":\"req_011CZYLdpB36RqRyvbpN7FRi\"}"
       },
       {
         "index": 2,
         "name": "Consoli, Ben",
         "goldScore": 9,
         "predictedScores": [
-          8,
-          8,
-          8
+          null,
+          null,
+          null
         ],
-        "mean": 8,
-        "error": null
+        "mean": null,
+        "error": "Anthropic request failed (404): {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-sonnet-4.6 was not found. Did you mean claude-sonnet-4-6?\"},\"request_id\":\"req_011CZYLdpKU7L4sa8n2cWnUT\"}"
       },
       {
         "index": 3,
         "name": "Cox, Jenna",
         "goldScore": 4,
         "predictedScores": [
-          4,
-          4,
-          4
+          null,
+          null,
+          null
         ],
-        "mean": 4,
-        "error": null
+        "mean": null,
+        "error": "Anthropic request failed (404): {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-sonnet-4.6 was not found. Did you mean claude-sonnet-4-6?\"},\"request_id\":\"req_011CZYLdtBeBfJKqftXJDRef\"}"
       },
       {
         "index": 4,
         "name": "Davis, Cecilia",
         "goldScore": 3,
         "predictedScores": [
-          3,
-          2,
-          2
+          null,
+          null,
+          null
         ],
-        "mean": 2.3333333333333335,
-        "error": null
+        "mean": null,
+        "error": "Anthropic request failed (404): {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-sonnet-4.6 was not found. Did you mean claude-sonnet-4-6?\"},\"request_id\":\"req_011CZYLduaUfc1dbCnNakiMJ\"}"
       },
       {
         "index": 5,
         "name": "Doris, Nicole",
         "goldScore": 5,
         "predictedScores": [
-          5,
-          5,
-          5
+          null,
+          null,
+          null
         ],
-        "mean": 5,
-        "error": null
+        "mean": null,
+        "error": "Anthropic request failed (404): {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-sonnet-4.6 was not found. Did you mean claude-sonnet-4-6?\"},\"request_id\":\"req_011CZYLdy8nxZvu5YZijjLEj\"}"
       },
       {
         "index": 6,
         "name": "Guichard, Sophia",
         "goldScore": 7.7,
         "predictedScores": [
-          6,
-          6,
-          6
+          null,
+          null,
+          null
         ],
-        "mean": 6,
-        "error": null
+        "mean": null,
+        "error": "Anthropic request failed (404): {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-sonnet-4.6 was not found. Did you mean claude-sonnet-4-6?\"},\"request_id\":\"req_011CZYLe1skJSi7MpUxruN1p\"}"
       },
       {
         "index": 7,
         "name": "Guzman Rangel, Jimena",
         "goldScore": 9.3,
         "predictedScores": [
-          8,
-          8,
-          8
+          null,
+          null,
+          null
         ],
-        "mean": 8,
-        "error": null
+        "mean": null,
+        "error": "Anthropic request failed (404): {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-sonnet-4.6 was not found. Did you mean claude-sonnet-4-6?\"},\"request_id\":\"req_011CZYLe3oqLUCbSFv7FQCtx\"}"
       },
       {
         "index": 8,
         "name": "Herl, Chrey",
         "goldScore": 8,
         "predictedScores": [
-          8,
-          8,
-          8
+          null,
+          null,
+          null
         ],
-        "mean": 8,
-        "error": null
+        "mean": null,
+        "error": "Anthropic request failed (404): {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-sonnet-4.6 was not found. Did you mean claude-sonnet-4-6?\"},\"request_id\":\"req_011CZYLe76mmCGewkCsRhbez\"}"
       },
       {
         "index": 9,
         "name": "Jimmerson, Kwan",
         "goldScore": 2,
         "predictedScores": [
-          2,
-          2,
-          3
+          null,
+          null,
+          null
         ],
-        "mean": 2.3333333333333335,
-        "error": null
+        "mean": null,
+        "error": "Anthropic request failed (404): {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-sonnet-4.6 was not found. Did you mean claude-sonnet-4-6?\"},\"request_id\":\"req_011CZYLe8HDETUGEqBL9jnns\"}"
       },
       {
         "index": 10,
         "name": "Johnson, Kenzie",
         "goldScore": 9,
         "predictedScores": [
-          8,
-          8,
-          8
+          null,
+          null,
+          null
         ],
-        "mean": 8,
-        "error": null
+        "mean": null,
+        "error": "Anthropic request failed (404): {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-sonnet-4.6 was not found. Did you mean claude-sonnet-4-6?\"},\"request_id\":\"req_011CZYLeAygXWbiANpuFMcGT\"}"
       },
       {
         "index": 11,
         "name": "Laparan, Elle",
         "goldScore": 7,
         "predictedScores": [
-          7,
-          7,
-          7
+          null,
+          null,
+          null
         ],
-        "mean": 7,
-        "error": null
+        "mean": null,
+        "error": "Anthropic request failed (404): {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-sonnet-4.6 was not found. Did you mean claude-sonnet-4-6?\"},\"request_id\":\"req_011CZYLeE5DnDPGVqqoxRjiF\"}"
       },
       {
         "index": 12,
         "name": "Martin, Makenzie",
         "goldScore": 8,
         "predictedScores": [
-          6,
-          6,
-          6
+          null,
+          null,
+          null
         ],
-        "mean": 6,
-        "error": null
+        "mean": null,
+        "error": "Anthropic request failed (404): {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-sonnet-4.6 was not found. Did you mean claude-sonnet-4-6?\"},\"request_id\":\"req_011CZYLeGFSFCkNFvxBhTEiA\"}"
       },
       {
         "index": 13,
         "name": "melton, myla",
         "goldScore": 3.7,
         "predictedScores": [
-          3,
-          3,
-          3
+          null,
+          null,
+          null
         ],
-        "mean": 3,
-        "error": null
+        "mean": null,
+        "error": "Anthropic request failed (404): {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-sonnet-4.6 was not found. Did you mean claude-sonnet-4-6?\"},\"request_id\":\"req_011CZYLeJXrrhtuHh7Gr8LUM\"}"
       },
       {
         "index": 14,
         "name": "Metroka, Layla",
         "goldScore": 5,
         "predictedScores": [
-          3,
-          3,
-          3
+          null,
+          null,
+          null
         ],
-        "mean": 3,
-        "error": null
+        "mean": null,
+        "error": "Anthropic request failed (404): {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-sonnet-4.6 was not found. Did you mean claude-sonnet-4-6?\"},\"request_id\":\"req_011CZYLeL3tXpU2xQLrHKuCW\"}"
       },
       {
         "index": 15,
         "name": "Milton, Joshua",
         "goldScore": 7,
         "predictedScores": [
-          7,
-          7,
-          7
+          null,
+          null,
+          null
         ],
-        "mean": 7,
-        "error": null
+        "mean": null,
+        "error": "Anthropic request failed (404): {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-sonnet-4.6 was not found. Did you mean claude-sonnet-4-6?\"},\"request_id\":\"req_011CZYLePjQ5ffyqEz2ANcoR\"}"
       },
       {
         "index": 16,
         "name": "Parker, Tyson",
         "goldScore": 8,
         "predictedScores": [
-          8,
-          7,
-          7
+          null,
+          null,
+          null
         ],
-        "mean": 7.333333333333333,
-        "error": null
+        "mean": null,
+        "error": "Anthropic request failed (404): {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-sonnet-4.6 was not found. Did you mean claude-sonnet-4-6?\"},\"request_id\":\"req_011CZYLeTb4tXURjgRcFRqYk\"}"
       },
       {
         "index": 17,
         "name": "Plummer, Justin",
         "goldScore": 5,
         "predictedScores": [
-          4,
-          4,
-          4
+          null,
+          null,
+          null
         ],
-        "mean": 4,
-        "error": null
+        "mean": null,
+        "error": "Anthropic request failed (404): {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-sonnet-4.6 was not found. Did you mean claude-sonnet-4-6?\"},\"request_id\":\"req_011CZYLeaXXaBYcspvzm4veB\"}"
       },
       {
         "index": 18,
         "name": "Price, Lynn",
         "goldScore": 7.3,
         "predictedScores": [
-          5,
-          5,
-          5
+          null,
+          null,
+          null
         ],
-        "mean": 5,
-        "error": null
+        "mean": null,
+        "error": "Anthropic request failed (404): {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-sonnet-4.6 was not found. Did you mean claude-sonnet-4-6?\"},\"request_id\":\"req_011CZYLeYvHnX8apxGdFHwiC\"}"
       },
       {
         "index": 19,
         "name": "Simcox, Foster",
         "goldScore": 8,
         "predictedScores": [
-          6,
-          6,
-          6
+          null,
+          null,
+          null
         ],
-        "mean": 6,
-        "error": null
+        "mean": null,
+        "error": "Anthropic request failed (404): {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-sonnet-4.6 was not found. Did you mean claude-sonnet-4-6?\"},\"request_id\":\"req_011CZYLebkTKA3RydHDVBAGL\"}"
       },
       {
         "index": 20,
         "name": "Sorenson, Jack",
         "goldScore": 7,
         "predictedScores": [
-          5,
-          5,
-          5
+          null,
+          null,
+          null
         ],
-        "mean": 5,
-        "error": null
+        "mean": null,
+        "error": "Anthropic request failed (404): {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-sonnet-4.6 was not found. Did you mean claude-sonnet-4-6?\"},\"request_id\":\"req_011CZYLeciFD7K3ZPESCy3Pt\"}"
       },
       {
         "index": 21,
         "name": "Stratton, Tessa",
         "goldScore": 6,
         "predictedScores": [
-          5,
-          5,
-          5
+          null,
+          null,
+          null
         ],
-        "mean": 5,
-        "error": null
+        "mean": null,
+        "error": "Anthropic request failed (404): {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-sonnet-4.6 was not found. Did you mean claude-sonnet-4-6?\"},\"request_id\":\"req_011CZYLefTwbHW9WHYxBbLTD\"}"
       },
       {
         "index": 22,
         "name": "Teran, William",
         "goldScore": 3.7,
         "predictedScores": [
-          3,
-          3,
-          3
+          null,
+          null,
+          null
         ],
-        "mean": 3,
-        "error": null
+        "mean": null,
+        "error": "Anthropic request failed (404): {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-sonnet-4.6 was not found. Did you mean claude-sonnet-4-6?\"},\"request_id\":\"req_011CZYLeiCPyYp8WQinGSFdb\"}"
       },
       {
         "index": 23,
         "name": "Xiong, William",
         "goldScore": 2.3,
         "predictedScores": [
-          2,
-          2,
-          2
+          null,
+          null,
+          null
         ],
-        "mean": 2,
-        "error": null
+        "mean": null,
+        "error": "Anthropic request failed (404): {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-sonnet-4.6 was not found. Did you mean claude-sonnet-4-6?\"},\"request_id\":\"req_011CZYLejw5JrpUVDHSJ8P6o\"}"
       },
       {
         "index": 24,
         "name": "Zimmerman, Caidyn",
         "goldScore": 9,
         "predictedScores": [
-          7,
-          7,
-          8
+          null,
+          null,
+          null
         ],
-        "mean": 7.333333333333333,
-        "error": null
+        "mean": null,
+        "error": "Anthropic request failed (404): {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-sonnet-4.6 was not found. Did you mean claude-sonnet-4-6?\"},\"request_id\":\"req_011CZYLeoFkn16o36WnJnFhP\"}"
       }
     ],
-    "promptLength": 6530,
-    "totalCostEstimate": 0.370418
+    "promptLength": 6678,
+    "totalCostEstimate": 0.375649
   },
   "model": "claude-sonnet-4.6"
 }

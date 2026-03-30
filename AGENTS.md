@@ -93,8 +93,10 @@ When you need a CLI: `Read .agents/cli/<name>.md` for working directory, command
 
 ### Session Start
 Follow this sequence at the beginning of every new conversation:
-1. Check `.agents/memory/pending/` for unreviewed reflections when that directory exists. Treat unresolved reflections as context that may change how you work.
-2. If `.planning/STATE.md` exists, check project planning progress (current milestone, active phase, what's next). This provides instant context restoration for ongoing development work.
+1. **Index pending reflections** — If `.agents/memory/pending/` has `.md` files, index them now (`index_reflection.py`), move successful ones to `indexed/`. Do not block on Ollama failure.
+2. **Surface pending skill evolutions** — Check for `type: skill-evolution` or `type: skill-evolution-queue` frontmatter in pending files. Route to `skill-evolver` if the current task involves that skill.
+3. **Run Tier 3 maintenance if stale** — If `improvement-log.jsonl` last entry is >7 days old, run full memory maintenance (analyze → dedupe → suggest → self-improve). Auto-approve consolidations >0.90 similarity.
+4. If `.planning/STATE.md` exists, check project planning progress (current milestone, active phase, what's next). This provides instant context restoration for ongoing development work.
 
 See `PROJECT-AGENT-CONFIG.md` for the full session-start specification and feature-routing rules.
 
@@ -102,11 +104,13 @@ See `PROJECT-AGENT-CONFIG.md` for the full session-start specification and featu
 - Capture patterns, guardrails, verification lessons, and workflow improvements as you go.
 - If the same manual pattern repeats, suggest a dedicated capability document or reusable workflow.
 - If a capability exists but keeps needing the same correction, note the improvement opportunity.
+- **Skill divergence detection:** If a skill's instructions don't match what actually happened (stale selector, missing step, misleading workflow), record the divergence context and invoke `skill-evolver` before session end. Do not silently work around broken instructions — fix the skill.
 
 ### Session End
 Follow this sequence when wrapping up:
 1. If mid-phase on a planning milestone, run the planning pause workflow (e.g., `/gsd:pause-work`) to capture session handoff context in `.planning/STATE.md`.
-2. Run `session-reflector` to record durable insights in `.agents/memory/pending/`.
+2. If any skill divergence was detected during work, invoke `skill-evolver` with the accumulated context before reflecting. Present proposals for user approval.
+3. Run `session-reflector` to record durable insights in `.agents/memory/pending/`. Include any skill evolution outcomes (applied, rejected, or deferred) in the reflection.
 
 ### Memory Boundaries
 - `.agents/memory/pending/` = long-term durable learnings (multi-session, indexed into LightRAG). Only `session-reflector` writes here.

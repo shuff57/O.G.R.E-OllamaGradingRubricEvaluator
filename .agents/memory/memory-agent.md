@@ -114,8 +114,11 @@ Review suggestions with the user:
 - **sparse_tags**: Add topic tags to improve clustering
 - **aging_entries**: Review old entries for continued relevance
 - **pending_reflections**: Index pending files
+- **skill_issue**: Memory entries that reference the same skill failing or needing correction across 2+ sessions → route to `skill-evolver`
 
 For each suggestion, ask the user whether to act on it.
+
+**Skill-evolver routing:** When `suggest` identifies a `skill_issue` pattern (same skill name appearing in 2+ failure/correction entries), write a summary to `.agents/memory/pending/evolve-queue-{date}.md` with frontmatter `type: skill-evolution-queue`. This ensures the next session's startup sequence surfaces it for `skill-evolver` pickup, even if the user declines to act immediately.
 
 ### Meta Phase 5: Self-Improve (Always Last)
 

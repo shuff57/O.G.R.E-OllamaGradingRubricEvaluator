@@ -314,6 +314,11 @@ function coerceTarget(candidate) {
   if (Number.isInteger(t.index) && !Number.isInteger(t.bulletIndex)) {
     t.bulletIndex = t.index
   }
+
+  // LLM returns "bulletIndex" instead of "afterIndex" for ADD_BULLET
+  if (candidate.type === MUTATION_TYPES.ADD_BULLET && Number.isInteger(t.bulletIndex) && !Number.isInteger(t.afterIndex)) {
+    t.afterIndex = t.bulletIndex
+  }
 }
 
 function normalizeMutationCandidate(candidate) {

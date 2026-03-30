@@ -90,6 +90,7 @@ Ephemeral state: `STATE.md`, `todos/` (gitignored)
 | `session-reflector` | `.agents/meta/session-reflector.md` | Capture end-of-session learnings for later cross-session reuse |
 | `find-skills` | `.agents/meta/find-skills.md` | Discover additional community or installable skills when no existing capability fits |
 | `model-roster` | `.agents/meta/model-roster.md` | Manage agent model assignments in the OMO configuration |
+| `skill-evolver` | `.agents/meta/skill-evolver.md` | Closed-loop skill improvement from execution outcomes; protected-section enforcement; human-gated edits |
 | `memory-agent` | `.agents/memory/memory-agent.md` | Self-improving memory maintenance: analyze, consolidate, de-duplicate, and suggest improvements for the Hivemind store |
 | `claude-peers` | `.agents/meta/claude-peers.md` | Real-time peer discovery and messaging between concurrent Claude Code sessions via localhost broker |
 
