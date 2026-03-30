@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>autoresearch dashboard</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --border: #2a2d3a;
+    --text: #e1e4ed;
+    --muted: #8b8fa3;
+    --green: #4ade80;
+    --red: #f87171;
+    --blue: #60a5fa;
+    --yellow: #fbbf24;
+    --purple: #a78bfa;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px;
+    min-height: 100vh;
+  }
+  h1 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    letter-spacing: -0.02em;
+  }
+  .subtitle {
+    color: var(--muted);
+    font-size: 12px;
+    margin-bottom: 24px;
+  }
+  .status-bar {
+    display: flex;
+    gap: 24px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+  .stat {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 18px;
+    min-width: 140px;
+  }
+  .stat-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .stat-value {
+    font-size: 22px;
+    font-weight: 700;
+  }
+  .stat-delta {
+    font-size: 11px;
+    margin-top: 2px;
+  }
+  .positive { color: var(--green); }
+  .negative { color: var(--red); }
+  .neutral { color: var(--muted); }
+
+  .chart-container {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 24px;
+    position: relative;
+  }
+  .chart-title {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  canvas {
+    width: 100%;
+    height: 200px;
+    display: block;
+  }
+
+  .table-container {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .table-title {
+    font-size: 12px;
+    color: var(--muted);
+    padding: 14px 16px 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  th {
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--muted);
+    font-weight: 500;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+  }
+  td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover { background: rgba(255,255,255,0.02); }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+  .badge-keep { background: rgba(74,222,128,0.15); color: var(--green); }
+  .badge-discard { background: rgba(248,113,113,0.12); color: var(--red); }
+  .badge-skipped { background: rgba(139,143,163,0.12); color: var(--muted); }
+  .desc-cell {
+    max-width: 400px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--muted);
+    font-size: 11px;
+  }
+  .pulse {
+    display: inline-block;
+    width: 8px; height: 8px;
+    background: var(--green);
+    border-radius: 50%;
+    margin-right: 6px;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+  .disconnected .pulse { background: var(--red); animation: none; }
+  .empty-state {
+    text-align: center;
+    padding: 48px 24px;
+    color: var(--muted);
+  }
+</style>
+</head>
+<body>
+  <h1>autoresearch</h1>
+  <div class="subtitle" id="connection"><span class="pulse"></span>Connecting...</div>
+
+  <div class="status-bar" id="stats"></div>
+
+  <div class="chart-container">
+    <div class="chart-title">Composite Score Over Iterations</div>
+    <canvas id="chart" height="200"></canvas>
+  </div>
+
+  <div class="table-container">
+    <div class="table-title">Iteration Log</div>
+    <div id="table-body"></div>
+  </div>
+
+<script>
+let baseline = null;
+let lastRowCount = 0;
+
+function parseTSV(tsv) {
+  const lines = tsv.trim().split('\n');
+  if (lines.length < 2) return [];
+  const headers = lines[0].split('\t');
+  return lines.slice(1).map((line, idx) => {
+    const vals = line.split('\t');
+    const row = {};
+    headers.forEach((h, i) => row[h] = vals[i] ?? '');
+    row.iteration = String(idx + 1); // sequential numbering across restarts
+    return row;
+  });
+}
+
+function fmt(n, decimals = 4) {
+  const v = parseFloat(n);
+  return isNaN(v) ? n : v.toFixed(decimals);
+}
+
+function renderStats(rows) {
+  const el = document.getElementById('stats');
+  const kept = rows.filter(r => r.status === 'keep');
+  const best = kept.length ? kept.reduce((a, b) => parseFloat(a.composite) > parseFloat(b.composite) ? a : b) : null;
+  const baselineComposite = baseline?.metric?.composite ?? 0;
+  const bestComposite = best ? parseFloat(best.composite) : baselineComposite;
+  const delta = bestComposite - baselineComposite;
+  const latestGen = rows.length ? parseFloat(rows[rows.length - 1].generosity) : (baseline?.metric?.components?.generosityShift ?? 0);
+
+  el.innerHTML = `
+    <div class="stat">
+      <div class="stat-label">Iterations</div>
+      <div class="stat-value">${rows.length}</div>
+      <div class="stat-delta neutral">${kept.length} kept / ${rows.length - kept.length} discarded</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Best Composite</div>
+      <div class="stat-value">${fmt(bestComposite)}</div>
+      <div class="stat-delta ${delta >= 0 ? 'positive' : 'negative'}">${delta >= 0 ? '+' : ''}${fmt(delta)} vs baseline</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Baseline</div>
+      <div class="stat-value">${fmt(baselineComposite)}</div>
+      <div class="stat-delta neutral">starting point</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Generosity Shift</div>
+      <div class="stat-value">${fmt(latestGen, 2)}</div>
+      <div class="stat-delta ${latestGen > -0.5 ? 'positive' : 'negative'}">target: ~0</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Within 1pt</div>
+      <div class="stat-value">${rows.length ? fmt(parseFloat(rows[rows.length - 1].within1) * 100, 1) + '%' : '--'}</div>
+      <div class="stat-delta neutral">of gold scores</div>
+    </div>
+  `;
+}
+
+function renderChart(rows) {
+  const canvas = document.getElementById('chart');
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  const W = rect.width;
+  const H = rect.height;
+
+  ctx.clearRect(0, 0, W, H);
+
+  const baselineComposite = baseline?.metric?.composite ?? 0;
+  const composites = rows.map(r => parseFloat(r.composite));
+  const allVals = [baselineComposite, ...composites];
+  const minV = Math.min(...allVals) - 0.02;
+  const maxV = Math.max(...allVals) + 0.02;
+  const range = maxV - minV || 0.1;
+
+  const pad = { top: 10, right: 16, bottom: 24, left: 50 };
+  const cw = W - pad.left - pad.right;
+  const ch = H - pad.top - pad.bottom;
+
+  function x(i) { return pad.left + (composites.length > 1 ? (i / (composites.length - 1)) * cw : cw / 2); }
+  function y(v) { return pad.top + ch - ((v - minV) / range) * ch; }
+
+  // Grid lines
+  ctx.strokeStyle = '#2a2d3a';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 4; i++) {
+    const val = minV + (range * i / 4);
+    const yy = y(val);
+    ctx.beginPath(); ctx.moveTo(pad.left, yy); ctx.lineTo(W - pad.right, yy); ctx.stroke();
+    ctx.fillStyle = '#8b8fa3';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(val.toFixed(3), pad.left - 6, yy + 3);
+  }
+
+  // Baseline line
+  ctx.strokeStyle = '#fbbf2480';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(pad.left, y(baselineComposite));
+  ctx.lineTo(W - pad.right, y(baselineComposite));
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = '9px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('baseline', W - pad.right - 42, y(baselineComposite) - 4);
+
+  if (composites.length === 0) return;
+
+  // Status colors
+  const statuses = rows.map(r => r.status);
+
+  // Line
+  ctx.strokeStyle = '#60a5fa';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  composites.forEach((v, i) => {
+    i === 0 ? ctx.moveTo(x(i), y(v)) : ctx.lineTo(x(i), y(v));
+  });
+  ctx.stroke();
+
+  // Dots
+  composites.forEach((v, i) => {
+    ctx.beginPath();
+    ctx.arc(x(i), y(v), 4, 0, Math.PI * 2);
+    ctx.fillStyle = statuses[i] === 'keep' ? '#4ade80' : statuses[i] === 'skipped' ? '#8b8fa3' : '#f87171';
+    ctx.fill();
+  });
+
+  // X labels
+  ctx.fillStyle = '#8b8fa3';
+  ctx.font = '10px monospace';
+  ctx.textAlign = 'center';
+  composites.forEach((_, i) => {
+    if (composites.length <= 20 || i % Math.ceil(composites.length / 20) === 0) {
+      ctx.fillText(rows[i].iteration, x(i), H - 4);
+    }
+  });
+}
+
+function renderTable(rows) {
+  const el = document.getElementById('table-body');
+  if (rows.length === 0) {
+    el.innerHTML = '<div class="empty-state">Waiting for iterations...</div>';
+    return;
+  }
+
+  const reversed = [...rows].reverse();
+  el.innerHTML = `<table>
+    <thead><tr>
+      <th>#</th><th>Composite</th><th>Generosity</th><th>Variance</th>
+      <th>Within 1</th><th>Edge Cases</th><th>Status</th><th>Description</th>
+    </tr></thead>
+    <tbody>${reversed.map(r => `<tr>
+      <td>${r.iteration}</td>
+      <td>${fmt(r.composite)}</td>
+      <td class="${parseFloat(r.generosity) > -0.5 ? 'positive' : 'negative'}">${fmt(r.generosity, 2)}</td>
+      <td>${fmt(r.variance, 3)}</td>
+      <td>${fmt(parseFloat(r.within1) * 100, 1)}%</td>
+      <td>${fmt(r.edge_cases, 3)}</td>
+      <td><span class="badge badge-${r.status}">${r.status}</span></td>
+      <td class="desc-cell" title="${r.description?.replace(/"/g, '&quot;') ?? ''}">${r.description ?? ''}</td>
+    </tr>`).join('')}</tbody>
+  </table>`;
+}
+
+function update(tsv) {
+  const rows = parseTSV(tsv);
+  renderStats(rows);
+  renderChart(rows);
+  renderTable(rows);
+  lastRowCount = rows.length;
+}
+
+async function init() {
+  const connEl = document.getElementById('connection');
+
+  try {
+    const resp = await fetch('/api/data');
+    const data = await resp.json();
+    baseline = data.baseline;
+    update(data.tsv);
+    connEl.innerHTML = '<span class="pulse"></span>Live';
+  } catch (e) {
+    connEl.innerHTML = '<span class="pulse"></span>Loading...';
+  }
+
+  const evtSource = new EventSource('/api/stream');
+  evtSource.onmessage = (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      update(data.tsv);
+      connEl.innerHTML = '<span class="pulse"></span>Live';
+      connEl.classList.remove('disconnected');
+    } catch {}
+  };
+  evtSource.onerror = () => {
+    connEl.innerHTML = '<span class="pulse"></span>Reconnecting...';
+    connEl.classList.add('disconnected');
+  };
+}
+
+init();
+window.addEventListener('resize', () => {
+  const rows = parseTSV(document.getElementById('table-body')?.dataset?.lastTsv ?? '');
+  renderChart(rows);
+});
+</script>
+</body>
+</html>

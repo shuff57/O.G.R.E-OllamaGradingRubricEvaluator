@@ -439,6 +439,7 @@
             index: s.index,
             name: s.name,
             response: s.response,
+            ...(s.prompt ? { prompt: s.prompt } : {}),
           })),
           customInstructions: instructionsParts.length > 0 ? instructionsParts.join('\n\n') : undefined,
         },

@@ -672,3 +672,21 @@ export async function signOut(provider: string): Promise<void> {
   }
   await deleteOAuthToken(provider);
 }
+
+// ── Convenience Wrappers ─────────────────────────────────────────────────
+
+export async function signInWithGoogle(): Promise<void> {
+  const flow = await startGoogleDeviceFlow();
+  const result = await flow.poll();
+  if (!result.success) {
+    throw new Error(result.error || "Google sign-in failed");
+  }
+}
+
+export async function signInWithGitHub(): Promise<void> {
+  const flow = await startGitHubDeviceFlow();
+  const result = await flow.poll();
+  if (!result.success) {
+    throw new Error(result.error || "GitHub sign-in failed");
+  }
+}

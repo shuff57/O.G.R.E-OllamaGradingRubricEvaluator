@@ -1,4 +1,6 @@
 import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import { buildSingleGradePrompt } from '../grading-server/grading.js';
 import {
   computeGenerosityShift,
@@ -9,10 +11,15 @@ import {
   computeComposite,
 } from './metrics.js';
 
-const CAPTURED_RUBRIC_PATH = '/home/shuff57/Documents/GitHub/shuff57-llm-finetune/ogre/test-data/captured-rubric.json';
-const CAPTURED_STUDENTS_PATH = '/home/shuff57/Documents/GitHub/shuff57-llm-finetune/ogre/test-data/captured-students.json';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const REPO_ROOT = resolve(__dirname, '..');
+const TEST_DATA_DIR = resolve(REPO_ROOT, '..', 'shuff57-llm-finetune', 'ogre', 'test-data');
 
-const COPILOT_AUTH_PATH = '/home/shuff57/.local/share/opencode/auth.json';
+const CAPTURED_RUBRIC_PATH = resolve(TEST_DATA_DIR, 'captured-rubric.json');
+const CAPTURED_STUDENTS_PATH = resolve(TEST_DATA_DIR, 'captured-students.json');
+
+const COPILOT_AUTH_PATH = resolve(process.env.HOME ?? process.env.USERPROFILE ?? '', '.local/share/opencode/auth.json');
 const COPILOT_BASE_URL = 'https://api.githubcopilot.com/chat/completions';
 const COPILOT_MODEL = 'claude-sonnet-4.6';
 
@@ -20,8 +27,8 @@ const DEFAULT_CONFIG = {
   model: 'claude-sonnet-4-6',
   apiKey: process.env.ANTHROPIC_API_KEY,
   runs: 3,
-  // GitHub Copilot API does not support concurrent requests; keep at 1
-  maxConcurrent: 1,
+  // Anthropic API supports concurrency; Copilot fallback does not
+  maxConcurrent: process.env.ANTHROPIC_API_KEY ? 4 : 1,
   timeout: 60000,
 };
 
@@ -163,11 +170,12 @@ async function invokeLlm(prompt, config, llmProvider) {
   if (llmProvider) {
     return llmProvider(prompt);
   }
-  // Use GitHub Copilot (claude-sonnet-4.6) if no Anthropic key — no config needed
-  if (!config.apiKey) {
-    return callCopilot(prompt);
+  // Prefer Anthropic API when key is available
+  if (config.apiKey) {
+    return callAnthropic(prompt, config);
   }
-  return callAnthropic(prompt, config);
+  // Fall back to GitHub Copilot if no Anthropic key
+  return callCopilot(prompt);
 }
 
 async function gradeOnce({ prompt, config, llmProvider }) {

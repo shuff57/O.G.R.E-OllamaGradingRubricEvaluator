@@ -270,6 +270,52 @@ async function callAnthropicForMutation(prompt, config) {
   return extractTextFromAnthropicResponse(data)
 }
 
+function hasFiniteInt(obj, key) {
+  return Number.isInteger(obj?.[key])
+}
+
+function hasNonEmptyString(obj, key) {
+  return typeof obj?.[key] === 'string' && obj[key].trim().length > 0
+}
+
+function validateMutationFields(candidate) {
+  const t = candidate.target ?? {}
+  switch (candidate.type) {
+    case MUTATION_TYPES.REPHRASE_BULLET:
+      return hasFiniteInt(t, 'bulletIndex') && hasNonEmptyString(candidate, 'newText')
+    case MUTATION_TYPES.REMOVE_BULLET:
+      return hasFiniteInt(t, 'bulletIndex')
+    case MUTATION_TYPES.ADD_BULLET:
+      return hasFiniteInt(t, 'afterIndex') && hasNonEmptyString(candidate, 'newText')
+    case MUTATION_TYPES.MERGE_BULLETS:
+      return hasFiniteInt(t, 'bulletIndex1') && hasFiniteInt(t, 'bulletIndex2') && hasNonEmptyString(candidate, 'mergedText')
+    case MUTATION_TYPES.ADJUST_DESCRIPTOR:
+      return Number.isFinite(t.score) && hasNonEmptyString(candidate, 'newDescriptor')
+    case MUTATION_TYPES.SHIFT_DESCRIPTOR_THRESHOLD:
+      return Number.isFinite(t.fromScore) && Number.isFinite(t.toScore)
+    case MUTATION_TYPES.REORDER_BULLETS:
+      return hasFiniteInt(t, 'fromIndex') && hasFiniteInt(t, 'toIndex')
+    default:
+      return false
+  }
+}
+
+function coerceTarget(candidate) {
+  const t = candidate.target
+  if (!t || typeof t !== 'object') return
+
+  // LLM often returns bulletIndexes: [a, b] instead of bulletIndex1/bulletIndex2
+  if (candidate.type === MUTATION_TYPES.MERGE_BULLETS && Array.isArray(t.bulletIndexes) && t.bulletIndexes.length >= 2) {
+    t.bulletIndex1 = t.bulletIndexes[0]
+    t.bulletIndex2 = t.bulletIndexes[1]
+  }
+
+  // LLM sometimes returns "index" instead of "bulletIndex"
+  if (Number.isInteger(t.index) && !Number.isInteger(t.bulletIndex)) {
+    t.bulletIndex = t.index
+  }
+}
+
 function normalizeMutationCandidate(candidate) {
   if (!candidate || typeof candidate !== 'object') {
     return null
@@ -286,6 +332,12 @@ function normalizeMutationCandidate(candidate) {
   try {
     assertAllowedMutationType(candidate.type)
   } catch {
+    return null
+  }
+
+  coerceTarget(candidate)
+
+  if (!validateMutationFields(candidate)) {
     return null
   }
 
@@ -309,7 +361,8 @@ export async function proposeMutation(currentConstants, mutationLog, config, llm
       typeof rawResponse === 'string' ? tryParseJsonFromText(rawResponse) : rawResponse
     const candidate = normalizeMutationCandidate(candidateObj)
     if (!candidate) {
-      return null
+      console.warn(`[mutation-engine] attempt ${attempt + 1}: rejected proposal — raw type: ${candidateObj?.type ?? 'null'}, target keys: ${candidateObj?.target ? Object.keys(candidateObj.target).join(',') : 'none'}, validation: ${candidateObj?.type ? validateMutationFields(candidateObj) : 'no type'}`)
+      continue
     }
 
     if (hasSimilarMutation(workingLog, candidate)) {

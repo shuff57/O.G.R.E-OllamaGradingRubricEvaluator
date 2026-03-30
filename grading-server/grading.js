@@ -219,10 +219,19 @@ CONSISTENCY RULES:
     prompt += `\nHISTORICAL CONSISTENCY RULES:\n- Use these historical examples to understand the scoring standard applied in past sessions.\n- A response of similar quality to a historical HIGH QUALITY example should score similarly.\n- These examples supplement (do not replace) the SCORING ANCHORS and CALIBRATION EXAMPLES above.\n`;
   }
 
+  // Check if any students have per-student prompts (jittered values differ per student)
+  const hasPerStudentPrompts = students.some(s => s.prompt && s.prompt !== essayPrompt);
+  if (hasPerStudentPrompts) {
+    prompt += `\nIMPORTANT: Each student received the same question structure but with DIFFERENT randomized numeric values. Each student's specific question is shown below their header. Grade each student against THEIR specific values, not the shared prompt above.\n`;
+  }
+
   // Add all students to the prompt
   prompt += '\nSTUDENTS TO GRADE:\n\n';
   for (const student of students) {
     prompt += `--- Student ${student.index}: ${student.name} ---\n`;
+    if (hasPerStudentPrompts && student.prompt) {
+      prompt += `THEIR QUESTION: ${student.prompt}\n`;
+    }
     prompt += `${student.response || '(No response submitted)'}\n\n`;
   }
 
@@ -441,7 +450,12 @@ function validateBatchResults(parsed, students, maxScore) {
 }
 
 /**
- * Detect outliers using 1σ (1 standard deviation) threshold
+ * Detect outliers using 2σ (2 standard deviations) threshold.
+ *
+ * Previous 1σ threshold flagged ~32% of students in a normal distribution,
+ * causing the second-pass review to regress accurate scores toward the mean.
+ * 2σ flags only ~5%, catching genuine grading errors without over-correcting.
+ *
  * @param {Array} results - Array of grading results with score
  * @returns {Object} - { mean, stdDev, outliers: [{ studentIndex, score, deviation }] }
  */
@@ -459,20 +473,20 @@ export function detectOutliers(results) {
   const variance = squaredDiffs.reduce((sum, sq) => sum + sq, 0) / scores.length;
   const stdDev = Math.sqrt(variance);
 
-  // Find outliers beyond 1σ — flags ~32% of students in a normal distribution
-  const threshold = stdDev;
+  // Find outliers beyond 2σ — flags only ~5% of students
+  const threshold = stdDev * 2;
   const outlierResults = results
     .map((result, idx) => {
       const deviation = Math.abs(result.score - mean);
       return {
         ...result,
-        deviation,
+        deviation: deviation / (stdDev || 1), // store as σ-units for logging
         isOutlier: deviation > threshold,
         originalIndex: idx,
       };
     })
     .filter(r => r.isOutlier)
-    .sort((a, b) => b.deviation - a.deviation); // Sort by most extreme first — no cap, review all
+    .sort((a, b) => b.deviation - a.deviation);
 
   return {
     mean: parseFloat(mean.toFixed(2)),
@@ -571,10 +585,19 @@ SCORING ANCHORS:
     prompt += `\nSCORING CALIBRATION EXAMPLES (use to calibrate score levels only \u2014 grade against rubric criteria and SCORING SCALE above, not these examples):\n${calibration}\n`;
   }
 
+  // Check if any outlier students have per-student prompts (jittered values)
+  const hasPerStudentPrompts = outlierStudents.some(s => s.prompt && s.prompt !== essayPrompt);
+  if (hasPerStudentPrompts) {
+    prompt += `\nIMPORTANT: Each student received the same question structure but with DIFFERENT randomized numeric values. Each student's specific question is shown below their header. Grade each student against THEIR specific values.\n`;
+  }
+
   // Add each outlier student with peer comparison context
   prompt += '\nSTUDENTS TO RE-EVALUATE:\n\n';
   for (const student of outlierStudents) {
     prompt += `--- Student ${student.index}: ${student.name} ---\n`;
+    if (hasPerStudentPrompts && student.prompt) {
+      prompt += `THEIR QUESTION: ${student.prompt}\n`;
+    }
     prompt += `ORIGINAL SCORE: ${student.originalScore}/${maxScore}\n`;
     prompt += `ORIGINAL FEEDBACK: ${student.originalFeedback}\n`;
     prompt += `RESPONSE:\n${student.response || '(No response submitted)'}\n`;

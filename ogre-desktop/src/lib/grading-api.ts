@@ -562,6 +562,8 @@ export interface BatchGradingRequest {
     index: number;
     name: string;
     response: string;
+    /** Per-student question prompt with their specific jittered values */
+    prompt?: string;
   }>;
   /** Grading strategy: 'serial' (default) or 'parallel' */
   strategy?: "serial" | "parallel";

@@ -30,6 +30,8 @@ export interface Student {
   hasFeedback: boolean;
   /** Student's response text */
   response: string;
+  /** Per-student question prompt with their specific jittered values (optional) */
+  prompt?: string;
 }
 
 /** A single rubric category with its items. */
@@ -285,12 +287,40 @@ export async function extractStudents(selectors: SiteSelectors): Promise<Student
         ? part1Div.querySelectorAll(':scope > div')[1]
         : null;
       var fbBox = sel.feedbackBox ? s.querySelector(sel.feedbackBox) : null;
+
+      // Extract per-student prompt text (with their specific jittered values)
+      var promptDiv = part1Div ? part1Div.children[0] : null;
+      var studentPrompt = '';
+      if (promptDiv) {
+        var promptPs = promptDiv.querySelectorAll(':scope > p, :scope > div > p, :scope > ul, :scope > ol');
+        studentPrompt = Array.from(promptPs)
+          .map(function(p) {
+            if (p.closest('details')) return '';
+            try { return window.__turndownService.turndown(p.outerHTML); } catch(e) { return p.textContent.trim(); }
+          })
+          .filter(function(t) { return t.length > 0; })
+          .join(' ')
+          .substring(0, 500);
+        if (!studentPrompt || studentPrompt.length < 30) {
+          var fallbackPs = Array.from(region.querySelectorAll('p')).filter(function(p) {
+            return !p.closest('details');
+          });
+          var fallbackText = fallbackPs
+            .map(function(p) { return p.textContent.trim(); })
+            .filter(function(t) { return t.length > 5; })
+            .join(' ')
+            .substring(0, 500);
+          if (fallbackText.length > studentPrompt.length) { studentPrompt = fallbackText; }
+        }
+      }
+
       return {
         index: ${i},
         name: (s.querySelector(sel.studentName) ? s.querySelector(sel.studentName).textContent.trim() : '') || ('Student ' + (${i} + 1)),
         currentScore: s.querySelector(sel.scoreInput) ? s.querySelector(sel.scoreInput).value : '',
         hasFeedback: (fbBox ? fbBox.textContent.trim().length : 0) > 0,
-        response: responseDiv ? (function() { try { return window.__turndownService.turndown(responseDiv.innerHTML); } catch(e) { return responseDiv.textContent.trim(); } })() : ''
+        response: responseDiv ? (function() { try { return window.__turndownService.turndown(responseDiv.innerHTML); } catch(e) { return responseDiv.textContent.trim(); } })() : '',
+        prompt: studentPrompt || undefined
       };
   })()`);
     if (student) students.push(student);

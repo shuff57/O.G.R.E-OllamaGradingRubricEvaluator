@@ -1,11 +1,15 @@
 import { access, readFile, writeFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import { GRADING_PHILOSOPHY, SCORING_SCALE_DESCRIPTORS } from '../grading-server/grading-constants.js';
 import { loadGoldStandard } from './data-loader.js';
 import { runEvaluation } from './eval-harness.js';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 const OUTPUT_PATH = new URL('./baseline-metric.json', import.meta.url);
-const GOLD_STANDARD_PATH =
-  '/home/shuff57/Documents/GitHub/shuff57-llm-finetune/ogre/test-data/sonnet-gold-standard-post-patch.json';
+const REPO_ROOT = resolve(__dirname, '..');
+const GOLD_STANDARD_PATH = resolve(REPO_ROOT, '..', 'shuff57-llm-finetune', 'ogre', 'test-data', 'sonnet-gold-standard-post-patch.json');
 const MODEL = 'claude-sonnet-4.6';
 
 function hasFiniteComposite(metricDoc) {

@@ -112,9 +112,19 @@ export function readResults(path) {
   });
 }
 
+function nextSnapshotIndex() {
+  mkdirSync(DEFAULT_SNAPSHOTS_DIR, { recursive: true });
+  const existing = readdirSync(DEFAULT_SNAPSHOTS_DIR)
+    .map(f => f.match(/^iteration-(\d+)\.json$/))
+    .filter(Boolean)
+    .map(m => parseInt(m[1], 10));
+  return existing.length ? Math.max(...existing) + 1 : 1;
+}
+
 export function saveSnapshot(constants, metric, iteration) {
   mkdirSync(DEFAULT_SNAPSHOTS_DIR, { recursive: true });
-  const snapshotPath = join(DEFAULT_SNAPSHOTS_DIR, `iteration-${iteration}.json`);
+  const idx = nextSnapshotIndex();
+  const snapshotPath = join(DEFAULT_SNAPSHOTS_DIR, `iteration-${idx}.json`);
   const snapshot = {
     iteration,
     timestamp: new Date().toISOString(),

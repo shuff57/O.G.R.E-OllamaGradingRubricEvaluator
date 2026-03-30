@@ -1761,7 +1761,7 @@ app.post('/api/grade', async (c) => {
             console.log(`[${timestamp()}] [sse] Pairwise sweep: ${sweepAdjustments.length} total adjustment(s)`);
           }
 
-          // Apply sweep adjustments
+          // Apply sweep adjustments — cap downward changes at 1 point
           let sweepCount = 0;
           for (const adj of sweepAdjustments) {
             const r = results.find(r => r.studentIndex === adj.studentIndex);
@@ -1770,6 +1770,15 @@ app.post('/api/grade', async (c) => {
               if (isNaN(newScore) || newScore < 0) continue;
               if (newScore > maxScore) newScore = maxScore;
               newScore = Math.round(newScore * 2) / 2; // snap to 0.5
+              // Cap downward adjustments at 1 point to protect accurate first-pass scores
+              if (newScore < r.score) {
+                const drop = r.score - newScore;
+                if (drop > 1) {
+                  newScore = r.score - 1;
+                  newScore = Math.round(newScore * 2) / 2; // re-snap
+                }
+              }
+              if (newScore === r.score) continue; // no effective change after capping
               const name = students.find(s => s.index === adj.studentIndex)?.name || `Student ${adj.studentIndex}`;
               console.log(`[${timestamp()}] [sse]   ✎ sweep: ${name}: ${r.score} → ${newScore}/${maxScore} (${adj.reason || 'consistency'})`);
               r.score = newScore;
@@ -1821,6 +1830,7 @@ app.post('/api/grade', async (c) => {
             index: o.studentIndex,
             name: student?.name || `Student ${o.studentIndex}`,
             response: student?.response || '(No response submitted)',
+            prompt: student?.prompt || undefined,
             originalScore: result?.score ?? o.score,
             originalFeedback: result?.feedback || '',
           };
@@ -1841,12 +1851,24 @@ app.post('/api/grade', async (c) => {
             const mainResult = results.find(r => r.studentIndex === or.studentIndex);
             if (mainResult && or.score !== mainResult.score) {
               const name = students.find(s => s.index === or.studentIndex)?.name || `Student ${or.studentIndex}`;
-              console.log(`[${timestamp()}] [sse]   ✎ ${name}: ${mainResult.score} → ${or.score}/${maxScore}`);
-              mainResult.score = or.score;
-              mainResult.feedback = or.feedback || mainResult.feedback;
-              mainResult.adjusted = true;
-              adjustedCount++;
-              adjustedResults.push({ studentIndex: or.studentIndex, score: or.score, feedback: or.feedback });
+              // Guard: cap downward adjustments at 1 point to prevent regression-to-mean.
+              // Upward adjustments (catching under-scored students) are uncapped.
+              let newScore = or.score;
+              if (newScore < mainResult.score) {
+                const drop = mainResult.score - newScore;
+                if (drop > 1) {
+                  newScore = mainResult.score - 1;
+                  console.log(`[${timestamp()}] [sse]   ⚠ ${name}: outlier wanted ${or.score}, capped drop to ${newScore}/${maxScore}`);
+                }
+              }
+              if (newScore !== mainResult.score) {
+                console.log(`[${timestamp()}] [sse]   ✎ ${name}: ${mainResult.score} → ${newScore}/${maxScore}`);
+                mainResult.score = newScore;
+                mainResult.feedback = or.feedback || mainResult.feedback;
+                mainResult.adjusted = true;
+                adjustedCount++;
+                adjustedResults.push({ studentIndex: or.studentIndex, score: newScore, feedback: or.feedback });
+              }
             }
           }
 

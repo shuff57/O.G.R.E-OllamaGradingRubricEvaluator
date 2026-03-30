@@ -167,8 +167,14 @@ export async function runLoop(config, deps = {}) {
 
   initResultsTSV(config.tsvPath)
 
+  const iterationDelayMs = Number(config?.iterationDelayMs ?? 0)
+
   try {
     for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
+      if (iteration > 1 && iterationDelayMs > 0) {
+        await new Promise(r => setTimeout(r, iterationDelayMs))
+      }
+
       const elapsedMinutes = (now() - startedAt) / 60_000
       if (elapsedMinutes > maxTimeMinutes) {
         reason = 'budget_time'
@@ -189,6 +195,16 @@ export async function runLoop(config, deps = {}) {
       )
 
       if (!mutation) {
+        iterations += 1
+        appendResult(config.tsvPath, {
+          iteration,
+          composite: bestMetric.composite,
+          components: bestMetric.components ?? { generosityShift: 0, runVariance: 0, edgeCaseReliability: 0, within1Rate: 0, promptConciseness: 0 },
+          promptLength: bestMetric.promptLength ?? 0,
+          status: 'skipped',
+          description: 'invalid mutation proposal from LLM',
+        })
+        console.log(`iteration ${iteration}/${maxIterations}, composite: N/A, status: skipped`)
         continue
       }
 

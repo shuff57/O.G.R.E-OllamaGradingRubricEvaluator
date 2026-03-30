@@ -15,13 +15,14 @@ import {
   appendResult as defaultAppendResult,
   initResultsTSV as defaultInitResultsTSV,
   saveSnapshot as defaultSaveSnapshot,
+  loadBestSnapshot,
 } from './results-tracker.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const REPO_ROOT = resolve(__dirname, '..');
 const DEFAULT_TAG = new Date().toISOString().slice(0, 10);
-const DEFAULT_GOLD_STANDARD_PATH = '../../../shuff57-llm-finetune/ogre/test-data/sonnet-gold-standard-post-patch.json';
+const DEFAULT_GOLD_STANDARD_PATH = resolve(REPO_ROOT, '..', 'shuff57-llm-finetune', 'ogre', 'test-data', 'sonnet-gold-standard-post-patch.json');
 const DEFAULT_BASELINE_PATH = new URL('./baseline-metric.json', import.meta.url);
 const COPILOT_AUTH_PATH = resolve(process.env.HOME ?? '', '.local/share/opencode/auth.json');
 const COPILOT_BASE_URL = 'https://api.githubcopilot.com/chat/completions';
@@ -116,7 +117,9 @@ function buildConfig(flags) {
     improvementThreshold: 0.001,
     maxPerStudentRegression: 2,
     convergenceWindow: 10,
-    model: 'claude-sonnet-4.6',
+    iterationDelayMs: 30_000,
+    model: 'claude-sonnet-4-6',
+    apiKey: process.env.ANTHROPIC_API_KEY,
     goldStandardPath: DEFAULT_GOLD_STANDARD_PATH,
     tsvPath: 'autoresearch/results.tsv',
     snapshotsDir: `autoresearch/snapshots/${flags.tag}`,
@@ -304,9 +307,20 @@ async function runStandard(config) {
 
   try {
     const baselineComposite = await loadBaselineComposite(config);
-    const result = await runLoop(config, {
-      ...createProgressDeps(baselineComposite),
-      proposeMutationProvider: proposeMutationWithCopilot,
+
+    // Resume from best snapshot if one exists
+    const bestSnapshot = loadBestSnapshot();
+    let resumeConfig = config;
+    if (bestSnapshot?.constants && bestSnapshot?.metric?.composite > baselineComposite) {
+      console.log(`Resuming from best snapshot (composite: ${Number(bestSnapshot.metric.composite).toFixed(4)}) instead of baseline (${Number(baselineComposite).toFixed(4)})`);
+      resumeConfig = {
+        ...config,
+        baselineMetric: { metric: bestSnapshot.metric, constants: bestSnapshot.constants },
+      };
+    }
+
+    const result = await runLoop(resumeConfig, {
+      ...createProgressDeps(bestSnapshot?.metric?.composite ?? baselineComposite),
     });
 
     if (result.reason === 'error') {
