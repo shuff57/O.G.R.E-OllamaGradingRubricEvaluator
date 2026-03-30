@@ -42,6 +42,52 @@ try {
 }
 
 Write-Host ''
-Write-Host 'Setup complete. No Python venv required.'
+Write-Host '=== Claude Peers MCP Setup ==='
+
+$PeersDir = Join-Path $env:USERPROFILE 'claude-peers-mcp'
+
+# Check bun
+$bunPath = Get-Command bun -ErrorAction SilentlyContinue
+if ($bunPath) {
+    $bunVersion = & bun --version 2>&1
+    Write-Host "  Bun: $bunVersion"
+} else {
+    Write-Host '  WARNING: Bun not installed. Install from https://bun.sh'
+    Write-Host '  Claude Peers requires Bun to run.'
+}
+
+# Clone or update
+if (Test-Path $PeersDir) {
+    Write-Host "  claude-peers-mcp: found at $PeersDir"
+    Push-Location $PeersDir
+    & git pull --ff-only 2>&1 | Out-Null
+    & bun install --silent 2>&1 | Out-Null
+    Pop-Location
+    Write-Host '  Updated to latest.'
+} else {
+    Write-Host '  Cloning claude-peers-mcp...'
+    & git clone https://github.com/louislva/claude-peers-mcp.git $PeersDir 2>&1 | Out-Null
+    Push-Location $PeersDir
+    & bun install --silent 2>&1 | Out-Null
+    Pop-Location
+    Write-Host "  Installed at $PeersDir"
+}
+
+# Register MCP server with user scope (available from any directory)
+$claudePath = Get-Command claude -ErrorAction SilentlyContinue
+if ($claudePath) {
+    & claude mcp add --scope user --transport stdio claude-peers -- bun "$PeersDir\server.ts" 2>&1 | Out-Null
+    Write-Host '  MCP server: registered (user scope)'
+} else {
+    Write-Host "  NOTE: Run 'claude mcp add --scope user --transport stdio claude-peers -- bun $PeersDir\server.ts'"
+}
+
+Write-Host ''
+Write-Host '=== Setup Complete ==='
+Write-Host ''
+Write-Host 'Hivemind memory (no Python venv required):'
 Write-Host "  Index:  python $ScriptDir\index_reflection.py <file.md>"
 Write-Host "  Query:  python $ScriptDir\query_memory.py '<query>'"
+Write-Host ''
+Write-Host 'Claude Peers (real-time inter-session messaging):'
+Write-Host '  Launch with channels: claude --dangerously-load-development-channels server:claude-peers'
