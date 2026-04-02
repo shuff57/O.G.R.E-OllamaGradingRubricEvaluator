@@ -34,6 +34,8 @@
     batchPhase = $bindable<BatchPhase>('idle'),
     essayPrompt = $bindable(''),
     externalProfile = null as SiteProfile | null,
+    leniency = 50,
+    originalRubricText = $bindable(''),
   } = $props();
 
   // ── Bridging state between sub-components ──────────────────────────────
@@ -52,7 +54,6 @@
   let localModelLoaded = $state(true);
 
   // Instructions → shell → Progress
-  let customInstructions = $state('');
   let forceRegrade = $state(false);
   let isReviewMode = $state(false);
   let anchorText = $state('');
@@ -109,10 +110,11 @@
     {batchPhase}
     {anchorGenerating}
     {batchGraderHasStudents}
-    bind:customInstructions
+    {leniency}
     bind:forceRegrade
     bind:isReviewMode
     bind:anchorText
+    onGenerateAnchors={() => progressRef?.handleGenerateAnchors()}
     onContinueGrading={() => progressRef?.handleContinueGrading()}
   />
 
@@ -121,12 +123,13 @@
     {provider}
     {model}
     {activeProfile}
-    {customInstructions}
     {forceRegrade}
     {isReviewMode}
     {resumeAfter}
     {currentPageUrl}
     {pageLoadedUrl}
+    {leniency}
+    bind:originalRubricText
     bind:isBatchRunning
     bind:batchPhase
     bind:rubricText

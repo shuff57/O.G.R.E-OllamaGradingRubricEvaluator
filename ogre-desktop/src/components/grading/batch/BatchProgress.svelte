@@ -26,19 +26,21 @@
   import { refreshPageData, buildBatchResetState, stopActiveBatch } from '../../../lib/page-refresh';
   import { textToCriteria } from '../../../lib/rubric-utils';
   import { formatRubricForDisplay, normalizeAnchorTextToVirtual10 } from './format';
+  import { rewriteRubricRuleBased } from '../../../lib/rubric-leniency';
 
   // ── Props (read-only from shell) ───────────────────────────────────────
   let {
     provider = '',
     model = '',
     activeProfile = null as SiteProfile | null,
-    customInstructions = '',
     forceRegrade = false,
     isReviewMode = false,
     resumeAfter = '',
     currentPageUrl = '',
     pageLoadedUrl = '',
+    leniency = 50,
     // Bindable — batch lifecycle state exposed to shell
+    originalRubricText = $bindable(''),
     isBatchRunning = $bindable(false),
     batchPhase = $bindable<'idle' | 'extracting' | 'review' | 'grading' | 'done'>('idle'),
     rubricText = $bindable(''),
@@ -66,6 +68,7 @@
   let pausedResultBuffer: Array<{ studentIndex: number; score: number; feedback: string }> = [];
   let isAutoStopped = false;
   let extractionCancelled = $state(false);
+  let batchActive = false; // Suppresses URL auto-reset during batch operations
 
   // ── Version Grouping ───────────────────────────────────────────────────
   let currentVersionIndex = $state(0);
@@ -184,10 +187,14 @@
   }
 
   // ── URL Change Auto-Reset ──────────────────────────────────────────────
+  // Only resets batch state when the user navigates away (batchActive=false).
+  // During active batch operations (extracting/review/grading), URL changes
+  // from student navigation are expected and must NOT trigger a reset.
   $effect(() => {
     const url = pageLoadedUrl;
     if (!url) return;
     untrack(() => {
+      if (batchActive) return; // Suppress during batch operations
       if (batchPhase !== 'idle' || isBatchRunning) {
         isAutoStopped = true;
         stopActiveBatch(batchHandle, batchGrader, pausedResultBuffer);
@@ -212,59 +219,147 @@
     });
   });
 
-  // ── Generate AI scoring anchors when entering review phase ─────────────
-  $effect(() => {
-    const phase = batchPhase;
-    if (phase === 'review') {
-      anchorText = '';
-      anchorGenerating = true;
-
-      (async () => {
-        try {
-          const currentProvider = untrack(() => provider);
-          const currentModel = untrack(() => model);
-          const currentRubric = untrack(() => extractedRubric);
-          const currentMaxScore = untrack(() => rubricMaxScore);
-
-          if (!currentProvider || !currentModel) return;
-          if (!currentRubric) return;
-
-          const anchorResponses = await generateAnchors({
-            provider: currentProvider,
-            model: currentModel,
-            rubric: {
-              essayPrompt: currentRubric.essayPrompt,
-              checklistItems: currentRubric.checklistItems,
-              rubricItems: currentRubric.rubricItems,
-              modelText: currentRubric.modelText,
-              maxScore: '10',
-            },
-          });
-
-          if (anchorResponses && anchorResponses.length > 0) {
-            anchorText = anchorResponses
-              .map(a => {
-                const displayScore = Math.round(a.score * (parseFloat(currentMaxScore) || 10) / 10 * 10) / 10;
-                return `${a.label} (${displayScore}/${parseFloat(currentMaxScore) || 10}): ${a.response}`;
-              })
-              .join('\n\n');
-          }
-        } catch (err) {
-          const anchors = untrack(() => scoringAnchors);
-          const maxScore = untrack(() => rubricMaxScore);
-          anchorText = anchors
-            .map(a => `${a.label} (${a.score}/${maxScore}): ${a.description}`)
-            .join('\n');
-        } finally {
-          anchorGenerating = false;
-
-          if (!untrack(() => isReviewMode)) {
-            setTimeout(() => handleContinueGrading(), 0);
-          }
-        }
-      })();
+  /**
+   * Set rubricText from extraction, applying leniency rewrite inline if active.
+   * This avoids relying on RubricCard's $effect chain which has race conditions
+   * with URL-change resets and async effect ordering.
+   */
+  function setExtractedRubricText(text: string) {
+    originalRubricText = text;
+    if (leniency !== 50) {
+      rubricText = rewriteRubricRuleBased(text, leniency);
+    } else {
+      rubricText = text;
     }
-  });
+  }
+
+  // ── Build rubric object from current textarea text ──────────────────────
+  // Parses the textarea into structured rubric data, extracting model text
+  // (ideal answer) from the "--- Model Response ---" section. When leniency
+  // is active, both rubric criteria AND model text will be the rewritten versions.
+  function buildRubricFromText(): { essayPrompt: string; checklistItems: { category: string; items: string[] }[]; rubricItems: { category: string; items: string[] }[]; modelText: string | null; maxScore: string } {
+    const base = extractedRubric;
+    const text = rubricText;
+
+    // Extract model text from textarea (may be leniency-rewritten)
+    const modelText = extractModelTextFromText(text) ?? base?.modelText ?? null;
+
+    // Try structured criteria format first (Name (Npts): Desc)
+    const parsed = textToCriteria(text);
+    if (parsed.length > 0) {
+      return {
+        essayPrompt: base?.essayPrompt || '',
+        checklistItems: parsed.map(c => ({ category: c.criteria, items: c.description ? [c.description] : [] })),
+        rubricItems: base?.rubricItems || [],
+        modelText,
+        maxScore: rubricMaxScore,
+      };
+    }
+
+    // Try [Category] / - item format (from formatRubricForDisplay)
+    const checklistItems: { category: string; items: string[] }[] = [];
+    const rubricItems: { category: string; items: string[] }[] = [];
+    let current: { category: string; items: string[] } | null = null;
+    let inRubricTargets = false;
+    let inModelSection = false;
+    for (const line of text.split('\n')) {
+      const t = line.trim();
+      if (t === '--- Model Response ---') { inModelSection = true; continue; }
+      if (t.startsWith('---') && inModelSection) { inModelSection = false; continue; }
+      if (inModelSection) continue; // skip model text lines (already extracted)
+      if (t === '--- Rubric Targets ---') { inRubricTargets = true; current = null; continue; }
+      if (t === '--- Grading Checklist ---') { inRubricTargets = false; current = null; continue; }
+      if (t.startsWith('[') && (t.endsWith(']') || t.match(/\]\s*$/))) {
+        const cat = t.replace(/^\[/, '').replace(/\]\s*$/, '');
+        current = { category: cat, items: [] };
+        if (inRubricTargets) rubricItems.push(current);
+        else checklistItems.push(current);
+      } else if (t.startsWith('-') && current) {
+        current.items.push(t.slice(1).trim());
+      }
+    }
+
+    if (checklistItems.length > 0 || rubricItems.length > 0) {
+      return {
+        essayPrompt: base?.essayPrompt || '',
+        checklistItems: checklistItems.length > 0 ? checklistItems : (base?.checklistItems || []),
+        rubricItems: rubricItems.length > 0 ? rubricItems : (base?.rubricItems || []),
+        modelText,
+        maxScore: rubricMaxScore,
+      };
+    }
+
+    // Fallback to extractedRubric as-is
+    return {
+      essayPrompt: base?.essayPrompt || '',
+      checklistItems: base?.checklistItems || [],
+      rubricItems: base?.rubricItems || [],
+      modelText,
+      maxScore: rubricMaxScore,
+    };
+  }
+
+  /** Extract model text from the "--- Model Response ---" section of textarea */
+  function extractModelTextFromText(text: string): string | null {
+    const marker = '--- Model Response ---';
+    const idx = text.indexOf(marker);
+    if (idx === -1) return null;
+    const after = text.slice(idx + marker.length).trim();
+    // Model text runs until the next "---" section header or end of text
+    const nextSection = after.indexOf('\n---');
+    const modelText = nextSection === -1 ? after : after.slice(0, nextSection).trim();
+    return modelText || null;
+  }
+
+  // ── Generate AI scoring anchors (called explicitly by teacher) ─────────
+  export async function handleGenerateAnchors() {
+    anchorText = '';
+    anchorGenerating = true;
+
+    // maxScore comes from the page (what the question is actually worth).
+    // Rubric category point totals are internal weights — the server scales
+    // AI scores from virtual-10 down to the real maxScore automatically.
+    const currentMaxScore = rubricMaxScore;
+
+    try {
+      const currentProvider = provider;
+      const currentModel = model;
+      const currentRubric = buildRubricFromText();
+
+      if (!currentProvider || !currentModel) return;
+      if (!currentRubric.checklistItems.length && !currentRubric.rubricItems.length) return;
+
+      const currentLeniency = leniency;
+      const anchorResponses = await generateAnchors({
+        provider: currentProvider,
+        model: currentModel,
+        rubric: {
+          essayPrompt: currentRubric.essayPrompt,
+          checklistItems: currentRubric.checklistItems,
+          rubricItems: currentRubric.rubricItems,
+          modelText: currentRubric.modelText,
+          maxScore: currentMaxScore,
+        },
+        leniency: currentLeniency,
+      });
+
+      if (anchorResponses && anchorResponses.length > 0) {
+        anchorText = anchorResponses
+          .map(a => `${a.label}: ${a.response}`)
+          .join('\n\n');
+      }
+    } catch (err) {
+      const anchors = scoringAnchors;
+      anchorText = anchors
+        .map(a => `${a.label}: ${a.description}`)
+        .join('\n');
+    } finally {
+      anchorGenerating = false;
+    }
+  }
+
+  // Anchors are generated explicitly via handleGenerateAnchors() —
+  // teacher always reviews the rubric first, then clicks "Generate Anchors".
 
   // ── Dismiss anchor spinner when leaving review phase ──────────────────
   $effect(() => {
@@ -277,6 +372,7 @@
   export async function handleExtract() {
     isAutoStopped = false;
     extractionCancelled = false;
+    batchActive = true; // Suppress URL auto-reset during batch
     batchError = '';
     phaseMessage = '';
     batchPhase = 'extracting';
@@ -287,6 +383,7 @@
       batchGrader = new BatchGrader();
       await batchGrader.start(activeProfile!, resumeAfter || null, forceRegrade);
       if (extractionCancelled) {
+        batchActive = false;
         batchGrader.stop();
         batchGrader = null;
         batchPhase = 'idle';
@@ -304,14 +401,14 @@
         const v1Rubric = batchGrader.getRubricForVersion(0);
         if (v1Rubric) {
           extractedRubric = v1Rubric;
-          rubricText = formatRubricForDisplay(v1Rubric, batchGrader.versionGroups);
+          setExtractedRubricText(formatRubricForDisplay(v1Rubric, batchGrader.versionGroups));
           rubricMaxScore = v1Rubric.maxScore || '10';
           essayPrompt = v1Rubric.essayPrompt || '';
           if (sourceRubricId !== null) { sourceRubricId = null; }
         }
       } else if (rubric) {
         extractedRubric = rubric;
-        rubricText = formatRubricForDisplay(rubric);
+        setExtractedRubricText(formatRubricForDisplay(rubric));
         rubricMaxScore = rubric.maxScore || '10';
         essayPrompt = rubric.essayPrompt || '';
         if (sourceRubricId !== null) { sourceRubricId = null; }
@@ -336,6 +433,7 @@
 
       batchPhase = 'review';
     } catch (err) {
+      batchActive = false;
       batchError = err instanceof Error ? err.message : String(err);
       stopTimer();
       batchPhase = 'idle';
@@ -367,37 +465,34 @@
       return;
     }
 
-    const parsedCriteria = textToCriteria(rubricText);
-    if (parsedCriteria.length > 0) {
-      const checklistItems = parsedCriteria.map(c => ({
-        category: c.criteria,
-        items: c.description ? [c.description] : [],
-      }));
-      if (extractedRubric) {
-        extractedRubric.checklistItems = checklistItems;
-      } else {
-        extractedRubric = {
-          essayPrompt: '',
-          checklistItems,
-          rubricItems: [],
-          modelText: null,
-          maxScore: rubricMaxScore,
-        };
-      }
-    } else if (!rubricText.trim() && !extractedRubric) {
+    // Build rubric from current textarea text (includes leniency rewrites)
+    const currentRubric = buildRubricFromText();
+    if (!currentRubric.checklistItems.length && !currentRubric.rubricItems.length && !rubricText.trim()) {
       batchError = 'No rubric text. Load a rubric from the library or type one manually.';
       return;
+    }
+
+    // Update extractedRubric so version logic and other consumers stay in sync
+    if (extractedRubric) {
+      if (currentRubric.checklistItems.length) extractedRubric.checklistItems = currentRubric.checklistItems;
+      if (currentRubric.rubricItems.length) extractedRubric.rubricItems = currentRubric.rubricItems;
     }
 
     let rubric: Rubric | null;
     if (versionCount > 1) {
       rubric = batchGrader.getRubricForVersion(currentVersionIndex);
-      if (rubric && extractedRubric) {
-        rubric.checklistItems = extractedRubric.checklistItems;
-        rubric.rubricItems = extractedRubric.rubricItems;
+      if (rubric) {
+        rubric.checklistItems = currentRubric.checklistItems;
+        rubric.rubricItems = currentRubric.rubricItems;
       }
     } else {
-      rubric = extractedRubric ?? batchGrader.rubric;
+      rubric = {
+        essayPrompt: currentRubric.essayPrompt,
+        checklistItems: currentRubric.checklistItems,
+        rubricItems: currentRubric.rubricItems,
+        modelText: currentRubric.modelText,
+        maxScore: rubricMaxScore,
+      };
     }
     if (!rubric) {
       batchError = 'No rubric available. Check that you are on a grading page.';
@@ -420,8 +515,7 @@
     }
 
     const instructionsParts: string[] = [];
-    if (anchorText.trim()) instructionsParts.push(`SCORING CALIBRATION:\n${normalizeAnchorTextToVirtual10(anchorText.trim(), rubricMaxScore)}`);
-    if (customInstructions.trim()) instructionsParts.push(customInstructions.trim());
+    if (anchorText.trim()) instructionsParts.push(`SCORING CALIBRATION:\n${anchorText.trim()}`);
 
     try {
       batchHandle = startBatchGrading(
@@ -465,7 +559,7 @@
     const rubric = batchGrader.getRubricForVersion(currentVersionIndex);
     if (rubric) {
       extractedRubric = rubric;
-      rubricText = formatRubricForDisplay(rubric, batchGrader.versionGroups);
+      setExtractedRubricText(formatRubricForDisplay(rubric, batchGrader.versionGroups));
       rubricMaxScore = rubric.maxScore || '10';
       essayPrompt = rubric.essayPrompt || '';
     }
@@ -640,6 +734,7 @@
     isBatchPaused = false;
     currentStudentName = '';
     batchHandle = null;
+    batchActive = false;
     batchPhase = 'done';
     updateBatchState();
   }
@@ -691,6 +786,7 @@
   }
 
   export function handleCancelBatch() {
+    batchActive = false;
     if (reviewResolve) {
       reviewResolve({ action: 'skip' });
       pendingReview = null;
@@ -717,6 +813,7 @@
   }
 
   export function handleReset() {
+    batchActive = false;
     stopTimer();
     sourceRubricId = null;
     batchPhase = 'idle';

@@ -63,6 +63,8 @@
   let sourceRubricId = $state<string | null>(null);
   let batchPhase = $state<'idle' | 'extracting' | 'review' | 'grading' | 'done'>('idle');
   let essayPrompt = $state('');
+  let leniency = $state(50);
+  let originalRubricText = $state('');
 
   let returnToBatch = $state(false);
   let preselectedProfileId = $state<string | null>(null);
@@ -440,11 +442,14 @@
         </div>
         <ProviderSelector bind:provider={activeProvider} bind:model={activeModel} />
         <SkillPicker />
+        {#if graderSubMode !== 'batch' || batchPhase === 'review' || batchPhase === 'grading' || batchPhase === 'done'}
         <RubricCard
           bind:selectedRubric
           bind:rubricText
           bind:rubricMaxScore
           bind:sourceRubricId
+          bind:leniency
+          bind:originalRubricText
           {extractedRubric}
           fallbackText={essayPrompt}
           provider={activeProvider}
@@ -452,6 +457,7 @@
           phase={batchPhase}
           showActions={graderSubMode === 'batch'}
         />
+        {/if}
         {#if graderSubMode === 'single'}
           <StudentWorkCard
             onScreenshot={handleScreenshot}
@@ -473,6 +479,8 @@
             {selectedRubric}
             {onRequestDiscovery}
             externalProfile={globalActiveProfile}
+            {leniency}
+            bind:originalRubricText
             bind:rubricText
             bind:rubricMaxScore
             bind:extractedRubric

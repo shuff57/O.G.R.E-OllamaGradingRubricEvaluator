@@ -15,6 +15,7 @@
   import type { SavedRubric } from '../../lib/rubric-api';
   import { criteriaToText, textToCriteria } from '../../lib/rubric-utils';
   import { generateRubricFromText } from '../../lib/discover';
+  import { rewriteRubricRuleBased, rewriteRubricAI } from '../../lib/rubric-leniency';
   import type { Rubric } from '../../lib/batch-grader';
 
   type BatchPhase = 'idle' | 'extracting' | 'review' | 'grading' | 'done';
@@ -30,6 +31,8 @@
     model?: string;
     phase?: BatchPhase;
     showActions?: boolean;
+    leniency?: number;
+    originalRubricText?: string;
   }
 
   let {
@@ -43,7 +46,110 @@
     model = '',
     phase = 'idle' as BatchPhase,
     showActions = true,
+    leniency = $bindable(50),
+    originalRubricText = $bindable(''),
   }: Props = $props();
+
+  // ── Leniency rewrite state ────────────────────────────────────────
+  // Hybrid: rule-based instant preview while dragging, AI refine on release.
+  let isRewriting = $state(false);
+  let rewriteError = $state('');
+  let isDragging = $state(false);
+  let aiRefineTimer: ReturnType<typeof setTimeout> | null = null;
+  let abortController: AbortController | null = null;
+
+  // Track the last rewritten text so we can detect external changes (extraction)
+  let lastRewrittenText = $state('');
+
+  // Capture original rubric text and re-apply leniency when rubricText changes externally
+  $effect(() => {
+    const text = rubricText;
+    if (!text) return;
+
+    // If rubricText changed to something we didn't write (external: extraction, library load)
+    // capture it as the new original and re-apply leniency if needed
+    if (text !== lastRewrittenText && text !== originalRubricText) {
+      originalRubricText = text;
+      if (leniency !== 50) {
+        // Re-apply rule-based rewrite immediately, then schedule AI refine
+        const rewritten = rewriteRubricRuleBased(text, leniency);
+        lastRewrittenText = rewritten;
+        rubricText = rewritten;
+        scheduleAIRefine();
+      }
+    } else if (text === originalRubricText && text !== lastRewrittenText && leniency !== 50) {
+      // rubricText was reset back to original (re-extraction) while leniency is active —
+      // re-apply the leniency rewrite so the rubric doesn't revert
+      const rewritten = rewriteRubricRuleBased(text, leniency);
+      lastRewrittenText = rewritten;
+      rubricText = rewritten;
+      scheduleAIRefine();
+    }
+  });
+
+  // Instant rule-based preview on every leniency change
+  $effect(() => {
+    const val = leniency;
+    if (val === 50) {
+      if (originalRubricText) {
+        lastRewrittenText = originalRubricText;
+        rubricText = originalRubricText;
+      }
+      rewriteError = '';
+      return;
+    }
+    if (!originalRubricText) return;
+
+    // Always apply rule-based immediately for instant feedback
+    const rewritten = rewriteRubricRuleBased(originalRubricText, val);
+    lastRewrittenText = rewritten;
+    rubricText = rewritten;
+  });
+
+  // Fire AI refine after slider stops moving (on pointerup / after debounce)
+  function scheduleAIRefine() {
+    const val = leniency;
+    if (val === 50 || !originalRubricText) return;
+
+    if (aiRefineTimer) clearTimeout(aiRefineTimer);
+    if (abortController) abortController.abort();
+
+    aiRefineTimer = setTimeout(async () => {
+      isRewriting = true;
+      rewriteError = '';
+      abortController = new AbortController();
+      try {
+        const result = await rewriteRubricAI(
+          originalRubricText, val,
+          { provider, model },
+          abortController.signal,
+        );
+        // Only apply if slider hasn't moved since we started
+        if (leniency === val) {
+          lastRewrittenText = result;
+          rubricText = result;
+        }
+      } catch (e: unknown) {
+        if (e instanceof Error && e.name === 'AbortError') return;
+        rewriteError = e instanceof Error ? e.message : 'AI refine failed — using rule-based';
+        // Keep rule-based preview on AI failure (don't reset to original)
+      } finally {
+        isRewriting = false;
+      }
+    }, 300);
+  }
+
+  function handleSliderInput() {
+    isDragging = true;
+    // Cancel any pending AI refine while actively dragging
+    if (aiRefineTimer) clearTimeout(aiRefineTimer);
+    if (abortController) abortController.abort();
+  }
+
+  function handleSliderRelease() {
+    isDragging = false;
+    scheduleAIRefine();
+  }
 
   // ── Library state ──────────────────────────────────────────────────
   let rubrics = $state<SavedRubric[]>([]);
@@ -258,19 +364,44 @@
     ></textarea>
 
     {#if showActions}
-      <!-- Max Score row -->
-      <div class="max-score-row">
-        <label class="max-score-label" for="rubric-max-score">Max Score:</label>
-        <input
-          id="rubric-max-score"
-          type="number"
-          class="max-score-input"
-          bind:value={rubricMaxScore}
-          min="1"
-          max="1000"
-          disabled={isDisabled}
-        />
+      <!-- Leniency slider -->
+      <div class="leniency-row">
+        <div class="leniency-header">
+          <span class="leniency-label">Rubric Leniency</span>
+          {#if isRewriting}
+            <span class="leniency-status rewriting">Rewriting...</span>
+          {:else if leniency !== 50}
+            <span class="leniency-status">{leniency < 50 ? `${50 - leniency}% more lenient` : `${leniency - 50}% more strict`}</span>
+          {:else}
+            <span class="leniency-status">Original</span>
+          {/if}
+        </div>
+        <div class="leniency-slider-wrap">
+          <input type="range" min="0" max="100" step="5"
+            bind:value={leniency}
+            oninput={handleSliderInput}
+            onpointerup={handleSliderRelease}
+            onkeyup={handleSliderRelease}
+            disabled={isDisabled}
+            class="leniency-slider" />
+          <div class="leniency-labels">
+            <span class="leniency-endpoint">Lenient</span>
+            <span class="leniency-center">Original</span>
+            <span class="leniency-endpoint">Strict</span>
+          </div>
+        </div>
+        {#if isRewriting}
+          <div class="leniency-refining">AI refining rubric...</div>
+        {/if}
+        {#if rewriteError}
+          <div class="leniency-error">{rewriteError}</div>
+        {/if}
       </div>
+    {/if}
+
+    {#if showActions}
+      <!-- Max Score (auto-derived from rubric category totals, hidden input) -->
+      <input type="hidden" bind:value={rubricMaxScore} />
 
       <!-- Action row -->
       <div class="rubric-actions">
@@ -605,5 +736,105 @@
     font-size: 1rem;
     padding: 0 4px;
     line-height: 1;
+  }
+
+  /* ── Leniency slider ── */
+  .leniency-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: var(--spacing-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-main);
+  }
+
+  .leniency-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .leniency-label {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+
+  .leniency-status {
+    font-size: 0.75rem;
+    color: var(--color-text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .leniency-status.rewriting {
+    color: var(--color-primary);
+  }
+
+  .leniency-slider-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .leniency-slider {
+    width: 100%;
+    height: 6px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: linear-gradient(to right, #22c55e, var(--color-border) 45%, var(--color-border) 55%, #ef4444);
+    border-radius: 3px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  .leniency-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--color-primary);
+    cursor: pointer;
+    border: 2px solid var(--color-bg-main);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+
+  .leniency-slider:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .leniency-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.68rem;
+    color: var(--color-text-secondary);
+  }
+
+  .leniency-endpoint {
+    opacity: 0.8;
+  }
+
+  .leniency-center {
+    opacity: 0.6;
+  }
+
+  .leniency-refining {
+    font-size: 0.75rem;
+    color: var(--color-primary);
+    padding: 2px 0;
+    animation: pulse-text 1.2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-text {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+  }
+
+  .leniency-error {
+    font-size: 0.75rem;
+    color: var(--color-error, #e55);
+    padding: 2px 0;
   }
 </style>

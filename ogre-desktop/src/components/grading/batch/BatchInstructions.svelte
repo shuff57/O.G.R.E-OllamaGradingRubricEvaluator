@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
-   * BatchInstructions — Grading instructions textarea, preset toggles,
-   * fill-mode toggle (Auto/Review), and scoring anchors display.
+   * BatchInstructions — Regrade All toggle, fill-mode toggle (Auto/Review),
+   * and scoring anchors display. Strictness presets moved to BatchWeights.
    */
 
   // ── Props ──────────────────────────────────────────────────────────────
@@ -10,72 +10,26 @@
     batchPhase = 'idle' as string,
     anchorGenerating = false,
     batchGraderHasStudents = false,
+    leniency = 50,
     // Bindable — exposed to shell
-    customInstructions = $bindable(''),
     forceRegrade = $bindable(false),
     isReviewMode = $bindable(false),
     anchorText = $bindable(''),
     // Callbacks
+    onGenerateAnchors = () => {},
     onContinueGrading = () => {},
   } = $props();
 
-  // ── Presets ────────────────────────────────────────────────────────────
-  const PRESETS = {
-    nonZero: 'IMPORTANT: Only provide feedback for students who earn a non-zero score. If a student\'s score is 0, set feedback to an empty string "". Do NOT write feedback for zero-score students.',
-    lenient: 'Grade very leniently. Give partial credit for any attempt that is vaguely correct.',
-    strict: 'Grade strictly according to the rubric. Deduct points for minor errors.',
-    skipNoResponse: 'Students who did not submit a response will be skipped and receive no grade.',
-    noFormulaPenalty: 'Do not deduct points for lack of explicit formula notation or symbolic notation of any kind. If a student demonstrates understanding of a concept through explanation alone — without writing out formulas or symbols — award full credit for that rubric item. Reward the concept, not the notation. Do NOT penalize brevity. A concise response that correctly addresses each rubric criterion deserves full marks. Only deduct when a rubric criterion is genuinely missing or wrong — not because the student could have written more.',
-  };
-
-  // ── Derived preset active states ───────────────────────────────────────
-  let isNonZeroActive = $derived(customInstructions.includes(PRESETS.nonZero));
-  let isLenientActive = $derived(customInstructions.includes(PRESETS.lenient));
-  let isStrictActive = $derived(customInstructions.includes(PRESETS.strict));
-  let isSkipNoResponseActive = $derived(customInstructions.includes(PRESETS.skipNoResponse));
-  let isNoFormulaPenaltyActive = $derived(customInstructions.includes(PRESETS.noFormulaPenalty));
-
-  function togglePreset(key: 'nonZero' | 'lenient' | 'strict' | 'skipNoResponse' | 'noFormulaPenalty') {
-    const text = PRESETS[key];
-    if (customInstructions.includes(text)) {
-      customInstructions = customInstructions.replace(text, '').replace(/\n{3,}/g, '\n\n').trim();
-    } else {
-      customInstructions = customInstructions.trim()
-        ? customInstructions.trim() + '\n\n' + text
-        : text;
-    }
-  }
+  let anchorsReady = $derived(anchorText.trim().length > 0 && !anchorGenerating);
 </script>
 
-<!-- ── Grading Instructions ────────────────────────────────────────── -->
+<!-- ── Grading Options ─────────────────────────────────────────────── -->
 <details class="section-details">
   <summary class="section-summary">
-    <span>Grading Instructions</span>
+    <span>Grading Options</span>
     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="chevron"><polyline points="6 9 12 15 18 9"></polyline></svg>
   </summary>
   <div class="section-content">
-    <div class="preset-buttons">
-      <button class="btn-preset" class:active={isNonZeroActive}
-        onclick={() => togglePreset('nonZero')} disabled={isBatchRunning}>
-        Non-Zero Only
-      </button>
-      <button class="btn-preset" class:active={isLenientActive}
-        onclick={() => togglePreset('lenient')} disabled={isBatchRunning}>
-        Lenient
-      </button>
-      <button class="btn-preset" class:active={isStrictActive}
-        onclick={() => togglePreset('strict')} disabled={isBatchRunning}>
-        Strict
-      </button>
-      <button class="btn-preset" class:active={isSkipNoResponseActive}
-        onclick={() => togglePreset('skipNoResponse')} disabled={isBatchRunning}>
-        Skip No Response
-      </button>
-      <button class="btn-preset" class:active={isNoFormulaPenaltyActive}
-        onclick={() => togglePreset('noFormulaPenalty')} disabled={isBatchRunning}>
-        No Formula Penalty
-      </button>
-    </div>
     <label class="toggle-switch-row" class:disabled={isBatchRunning}>
       <span class="toggle-switch-label">Regrade All</span>
       <span class="toggle-switch" class:on={forceRegrade}>
@@ -83,47 +37,61 @@
         <span class="toggle-thumb"></span>
       </span>
     </label>
-    <textarea
-      class="instructions-textarea"
-      rows="4"
-      placeholder="Enter additional instructions for the AI grader here..."
-      bind:value={customInstructions}
-      disabled={isBatchRunning}
-    ></textarea>
   </div>
 </details>
 
-<!-- ── Scoring Anchors (review phase) ──────────────────────────────── -->
+<!-- ── Review phase: rubric review → generate anchors → start grading ── -->
 {#if batchPhase === 'review'}
-  <div class="anchors-card">
-    <div class="anchors-header">
-      <span class="anchors-title">Scoring Anchors</span>
-      {#if anchorGenerating}
-        <span class="anchors-generating">
-          <span class="spinner" aria-hidden="true"></span>
-          Generating examples...
-        </span>
-      {:else}
-        <span class="anchors-hint">Edit to adjust how scores are calibrated before grading starts.</span>
-      {/if}
+  {#if !anchorsReady && !anchorGenerating}
+    <!-- Step 1: Teacher reviews rubric (and adjusts leniency if desired) -->
+    <div class="review-step">
+      <div class="step-hint">
+        Review the rubric above and adjust leniency if desired, then generate scoring anchors.
+      </div>
+      <button
+        class="btn-primary small"
+        onclick={onGenerateAnchors}
+        disabled={!batchGraderHasStudents}
+      >Generate Anchors</button>
+    </div>
+  {:else}
+    <!-- Step 2: Anchors generated (or generating) — show them -->
+    <div class="anchors-card">
+      <div class="anchors-header">
+        <span class="anchors-title">Scoring Anchors</span>
+        {#if anchorGenerating}
+          <span class="anchors-generating">
+            <span class="spinner" aria-hidden="true"></span>
+            Generating examples...
+          </span>
+        {:else}
+          <span class="anchors-hint">Edit to adjust how scores are calibrated before grading starts.</span>
+        {/if}
+      </div>
+
+      <textarea
+        class="instructions-textarea anchors-textarea"
+        rows="5"
+        placeholder={anchorGenerating ? 'Generating calibration examples from your rubric…' : ''}
+        bind:value={anchorText}
+        disabled={anchorGenerating}
+      ></textarea>
     </div>
 
-    <textarea
-      class="instructions-textarea anchors-textarea"
-      rows="5"
-      placeholder={anchorGenerating ? 'Generating calibration examples from your rubric…' : ''}
-      bind:value={anchorText}
-      disabled={anchorGenerating}
-    ></textarea>
-  </div>
-
-  <div class="continue-grading-row">
-    <button
-      class="btn-primary small"
-      onclick={onContinueGrading}
-      disabled={!batchGraderHasStudents}
-    >▶ Continue Grading</button>
-  </div>
+    <!-- Step 3: Start grading -->
+    <div class="continue-grading-row">
+      <button
+        class="btn-primary small"
+        onclick={onContinueGrading}
+        disabled={!batchGraderHasStudents || anchorGenerating}
+      >Start Grading</button>
+      <button
+        class="btn-secondary small"
+        onclick={onGenerateAnchors}
+        disabled={anchorGenerating}
+      >Regenerate Anchors</button>
+    </div>
+  {/if}
 {/if}
 
 <!-- ── Fill Mode Toggle ────────────────────────────────────────────── -->
@@ -185,43 +153,6 @@
     display: flex;
     flex-direction: column;
     gap: var(--spacing-2);
-  }
-
-  /* ── Preset Buttons ── */
-  .preset-buttons {
-    display: flex;
-    gap: var(--spacing-2);
-    flex-wrap: wrap;
-  }
-
-  .btn-preset {
-    padding: var(--spacing-1) var(--spacing-2);
-    font-size: 0.78rem;
-    font-weight: 500;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: transparent;
-    color: var(--color-text-secondary);
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .btn-preset:hover:not(:disabled) {
-    border-color: var(--color-primary);
-    color: var(--color-primary);
-    background: var(--color-primary-bg);
-  }
-
-  .btn-preset.active {
-    border-color: var(--color-primary);
-    color: var(--color-primary);
-    background: var(--color-primary-bg);
-    font-weight: 600;
-  }
-
-  .btn-preset:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
   }
 
   /* ── Regrade Toggle Switch ── */
@@ -288,29 +219,6 @@
     transform: translateX(16px);
   }
 
-  /* ── Instructions Textarea ── */
-  .instructions-textarea {
-    width: 100%;
-    background-color: var(--color-bg-main);
-    border: 1px solid var(--color-border);
-    color: var(--color-text-primary);
-    border-radius: var(--radius-md);
-    padding: var(--spacing-2);
-    font-family: var(--font-body);
-    font-size: 0.85rem;
-    resize: vertical;
-  }
-
-  .instructions-textarea:focus {
-    outline: none;
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 2px var(--color-primary-bg);
-  }
-
-  .instructions-textarea:disabled {
-    opacity: 0.6;
-  }
-
   /* ── Fill Mode Toggle ── */
   .fill-mode-toggle {
     display: flex;
@@ -372,6 +280,29 @@
     cursor: not-allowed;
   }
 
+  /* ── Anchors Textarea ── */
+  .instructions-textarea {
+    width: 100%;
+    background-color: var(--color-bg-main);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-primary);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-2);
+    font-family: var(--font-body);
+    font-size: 0.85rem;
+    resize: vertical;
+  }
+
+  .instructions-textarea:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px var(--color-primary-bg);
+  }
+
+  .instructions-textarea:disabled {
+    opacity: 0.6;
+  }
+
   /* ── Scoring Anchors card ── */
   .anchors-card {
     display: flex;
@@ -424,6 +355,21 @@
 
   @keyframes spin {
     to { transform: rotate(360deg); }
+  }
+
+  /* ── Review Step (pre-anchors) ── */
+  .review-step {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+    padding: var(--spacing-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-main);
+  }
+  .step-hint {
+    font-size: 0.82rem;
+    color: var(--color-text-secondary);
   }
 
   /* ── Continue Grading Row ── */
