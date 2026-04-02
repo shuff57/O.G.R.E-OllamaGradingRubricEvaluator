@@ -26,7 +26,7 @@
   import { refreshPageData, buildBatchResetState, stopActiveBatch } from '../../../lib/page-refresh';
   import { textToCriteria } from '../../../lib/rubric-utils';
   import { formatRubricForDisplay, normalizeAnchorTextToVirtual10 } from './format';
-  import { rewriteRubricRuleBased } from '../../../lib/rubric-leniency';
+  // Rule-based rewrite removed — AI rewrite only, triggered by slider in RubricCard
 
   // ── Props (read-only from shell) ───────────────────────────────────────
   let {
@@ -220,17 +220,12 @@
   });
 
   /**
-   * Set rubricText from extraction, applying leniency rewrite inline if active.
-   * This avoids relying on RubricCard's $effect chain which has race conditions
-   * with URL-change resets and async effect ordering.
+   * Set rubricText from extraction. Leniency rewrite is handled by
+   * the AI rewrite triggered when the teacher adjusts the slider.
    */
   function setExtractedRubricText(text: string) {
     originalRubricText = text;
-    if (leniency !== 50) {
-      rubricText = rewriteRubricRuleBased(text, leniency);
-    } else {
-      rubricText = text;
-    }
+    rubricText = text;
   }
 
   // ── Build rubric object from current textarea text ──────────────────────

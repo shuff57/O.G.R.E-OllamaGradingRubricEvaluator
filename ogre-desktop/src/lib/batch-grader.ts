@@ -489,6 +489,13 @@ export async function extractPromptFingerprints(selectors: SiteSelectors): Promi
         .replace(/[$][\\d,]+\\.?\\d*/g, '#')
         .replace(/\\b[\\d,]+\\.?\\d*\\b/g, '#')
         .replace(/(#[\\s]*)+/g, '# ')
+        // Strip proper names (including multi-word, accented like "Sebastián")
+        // that follow context patterns so per-student randomised names
+        // don't split versions. Uses [^\\s,] to match any non-space non-comma char
+        // including accented letters (á, é, ñ, etc.).
+        .replace(/,\\s*[A-Z][^\\s,]+(?:\\s+[A-Z][^\\s,]+)*\\s*,/g, ', @, ')
+        .replace(/\\bnamed\\s+[A-Z][^\\s,]+(?:\\s+[A-Z][^\\s,]+)*/gi, 'named @')
+        .replace(/\\bfor\\s+[A-Z][^\\s,]+(?:\\s+[A-Z][^\\s,]+)*/g, 'for @')
         .replace(/\\s+/g, ' ')
         .trim()
         .substring(0, 500);
@@ -1420,10 +1427,25 @@ export class BatchGrader {
     // Detect question versions (batch mode only — sequential mode has no studentSection)
     if (profile.navigation.mode === 'batch' && profile.selectors.studentSection) {
       const fingerprints = await extractPromptFingerprints(profile.selectors);
-      this._versionGroups = groupStudentsByVersion(this._students, fingerprints);
-      for (let _vgi = 0; _vgi < this._versionGroups.length; _vgi++) {
-        const _vg = this._versionGroups[_vgi];
+
+      // Debug: log unique fingerprints to diagnose version splitting
+      const uniqueFps = new Set(Object.values(fingerprints));
+      console.log(`[BatchGrader] ${Object.keys(fingerprints).length} students, ${uniqueFps.size} unique fingerprints`);
+      if (uniqueFps.size > 3) {
+        // Likely a fingerprinting bug — log same-scenario students that got different fps
+        const entries = Object.entries(fingerprints);
+        console.log(`[BatchGrader]   student 0 FULL: "${entries[0]?.[1]}"`);
+        console.log(`[BatchGrader]   student 1 FULL: "${entries[1]?.[1]}"`);
+        // Find two students that SHOULD match (same first 60 chars) but don't
+        for (let j = 2; j < entries.length; j++) {
+          if (entries[j][1].substring(0, 60) === entries[1][1].substring(0, 60) && entries[j][1] !== entries[1][1]) {
+            console.log(`[BatchGrader]   student ${j} FULL (same scenario, different fp): "${entries[j][1]}"`);
+            break;
+          }
+        }
       }
+
+      this._versionGroups = groupStudentsByVersion(this._students, fingerprints);
 
       // Extract version-specific prompt/model data from each version's representative student
       for (const group of this._versionGroups) {

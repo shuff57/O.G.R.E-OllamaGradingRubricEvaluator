@@ -15,7 +15,7 @@
   import type { SavedRubric } from '../../lib/rubric-api';
   import { criteriaToText, textToCriteria } from '../../lib/rubric-utils';
   import { generateRubricFromText } from '../../lib/discover';
-  import { rewriteRubricRuleBased, rewriteRubricAI } from '../../lib/rubric-leniency';
+  import { rewriteRubricAI } from '../../lib/rubric-leniency';
   import type { Rubric } from '../../lib/batch-grader';
 
   type BatchPhase = 'idle' | 'extracting' | 'review' | 'grading' | 'done';
@@ -61,53 +61,27 @@
   // Track the last rewritten text so we can detect external changes (extraction)
   let lastRewrittenText = $state('');
 
-  // Capture original rubric text and re-apply leniency when rubricText changes externally
+  // Capture original rubric text when it changes externally (extraction, library load)
   $effect(() => {
     const text = rubricText;
     if (!text) return;
-
-    // If rubricText changed to something we didn't write (external: extraction, library load)
-    // capture it as the new original and re-apply leniency if needed
     if (text !== lastRewrittenText && text !== originalRubricText) {
       originalRubricText = text;
-      if (leniency !== 50) {
-        // Re-apply rule-based rewrite immediately, then schedule AI refine
-        const rewritten = rewriteRubricRuleBased(text, leniency);
-        lastRewrittenText = rewritten;
-        rubricText = rewritten;
-        scheduleAIRefine();
-      }
-    } else if (text === originalRubricText && text !== lastRewrittenText && leniency !== 50) {
-      // rubricText was reset back to original (re-extraction) while leniency is active —
-      // re-apply the leniency rewrite so the rubric doesn't revert
-      const rewritten = rewriteRubricRuleBased(text, leniency);
-      lastRewrittenText = rewritten;
-      rubricText = rewritten;
-      scheduleAIRefine();
     }
   });
 
-  // Instant rule-based preview on every leniency change
+  // Revert to original when slider returns to center
   $effect(() => {
     const val = leniency;
-    if (val === 50) {
-      if (originalRubricText) {
-        lastRewrittenText = originalRubricText;
-        rubricText = originalRubricText;
-      }
+    if (val === 50 && originalRubricText) {
+      lastRewrittenText = originalRubricText;
+      rubricText = originalRubricText;
       rewriteError = '';
-      return;
     }
-    if (!originalRubricText) return;
-
-    // Always apply rule-based immediately for instant feedback
-    const rewritten = rewriteRubricRuleBased(originalRubricText, val);
-    lastRewrittenText = rewritten;
-    rubricText = rewritten;
   });
 
-  // Fire AI refine after slider stops moving (on pointerup / after debounce)
-  function scheduleAIRefine() {
+  // AI rewrite on slider release (the only rewrite path)
+  function triggerAIRewrite() {
     const val = leniency;
     if (val === 50 || !originalRubricText) return;
 
@@ -131,8 +105,7 @@
         }
       } catch (e: unknown) {
         if (e instanceof Error && e.name === 'AbortError') return;
-        rewriteError = e instanceof Error ? e.message : 'AI refine failed — using rule-based';
-        // Keep rule-based preview on AI failure (don't reset to original)
+        rewriteError = e instanceof Error ? e.message : 'AI rewrite failed';
       } finally {
         isRewriting = false;
       }
@@ -141,14 +114,13 @@
 
   function handleSliderInput() {
     isDragging = true;
-    // Cancel any pending AI refine while actively dragging
     if (aiRefineTimer) clearTimeout(aiRefineTimer);
     if (abortController) abortController.abort();
   }
 
   function handleSliderRelease() {
     isDragging = false;
-    scheduleAIRefine();
+    triggerAIRewrite();
   }
 
   // ── Library state ──────────────────────────────────────────────────
