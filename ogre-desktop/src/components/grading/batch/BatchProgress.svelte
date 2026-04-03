@@ -6,6 +6,7 @@
    * Exports methods called by the shell on behalf of other sub-components.
    */
   import { onDestroy, untrack } from 'svelte';
+  import { evalScript } from '../../../lib/browser';
   import {
     BatchGrader,
     extractRubric,
@@ -25,6 +26,7 @@
   import { saveBatchSession, clearBatchSession } from '../../../lib/db';
   import { refreshPageData, buildBatchResetState, stopActiveBatch } from '../../../lib/page-refresh';
   import { textToCriteria } from '../../../lib/rubric-utils';
+  import ResponseRenderer from '../../ResponseRenderer.svelte';
   import { formatRubricForDisplay, normalizeAnchorTextToVirtual10 } from './format';
   // Rule-based rewrite removed — AI rewrite only, triggered by slider in RubricCard
 
@@ -87,6 +89,7 @@
   };
   let pendingReview = $state<ReviewData | null>(null);
   let reviewResolve: ((decision: { action: 'approve' | 'skip'; score?: number; feedback?: string }) => void) | null = null;
+  let reviewShowPreview = $state(false);
 
   // ── Grading Timer ──────────────────────────────────────────────────────
   let elapsedSeconds = $state(0);
@@ -100,6 +103,30 @@
   }
 
   let elapsedLabel = $derived(formatElapsed(elapsedSeconds));
+
+  // ── Scroll-to-student on name click ───────────────────────────────────
+  async function scrollToStudent(entry: BatchLogEntry) {
+    const sel = activeProfile?.selectors;
+    if (!sel?.studentSection) return;
+    const secSel = sel.studentSection.replace(/'/g, "\\'");
+    const nameSel = sel.studentName ? sel.studentName.replace(/'/g, "\\'") : '';
+    const studentName = entry.studentName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const idx = entry.studentIndex;
+    await evalScript(`(function(){
+      var sections = document.querySelectorAll('${secSel}');
+      var target = null;
+      ${nameSel ? `for (var i = 0; i < sections.length; i++) {
+        var n = sections[i].querySelector('${nameSel}');
+        if (n && n.textContent.trim() === '${studentName}') { target = sections[i]; break; }
+      }` : ''}
+      if (!target && sections[${idx}]) target = sections[${idx}];
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        target.style.outline = '2px solid #4f8ef7';
+        setTimeout(function(){ target.style.outline = ''; }, 2000);
+      }
+    })()`);
+  }
 
   let progressPercent = $derived(
     batchProgress && batchProgress.totalStudents > 0
@@ -852,6 +879,7 @@
   ): Promise<{ action: 'approve' | 'skip'; score?: number; feedback?: string }> {
     return new Promise((resolve) => {
       pendingReview = { ...result, autoScore: result.score, studentName, maxScore, chunkIndex: index, chunkTotal: total };
+      reviewShowPreview = false;
       reviewResolve = resolve;
     });
   }
@@ -963,11 +991,27 @@
             />
             <span class="review-score-max">/ {pendingReview.maxScore}</span>
           </div>
-          <textarea
-            class="review-feedback-edit"
-            rows="4"
-            bind:value={pendingReview.feedback}
-          ></textarea>
+          <div class="review-feedback-tabs">
+            <button
+              class="tab-btn {reviewShowPreview ? '' : 'active'}"
+              onclick={() => reviewShowPreview = false}
+            >Edit</button>
+            <button
+              class="tab-btn {reviewShowPreview ? 'active' : ''}"
+              onclick={() => reviewShowPreview = true}
+            >Preview</button>
+          </div>
+          {#if reviewShowPreview}
+            <div class="review-feedback-preview">
+              <ResponseRenderer content={pendingReview.feedback} />
+            </div>
+          {:else}
+            <textarea
+              class="review-feedback-edit"
+              rows="6"
+              bind:value={pendingReview.feedback}
+            ></textarea>
+          {/if}
         </div>
         <div class="review-actions">
           <button class="btn-primary" onclick={handleApprove}>✓ Approve</button>
@@ -1013,7 +1057,7 @@
               </div>
               <div class="log-details-col">
                 <div class="log-main-row">
-                  <span class="log-name">{entry.studentName}</span>
+                  <button class="log-name clickable" onclick={() => scrollToStudent(entry)}>{entry.studentName}</button>
                   {#if entry.score !== null}
                     <span class="log-score">{entry.score}</span>
                   {/if}
@@ -1244,6 +1288,21 @@
     text-overflow: ellipsis;
   }
 
+  .log-name.clickable {
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    font-weight: 500;
+    text-decoration: underline dotted;
+    text-align: left;
+  }
+
+  .log-name.clickable:hover {
+    color: var(--color-accent, #4f8ef7);
+  }
+
   .log-score {
     font-weight: 600;
     color: var(--color-primary);
@@ -1331,6 +1390,35 @@
     font-size: 0.85em;
     color: var(--color-text-secondary);
   }
+  .review-feedback-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 4px;
+  }
+  .tab-btn {
+    flex: 1;
+    padding: 4px 8px;
+    font-size: 0.75em;
+    font-weight: 500;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg-main);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .tab-btn:first-child {
+    border-radius: var(--radius-md) 0 0 var(--radius-md);
+  }
+  .tab-btn:last-child {
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    border-left: none;
+  }
+  .tab-btn.active {
+    background: var(--color-primary-bg, rgba(99, 102, 241, 0.12));
+    color: var(--color-primary, #6366f1);
+    border-color: var(--color-primary, #6366f1);
+    font-weight: 600;
+  }
   .review-feedback-edit {
     width: 100%;
     background-color: var(--color-bg-main);
@@ -1341,7 +1429,7 @@
     font-family: var(--font-body);
     font-size: 0.82em;
     resize: vertical;
-    max-height: 150px;
+    max-height: 200px;
     line-height: 1.4;
     box-sizing: border-box;
   }
@@ -1349,5 +1437,17 @@
     outline: none;
     border-color: var(--color-primary);
     box-shadow: 0 0 0 2px var(--color-primary-bg);
+  }
+  .review-feedback-preview {
+    width: 100%;
+    background-color: var(--color-bg-main);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-2);
+    font-size: 0.82em;
+    line-height: 1.5;
+    max-height: 250px;
+    overflow-y: auto;
+    box-sizing: border-box;
   }
 </style>

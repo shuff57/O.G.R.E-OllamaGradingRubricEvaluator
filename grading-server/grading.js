@@ -123,18 +123,28 @@ QUESTION/PROMPT:
 ${essayPrompt}
 `;
 
-  // Add checklist items if present
+  // Add checklist items if present — flatten requirements as numbered items
+  // so the AI writes feedback per requirement, not per category
   if (rubric.checklistItems && rubric.checklistItems.length > 0) {
-    prompt += '\nGRADING CHECKLIST:\n';
+    prompt += '\nGRADING REQUIREMENTS (write feedback for EACH numbered item):\n';
+    let reqNum = 1;
     for (const item of rubric.checklistItems) {
-      if (item.category) prompt += `- ${item.category} (${item.points} points)\n`;
       if (item.items) {
         for (const sub of item.items) {
-          prompt += `  - ${sub}\n`;
+          prompt += `${reqNum}. [${item.category || 'General'}] ${sub}\n`;
+          reqNum++;
         }
       }
     }
-    prompt += `\nPARTIAL CREDIT RULE: When a criterion is addressed conceptually but lacks specific values, formulas, or concrete evidence, award 40-60% of that criterion's points. Award 20-40% if only loosely related; 60-80% if substantially complete but missing one key element. Evaluate each criterion INDEPENDENTLY - do not let strength on one compensate for weakness on another. For 5-point criteria, map bands roughly as: 1-2 pts (20-40%), 2-3 pts (40-60%), 3-4 pts (60-80%); reserve 4-5 pts for essentially complete/correct coverage.\n`;
+    prompt += `\nSCORING BY CATEGORY:\n`;
+    for (const item of rubric.checklistItems) {
+      if (item.category) prompt += `- ${item.category}: ${item.points} points total\n`;
+    }
+    const ctLow = 60;
+    const ctHigh = 80;
+    prompt += `\nPARTIAL CREDIT RULE: When a requirement is addressed conceptually but lacks specific values, formulas, or concrete evidence, award 40-60% of that category's points. Award 20-40% if only loosely related; 60-80% if substantially complete but missing one key element. Evaluate each requirement INDEPENDENTLY - do not let strength on one compensate for weakness on another. For 5-point categories, map bands roughly as: 1-2 pts (20-40%), 2-3 pts (40-60%), 3-4 pts (60-80%); reserve 4-5 pts for essentially complete/correct coverage.
+
+CONCEPTUAL THOROUGHNESS RULE: When a student demonstrates genuine understanding of the underlying concept — correct reasoning, valid approach, or sound logic — but has execution flaws (arithmetic errors, missing units, informal notation, incomplete steps), award ${ctLow}-${ctHigh}% of that category's points. Concept mastery with flawed execution always scores higher than rote correctness without understanding. A student who explains WHY a method works but makes a calculation error deserves more credit than one who copies a formula without understanding it.\n`;
   }
 
   // Add rubric targets if present
@@ -168,11 +178,15 @@ Compare each student response to these anchors to ensure consistency.
 ${getScoringScaleString()}
 
 
-CRITICAL: A response that correctly hits every rubric criterion earns 8-9, REGARDLESS of length.
+`;
+  const floor = 8;
+  const floorHigh = Math.min(floor + 1, 10);
+  prompt += `
+CRITICAL: A response that correctly hits every rubric criterion earns ${floor}-${floorHigh}, REGARDLESS of length.
 A short, accurate answer scores higher than a long, partially-wrong one.
-Only drop below 8 if a rubric criterion is genuinely missing or incorrect — NOT merely brief.
-This 8+ rule applies only when ALL rubric criteria are substantively addressed — brevity cannot compensate for missing sub-criteria.
-Score 8 requires all rubric criteria to be substantively correct; score 7 when one criterion is only partially met or missing a key element.
+Only drop below ${floor} if a rubric criterion is genuinely missing or incorrect — NOT merely brief.
+This ${floor}+ rule applies only when ALL rubric criteria are substantively addressed — brevity cannot compensate for missing sub-criteria.
+Score ${floor} requires all rubric criteria to be substantively correct; score ${floor - 1} when one criterion is only partially met or missing a key element — but if conceptual understanding is demonstrated, score ${floor - 1} not ${floor - 2}.
 `;
   if (calibration) {
     prompt += `\nSCORING CALIBRATION EXAMPLES (use to calibrate score levels only \u2014 grade against rubric criteria and SCORING SCALE above, not these examples):\n${calibration}\n`;
@@ -246,19 +260,44 @@ CONSISTENCY RULES:
   // Response format instructions — use actual student indices so AI doesn't guess
   const firstIdx = students[0]?.index ?? 0;
   const secondIdx = students.length > 1 ? (students[1]?.index ?? firstIdx + 1) : firstIdx + 1;
+  // Build a dynamic feedback example from actual requirements so the AI has a
+  // concrete pattern to follow (LLMs follow examples better than instructions)
+  const _allReqs = [];
+  for (const item of (rubric.checklistItems || [])) {
+    if (item.items) {
+      for (const sub of item.items) {
+        _allReqs.push(sub);
+      }
+    }
+  }
+  let _feedbackExample = '';
+  if (_allReqs.length > 0) {
+    // Show first 2 requirements as examples (one addressed, one not)
+    _feedbackExample = `\\n\\n**${_allReqs[0]}**\\n> You said: \\"[quote what student wrote]\\"\\n\\n[Correct/Incorrect/Incomplete — explain WHY]\\n\\n*To improve: [specific suggestion]*`;
+    if (_allReqs.length > 1) {
+      _feedbackExample += `\\n\\n**${_allReqs[1]}**\\n> You did not address this.\\n\\n[Explain what was expected]`;
+    }
+    // Show the rest as stubs so the AI knows to continue
+    for (let i = 2; i < _allReqs.length; i++) {
+      _feedbackExample += `\\n\\n**${_allReqs[i]}**\\n> You said: ...\\n\\n...`;
+    }
+  }
+
   prompt += `
-${_corItems.length > 0 ? `GRADING PROCESS:\nFor each student: (1) score each GRADING CHECKLIST criterion independently using the PARTIAL CREDIT RULE above, (2) record scores in criterion_scores, (3) sum for the final score. Do NOT adjust criterion scores to hit a desired total.\n` : ''}
+${_corItems.length > 0 ? `GRADING PROCESS:\nFor each student: (1) score each category independently using the PARTIAL CREDIT RULE above, (2) record category scores in criterion_scores, (3) sum for the final score. Do NOT adjust scores to hit a desired total.\n` : ''}
+
+FEEDBACK FORMAT RULE: The feedback string must contain one section for EACH numbered requirement from GRADING REQUIREMENTS. Do NOT group by category. Each requirement gets its own bolded header. criterion_scores uses categories for scoring, but feedback MUST be per-requirement.
 
 [
   {
     "studentIndex": ${firstIdx},
     ${_corField}    "score": <${_scoreHint}>
-    "feedback": "<Use the student's first name from their header. For each rubric criterion, write one section using this structure: (1) state the criterion name, (2) write 'You said ...' quoting or paraphrasing what the student said about that criterion, (3) explain whether what they said was correct, incorrect, or incomplete — and what they would need to add for full credit. If the student's statements conflict with each other, note gently: 'Note: this seems inconsistent with your earlier statement that...'. Use \\n between each section. Write like a high school math teacher talking directly to the student. No em dashes. Short and clear.>"
+    "feedback": "Hi [name],${_feedbackExample}"
   },
   {
     "studentIndex": ${secondIdx},
     ${_corField}    "score": <${_scoreHint}>
-    "feedback": "<feedback>"
+    "feedback": "<same format — one section per requirement>"
   }
   // ... continue for all ${students.length} students
 ]
@@ -803,18 +842,25 @@ QUESTION/PROMPT:
 ${essayPrompt}
 `;
 
-  // Add checklist items if present
+  // Add checklist items if present — flatten requirements as numbered items
   if (rubric.checklistItems && rubric.checklistItems.length > 0) {
-    prompt += '\nGRADING CHECKLIST:\n';
+    prompt += '\nGRADING REQUIREMENTS (write feedback for EACH numbered item):\n';
+    let reqNum = 1;
     for (const item of rubric.checklistItems) {
-      if (item.category) prompt += `- ${item.category} (${item.points} points)\n`;
       if (item.items) {
         for (const sub of item.items) {
-          prompt += `  - ${sub}\n`;
+          prompt += `${reqNum}. [${item.category || 'General'}] ${sub}\n`;
+          reqNum++;
         }
       }
     }
-    prompt += `\nPARTIAL CREDIT RULE: When a criterion is addressed conceptually but lacks specific values, formulas, or concrete evidence, award 40-60% of that criterion's points. Award 20-40% if only loosely related; 60-80% if substantially complete but missing one key element. Evaluate each criterion INDEPENDENTLY - do not let strength on one compensate for weakness on another.\n`;
+    prompt += `\nSCORING BY CATEGORY:\n`;
+    for (const item of rubric.checklistItems) {
+      if (item.category) prompt += `- ${item.category}: ${item.points} points total\n`;
+    }
+    prompt += `\nPARTIAL CREDIT RULE: When a requirement is addressed conceptually but lacks specific values, formulas, or concrete evidence, award 40-60% of that category's points. Award 20-40% if only loosely related; 60-80% if substantially complete but missing one key element. Evaluate each requirement INDEPENDENTLY - do not let strength on one compensate for weakness on another.
+
+CONCEPTUAL THOROUGHNESS RULE: When a student demonstrates genuine understanding of the underlying concept — correct reasoning, valid approach, or sound logic — but has execution flaws (arithmetic errors, missing units, informal notation, incomplete steps), award 60-80% of that category's points. Concept mastery with flawed execution always scores higher than rote correctness without understanding. A student who explains WHY a method works but makes a calculation error deserves more credit than one who copies a formula without understanding it.\n`;
   }
 
   // Add rubric targets if present
@@ -857,14 +903,36 @@ ${essayPrompt}
   const _sCorField = _sCorItems.length > 0
     ? `  "criterion_scores": {${_sCorItems.map(({name, pts}) => `"${name}": <0-${pts} pts>`).join(', ')}},\n`
     : '';
+  // Build dynamic feedback example from actual requirements for single prompt
+  const _sAllReqs = [];
+  for (const item of (rubric.checklistItems || [])) {
+    if (item.items) {
+      for (const sub of item.items) {
+        _sAllReqs.push(sub);
+      }
+    }
+  }
+  let _sFeedbackExample = '';
+  if (_sAllReqs.length > 0) {
+    _sFeedbackExample = `\\n\\n**${_sAllReqs[0]}**\\n> You said: \\"[quote]\\"\\n\\n[Correct/Incorrect — WHY]\\n\\n*To improve: [suggestion]*`;
+    if (_sAllReqs.length > 1) {
+      _sFeedbackExample += `\\n\\n**${_sAllReqs[1]}**\\n> You did not address this.\\n\\n[What was expected]`;
+    }
+    for (let i = 2; i < _sAllReqs.length; i++) {
+      _sFeedbackExample += `\\n\\n**${_sAllReqs[i]}**\\n> You said: ...\\n\\n...`;
+    }
+  }
+
   prompt += `
-${_sCorNames.length > 0 ? 'GRADING PROCESS: Score each GRADING CHECKLIST criterion independently using the PARTIAL CREDIT RULE, then sum for the final score.\n' : ''}
+${_sCorNames.length > 0 ? 'GRADING PROCESS: Score each category independently using the PARTIAL CREDIT RULE, then sum for the final score.\n' : ''}
+FEEDBACK FORMAT RULE: The feedback string must contain one section for EACH numbered requirement from GRADING REQUIREMENTS. Do NOT group by category. Each requirement gets its own bolded header. criterion_scores uses categories for scoring, but feedback MUST be per-requirement.
+
 RESPONSE FORMAT:
 Return ONLY valid JSON. No markdown code fences. No explanation text.
 
 {
 ${_sCorField}  "score": <${_sScoreHint}>
-  "feedback": "<Write directly to the student using 'you'. For each rubric criterion, write one section using this structure: (1) state the criterion name, (2) write 'You said ...' quoting or paraphrasing what the student said about that criterion, (3) explain whether what they said was correct, incorrect, or incomplete — and what they would need to add for full credit. If your statements conflict with each other, note gently: 'Note: this seems inconsistent with what you said earlier about...'. Use \\n between each section. Write like a high school math teacher talking directly to the student. No em dashes. Short and clear.>"
+  "feedback": "Hi [name],${_sFeedbackExample}"
 }`;
 
   return prompt;
