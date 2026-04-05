@@ -1316,14 +1316,42 @@ function resolveProviderConfig(providerId, model) {
 
 /**
  * Build a prompt asking the AI to write example student responses at 4 calibration levels.
+ * @param {Object} rubric
+ * @param {Object} anchors
+ * @param {number|null} leniency - 0-100 (50=default). Adjusts example tone.
  */
-function buildAnchorGenerationPrompt(rubric, anchors) {
+function buildAnchorGenerationPrompt(rubric, anchors, leniency = null) {
   const maxScore = parseFloat(rubric.maxScore) || 10;
   const parts = [];
 
   parts.push('You are a grading calibration assistant.');
   parts.push('For the assignment below, write FOUR brief example student responses at different quality levels.');
   parts.push('These examples will be shown to an AI grader so it understands what each score level looks like for THIS specific question.\n');
+
+  // Inject leniency tone guidance
+  if (leniency != null && leniency !== 50) {
+    if (leniency < 50) {
+      const pct = 50 - leniency;
+      parts.push(`CRITICAL — LENIENT GRADING MODE (${pct}% more lenient than standard):
+The teacher has chosen lenient grading. Your example responses MUST reflect how a LENIENT teacher would grade. This means:
+
+- EXCELLENT: Complete and correct, but does NOT need to show every step or use formal notation. A clear, concise answer that covers all concepts counts as excellent.
+- ADEQUATE: Gets the main ideas right using everyday language. May skip steps, use informal phrasing like "I subtracted them" instead of writing formulas. This is STILL adequate under lenient grading.
+- BELOW AVERAGE: Shows they understood the general concept but is vague or incomplete. Does NOT write formulas or show calculations — just states results or describes the process in words. Example: "The IQR is 16 and the max is way above the fence so it's an outlier."
+- MINIMAL: Barely engages. Might just state a conclusion without any reasoning. Example: "80 is an outlier because it's really high."
+
+DO NOT write formula-heavy responses for Below Average or Minimal tiers. A lenient Below Average response should look like what a struggling student actually writes — short, imprecise, but showing they tried.\n`);
+    } else {
+      const pct = leniency - 50;
+      parts.push(`CRITICAL — STRICT GRADING MODE (${pct}% more strict than standard):
+The teacher has chosen strict grading. Your example responses MUST reflect how a STRICT teacher would grade. This means:
+
+- EXCELLENT: Flawless — exact formulas with proper notation, every step shown, precise terminology, complete logical chain, thorough contextual analysis.
+- ADEQUATE: Complete and correct but may have minor presentation gaps. Still shows all formulas and key steps.
+- BELOW AVERAGE: Shows partial knowledge — gets some formulas right but misses key steps or makes errors. Under strict grading this is NOT adequate.
+- MINIMAL: Very incomplete — may state a result without showing work, or show only one part of a multi-step problem.\n`);
+    }
+  }
 
   if (rubric.essayPrompt) {
     parts.push(`ASSIGNMENT:\n${rubric.essayPrompt}\n`);
@@ -1407,7 +1435,7 @@ app.post('/api/generate-anchors', async (c) => {
     return c.json({ error: 'Invalid JSON body' }, 400);
   }
 
-  const { provider, model, rubric } = body;
+  const { provider, model, rubric, leniency } = body;
   if (!provider) return c.json({ error: 'Missing required field: provider' }, 400);
   if (!model)    return c.json({ error: 'Missing required field: model' }, 400);
   if (!rubric)   return c.json({ error: 'Missing required field: rubric' }, 400);
@@ -1418,8 +1446,8 @@ app.post('/api/generate-anchors', async (c) => {
   try {
     const providerConfig = resolveProviderConfig(provider, model);
     const anchors = generateScoringAnchors(rubric);
-    console.log(`[${timestamp()}] [anchors] Generating | provider=${provider} model=${model}`);
-    const prompt = buildAnchorGenerationPrompt(rubric, anchors);
+    console.log(`[${timestamp()}] [anchors] Generating | provider=${provider} model=${model}${leniency != null ? ` leniency=${leniency}` : ''}`);
+    const prompt = buildAnchorGenerationPrompt(rubric, anchors, leniency);
     const aiText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: prompt }], timestamp());
     const anchorData = parseAnchorResponses(aiText, anchors, maxScore);
     console.log(`[${timestamp()}] [anchors] Done (${anchorData.length} tiers)`);

@@ -12,21 +12,11 @@ import type { Rubric, VersionGroup } from '../../../lib/batch-grader';
  * - If multi-version, show all version prompts above the shared rubric.
  * - If NO checklist/rubric exists, show the prompt as fallback content.
  */
-export function formatRubricForDisplay(rubric: Rubric, allVersions?: VersionGroup[]): string {
+export function formatRubricForDisplay(rubric: Rubric, _allVersions?: VersionGroup[]): string {
   const lines: string[] = [];
-  const isMultiVersion = allVersions && allVersions.length > 1;
 
-  if (isMultiVersion) {
-    for (const group of allVersions) {
-      lines.push(`--- Version ${group.versionNumber} Prompt ---`);
-      lines.push(group.essayPrompt || '(no prompt)');
-      lines.push('');
-    }
-  } else if (rubric.essayPrompt) {
-    lines.push('--- Question/Prompt ---');
-    lines.push(rubric.essayPrompt);
-    lines.push('');
-  }
+  // Question/prompt is passed to the grading server via essayPrompt
+  // but not shown in the editable rubric textarea — teacher doesn't need to see/edit it.
 
   if (rubric.checklistItems.length > 0) {
     lines.push('--- Grading Checklist ---');

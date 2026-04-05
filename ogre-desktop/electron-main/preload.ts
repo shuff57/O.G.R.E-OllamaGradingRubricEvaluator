@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setWebviewBounds: (tabId: string, x: number, y: number, width: number, height: number) =>
     invoke('set_webview_bounds', { tabId, x, y, width, height }),
   hideWebview: (tabId: string) => invoke('hide_webview', { tabId }),
+  hideAllWebviews: () => invoke('hide_all_webviews'),
   showWebview: (tabId: string) => invoke('show_webview', { tabId }),
   getEmbeddedUrl: (tabId: string) => invoke<string>('get_embedded_url', { tabId }),
   destroyWebview: (tabId: string) => invoke('destroy_webview', { tabId }),

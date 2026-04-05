@@ -78,6 +78,13 @@ export async function showWebview(tabId: string): Promise<void> {
 }
 
 /**
+ * Hide all embedded webviews (used when navigating away from browser page).
+ */
+export async function hideAllWebviews(): Promise<void> {
+  await invoke('hide_all_webviews');
+}
+
+/**
  * Get the current URL of the embedded browser.
  */
 export async function getEmbeddedUrl(tabId?: string): Promise<string> {

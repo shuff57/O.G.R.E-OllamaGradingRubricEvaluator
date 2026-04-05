@@ -27,7 +27,7 @@
   import type { SessionCompletePayload } from './lib/server';
   import { updateActiveProvider } from './lib/db';
   import { checkForUpdates, type UpdateCheckResult } from './lib/updater';
-  import { hideWebview, showWebview, getActiveTabId } from './lib/browser';
+  import { hideWebview, hideAllWebviews, showWebview, getActiveTabId } from './lib/browser';
   import { syncSiteProfiles } from './lib/skills-api';
   type Update = { version: string; body?: string | null; download: (cb?: unknown) => Promise<void>; installAndRelaunch: () => Promise<void> }
 
@@ -58,7 +58,7 @@
   // so it must be hidden when modals appear to avoid covering them.
   $effect(() => {
     if (showUpdateModal) {
-      hideWebview(getActiveTabId()).catch(() => {});
+      hideAllWebviews().catch(() => {});
     } else if (currentPage === 'browser') {
       showWebview(getActiveTabId()).catch(() => {});
       window.dispatchEvent(new CustomEvent('ogre:sidebar-changed'));
@@ -153,8 +153,8 @@
       window.dispatchEvent(new CustomEvent('ogre:sidebar-changed'));
     } else {
       sidebarCollapsed = false;
-      // Hide webview immediately when leaving browser page (preserves session)
-      hideWebview(getActiveTabId()).catch(() => {});
+      // Hide ALL webviews when leaving browser page (native overlay sits on top of DOM)
+      hideAllWebviews().catch(() => {});
     }
   }
 

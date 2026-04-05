@@ -723,6 +723,8 @@ export interface GenerateAnchorsRequest {
     modelText?: string | null;
     maxScore?: string;
   };
+  /** Leniency level (0-100, default 50). Adjusts anchor example tone. */
+  leniency?: number;
 }
 
 /**
@@ -750,6 +752,7 @@ export async function generateAnchors(
         provider: request.provider,
         model: request.model,
         rubric: request.rubric,
+        ...(request.leniency != null && request.leniency !== 50 ? { leniency: request.leniency } : {}),
       }),
     });
   } catch {

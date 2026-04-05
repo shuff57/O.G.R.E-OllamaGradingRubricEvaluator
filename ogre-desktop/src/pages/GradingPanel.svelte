@@ -9,6 +9,7 @@
   import DiscoveryPanel from '../components/grading/DiscoveryPanel.svelte';
   import SkillPicker from '../components/skills/SkillPicker.svelte';
   import { captureWebviewScreenshot, hideWebview, showWebview, getActiveTabId } from '../lib/browser';
+  import { getSetting, setSetting } from '../lib/db';
   import type { SavedRubric } from '../lib/rubric-api';
   import type { GradeRubric } from '../lib/grading-api';
   import type { Rubric, SiteProfile } from '../lib/batch-grader';
@@ -65,6 +66,7 @@
   let essayPrompt = $state('');
   let leniency = $state(50);
   let originalRubricText = $state('');
+  let isRubricRewriting = $state(false);
 
   let returnToBatch = $state(false);
   let preselectedProfileId = $state<string | null>(null);
@@ -302,7 +304,7 @@
     document.body.style.userSelect = '';
   }
 
-  onMount(() => {
+  onMount(async () => {
     window.addEventListener('keydown', handleKeydown);
     // Load all profiles (built-in + user-saved) for the global selector
     new ProfileStorageImpl().listProfiles().then(profiles => {
@@ -310,6 +312,20 @@
     }).catch(() => {
       globalAllProfiles = [...BUILT_IN_PROFILES];
     });
+    // Restore saved default leniency
+    try {
+      const saved = await getSetting('default_leniency');
+      if (saved !== null) {
+        const val = parseInt(saved, 10);
+        if (!isNaN(val) && val >= 0 && val <= 100) leniency = val;
+      }
+    } catch {}
+  });
+
+  // Persist leniency changes as the new default
+  $effect(() => {
+    const val = leniency;
+    setSetting('default_leniency', String(val)).catch(() => {});
   });
 
   onDestroy(() => {
@@ -450,6 +466,7 @@
           bind:sourceRubricId
           bind:leniency
           bind:originalRubricText
+          bind:isRewriting={isRubricRewriting}
           {extractedRubric}
           fallbackText={essayPrompt}
           provider={activeProvider}
@@ -480,6 +497,7 @@
             {onRequestDiscovery}
             externalProfile={globalActiveProfile}
             {leniency}
+            isRubricRewriting={isRubricRewriting}
             bind:originalRubricText
             bind:rubricText
             bind:rubricMaxScore

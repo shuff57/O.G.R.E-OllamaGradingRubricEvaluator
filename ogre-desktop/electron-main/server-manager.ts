@@ -29,10 +29,15 @@ function getServerBundlePath(): string {
 }
 
 function getBunExecutable(): string {
+  const isWin = process.platform === 'win32'
   const candidates = [
-    path.join(os.homedir(), '.bun', 'bin', 'bun'),
-    '/opt/homebrew/bin/bun',
-    '/usr/local/bin/bun',
+    path.join(os.homedir(), '.bun', 'bin', isWin ? 'bun.exe' : 'bun'),
+    ...(isWin
+      ? [
+          path.join(os.homedir(), 'AppData', 'Roaming', 'npm', 'bun.cmd'),
+          path.join(os.homedir(), 'AppData', 'Local', '.bun', 'bin', 'bun.exe'),
+        ]
+      : ['/opt/homebrew/bin/bun', '/usr/local/bin/bun']),
     'bun',
   ]
   for (const candidate of candidates) {
@@ -84,8 +89,12 @@ export function spawnServer(): void {
 
   const bunDirs = [
     path.join(os.homedir(), '.bun', 'bin'),
-    '/opt/homebrew/bin',
-    '/usr/local/bin',
+    ...(process.platform === 'win32'
+      ? [
+          path.join(os.homedir(), 'AppData', 'Roaming', 'npm'),
+          path.join(os.homedir(), 'AppData', 'Local', '.bun', 'bin'),
+        ]
+      : ['/opt/homebrew/bin', '/usr/local/bin']),
   ]
   const augmentedPath = [...bunDirs, process.env.PATH ?? ''].join(path.delimiter)
 
@@ -93,6 +102,7 @@ export function spawnServer(): void {
     cwd: serverDir,
     env: { ...process.env, PATH: augmentedPath, OGRE_CONFIG_DIR: configDir },
     stdio: ['ignore', 'pipe', 'pipe'],
+    shell: process.platform === 'win32',
   })
 
   emitToRenderer('server-status', 'running')

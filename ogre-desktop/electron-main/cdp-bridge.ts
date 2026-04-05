@@ -170,13 +170,17 @@ export function registerCdpHandlers(): void {
 
   ipcMain.handle('discover_cdp_target', async (_e, { port }: { port: number }) => {
     try {
-      const res = await fetch(`http://127.0.0.1:${port}/json`)
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 3000)
+      const res = await fetch(`http://127.0.0.1:${port}/json`, { signal: controller.signal })
+      clearTimeout(timer)
       if (!res.ok) return null
       const targets = await res.json() as Array<{ type: string; url: string; webSocketDebuggerUrl?: string }>
       const MAIN_APP_PATTERNS = [
         /^devtools:\/\//,
         /^chrome-extension:\/\//,
         /^http:\/\/localhost:(1420|5173)/,
+        /^file:\/\//,
       ]
       const target = targets.find(
         (t) => t.type === 'page' &&

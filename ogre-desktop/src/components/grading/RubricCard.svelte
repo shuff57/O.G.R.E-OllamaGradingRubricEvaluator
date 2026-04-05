@@ -33,6 +33,7 @@
     showActions?: boolean;
     leniency?: number;
     originalRubricText?: string;
+    isRewriting?: boolean;
   }
 
   let {
@@ -48,11 +49,11 @@
     showActions = true,
     leniency = $bindable(50),
     originalRubricText = $bindable(''),
+    isRewriting = $bindable(false),
   }: Props = $props();
 
   // ── Leniency rewrite state ────────────────────────────────────────
   // Hybrid: rule-based instant preview while dragging, AI refine on release.
-  let isRewriting = $state(false);
   let rewriteError = $state('');
   let isDragging = $state(false);
   let aiRefineTimer: ReturnType<typeof setTimeout> | null = null;
@@ -68,6 +69,15 @@
     if (text !== lastRewrittenText && text !== originalRubricText) {
       originalRubricText = text;
     }
+  });
+
+  // Auto-rewrite when a new rubric arrives and leniency is not center (saved default)
+  let prevOriginal = '';
+  $effect(() => {
+    const text = originalRubricText;
+    if (!text || text === prevOriginal) return;
+    prevOriginal = text;
+    if (leniency !== 50) triggerAIRewrite();
   });
 
   // Revert to original when slider returns to center

@@ -16,11 +16,12 @@ export interface CDPTarget {
 
 type EventCallback = (params: Record<string, unknown>) => void;
 
-/** URL patterns that identify the main Tauri app webview (not the embedded browser). */
+/** URL patterns that identify the main Electron app webview (not the embedded browser). */
 export const MAIN_APP_PATTERNS = [
-  /^tauri:\/\/localhost/,
-  /^https:\/\/tauri\.localhost/,
   /^http:\/\/localhost:(1420|5173)/, // Vite dev server
+  /^file:\/\//, // Production — Electron loads dist/index.html
+  /^devtools:\/\//,
+  /^chrome-extension:\/\//,
 ];
 
 const SEND_TIMEOUT_MS = 90_000;
@@ -46,7 +47,10 @@ export class CDPClient {
       if (this.ws) await this.disconnect();
 
       // Use 127.0.0.1 not localhost (IPv4 vs IPv6 gotcha on Windows/WebView2)
-      const resp = await fetch(`http://127.0.0.1:${port}/json`);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 3000);
+      const resp = await fetch(`http://127.0.0.1:${port}/json`, { signal: controller.signal });
+      clearTimeout(timer);
       if (!resp.ok) return false;
 
       const targets: CDPTarget[] = await resp.json();
@@ -151,8 +155,9 @@ export class CDPClient {
     return new Promise((resolve) => {
       try {
         const ws = new WebSocket(url);
-        ws.onopen = () => { this.ws = ws; this.connected = true; resolve(true); };
-        ws.onerror = () => { resolve(false); };
+        const timeout = setTimeout(() => { try { ws.close(); } catch {} resolve(false); }, 5000);
+        ws.onopen = () => { clearTimeout(timeout); this.ws = ws; this.connected = true; resolve(true); };
+        ws.onerror = () => { clearTimeout(timeout); resolve(false); };
         ws.onclose = () => { this.connected = false; };
         ws.onmessage = (ev: MessageEvent) => { this.handleMessage(ev); };
       } catch {

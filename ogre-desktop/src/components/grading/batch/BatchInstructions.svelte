@@ -11,6 +11,7 @@
     anchorGenerating = false,
     batchGraderHasStudents = false,
     leniency = 50,
+    isRubricRewriting = false,
     // Bindable — exposed to shell
     forceRegrade = $bindable(false),
     isReviewMode = $bindable(false),
@@ -51,8 +52,8 @@
       <button
         class="btn-primary small"
         onclick={onGenerateAnchors}
-        disabled={!batchGraderHasStudents}
-      >Generate Anchors</button>
+        disabled={!batchGraderHasStudents || isRubricRewriting}
+      >{isRubricRewriting ? 'Rubric rewriting…' : 'Generate Anchors'}</button>
     </div>
   {:else}
     <!-- Step 2: Anchors generated (or generating) — show them -->
@@ -88,7 +89,7 @@
       <button
         class="btn-secondary small"
         onclick={onGenerateAnchors}
-        disabled={anchorGenerating}
+        disabled={anchorGenerating || isRubricRewriting}
       >Regenerate Anchors</button>
     </div>
   {/if}

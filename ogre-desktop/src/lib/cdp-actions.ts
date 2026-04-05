@@ -56,32 +56,38 @@ export async function connectCDP(port?: number): Promise<boolean> {
   if (_cdpConnectFailed) return false;
 
   try {
-    let resolvedPort = port;
-    if (resolvedPort === undefined || resolvedPort === null) {
-      const tauriPort = await invoke<number | null>('get_cdp_port');
-      if (tauriPort === null || tauriPort === undefined) {
-        _cdpConnectFailed = true;
-        return false;
-      }
-      resolvedPort = tauriPort;
-    }
-
-    // Discover the embedded browser target via Rust (bypasses CORS)
-    const wsUrl = await invoke<string | null>('discover_cdp_target', { port: resolvedPort });
-    if (!wsUrl) {
-      _cdpConnectFailed = true;
-      return false;
-    }
-
-    const connected = await cdp.connectToUrl(wsUrl);
-    if (!connected) {
+    // Overall timeout — if CDP discovery + connect takes >5s, give up and use IPC
+    const result = await Promise.race([
+      _doConnectCDP(port),
+      new Promise<false>((resolve) => setTimeout(() => resolve(false), 5000)),
+    ]);
+    if (!result) {
       _cdpConnectFailed = true;
     }
-    return connected;
+    return result;
   } catch {
     _cdpConnectFailed = true;
     return false;
   }
+}
+
+async function _doConnectCDP(port?: number): Promise<boolean> {
+  let resolvedPort = port;
+  if (resolvedPort === undefined || resolvedPort === null) {
+    const electronPort = await invoke<number | null>('get_cdp_port');
+    if (electronPort === null || electronPort === undefined) {
+      return false;
+    }
+    resolvedPort = electronPort;
+  }
+
+  // Discover the embedded browser target via main process (bypasses CORS)
+  const wsUrl = await invoke<string | null>('discover_cdp_target', { port: resolvedPort });
+  if (!wsUrl) {
+    return false;
+  }
+
+  return await cdp.connectToUrl(wsUrl);
 }
 
 /**

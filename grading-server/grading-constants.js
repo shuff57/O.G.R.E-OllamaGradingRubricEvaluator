@@ -3,6 +3,7 @@ export const GRADING_PHILOSOPHY = `Grade each response against the rubric criter
 - Award credit proportional to how thoroughly each rubric criterion is met — a concise answer covering all criteria is equivalent to a longer one that does the same
 - Evaluate what the student demonstrated, not what they omitted
 - Award partial credit on any criterion where the student shows understanding of the concept, even if the wording is imprecise or informal — do not require textbook phrasing
+- CONCEPTUAL THOROUGHNESS: When a student demonstrates genuine understanding of the underlying concept — correct reasoning, valid approach, or sound logic — award substantial credit even if execution is imperfect (arithmetic errors, missing units, informal notation). Concept mastery matters more than mechanical precision.
 - Use the full scoring range (0-10) as defined by the scoring anchors — do not compress toward the middle
 - Treat scoring-scale descriptors as calibration references when assigning a score
 - Off-topic, empty, or nonsensical responses receive a score of 0
@@ -19,8 +20,8 @@ export const SCORING_SCALE_DESCRIPTORS = [
   { score: 3, descriptor: 'Very limited: some awareness of concepts but largely incomplete' },
   { score: 4, descriptor: 'Partial: shows basic familiarity but misses most key criteria' },
   { score: 5, descriptor: 'Developing: demonstrates partial understanding, covers some key points' },
-  { score: 6, descriptor: 'Approaching: addresses main ideas with some gaps or minor errors, but does not fully satisfy all core rubric criteria' },
-  { score: 7, descriptor: 'Competent: addresses all core rubric criteria at least adequately, with minor gaps' },
+  { score: 6, descriptor: 'Approaching: shows conceptual understanding of the core ideas with gaps in execution or detail — grasps the "why" but not all of the "how"' },
+  { score: 7, descriptor: 'Competent: demonstrates conceptual thoroughness — addresses all core rubric criteria with sound reasoning, minor execution gaps acceptable' },
   { score: 8, descriptor: 'Proficient: correctly and completely addresses all rubric criteria with minimal error' },
   { score: 9, descriptor: 'Strong: thorough and accurate with clear explanation' },
   { score: 10, descriptor: 'Excellent: comprehensive, precise, and clearly communicated' },

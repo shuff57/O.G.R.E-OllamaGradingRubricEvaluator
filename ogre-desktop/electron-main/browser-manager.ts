@@ -106,9 +106,17 @@ export function setViewBounds(tabId: string, x: number, y: number, width: number
 }
 
 export function hideView(tabId: string): void {
-  const entry = getTab(tabId)
+  const entry = tabs.get(tabId)
+  if (!entry) return
   entry.view.setVisible(false)
   entry.visible = false
+}
+
+export function hideAllViews(): void {
+  for (const [, entry] of tabs) {
+    entry.view.setVisible(false)
+    entry.visible = false
+  }
 }
 
 export function showView(tabId: string): void {
@@ -159,6 +167,9 @@ export function registerBrowserHandlers(): void {
   })
   ipcMain.handle('hide_webview', (_e, { tabId }: { tabId: string }) => {
     hideView(tabId)
+  })
+  ipcMain.handle('hide_all_webviews', () => {
+    hideAllViews()
   })
   ipcMain.handle('show_webview', (_e, { tabId }: { tabId: string }) => {
     showView(tabId)

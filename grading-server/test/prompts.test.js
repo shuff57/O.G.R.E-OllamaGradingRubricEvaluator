@@ -329,3 +329,39 @@ describe('buildSingleGradePrompt - constants injection', () => {
     expect(prompt).toContain('SCORING SCALE');
   });
 });
+
+
+describe('Prompt defaults — conceptual thoroughness and score floor', () => {
+  const rubric = {
+    maxScore: '10',
+    essayPrompt: 'Explain photosynthesis',
+    checklistItems: [{ category: 'Understanding', points: 5, items: ['Knows process'] }],
+    rubricItems: [],
+  };
+  const students = [
+    { index: 0, name: 'Alice', response: 'Plants use sunlight.' },
+    { index: 1, name: 'Bob', response: 'I dunno.' },
+  ];
+
+  it('default anchors produce standard values', () => {
+    const anchors = generateScoringAnchors(rubric);
+    expect(anchors.excellent.score).toBe(10);
+    expect(anchors.adequate.score).toBe(8);
+    expect(anchors.belowAverage.score).toBe(7);
+    expect(anchors.minimal.score).toBe(5);
+  });
+
+  it('prompt contains conceptual thoroughness rule at 60-80%', () => {
+    const anchors = generateScoringAnchors(rubric);
+    const prompt = buildBatchPrompt(rubric, students, anchors);
+    expect(prompt).toContain('award 60-80% of that criterion');
+    expect(prompt).toContain('CONCEPTUAL THOROUGHNESS RULE');
+  });
+
+  it('prompt contains score floor of 8', () => {
+    const anchors = generateScoringAnchors(rubric);
+    const prompt = buildBatchPrompt(rubric, students, anchors);
+    expect(prompt).toContain('correctly hits every rubric criterion earns 8-9');
+    expect(prompt).toContain('Only drop below 8');
+  });
+});

@@ -35,6 +35,7 @@
     essayPrompt = $bindable(''),
     externalProfile = null as SiteProfile | null,
     leniency = 50,
+    isRubricRewriting = false,
     originalRubricText = $bindable(''),
   } = $props();
 
@@ -111,6 +112,7 @@
     {anchorGenerating}
     {batchGraderHasStudents}
     {leniency}
+    {isRubricRewriting}
     bind:forceRegrade
     bind:isReviewMode
     bind:anchorText

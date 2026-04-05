@@ -31,7 +31,7 @@ function createWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      preload: path.join(process.cwd(), 'dist-electron', 'preload.mjs'),
+      preload: path.join(process.cwd(), 'dist-electron', 'preload.cjs'),
     },
   })
 
