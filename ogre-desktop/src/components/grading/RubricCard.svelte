@@ -13,7 +13,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { listRubrics, createRubric, updateRubric } from '../../lib/rubric-api';
   import type { SavedRubric } from '../../lib/rubric-api';
-  import { criteriaToText, textToCriteria } from '../../lib/rubric-utils';
+  import { criteriaToText, textToCriteria, validateWeights } from '../../lib/rubric-utils';
   import { generateRubricFromText } from '../../lib/discover';
   import { rewriteRubricAI } from '../../lib/rubric-leniency';
   import type { Rubric } from '../../lib/batch-grader';
@@ -36,6 +36,8 @@
     leniency?: number;
     originalRubricText?: string;
     isRewriting?: boolean;
+    weightsValid?: boolean;
+    weightMode?: 'off' | 'category' | 'criterion';
   }
 
   let {
@@ -53,6 +55,8 @@
     leniency = $bindable(50),
     originalRubricText = $bindable(''),
     isRewriting = $bindable(false),
+    weightsValid = $bindable(true),
+    weightMode = $bindable<'off' | 'category' | 'criterion'>('off'),
   }: Props = $props();
 
   // ── Leniency rewrite state ────────────────────────────────────────
@@ -152,6 +156,16 @@
   let generateError = $state('');
 
   let tableRows = $derived(textToCriteria(rubricText));
+
+  let internalWeightsValid = $derived(
+    weightMode === 'off' || tableRows.length === 0
+      ? { valid: true, errors: [] as string[] }
+      : validateWeights(tableRows, weightMode)
+  );
+
+  $effect(() => {
+    weightsValid = internalWeightsValid.valid;
+  });
 
   function updateTableRow(index: number, field: string, value: any) {
     const newRows = [...tableRows];
@@ -362,6 +376,9 @@
             <tr>
               <th>Category</th>
               <th>Criteria</th>
+              {#if weightMode !== 'off'}
+                <th>Weight %</th>
+              {/if}
               <th>Pts</th>
               <th></th>
             </tr>
@@ -371,6 +388,11 @@
               <tr>
                 <td><input type="text" value={row.category ?? ''} oninput={(e) => updateTableRow(i, 'category', (e.target as HTMLInputElement).value)} disabled={isDisabled} /></td>
                 <td><input type="text" value={row.criteria} oninput={(e) => updateTableRow(i, 'criteria', (e.target as HTMLInputElement).value)} disabled={isDisabled} /></td>
+                {#if weightMode === 'category'}
+                  <td><input class="num-input" type="number" value={row.categoryWeight ?? ''} oninput={(e) => updateTableRow(i, 'categoryWeight', parseFloat((e.target as HTMLInputElement).value) || 0)} disabled={isDisabled} /></td>
+                {:else if weightMode === 'criterion'}
+                  <td><input class="num-input" type="number" value={row.criterionWeight ?? ''} oninput={(e) => updateTableRow(i, 'criterionWeight', parseFloat((e.target as HTMLInputElement).value) || 0)} disabled={isDisabled} /></td>
+                {/if}
                 <td><input class="num-input" type="number" value={row.points} oninput={(e) => updateTableRow(i, 'points', parseFloat((e.target as HTMLInputElement).value) || 0)} disabled={isDisabled} /></td>
                 <td><button class="error-text" onclick={() => removeTableRow(i)} disabled={isDisabled} title="Remove row">&times;</button></td>
               </tr>
@@ -396,6 +418,30 @@
     {/if}
 
     {#if showTable}
+      <!-- Weight mode toggle -->
+      <div class="weight-mode-toggle">
+        <span>Weights:</span>
+        <select bind:value={weightMode} disabled={isDisabled}>
+          <option value="off">Off</option>
+          <option value="category">By Category</option>
+          <option value="criterion">By Criterion</option>
+        </select>
+        {#if weightMode !== 'off'}
+          {#if internalWeightsValid.valid}
+            <span class="weight-status valid">✓ 100%</span>
+          {:else}
+            <span class="weight-status invalid">⚠ ≠ 100%</span>
+          {/if}
+        {/if}
+      </div>
+      {#if weightMode !== 'off' && !internalWeightsValid.valid && internalWeightsValid.errors.length > 0}
+        <div class="weight-errors">
+          {#each internalWeightsValid.errors as err}
+            <div>• {err}</div>
+          {/each}
+        </div>
+      {/if}
+
       <!-- Leniency slider -->
       <div class="leniency-row">
         <div class="leniency-header">

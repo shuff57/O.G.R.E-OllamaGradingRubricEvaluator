@@ -36,6 +36,8 @@
     externalProfile = null as SiteProfile | null,
     leniency = 50,
     isRubricRewriting = false,
+    weightsValid = true,
+    weightMode = 'off' as 'off' | 'category' | 'criterion',
     originalRubricText = $bindable(''),
   } = $props();
 
@@ -114,6 +116,7 @@
     {batchGraderHasStudents}
     {leniency}
     {isRubricRewriting}
+    {weightsValid}
     bind:forceRegrade
     bind:zeroNoResponse
     bind:isReviewMode
@@ -134,6 +137,7 @@
     {currentPageUrl}
     {pageLoadedUrl}
     {leniency}
+    {weightMode}
     bind:originalRubricText
     bind:isBatchRunning
     bind:batchPhase
