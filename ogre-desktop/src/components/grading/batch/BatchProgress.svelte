@@ -36,6 +36,7 @@
     model = '',
     activeProfile = null as SiteProfile | null,
     forceRegrade = false,
+    zeroNoResponse = false,
     isReviewMode = false,
     resumeAfter = '',
     currentPageUrl = '',
@@ -413,6 +414,9 @@
         return;
       }
       updateBatchState();
+      if (zeroNoResponse) {
+        await batchGrader.applyZeroToNoResponseStudents();
+      }
 
       versionCount = batchGrader.versionCount;
       currentVersionIndex = 0;

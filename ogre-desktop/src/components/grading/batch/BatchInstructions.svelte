@@ -14,6 +14,7 @@
     isRubricRewriting = false,
     // Bindable — exposed to shell
     forceRegrade = $bindable(false),
+    zeroNoResponse = $bindable(true),
     isReviewMode = $bindable(false),
     anchorText = $bindable(''),
     // Callbacks
@@ -35,6 +36,13 @@
       <span class="toggle-switch-label">Regrade All</span>
       <span class="toggle-switch" class:on={forceRegrade}>
         <input type="checkbox" bind:checked={forceRegrade} disabled={isBatchRunning} />
+        <span class="toggle-thumb"></span>
+      </span>
+    </label>
+    <label class="toggle-switch-row" class:disabled={isBatchRunning}>
+      <span class="toggle-switch-label">Give 0 for No Response</span>
+      <span class="toggle-switch" class:on={zeroNoResponse}>
+        <input type="checkbox" bind:checked={zeroNoResponse} disabled={isBatchRunning} />
         <span class="toggle-thumb"></span>
       </span>
     </label>

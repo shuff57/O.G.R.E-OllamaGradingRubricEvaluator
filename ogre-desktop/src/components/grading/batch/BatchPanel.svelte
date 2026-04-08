@@ -56,6 +56,7 @@
 
   // Instructions → shell → Progress
   let forceRegrade = $state(false);
+  let zeroNoResponse = $state(true);
   let isReviewMode = $state(false);
   let anchorText = $state('');
   let anchorGenerating = $state(false);
@@ -114,6 +115,7 @@
     {leniency}
     {isRubricRewriting}
     bind:forceRegrade
+    bind:zeroNoResponse
     bind:isReviewMode
     bind:anchorText
     onGenerateAnchors={() => progressRef?.handleGenerateAnchors()}
@@ -126,6 +128,7 @@
     {model}
     {activeProfile}
     {forceRegrade}
+    {zeroNoResponse}
     {isReviewMode}
     {resumeAfter}
     {currentPageUrl}
