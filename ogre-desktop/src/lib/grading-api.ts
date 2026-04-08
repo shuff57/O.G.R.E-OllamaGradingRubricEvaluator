@@ -552,7 +552,7 @@ export interface BatchGradingRequest {
   /** Rubric data extracted from the grading page */
   rubric: {
     essayPrompt?: string;
-    checklistItems?: Array<{ category: string; items: string[] }>;
+    checklistItems?: Array<{ category: string; items: string[]; categoryWeight?: number }>;
     rubricItems?: Array<{ category: string; items: string[] }>;
     modelText?: string | null;
     maxScore?: string;
@@ -573,6 +573,8 @@ export interface BatchGradingRequest {
   sweep?: "none" | "compact" | "pairwise" | "auto";
   /** Custom grading instructions (appended to system prompt) */
   customInstructions?: string;
+  /** Weight mode for rubric scoring: 'off', 'category', or 'criterion' */
+  weightMode?: 'off' | 'category' | 'criterion';
 }
 
 /** Handle returned by startBatchGrading for cancellation. */

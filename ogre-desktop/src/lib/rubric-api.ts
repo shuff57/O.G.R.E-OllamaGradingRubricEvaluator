@@ -13,6 +13,9 @@ export interface RubricCriterion {
   description: string;
   points: number;
   question?: number;
+  category?: string;
+  categoryWeight?: number;
+  criterionWeight?: number;
 }
 
 export interface SavedRubric {
@@ -24,6 +27,7 @@ export interface SavedRubric {
   tags: string[];
   createdAt: string;
   updatedAt: string;
+  weightMode?: 'off' | 'category' | 'criterion';
 }
 
 function authHeaders(): Record<string, string> {

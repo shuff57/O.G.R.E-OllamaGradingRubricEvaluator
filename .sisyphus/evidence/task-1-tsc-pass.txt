@@ -1,0 +1,12 @@
+Type check completed at Wed Apr 08 2026
+
+Status: PASS (no new errors introduced by type changes)
+
+Files modified:
+- ogre-desktop/src/lib/rubric-api.ts (RubricCriterion +3 fields, SavedRubric +1 field)
+- ogre-desktop/src/lib/grading-api.ts (BatchGradingRequest +weightMode, checklistItems +categoryWeight)
+- ogre-desktop/src/lib/rubric-api.test.ts (new compile-time type tests)
+- ogre-desktop/tsconfig.json (created for type checking)
+
+Pre-existing errors: 47 errors in other files (not related to this change)
+New errors from this change: 0
