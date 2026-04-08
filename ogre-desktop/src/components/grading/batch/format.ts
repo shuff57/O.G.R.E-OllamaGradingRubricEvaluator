@@ -2,43 +2,62 @@
  * Shared formatting utilities for batch grading sub-components.
  * Pure functions extracted from the original BatchPanel.
  */
-import type { Rubric, VersionGroup } from '../../../lib/batch-grader';
+import type { Rubric, RubricItem, VersionGroup } from '../../../lib/batch-grader';
+import type { RubricCriterion } from '../../../lib/rubric-api';
+import { criteriaToText } from '../../../lib/rubric-utils';
+
+/**
+ * Convert a RubricItem array into RubricCriterion[] for use with criteriaToText().
+ * Each item in each category becomes one criterion with points: 0.
+ */
+function rubricItemsToCriteria(items: RubricItem[]): RubricCriterion[] {
+  const criteria: RubricCriterion[] = [];
+  for (const item of items) {
+    const category = item.category?.trim() || undefined;
+    for (const sub of item.items) {
+      const trimmed = sub.trim();
+      if (!trimmed) continue;
+      criteria.push({ criteria: trimmed, description: '', points: 0, ...(category ? { category } : {}) });
+    }
+  }
+  return criteria;
+}
 
 /**
  * Format rubric for the review textarea.
  *
- * - If a grading checklist or rubric targets exist, hide the question/prompt
- *   (the prompt is already visible on the grading page itself).
- * - If multi-version, show all version prompts above the shared rubric.
- * - If NO checklist/rubric exists, show the prompt as fallback content.
+ * Emits criteriaToText()-compatible output so that RubricCard's textToCriteria()
+ * can parse it back into table rows. Format:
+ *
+ *   ## Category Name
+ *   Criterion description (0pts)
+ *   ...
+ *
+ * The --- Model Response --- block is appended after the criteria block so it
+ * is preserved for human review (it is also stored in extractedRubric.modelText).
+ *
+ * If NO checklist/rubric criteria exist, falls back to a plain-text message.
  */
 export function formatRubricForDisplay(rubric: Rubric, _allVersions?: VersionGroup[]): string {
-  const lines: string[] = [];
+  // Merge checklist and rubric target items into a single flat criteria list.
+  // Checklist items come first, then rubric targets.
+  const criteria: RubricCriterion[] = [
+    ...rubricItemsToCriteria(rubric.checklistItems),
+    ...rubricItemsToCriteria(rubric.rubricItems),
+  ];
 
-  // Question/prompt is passed to the grading server via essayPrompt
-  // but not shown in the editable rubric textarea — teacher doesn't need to see/edit it.
+  if (criteria.length === 0) {
+    return '(No rubric data found on page)';
+  }
 
-  if (rubric.checklistItems.length > 0) {
-    lines.push('--- Grading Checklist ---');
-    for (const item of rubric.checklistItems) {
-      if (item.category) lines.push(`[${item.category}]`);
-      for (const sub of item.items) lines.push(`  - ${sub}`);
-    }
-    lines.push('');
-  }
-  if (rubric.rubricItems.length > 0) {
-    lines.push('--- Rubric Targets ---');
-    for (const item of rubric.rubricItems) {
-      if (item.category) lines.push(`[${item.category}]`);
-      for (const sub of item.items) lines.push(`  - ${sub}`);
-    }
-    lines.push('');
-  }
+  let text = criteriaToText(criteria);
+
+  // Append model response for human readability; already stored in extractedRubric.modelText
   if (rubric.modelText) {
-    lines.push('--- Model Response ---');
-    lines.push(rubric.modelText);
+    text += '\n\n--- Model Response ---\n' + rubric.modelText;
   }
-  return lines.join('\n').trim() || '(No rubric data found on page)';
+
+  return text;
 }
 
 /**
