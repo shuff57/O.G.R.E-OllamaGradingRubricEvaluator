@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { criteriaToText, textToCriteria, hasUnsavedChanges } from "./rubric-utils";
+import { criteriaToText, textToCriteria, hasUnsavedChanges, validateWeights } from "./rubric-utils";
 import type { RubricCriterion } from "./rubric-api";
 
 // ---------------------------------------------------------------------------
@@ -443,5 +443,180 @@ describe("round-trip and edge cases", () => {
     ];
     const identicalText = criteriaToText(original);
     expect(hasUnsavedChanges(identicalText, original)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateWeights (Task 3)
+// ---------------------------------------------------------------------------
+
+describe("validateWeights", () => {
+  // ---- category mode ----
+
+  it("returns valid:true for empty criteria array (category mode)", () => {
+    const result = validateWeights([], "category");
+    expect(result).toEqual({ valid: true, errors: [] });
+  });
+
+  it("returns valid:true when category weights sum to exactly 100 (category mode)", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "Writing", description: "", points: 10, category: "Writing", categoryWeight: 60 },
+      { criteria: "Math", description: "", points: 10, category: "Math", categoryWeight: 40 },
+    ];
+    const result = validateWeights(criteria, "category");
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+    expect(result.sum).toBeCloseTo(100);
+  });
+
+  it("returns valid:true when category weights sum to 100.4 (within tolerance)", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "A", description: "", points: 5, category: "A", categoryWeight: 50.2 },
+      { criteria: "B", description: "", points: 5, category: "B", categoryWeight: 50.2 },
+    ];
+    const result = validateWeights(criteria, "category");
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it("returns valid:false with error when category weights sum to 85 (category mode)", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "Writing", description: "", points: 10, category: "Writing", categoryWeight: 50 },
+      { criteria: "Math", description: "", points: 10, category: "Math", categoryWeight: 35 },
+    ];
+    const result = validateWeights(criteria, "category");
+    expect(result.valid).toBe(false);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain("85");
+    expect(result.sum).toBeCloseTo(85);
+  });
+
+  it("returns valid:false when no categoryWeight fields are set (category mode)", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "Writing", description: "", points: 10, category: "Writing" },
+      { criteria: "Math", description: "", points: 10, category: "Math" },
+    ];
+    const result = validateWeights(criteria, "category");
+    expect(result.valid).toBe(false);
+    expect(result.errors).toHaveLength(1);
+    expect(result.sum).toBeCloseTo(0);
+  });
+
+  it("handles floating point: 33.3 + 33.3 + 33.4 = 100 (category mode)", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "A1", description: "", points: 5, category: "A", categoryWeight: 33.3 },
+      { criteria: "A2", description: "", points: 5, category: "A", categoryWeight: 33.3 },
+      { criteria: "B1", description: "", points: 5, category: "B", categoryWeight: 33.3 },
+      { criteria: "C1", description: "", points: 5, category: "C", categoryWeight: 33.4 },
+    ];
+    const result = validateWeights(criteria, "category");
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it("sums ONE categoryWeight per unique category (not per criterion) (category mode)", () => {
+    // Writing has 2 criteria both with categoryWeight 60, Math has 1 with 40
+    // Correct sum = 60 + 40 = 100, NOT 60 + 60 + 40 = 160
+    const criteria: RubricCriterion[] = [
+      { criteria: "W1", description: "", points: 5, category: "Writing", categoryWeight: 60 },
+      { criteria: "W2", description: "", points: 5, category: "Writing", categoryWeight: 60 },
+      { criteria: "M1", description: "", points: 5, category: "Math", categoryWeight: 40 },
+    ];
+    const result = validateWeights(criteria, "category");
+    expect(result.valid).toBe(true);
+    expect(result.sum).toBeCloseTo(100);
+  });
+
+  it("returns valid:true for empty criteria array (criterion mode)", () => {
+    const result = validateWeights([], "criterion");
+    expect(result).toEqual({ valid: true, errors: [] });
+  });
+
+  // ---- criterion mode ----
+
+  it("returns valid:true when all category groups sum to 100 (criterion mode)", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "W1", description: "", points: 5, category: "Writing", criterionWeight: 60 },
+      { criteria: "W2", description: "", points: 5, category: "Writing", criterionWeight: 40 },
+      { criteria: "M1", description: "", points: 5, category: "Math", criterionWeight: 70 },
+      { criteria: "M2", description: "", points: 5, category: "Math", criterionWeight: 30 },
+    ];
+    const result = validateWeights(criteria, "criterion");
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it("returns valid:false when one category group sums to 90 (criterion mode)", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "W1", description: "", points: 5, category: "Writing", criterionWeight: 60 },
+      { criteria: "W2", description: "", points: 5, category: "Writing", criterionWeight: 30 },
+    ];
+    const result = validateWeights(criteria, "criterion");
+    expect(result.valid).toBe(false);
+    expect(result.errors).toHaveLength(1);
+  });
+
+  it("names the failing category in the error message (criterion mode)", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "W1", description: "", points: 5, category: "Writing", criterionWeight: 60 },
+      { criteria: "W2", description: "", points: 5, category: "Writing", criterionWeight: 30 },
+    ];
+    const result = validateWeights(criteria, "criterion");
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain("Writing");
+  });
+
+  it("returns valid:true for single criterion per category at 100% (criterion mode)", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "W1", description: "", points: 5, category: "Writing", criterionWeight: 100 },
+      { criteria: "M1", description: "", points: 5, category: "Math", criterionWeight: 100 },
+    ];
+    const result = validateWeights(criteria, "criterion");
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it("returns valid:false if any category fails even when others pass (criterion mode)", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "W1", description: "", points: 5, category: "Writing", criterionWeight: 60 },
+      { criteria: "W2", description: "", points: 5, category: "Writing", criterionWeight: 40 },
+      // Math group sums to only 90
+      { criteria: "M1", description: "", points: 5, category: "Math", criterionWeight: 50 },
+      { criteria: "M2", description: "", points: 5, category: "Math", criterionWeight: 40 },
+    ];
+    const result = validateWeights(criteria, "criterion");
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("Math"))).toBe(true);
+  });
+
+  it("includes the actual sum % in category mode error message", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "A", description: "", points: 5, category: "A", categoryWeight: 40 },
+      { criteria: "B", description: "", points: 5, category: "B", categoryWeight: 30 },
+    ];
+    const result = validateWeights(criteria, "category");
+    expect(result.valid).toBe(false);
+    // Error must mention the sum (70)
+    expect(result.errors[0]).toMatch(/70/);
+  });
+
+  it("handles criteria with undefined criterionWeight as 0 in criterion mode", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "W1", description: "", points: 5, category: "Writing" },
+      { criteria: "W2", description: "", points: 5, category: "Writing" },
+    ];
+    const result = validateWeights(criteria, "criterion");
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain("Writing");
+  });
+
+  it("does not mutate the input criteria array", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "A", description: "", points: 5, category: "A", categoryWeight: 100 },
+    ];
+    const original = JSON.stringify(criteria);
+    validateWeights(criteria, "category");
+    validateWeights(criteria, "criterion");
+    expect(JSON.stringify(criteria)).toBe(original);
   });
 });

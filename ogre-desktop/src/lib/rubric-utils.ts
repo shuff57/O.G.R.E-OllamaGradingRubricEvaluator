@@ -129,3 +129,89 @@ export function hasUnsavedChanges(
 ): boolean {
   return text.trim() !== criteriaToText(original).trim();
 }
+
+/**
+ * Validates that weight values are properly configured.
+ *
+ * Category mode: sums ONE `categoryWeight` per unique category group
+ * (taking the first criterion's value per group). Valid if total is 99.5–100.5.
+ *
+ * Criterion mode: groups criteria by `category`, sums `criterionWeight` within
+ * each group. Valid only if ALL groups sum to 99.5–100.5.
+ *
+ * An empty criteria array is always valid.
+ */
+export function validateWeights(
+  criteria: RubricCriterion[],
+  mode: "category" | "criterion"
+): { valid: boolean; sum?: number; errors: string[] } {
+  if (criteria.length === 0) {
+    return { valid: true, errors: [] };
+  }
+
+  const TOLERANCE_LOW = 99.5;
+  const TOLERANCE_HIGH = 100.5;
+
+  if (mode === "category") {
+    // Build a map: category key → first criterion's categoryWeight
+    const seen = new Map<string | undefined, number>();
+    for (const c of criteria) {
+      const key = c.category;
+      if (!seen.has(key)) {
+        seen.set(key, c.categoryWeight ?? 0);
+      }
+    }
+
+    const sum = Array.from(seen.values()).reduce((acc, w) => acc + w, 0);
+    const roundedSum = Math.round(sum * 10) / 10;
+
+    if (sum >= TOLERANCE_LOW && sum <= TOLERANCE_HIGH) {
+      return { valid: true, sum: roundedSum, errors: [] };
+    }
+
+    return {
+      valid: false,
+      sum: roundedSum,
+      errors: [
+        `Category weights sum to ${roundedSum}%, must be 100%`,
+      ],
+    };
+  }
+
+  // criterion mode
+  const groups = new Map<string | undefined, RubricCriterion[]>();
+  for (const c of criteria) {
+    const key = c.category;
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key)!.push(c);
+  }
+
+  const errors: string[] = [];
+  let firstFailingSum: number | undefined;
+
+  for (const [cat, group] of groups) {
+    const groupSum = group.reduce(
+      (acc, c) => acc + (c.criterionWeight ?? 0),
+      0
+    );
+    const roundedGroupSum = Math.round(groupSum * 10) / 10;
+
+    if (groupSum < TOLERANCE_LOW || groupSum > TOLERANCE_HIGH) {
+      const catLabel = cat ?? "(uncategorized)";
+      errors.push(
+        `Category '${catLabel}' criteria weights sum to ${roundedGroupSum}%, must be 100%`
+      );
+      if (firstFailingSum === undefined) {
+        firstFailingSum = roundedGroupSum;
+      }
+    }
+  }
+
+  if (errors.length > 0) {
+    return { valid: false, sum: firstFailingSum, errors };
+  }
+
+  return { valid: true, errors: [] };
+}

@@ -31,3 +31,27 @@
 - 47 pre-existing errors in other files (not related to this change)
 - All changes committed with conventional commit message
 
+
+## Task 3: validateWeights() pure utility
+
+### Implementation Pattern
+- Map keyed by category string (or undefined) for grouping
+- Category mode: record first categoryWeight per unique category key; sum the values
+- Criterion mode: group by category, sum criterionWeight per group; error if any group outside 99.5-100.5
+- Tolerance: TOLERANCE_LOW = 99.5, TOLERANCE_HIGH = 100.5
+- Math.round(sum * 10) / 10 for display-safe rounding in error messages
+
+### Key Gotchas
+- Category mode must take ONE weight per category (not per criterion). Multiple criteria in the same category share the same categoryWeight value; summing all of them would multiply-count the category.
+- Return { valid: true, errors: [] } (no sum field) for empty arrays.
+- undefined category is a valid group key in Map - works correctly by design.
+- sum field on valid results: set for category mode, unset for criterion mode when all pass.
+
+### TDD Flow
+- Write 16 tests first, all fail with "validateWeights is not a function"
+- Implement, all 16 pass, plus 56 pre-existing = 72 total
+- Zero new TSC errors (47 pre-existing in unrelated files)
+
+### File Size After Task 3
+- rubric-utils.ts: ~211 lines
+- rubric-utils.test.ts: ~621 lines
