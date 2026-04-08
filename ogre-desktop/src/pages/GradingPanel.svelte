@@ -461,7 +461,6 @@
         {/if}
         <ProviderSelector bind:provider={activeProvider} bind:model={activeModel} />
         <SkillPicker />
-        {#if graderSubMode !== 'batch' || batchPhase === 'review' || batchPhase === 'grading' || batchPhase === 'done'}
         <RubricCard
           bind:selectedRubric
           bind:rubricText
@@ -480,7 +479,6 @@
           showActions={graderSubMode === 'batch'}
           showTable={true}
         />
-        {/if}
         {#if graderSubMode === 'single'}
           <StudentWorkCard
             onScreenshot={handleScreenshot}

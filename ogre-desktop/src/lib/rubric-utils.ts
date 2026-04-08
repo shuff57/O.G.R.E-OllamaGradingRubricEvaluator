@@ -18,6 +18,17 @@
  * - Description is optional
  * - Category header lines start with "## " and apply to all subsequent criteria
  * - Lines that can't be parsed are silently skipped (except ## headers)
+ *
+ * Checkbox format (auto-detected):
+ *   Category Name\t☐ Criterion description
+ *   ☐ Another criterion in same category
+ *   Next Category\t☐ First criterion of next category
+ *
+ * - Detected when text contains a tab followed by ☐
+ * - Each ☐ item becomes one RubricCriterion with points: 0
+ * - Category comes from text before the tab on the same line;
+ *   continuation ☐ lines (no tab) inherit the last seen category
+ * - ☐ prefix is stripped from the criterion name
  */
 
 import type { RubricCriterion } from "./rubric-api";
@@ -66,7 +77,78 @@ export function criteriaToText(criteria: RubricCriterion[]): string {
  * - criterionWeight is set when ", Y%" is present inside the pts parens
  * - category is set when a "## Category" header precedes the criterion
  */
+/**
+ * Returns true when the text looks like a checkbox rubric.
+ * Detected by the presence of a tab character immediately followed by the ☐ symbol.
+ */
+function isCheckboxFormat(text: string): boolean {
+  return /\t☐/.test(text);
+}
+
+/**
+ * Parse a checkbox-format rubric string into RubricCriterion[].
+ *
+ * Format:
+ *   Category Name\t☐ Criterion description
+ *   ☐ Another criterion in same category
+ *   Next Category\t☐ First criterion of next category
+ *
+ * Each ☐ item becomes one criterion with points: 0.
+ * The ☐ prefix (and any leading/trailing whitespace) is stripped from the name.
+ */
+function parseCheckboxFormat(text: string): RubricCriterion[] {
+  const lines = text.split("\n");
+  const results: RubricCriterion[] = [];
+  let currentCategory: string | undefined = undefined;
+
+  // Matches a tab-separated line: "Category\t☐ Criterion text"
+  const TAB_LINE_RE = /^(.+?)\t☐\s*(.+)$/;
+  // Matches a standalone checkbox line: "☐ Criterion text"
+  const CHECKBOX_RE = /^☐\s*(.+)$/;
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+
+    const tabMatch = TAB_LINE_RE.exec(line);
+    if (tabMatch) {
+      currentCategory = tabMatch[1].trim();
+      const criteriaName = tabMatch[2].trim();
+      if (!criteriaName) continue;
+      const criterion: RubricCriterion = {
+        criteria: criteriaName,
+        description: "",
+        points: 0,
+      };
+      if (currentCategory) criterion.category = currentCategory;
+      results.push(criterion);
+      continue;
+    }
+
+    const checkboxMatch = CHECKBOX_RE.exec(line);
+    if (checkboxMatch) {
+      const criteriaName = checkboxMatch[1].trim();
+      if (!criteriaName) continue;
+      const criterion: RubricCriterion = {
+        criteria: criteriaName,
+        description: "",
+        points: 0,
+      };
+      if (currentCategory !== undefined) criterion.category = currentCategory;
+      results.push(criterion);
+    }
+    // Lines with no ☐ and no tab-checkbox are silently skipped
+  }
+
+  return results;
+}
+
 export function textToCriteria(text: string): RubricCriterion[] {
+  // Auto-detect checkbox format and delegate to the specialized parser
+  if (isCheckboxFormat(text)) {
+    return parseCheckboxFormat(text);
+  }
+
   const lines = text.split("\n");
   const results: RubricCriterion[] = [];
 

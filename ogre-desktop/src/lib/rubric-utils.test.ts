@@ -620,3 +620,97 @@ describe("validateWeights", () => {
     expect(JSON.stringify(criteria)).toBe(original);
   });
 });
+
+// ---------------------------------------------------------------------------
+// textToCriteria — checkbox format parsing
+// ---------------------------------------------------------------------------
+
+describe("textToCriteria — checkbox format", () => {
+  it("parses a single category line with one checkbox criterion", () => {
+    const text = "CLT Statement\t☐ States sampling distribution of x̄ approaches normality";
+    const result = textToCriteria(text);
+    expect(result).toEqual([
+      {
+        criteria: "States sampling distribution of x̄ approaches normality",
+        description: "",
+        points: 0,
+        category: "CLT Statement",
+      },
+    ]);
+  });
+
+  it("parses multiple checkbox criteria in the same category (continuation lines)", () => {
+    const text = [
+      "CLT Statement\t☐ States sampling distribution of x̄ approaches normality",
+      "☐ Mentions condition: sufficiently large n",
+    ].join("\n");
+    const result = textToCriteria(text);
+    expect(result).toHaveLength(2);
+    expect(result[0].category).toBe("CLT Statement");
+    expect(result[0].criteria).toBe("States sampling distribution of x̄ approaches normality");
+    expect(result[1].category).toBe("CLT Statement");
+    expect(result[1].criteria).toBe("Mentions condition: sufficiently large n");
+    expect(result[1].points).toBe(0);
+    expect(result[1].description).toBe("");
+  });
+
+  it("parses multiple categories with their criteria", () => {
+    const text = [
+      "CLT Statement\t☐ States sampling distribution of x̄ approaches normality",
+      "☐ Mentions condition: sufficiently large n",
+      "Standard Error\t☐ Provides formula SE = σ/√n",
+      "☐ Explains SE decreases as n increases",
+      "Margin of Error Connection\t☐ Provides MOE formula: MOE = z* × SE",
+    ].join("\n");
+    const result = textToCriteria(text);
+    expect(result).toHaveLength(5);
+    expect(result[0].category).toBe("CLT Statement");
+    expect(result[1].category).toBe("CLT Statement");
+    expect(result[2].category).toBe("Standard Error");
+    expect(result[2].criteria).toBe("Provides formula SE = σ/√n");
+    expect(result[3].category).toBe("Standard Error");
+    expect(result[4].category).toBe("Margin of Error Connection");
+    expect(result[4].criteria).toBe("Provides MOE formula: MOE = z* × SE");
+  });
+
+  it("all parsed criteria have points: 0 and description: ''", () => {
+    const text = "Category A\t☐ Criterion one\n☐ Criterion two";
+    const result = textToCriteria(text);
+    for (const c of result) {
+      expect(c.points).toBe(0);
+      expect(c.description).toBe("");
+    }
+  });
+
+  it("skips blank lines", () => {
+    const text = "Category A\t☐ First\n\n☐ Second\n";
+    const result = textToCriteria(text);
+    expect(result).toHaveLength(2);
+  });
+
+  it("handles criterion text that itself contains colons", () => {
+    const text = "Standard Error\t☐ Provides formula SE = σ/√n";
+    const result = textToCriteria(text);
+    expect(result[0].criteria).toBe("Provides formula SE = σ/√n");
+  });
+
+  it("does not fall through to standard parser when checkbox format detected", () => {
+    // A mixed string that has a tab+☐ pattern — should use checkbox path, not LINE_RE
+    const text = "Category\t☐ Some criterion\nWriting Quality (10pts): Clear grammar";
+    const result = textToCriteria(text);
+    // Writing Quality line has no ☐ so it's skipped; only the checkbox item parsed
+    expect(result).toHaveLength(1);
+    expect(result[0].criteria).toBe("Some criterion");
+  });
+
+  it("returns empty array for empty string (checkbox path not triggered)", () => {
+    expect(textToCriteria("")).toEqual([]);
+  });
+
+  it("strips extra whitespace from category and criteria names", () => {
+    const text = "  My Category  \t☐  Criterion with spaces  ";
+    const result = textToCriteria(text);
+    expect(result[0].category).toBe("My Category");
+    expect(result[0].criteria).toBe("Criterion with spaces");
+  });
+});
