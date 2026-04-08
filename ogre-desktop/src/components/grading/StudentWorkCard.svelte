@@ -26,6 +26,8 @@
     isCapturing?: boolean;
     /** Error message from a failed screenshot capture. */
     captureError?: string;
+    /** Optional student name — shown in result heading and prepended to AI prompt. */
+    studentName?: string;
   }
 
   let {
@@ -37,6 +39,7 @@
     onRemoveScreenshot,
     isCapturing = false,
     captureError = '',
+    studentName = '',
   }: Props = $props();
 
   // State
@@ -88,8 +91,11 @@
     lastGradeResult = null;
 
     try {
+      const workWithName = studentName
+        ? `Student: ${studentName}\n\n${studentWork.trim()}`
+        : studentWork.trim();
       const result = await gradeStudent({
-        studentWork: studentWork.trim(),
+        studentWork: workWithName,
         rubric: rubric || { maxScore: '10' },
         provider: provider || undefined,
         model: model || undefined,
@@ -236,6 +242,9 @@
           <span class="loading-text">Analyzing student work...</span>
         </div>
       {:else}
+        {#if studentName}
+          <p class="student-name-label"><strong>{studentName}</strong></p>
+        {/if}
         <ResponseRenderer content={aiResponse} />
       {/if}
     </div>
@@ -528,5 +537,11 @@
 
   .screenshot-thumb:hover .thumb-remove {
     opacity: 1;
+  }
+
+  .student-name-label {
+    margin: 0 0 0.4rem 0;
+    font-size: 1rem;
+    color: var(--color-text-primary);
   }
 </style>

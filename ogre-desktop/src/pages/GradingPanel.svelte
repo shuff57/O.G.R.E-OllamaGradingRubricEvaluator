@@ -29,7 +29,8 @@
   } = $props();
 
   let activeMode = $state('grader'); // 'grader' | 'agent' | 'discovery'
-  let graderSubMode = $state('single'); // 'single' | 'batch'
+  let graderSubMode = $state('batch'); // 'single' | 'batch'
+  let singleStudentName = $state('');
   let showScreenshotOverlay = $state(false);
   let batchRunning = $state(false);
   let refreshKey = $state(0);
@@ -441,23 +442,23 @@
   {#if !isCollapsed}
     <div class="panel-content">
       {#if activeMode === 'grader'}
-        <div class="sub-mode-toggle" class:disabled={batchRunning}>
-          <div class="toggle-track">
-            <div class="toggle-slider" class:batch={graderSubMode === 'batch'}></div>
-            <button
-              class="toggle-option"
-              class:active={graderSubMode === 'single'}
-              onclick={() => { if (!batchRunning) graderSubMode = 'single'; }}
-              disabled={batchRunning}
-            >Single</button>
-            <button
-              class="toggle-option"
-              class:active={graderSubMode === 'batch'}
-              onclick={() => { if (!batchRunning) graderSubMode = 'batch'; }}
-              disabled={batchRunning}
-            >Batch</button>
-          </div>
-        </div>
+        <label class="single-mode-toggle" class:disabled={batchRunning}>
+          <input
+            type="checkbox"
+            checked={graderSubMode === 'single'}
+            onchange={(e) => { if (!batchRunning) graderSubMode = e.currentTarget.checked ? 'single' : 'batch'; }}
+            disabled={batchRunning}
+          />
+          Single student mode
+        </label>
+        {#if graderSubMode === 'single'}
+          <input
+            type="text"
+            class="student-name-input"
+            placeholder="Student name"
+            bind:value={singleStudentName}
+          />
+        {/if}
         <ProviderSelector bind:provider={activeProvider} bind:model={activeModel} />
         <SkillPicker />
         {#if graderSubMode !== 'batch' || batchPhase === 'review' || batchPhase === 'grading' || batchPhase === 'done'}
@@ -489,6 +490,7 @@
             onRemoveScreenshot={handleRemoveScreenshot}
             {isCapturing}
             {captureError}
+            studentName={singleStudentName}
           />
         {:else}
           <BatchPanel
@@ -644,65 +646,38 @@
     background-color: rgba(88, 166, 255, 0.3);
   }
   
-  /* ── Sub-Mode Toggle (Single / Batch) ── */
-  .sub-mode-toggle {
+  /* ── Single Student Mode Toggle ── */
+  .single-mode-toggle {
     display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+    user-select: none;
   }
 
-  .sub-mode-toggle.disabled {
+  .single-mode-toggle.disabled {
     opacity: 0.4;
     pointer-events: none;
   }
 
-  .toggle-track {
-    position: relative;
-    display: flex;
-    width: 100%;
-    background: var(--color-bg-main, #1a1a2e);
-    border: 1px solid var(--color-border, #444);
-    border-radius: var(--radius-md, 8px);
-    padding: 3px;
-  }
-
-  .toggle-slider {
-    position: absolute;
-    top: 3px;
-    left: 3px;
-    width: calc(50% - 3px);
-    height: calc(100% - 6px);
-    background: var(--color-primary, #6366f1);
-    border-radius: calc(var(--radius-md, 8px) - 2px);
-    transition: transform 0.2s ease;
-    z-index: 0;
-  }
-
-  .toggle-slider.batch {
-    transform: translateX(100%);
-  }
-
-  .toggle-option {
-    position: relative;
-    z-index: 1;
-    flex: 1;
-    background: none;
-    border: none;
-    padding: 6px 0;
-    font-size: 0.85rem;
-    font-weight: 600;
+  .student-name-input {
+    margin-top: 0.4rem;
+    padding: 0.3rem 0.5rem;
+    border-radius: 4px;
+    border: 1px solid var(--color-border, #ccc);
+    background: var(--color-bg-main);
+    color: var(--color-text-primary);
+    font-size: 0.9rem;
     font-family: var(--font-body);
-    color: var(--color-text-secondary, #999);
-    cursor: pointer;
-    user-select: none;
-    transition: color 0.2s ease;
-    text-align: center;
+    width: 100%;
+    max-width: 260px;
   }
 
-  .toggle-option.active {
-    color: #fff;
-  }
-
-  .toggle-option:disabled {
-    cursor: not-allowed;
+  .student-name-input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px var(--color-primary-bg);
   }
 
   .global-profile-row {
