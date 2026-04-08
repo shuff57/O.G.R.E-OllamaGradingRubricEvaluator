@@ -332,3 +332,76 @@ describe('BatchGrader - Log Accumulation', () => {
     });
   });
 });
+
+describe('BatchGrader - Filter Logic', () => {
+  let grader: BatchGrader;
+  const mockProfile = DEFAULT_MYOPENMATH_PROFILE;
+
+  beforeEach(() => {
+    grader = new BatchGrader();
+  });
+
+  it('should skip empty-response students and add them to noResponseStudents', async () => {
+    const { evalScriptJSON } = await import('./browser');
+    const students = [
+      { index: 0, name: 'Student 1', currentScore: '', hasFeedback: false, response: '  ' },
+    ];
+    vi.mocked(evalScriptJSON).mockImplementation((script: string) => {
+      if (script.endsWith('.length')) return Promise.resolve(students.length);
+      if (script.includes('scrollIntoView')) {
+        const match = script.match(/\)\[(\d+)\]/);
+        const idx = match ? parseInt(match[1]) : 0;
+        return Promise.resolve(students[idx] ?? null);
+      }
+      return Promise.resolve(null);
+    });
+
+    await grader.start(mockProfile);
+
+    expect(grader.noResponseStudents.length).toBe(1);
+    expect(grader.studentsToGrade.length).toBe(0);
+    const skipped = grader.getLog().filter(e => e.status === 'skipped');
+    expect(skipped[0].feedback).toBe('No response submitted');
+  });
+
+  it('should include score-0 students with a response in studentsToGrade', async () => {
+    const { evalScriptJSON } = await import('./browser');
+    const students = [
+      { index: 0, name: 'Student 1', currentScore: '0', hasFeedback: false, response: 'My answer' },
+    ];
+    vi.mocked(evalScriptJSON).mockImplementation((script: string) => {
+      if (script.endsWith('.length')) return Promise.resolve(students.length);
+      if (script.includes('scrollIntoView')) {
+        const match = script.match(/\)\[(\d+)\]/);
+        const idx = match ? parseInt(match[1]) : 0;
+        return Promise.resolve(students[idx] ?? null);
+      }
+      return Promise.resolve(null);
+    });
+
+    await grader.start(mockProfile);
+
+    expect(grader.studentsToGrade.length).toBe(1);
+  });
+
+  it('should include all students with responses when forceRegrade is true', async () => {
+    const { evalScriptJSON } = await import('./browser');
+    const students = [
+      { index: 0, name: 'Student 1', currentScore: '8', hasFeedback: true, response: 'answer' },
+      { index: 1, name: 'Student 2', currentScore: '0', hasFeedback: false, response: 'answer' },
+    ];
+    vi.mocked(evalScriptJSON).mockImplementation((script: string) => {
+      if (script.endsWith('.length')) return Promise.resolve(students.length);
+      if (script.includes('scrollIntoView')) {
+        const match = script.match(/\)\[(\d+)\]/);
+        const idx = match ? parseInt(match[1]) : 0;
+        return Promise.resolve(students[idx] ?? null);
+      }
+      return Promise.resolve(null);
+    });
+
+    await grader.start(mockProfile, null, true);
+
+    expect(grader.studentsToGrade.length).toBe(2);
+  });
+});
