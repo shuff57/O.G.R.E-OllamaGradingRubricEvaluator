@@ -714,3 +714,76 @@ describe("textToCriteria — checkbox format", () => {
     expect(result[0].criteria).toBe("Criterion with spaces");
   });
 });
+
+// ---------------------------------------------------------------------------
+// textToCriteria — indented-category format parsing
+// ---------------------------------------------------------------------------
+
+describe("textToCriteria — indented-category format", () => {
+  it("parses a single category with one indented criterion", () => {
+    const text = "Statistical Decision\t\n Compare the p-value to α";
+    const result = textToCriteria(text);
+    expect(result).toHaveLength(1);
+    expect(result[0].category).toBe("Statistical Decision");
+    expect(result[0].criteria).toBe("Compare the p-value to α");
+    expect(result[0].points).toBe(0);
+    expect(result[0].description).toBe("");
+  });
+
+  it("parses multiple criteria under one category", () => {
+    const text = "Statistical Decision\t\n Compare the p-value to α and state whether you reject or fail to reject H₀.\n State whether the result is statistically significant.";
+    const result = textToCriteria(text);
+    expect(result).toHaveLength(2);
+    expect(result[0].category).toBe("Statistical Decision");
+    expect(result[0].criteria).toBe("Compare the p-value to α and state whether you reject or fail to reject H₀.");
+    expect(result[1].category).toBe("Statistical Decision");
+    expect(result[1].criteria).toBe("State whether the result is statistically significant.");
+  });
+
+  it("parses multiple categories with their indented criteria", () => {
+    const text = [
+      "Statistical Decision\t",
+      " Compare the p-value to α and state whether you reject or fail to reject H₀.",
+      " State whether the result is statistically significant.",
+      "Conclusion in Context\t",
+      " Explain what the test decision means for the specific claim in this real-world situation.",
+      "Interpretation of Evidence\t",
+      " Describe what the evidence tells us and what the researcher should take away from the result.",
+    ].join("\n");
+    const result = textToCriteria(text);
+    expect(result).toHaveLength(4);
+    expect(result[0].category).toBe("Statistical Decision");
+    expect(result[1].category).toBe("Statistical Decision");
+    expect(result[2].category).toBe("Conclusion in Context");
+    expect(result[3].category).toBe("Interpretation of Evidence");
+  });
+
+  it("all parsed criteria have points: 0 and description: ''", () => {
+    const text = "Category\t\n Criterion one\n Criterion two";
+    const result = textToCriteria(text);
+    for (const c of result) {
+      expect(c.points).toBe(0);
+      expect(c.description).toBe("");
+    }
+  });
+
+  it("skips blank lines", () => {
+    const text = "Category\t\n\n Criterion one\n\n Criterion two\n";
+    const result = textToCriteria(text);
+    expect(result).toHaveLength(2);
+  });
+
+  it("handles criteria containing colons, equals signs, and special chars", () => {
+    const text = "Standard Error\t\n Provides formula SE = σ/√n";
+    const result = textToCriteria(text);
+    expect(result[0].criteria).toBe("Provides formula SE = σ/√n");
+  });
+
+  it("does not trigger when text has no trailing-tab category lines", () => {
+    // Standard format — should NOT use the indented path
+    const text = "Writing Quality (10pts): Clear grammar";
+    const result = textToCriteria(text);
+    expect(result[0].criteria).toBe("Writing Quality");
+    expect(result[0].points).toBe(10);
+  });
+});

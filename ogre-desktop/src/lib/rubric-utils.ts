@@ -86,6 +86,74 @@ function isCheckboxFormat(text: string): boolean {
 }
 
 /**
+ * Returns true when the text looks like an indented-category rubric.
+ *
+ * Format:
+ *   Category Name\t          ← line ending with a bare tab, no criteria on same line
+ *    Criterion text           ← criteria lines start with a leading space or tab
+ *
+ * Detected by a line that consists entirely of non-whitespace text followed by
+ * a trailing tab (and nothing after the tab), AND at least one subsequent line
+ * that starts with whitespace.
+ */
+function isIndentedCategoryFormat(text: string): boolean {
+  return /^[^\t\n]+\t\s*$/m.test(text) && /^[ \t]+\S/m.test(text);
+}
+
+/**
+ * Parse an indented-category rubric into RubricCriterion[].
+ *
+ * Format:
+ *   Category Name\t
+ *    Criterion description one
+ *    Criterion description two
+ *   Next Category\t
+ *    Criterion description
+ *
+ * - Category lines end with a trailing tab and have no content after it
+ * - Criteria lines start with at least one space or tab
+ * - Each criterion line becomes one RubricCriterion with points: 0
+ * - Leading/trailing whitespace is stripped from both category and criteria names
+ */
+function parseIndentedCategoryFormat(text: string): RubricCriterion[] {
+  const lines = text.split("\n");
+  const results: RubricCriterion[] = [];
+  let currentCategory: string | undefined = undefined;
+
+  // Category header: non-whitespace text followed by a trailing tab (nothing after)
+  const CATEGORY_HDR_RE = /^([^\t]+)\t\s*$/;
+  // Criterion line: starts with at least one space or tab
+  const INDENTED_RE = /^[ \t]+(\S.*\S|\S)$/;
+
+  for (const raw of lines) {
+    // Do NOT trim here — leading whitespace is how we distinguish criteria from headers
+    if (!raw.trim()) continue;
+
+    const catMatch = CATEGORY_HDR_RE.exec(raw);
+    if (catMatch) {
+      currentCategory = catMatch[1].trim();
+      continue;
+    }
+
+    const indentMatch = INDENTED_RE.exec(raw);
+    if (indentMatch) {
+      const criteriaName = indentMatch[1].trim();
+      if (!criteriaName) continue;
+      const criterion: RubricCriterion = {
+        criteria: criteriaName,
+        description: "",
+        points: 0,
+      };
+      if (currentCategory !== undefined) criterion.category = currentCategory;
+      results.push(criterion);
+    }
+    // Non-indented, non-category lines are silently skipped
+  }
+
+  return results;
+}
+
+/**
  * Parse a checkbox-format rubric string into RubricCriterion[].
  *
  * Format:
@@ -147,6 +215,11 @@ export function textToCriteria(text: string): RubricCriterion[] {
   // Auto-detect checkbox format and delegate to the specialized parser
   if (isCheckboxFormat(text)) {
     return parseCheckboxFormat(text);
+  }
+
+  // Auto-detect indented-category format (Category\t\n  Criterion)
+  if (isIndentedCategoryFormat(text)) {
+    return parseIndentedCategoryFormat(text);
   }
 
   const lines = text.split("\n");
