@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { listRubrics, createRubric, updateRubric, deleteRubric } from '../lib/rubric-api';
   import type { SavedRubric, RubricCriterion } from '../lib/rubric-api';
+  import { validateWeights } from '../lib/rubric-utils';
   import RubricImport from '../components/grading/RubricImport.svelte';
   import { generateRubricFromText } from '../lib/discover';
 
@@ -20,6 +21,7 @@
   let formMaxScore = 10;
   let formTags = '';
   let formCriteria: RubricCriterion[] = [];
+  let formWeightMode: 'off' | 'category' | 'criterion' = 'off';
 
   let confirmDeleteId: string | null = null;
 
@@ -27,6 +29,10 @@
   let generateText = '';
   let generating = false;
   let generateError = '';
+
+  $: weightValidation = formWeightMode !== 'off' 
+    ? validateWeights(formCriteria, formWeightMode as 'category' | 'criterion')
+    : { valid: true, errors: [] };
 
   onMount(async () => {
     await loadData();
@@ -53,6 +59,7 @@
     formMaxScore = 10;
     formTags = '';
     formCriteria = [{ criteria: '', description: '', points: 0 }];
+    formWeightMode = 'off';
     generateText = '';
     generateError = '';
   }
@@ -65,6 +72,7 @@
     formMaxScore = rubric.maxScore;
     formTags = rubric.tags.join(', ');
     formCriteria = rubric.criteria.map(c => ({ ...c }));
+    formWeightMode = rubric.weightMode ?? 'off';
     generateText = '';
     generateError = '';
   }
@@ -77,6 +85,7 @@
     formMaxScore = rubric.maxScore;
     formTags = rubric.tags.join(', ');
     formCriteria = rubric.criteria.map(c => ({ ...c }));
+    formWeightMode = rubric.weightMode ?? 'off';
   }
 
   function cancelForm() {
@@ -110,7 +119,8 @@
           maxScore: formMaxScore,
           tags,
           criteria,
-        });
+          weightMode: formWeightMode !== 'off' ? formWeightMode : undefined,
+        } as any);
       } else if (editing) {
         await updateRubric(editing.id, {
           name: formName.trim(),
@@ -118,7 +128,8 @@
           maxScore: formMaxScore,
           tags,
           criteria,
-        });
+          weightMode: formWeightMode !== 'off' ? formWeightMode : undefined,
+        } as any);
       }
       cancelForm();
       await loadData();
@@ -243,15 +254,56 @@
       </div>
 
       <div class="form-group">
+        <label>Weight Mode</label>
+        <div style="display: flex; gap: var(--spacing-4); margin-top: var(--spacing-1);">
+          <label style="display: flex; align-items: center; gap: var(--spacing-1); font-weight: normal; cursor: pointer;">
+            <input type="radio" bind:group={formWeightMode} value="off"> Off
+          </label>
+          <label style="display: flex; align-items: center; gap: var(--spacing-1); font-weight: normal; cursor: pointer;">
+            <input type="radio" bind:group={formWeightMode} value="category"> By Category
+          </label>
+          <label style="display: flex; align-items: center; gap: var(--spacing-1); font-weight: normal; cursor: pointer;">
+            <input type="radio" bind:group={formWeightMode} value="criterion"> By Criterion
+          </label>
+        </div>
+      </div>
+
+      <div class="form-group">
         <div class="label-row">
           <span class="form-label-text">Criteria</span>
           <span class="text-muted">({totalPoints(formCriteria)} pts total)</span>
         </div>
+        {#if formWeightMode !== 'off'}
+          <div style="margin: var(--spacing-2) 0; font-size: 0.85em;">
+            {#if formWeightMode === 'category'}
+              {#if weightValidation.valid}
+                <span style="color: var(--color-primary);">✓ Category weights: {weightValidation.sum ?? 100}% / 100%</span>
+              {:else}
+                <span class="text-danger">⚠ Weights don't sum to 100% — grading will be blocked until fixed</span>
+              {/if}
+            {:else}
+              {#if weightValidation.valid}
+                <span style="color: var(--color-primary);">✓ All category groups sum to 100%</span>
+              {:else}
+                <div class="text-danger" style="display: flex; flex-direction: column; gap: var(--spacing-1);">
+                  <span style="font-weight: 500;">⚠ Weights don't sum to 100% — grading will be blocked until fixed</span>
+                  {#each weightValidation.errors as err}
+                    <span>• {err}</span>
+                  {/each}
+                </div>
+              {/if}
+            {/if}
+          </div>
+        {/if}
         <table class="criteria-table">
           <thead>
             <tr>
+              <th style="width: 150px;">Category</th>
               <th>Criteria</th>
               <th>Description</th>
+              {#if formWeightMode !== 'off'}
+                <th style="width: 80px;">Weight %</th>
+              {/if}
               <th style="width: 70px;">Points</th>
               <th style="width: 40px;"></th>
             </tr>
@@ -259,8 +311,14 @@
           <tbody>
             {#each formCriteria as row, i}
               <tr>
+                <td><input type="text" bind:value={row.category} placeholder="Category"></td>
                 <td><input type="text" bind:value={row.criteria} placeholder="Criteria name"></td>
                 <td><input type="text" bind:value={row.description} placeholder="Grading description"></td>
+                {#if formWeightMode === 'category'}
+                  <td><input type="number" bind:value={row.categoryWeight} min="0" max="100" style="width: 70px;"></td>
+                {:else if formWeightMode === 'criterion'}
+                  <td><input type="number" bind:value={row.criterionWeight} min="0" max="100" style="width: 70px;"></td>
+                {/if}
                 <td><input type="number" bind:value={row.points} min="0" max="1000" style="width: 60px;"></td>
                 <td>
                   <button class="btn-icon-danger" on:click={() => removeCriterionRow(i)} title="Remove">
