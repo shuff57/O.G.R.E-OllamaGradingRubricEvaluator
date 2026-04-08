@@ -205,6 +205,201 @@ describe("hasUnsavedChanges", () => {
 });
 
 // ---------------------------------------------------------------------------
+// criteriaToText — weight serialization (Task 2)
+// ---------------------------------------------------------------------------
+
+describe("criteriaToText — weight serialization", () => {
+  it("includes criterionWeight when set", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "Writing Quality", description: "Clear grammar", points: 10, criterionWeight: 25 },
+    ];
+    expect(criteriaToText(criteria)).toBe("Writing Quality (10pts, 25%): Clear grammar");
+  });
+
+  it("omits weight when criterionWeight is undefined (backward compat)", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "Writing Quality", description: "Clear grammar", points: 10 },
+    ];
+    expect(criteriaToText(criteria)).toBe("Writing Quality (10pts): Clear grammar");
+  });
+
+  it("omits weight when criterionWeight is undefined — no description", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "Analysis", description: "", points: 5 },
+    ];
+    expect(criteriaToText(criteria)).toBe("Analysis (5pts)");
+  });
+
+  it("includes criterionWeight with no description", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "Analysis", description: "", points: 5, criterionWeight: 50 },
+    ];
+    expect(criteriaToText(criteria)).toBe("Analysis (5pts, 50%)");
+  });
+
+  it("handles 0% criterionWeight", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "Bonus", description: "Optional", points: 0, criterionWeight: 0 },
+    ];
+    expect(criteriaToText(criteria)).toBe("Bonus (0pts, 0%): Optional");
+  });
+
+  it("handles 100% criterionWeight", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "Only Criterion", description: "Everything", points: 10, criterionWeight: 100 },
+    ];
+    expect(criteriaToText(criteria)).toBe("Only Criterion (10pts, 100%): Everything");
+  });
+
+  it("handles decimal criterionWeight like 33.3%", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "Third", description: "One third", points: 10, criterionWeight: 33.3 },
+    ];
+    expect(criteriaToText(criteria)).toBe("Third (10pts, 33.3%): One third");
+  });
+
+  it("emits category header before first criterion in a group", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "Writing Quality", description: "Clear grammar", points: 10, category: "Writing" },
+      { criteria: "Style", description: "Concise", points: 5, category: "Writing" },
+    ];
+    expect(criteriaToText(criteria)).toBe(
+      "## Writing\nWriting Quality (10pts): Clear grammar\nStyle (5pts): Concise"
+    );
+  });
+
+  it("emits multiple category headers for distinct categories", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "Writing Quality", description: "Clear grammar", points: 10, category: "Writing" },
+      { criteria: "Math Work", description: "Correct steps", points: 15, category: "Math" },
+    ];
+    expect(criteriaToText(criteria)).toBe(
+      "## Writing\nWriting Quality (10pts): Clear grammar\n## Math\nMath Work (15pts): Correct steps"
+    );
+  });
+
+  it("only emits header when category changes (not per criterion)", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "A", description: "", points: 5, category: "Cat1" },
+      { criteria: "B", description: "", points: 5, category: "Cat1" },
+      { criteria: "C", description: "", points: 5, category: "Cat2" },
+    ];
+    expect(criteriaToText(criteria)).toBe(
+      "## Cat1\nA (5pts)\nB (5pts)\n## Cat2\nC (5pts)"
+    );
+  });
+
+  it("does not emit header when category is undefined", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "Writing Quality", description: "Clear grammar", points: 10 },
+      { criteria: "Analysis", description: "Insightful", points: 8 },
+    ];
+    expect(criteriaToText(criteria)).toBe(
+      "Writing Quality (10pts): Clear grammar\nAnalysis (8pts): Insightful"
+    );
+  });
+
+  it("round-trips criteriaToText(textToCriteria(text)) === text for weighted format", () => {
+    const text = "## Writing\nWriting Quality (10pts, 25%): Clear grammar\n## Math\nMath Work (15pts, 75%): Correct steps";
+    const parsed = textToCriteria(text);
+    expect(criteriaToText(parsed)).toBe(text);
+  });
+
+  it("combined: weight + category", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "Writing Quality", description: "Clear grammar", points: 10, category: "Writing", criterionWeight: 25 },
+      { criteria: "Math Work", description: "Correct steps", points: 15, category: "Math", criterionWeight: 75 },
+    ];
+    expect(criteriaToText(criteria)).toBe(
+      "## Writing\nWriting Quality (10pts, 25%): Clear grammar\n## Math\nMath Work (15pts, 75%): Correct steps"
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// textToCriteria — weight and category parsing (Task 2)
+// ---------------------------------------------------------------------------
+
+describe("textToCriteria — weight and category parsing", () => {
+  it("parses criterionWeight from 'Name (10pts, 25%): Desc'", () => {
+    const result = textToCriteria("Writing Quality (10pts, 25%): Clear grammar");
+    expect(result).toEqual([
+      { criteria: "Writing Quality", description: "Clear grammar", points: 10, criterionWeight: 25 },
+    ]);
+  });
+
+  it("produces criterionWeight: undefined for old format 'Name (10pts): Desc'", () => {
+    const result = textToCriteria("Writing Quality (10pts): Clear grammar");
+    expect(result[0].criterionWeight).toBeUndefined();
+  });
+
+  it("produces category: undefined for line without ## header", () => {
+    const result = textToCriteria("Writing Quality (10pts): Clear grammar");
+    expect(result[0].category).toBeUndefined();
+  });
+
+  it("parses category from ## header lines", () => {
+    const text = "## Writing\nWriting Quality (10pts): Clear grammar";
+    const result = textToCriteria(text);
+    expect(result).toEqual([
+      { criteria: "Writing Quality", description: "Clear grammar", points: 10, category: "Writing" },
+    ]);
+  });
+
+  it("assigns category to all criteria following the header until next header", () => {
+    const text = "## Writing\nA (5pts): First\nB (5pts): Second\n## Math\nC (10pts): Third";
+    const result = textToCriteria(text);
+    expect(result[0].category).toBe("Writing");
+    expect(result[1].category).toBe("Writing");
+    expect(result[2].category).toBe("Math");
+  });
+
+  it("handles 0% weight", () => {
+    const result = textToCriteria("Bonus (0pts, 0%): Optional");
+    expect(result[0].criterionWeight).toBe(0);
+    expect(result[0].points).toBe(0);
+  });
+
+  it("handles 100% weight", () => {
+    const result = textToCriteria("Only Criterion (10pts, 100%): Everything");
+    expect(result[0].criterionWeight).toBe(100);
+  });
+
+  it("handles decimal weight like 33.3%", () => {
+    const result = textToCriteria("Third (10pts, 33.3%): One third");
+    expect(result[0].criterionWeight).toBe(33.3);
+  });
+
+  it("parses weight without description", () => {
+    const result = textToCriteria("Analysis (5pts, 50%)");
+    expect(result[0].criterionWeight).toBe(50);
+    expect(result[0].description).toBe("");
+  });
+
+  it("parses weight with category", () => {
+    const text = "## Math\nMath Work (15pts, 75%): Correct steps";
+    const result = textToCriteria(text);
+    expect(result[0].category).toBe("Math");
+    expect(result[0].criterionWeight).toBe(75);
+    expect(result[0].points).toBe(15);
+    expect(result[0].description).toBe("Correct steps");
+  });
+
+  it("old format parses identically to pre-change behavior (backward compat)", () => {
+    const text = [
+      "Writing Quality (10pts): Clear grammar",
+      "Argument Strength (15pts): Thesis supported",
+      "Analysis (5pts)",
+    ].join("\n");
+    expect(textToCriteria(text)).toEqual([
+      { criteria: "Writing Quality", description: "Clear grammar", points: 10 },
+      { criteria: "Argument Strength", description: "Thesis supported", points: 15 },
+      { criteria: "Analysis", description: "", points: 5 },
+    ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Additional round-trip fidelity, edge cases, and hasUnsavedChanges correctness
 // ---------------------------------------------------------------------------
 

@@ -4,11 +4,20 @@
  * Text format (one criterion per line):
  *   Criterion Name (10pts): Description text here
  *
+ * Extended format with optional weight:
+ *   Criterion Name (10pts, 25%): Description text here
+ *
+ * Extended format with optional category headers:
+ *   ## Category Name
+ *   Criterion Name (10pts): Description text here
+ *
  * Rules:
  * - Points suffix is "(Npts)" or "(N pts)" — integer or decimal
+ * - Optional weight suffix is ", Y%" inside the parens after pts
  * - Colon after the points block separates name+points from description
  * - Description is optional
- * - Lines that can't be parsed are silently skipped
+ * - Category header lines start with "## " and apply to all subsequent criteria
+ * - Lines that can't be parsed are silently skipped (except ## headers)
  */
 
 import type { RubricCriterion } from "./rubric-api";
@@ -17,18 +26,32 @@ import type { RubricCriterion } from "./rubric-api";
  * Serialize an array of RubricCriterion into a human-readable string.
  * Each criterion becomes one line:
  *   "Criterion Name (10pts): Description"
- * or just:
+ *   "Criterion Name (10pts, 25%): Description"  — when criterionWeight is set
  *   "Criterion Name (10pts)"  — when description is empty
+ *
+ * When criteria have a `category` field, a "## Category Name" header line is
+ * emitted before the first criterion of each distinct category.
  */
 export function criteriaToText(criteria: RubricCriterion[]): string {
-  return criteria
-    .map((c) => {
-      const pts = `(${c.points}pts)`;
-      const name = c.criteria?.trim() || "Unnamed";
-      const desc = c.description?.trim();
-      return desc ? `${name} ${pts}: ${desc}` : `${name} ${pts}`;
-    })
-    .join("\n");
+  const lines: string[] = [];
+  let lastCategory: string | undefined = undefined;
+
+  for (const c of criteria) {
+    // Emit category header when category changes
+    if (c.category !== undefined && c.category !== lastCategory) {
+      lines.push(`## ${c.category}`);
+      lastCategory = c.category;
+    }
+
+    const weightPart =
+      c.criterionWeight !== undefined ? `, ${c.criterionWeight}%` : "";
+    const pts = `(${c.points}pts${weightPart})`;
+    const name = c.criteria?.trim() || "Unnamed";
+    const desc = c.description?.trim();
+    lines.push(desc ? `${name} ${pts}: ${desc}` : `${name} ${pts}`);
+  }
+
+  return lines.join("\n");
 }
 
 /**
@@ -36,33 +59,61 @@ export function criteriaToText(criteria: RubricCriterion[]): string {
  *
  * Tolerant / best-effort:
  * - Blank lines are skipped
+ * - Lines starting with "## " set the current category for subsequent criteria
  * - Lines without a recognizable "(Npts)" pattern are skipped
  * - Points default to 0 if the value can't be parsed as a number
  * - Description defaults to empty string if absent
+ * - criterionWeight is set when ", Y%" is present inside the pts parens
+ * - category is set when a "## Category" header precedes the criterion
  */
 export function textToCriteria(text: string): RubricCriterion[] {
   const lines = text.split("\n");
   const results: RubricCriterion[] = [];
 
   // Matches: "Some Name (10pts): Optional description"
-  // or:      "Some Name (10 pts)"
-  const LINE_RE = /^(.+?)\s*\((\d+(?:\.\d+)?)\s*pts?\)\s*(?::\s*(.*))?$/i;
+  //      or: "Some Name (10 pts)"
+  //      or: "Some Name (10pts, 25%): Optional description"  (with weight)
+  //      or: "Some Name (10pts, 25%)"
+  const LINE_RE =
+    /^(.+?)\s*\((\d+(?:\.\d+)?)\s*pts?(?:,\s*(\d+(?:\.\d+)?)%\s*)?\)\s*(?::\s*(.*))?$/i;
+
+  // Category header pattern: "## Category Name"
+  const CATEGORY_RE = /^##\s+(.+)$/;
+
+  let currentCategory: string | undefined = undefined;
 
   for (const raw of lines) {
     const line = raw.trim();
     if (!line) continue;
 
+    // Check for category header
+    const catMatch = CATEGORY_RE.exec(line);
+    if (catMatch) {
+      currentCategory = catMatch[1].trim();
+      continue;
+    }
+
     const match = LINE_RE.exec(line);
     if (!match) continue; // unrecognized line — skip silently
 
-    const [, nameRaw, ptsRaw, descRaw] = match;
+    const [, nameRaw, ptsRaw, weightRaw, descRaw] = match;
     const criteria = nameRaw.trim();
     const points = parseFloat(ptsRaw) || 0;
     const description = descRaw?.trim() ?? "";
 
     if (!criteria) continue;
 
-    results.push({ criteria, description, points });
+    const criterion: RubricCriterion = { criteria, description, points };
+
+    if (weightRaw !== undefined) {
+      criterion.criterionWeight = parseFloat(weightRaw);
+    }
+
+    if (currentCategory !== undefined) {
+      criterion.category = currentCategory;
+    }
+
+    results.push(criterion);
   }
 
   return results;
