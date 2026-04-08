@@ -9,9 +9,42 @@ import {
   mergeResults,
 } from '../grading.js';
 
-// Test data imports
-import testRubric from '../../../shuff57-llm-finetune/ogre/test-data/test-rubric.json';
-import testStudents from '../../../shuff57-llm-finetune/ogre/test-data/test-students.json';
+// Inline test fixtures (replacing broken external data imports)
+const testRubric = {
+  essayPrompt: 'Explain how photosynthesis works in plants.',
+  maxScore: '10',
+  checklistItems: [
+    {
+      category: 'Understanding (5 pts)',
+      points: 5,
+      items: ['Explains light absorption', 'Mentions chlorophyll', 'Describes glucose production'],
+    },
+    {
+      category: 'Detail (3 pts)',
+      points: 3,
+      items: ['Mentions water and CO2', 'Describes oxygen byproduct'],
+    },
+    {
+      category: 'Clarity (2 pts)',
+      points: 2,
+      items: ['Clear explanation', 'Uses correct terminology'],
+    },
+  ],
+  rubricItems: [
+    { category: 'Key Concepts', items: ['Photosynthesis', 'Chlorophyll', 'Glucose'] },
+  ],
+  modelText: 'Plants use chlorophyll to absorb sunlight. This energy converts CO2 and water into glucose and oxygen.',
+};
+
+const testStudents = Array.from({ length: 10 }, (_, i) => ({
+  index: i,
+  name: `Student ${i + 1}`,
+  response: i % 3 === 0
+    ? 'Plants use sunlight and chlorophyll to make glucose from CO2 and water, releasing oxygen.'
+    : i % 3 === 1
+    ? 'Plants need sunlight to grow and make food.'
+    : 'I think photosynthesis involves the sun somehow.',
+}));
 
 describe('generateScoringAnchors', () => {
   it('should generate 3 anchors (Excellent, Adequate, Minimal)', () => {
@@ -392,5 +425,69 @@ describe('buildBatchPrompt — calibrationExamples', () => {
   it('with calibrationExamples → HISTORICAL CONSISTENCY RULES appear', () => {
     const prompt = buildBatchPrompt(testRubric, students, anchors, null, calibrationExamples);
     expect(prompt).toContain('HISTORICAL CONSISTENCY RULES');
+  });
+});
+
+// ── buildBatchPrompt — weightMode effective points (Task 7) ──────────────────
+
+describe('buildBatchPrompt — weightMode effective points', () => {
+  const _weightAnchors = {
+    excellent:    { score: 9, description: 'Excellent understanding.' },
+    adequate:     { score: 7, description: 'Adequate with minor gaps.' },
+    belowAverage: { score: 5, description: 'Below average.' },
+    minimal:      { score: 3, description: 'Minimal engagement.' },
+  };
+  const _weightStudents = [
+    { index: 0, name: 'Alice', response: 'Plants use sunlight to make food.' },
+    { index: 1, name: 'Bob',   response: 'I am not sure.' },
+  ];
+
+  const baseRubric = {
+    essayPrompt: 'Explain the concept.',
+    maxScore: '10',
+    checklistItems: [
+      {
+        category: 'Understanding (5 pts)',
+        points: 5,
+        categoryWeight: 40,
+        items: ['Shows comprehension'],
+      },
+    ],
+  };
+
+  it('regression — no weightMode → byte-identical output, original points, no % signs', () => {
+    const rubric1 = { ...baseRubric };
+    const rubric2 = { ...baseRubric };
+    const prompt1 = buildBatchPrompt(rubric1, _weightStudents, _weightAnchors);
+    const prompt2 = buildBatchPrompt(rubric2, _weightStudents, _weightAnchors);
+    // Idempotent
+    expect(prompt1).toBe(prompt2);
+    // Original points appear unchanged
+    expect(prompt1).toContain('5 points total');
+    // No raw weight percentages exposed to AI in SCORING BY CATEGORY section
+    // (boilerplate partial-credit rule text may contain % — only check scoring section)
+    const scoringSection1 = prompt1.match(/SCORING BY CATEGORY[\s\S]*?(?=\nSCORING ANCHORS|\nSCORING SCALE|\n\n[A-Z]|$)/)?.[0] ?? '';
+    expect(scoringSection1).not.toMatch(/\d+%/);
+  });
+
+  it('category mode — applies effective points (5 pts × 40% = 2 pts)', () => {
+    const rubric = { ...baseRubric, weightMode: 'category' };
+    const prompt = buildBatchPrompt(rubric, _weightStudents, _weightAnchors);
+    // Effective points: 5 * 0.40 = 2
+    expect(prompt).toContain('2 points total');
+    // Original raw points must NOT appear in SCORING BY CATEGORY
+    expect(prompt).not.toContain('5 points total');
+    // Raw weight percentage must not appear in SCORING BY CATEGORY section
+    const scoringSection = prompt.match(/SCORING BY CATEGORY[\s\S]*?(?=\nSCORING ANCHORS|\nSCORING SCALE|\n\n[A-Z]|$)/)?.[0] ?? '';
+    expect(scoringSection).not.toMatch(/\b40\b.*%|%.*\b40\b/);
+  });
+
+  it('off mode — explicit weightMode:off leaves points unchanged', () => {
+    const rubric = { ...baseRubric, weightMode: 'off' };
+    const prompt = buildBatchPrompt(rubric, _weightStudents, _weightAnchors);
+    // Original points must be present
+    expect(prompt).toContain('5 points total');
+    // Effective-weighted points must NOT appear
+    expect(prompt).not.toContain('2 points total');
   });
 });

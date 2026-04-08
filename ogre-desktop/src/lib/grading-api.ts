@@ -615,6 +615,9 @@ export function startBatchGrading(
   if (request.customInstructions) {
     body.customInstructions = request.customInstructions;
   }
+  if (request.weightMode && request.weightMode !== 'off') {
+    body.weightMode = request.weightMode;
+  }
 
   // Fire async — callers use callbacks, not await
   (async () => {

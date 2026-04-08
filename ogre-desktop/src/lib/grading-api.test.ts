@@ -904,4 +904,68 @@ describe("startBatchGrading", () => {
     // onError should NOT have been called because cancel was called first
     expect(onError).not.toHaveBeenCalled();
   });
+
+  it("includes weightMode in body when set to 'category'", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: { getReader: vi.fn() },
+    });
+
+    startBatchGrading({ ...defaultRequest, weightMode: 'category' }, {});
+
+    await vi.waitFor(() => {
+      expect(mockFetch).toHaveBeenCalled();
+    });
+
+    const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(callBody.weightMode).toBe('category');
+  });
+
+  it("includes weightMode in body when set to 'criterion'", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: { getReader: vi.fn() },
+    });
+
+    startBatchGrading({ ...defaultRequest, weightMode: 'criterion' }, {});
+
+    await vi.waitFor(() => {
+      expect(mockFetch).toHaveBeenCalled();
+    });
+
+    const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(callBody.weightMode).toBe('criterion');
+  });
+
+  it("omits weightMode from body when set to 'off'", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: { getReader: vi.fn() },
+    });
+
+    startBatchGrading({ ...defaultRequest, weightMode: 'off' }, {});
+
+    await vi.waitFor(() => {
+      expect(mockFetch).toHaveBeenCalled();
+    });
+
+    const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(callBody).not.toHaveProperty('weightMode');
+  });
+
+  it("omits weightMode from body when not provided (backward compat)", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: { getReader: vi.fn() },
+    });
+
+    startBatchGrading(defaultRequest, {});
+
+    await vi.waitFor(() => {
+      expect(mockFetch).toHaveBeenCalled();
+    });
+
+    const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(callBody).not.toHaveProperty('weightMode');
+  });
 });

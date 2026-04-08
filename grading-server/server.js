@@ -1551,7 +1551,7 @@ app.post('/api/grade', async (c) => {
     return c.json({ error: 'Invalid JSON body' }, 400);
   }
 
-  const { provider, model, rubric, students, strategy, chunkSize: rawChunkSize, sweep, customInstructions } = body;
+  const { provider, model, rubric, students, strategy, chunkSize: rawChunkSize, sweep, customInstructions, weightMode } = body;
   const useParallel = strategy === 'parallel'; // default: serial (more reliable)
   const chunkSize = Math.max(5, Math.min(50, parseInt(rawChunkSize) || 30));
   // sweep: 'none' (default for single chunk), 'compact', 'pairwise', 'auto' (compact if multi-chunk)
@@ -1567,6 +1567,11 @@ app.post('/api/grade', async (c) => {
   // Inject custom instructions into rubric so buildBatchPrompt can use them
   if (customInstructions) {
     rubric.customInstructions = customInstructions;
+  }
+
+  // Attach weightMode so buildBatchPrompt() can apply effective points
+  if (weightMode) {
+    rubric.weightMode = weightMode;
   }
 
   const maxScore = parseFloat(rubric.maxScore) || 10;

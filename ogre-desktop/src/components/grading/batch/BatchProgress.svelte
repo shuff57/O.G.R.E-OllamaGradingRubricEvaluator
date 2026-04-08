@@ -42,6 +42,7 @@
     currentPageUrl = '',
     pageLoadedUrl = '',
     leniency = 50,
+    weightMode = 'off' as 'off' | 'category' | 'criterion',
     // Bindable — batch lifecycle state exposed to shell
     originalRubricText = $bindable(''),
     isBatchRunning = $bindable(false),
@@ -260,7 +261,7 @@
   // Parses the textarea into structured rubric data, extracting model text
   // (ideal answer) from the "--- Model Response ---" section. When leniency
   // is active, both rubric criteria AND model text will be the rewritten versions.
-  function buildRubricFromText(): { essayPrompt: string; checklistItems: { category: string; items: string[] }[]; rubricItems: { category: string; items: string[] }[]; modelText: string | null; maxScore: string } {
+  function buildRubricFromText(): { essayPrompt: string; checklistItems: { category: string; items: string[]; categoryWeight?: number }[]; rubricItems: { category: string; items: string[] }[]; modelText: string | null; maxScore: string } {
     const base = extractedRubric;
     const text = rubricText;
 
@@ -272,7 +273,11 @@
     if (parsed.length > 0) {
       return {
         essayPrompt: base?.essayPrompt || '',
-        checklistItems: parsed.map(c => ({ category: c.criteria, items: c.description ? [c.description] : [] })),
+        checklistItems: parsed.map(c => ({
+          category: c.criteria,
+          items: c.description ? [c.description] : [],
+          ...(c.categoryWeight !== undefined ? { categoryWeight: c.categoryWeight } : {}),
+        })),
         rubricItems: base?.rubricItems || [],
         modelText,
         maxScore: rubricMaxScore,
@@ -562,6 +567,7 @@
             ...(s.prompt ? { prompt: s.prompt } : {}),
           })),
           customInstructions: instructionsParts.length > 0 ? instructionsParts.join('\n\n') : undefined,
+          ...(weightMode && weightMode !== 'off' ? { weightMode } : {}),
         },
         {
           onProgress: handleSSEProgress,

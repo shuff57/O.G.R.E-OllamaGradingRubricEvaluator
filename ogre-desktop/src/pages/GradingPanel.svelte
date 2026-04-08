@@ -68,6 +68,7 @@
   let originalRubricText = $state('');
   let isRubricRewriting = $state(false);
   let weightsValid = $state(true);
+  let weightMode = $state<'off' | 'category' | 'criterion'>('off');
 
   let returnToBatch = $state(false);
   let preselectedProfileId = $state<string | null>(null);
@@ -469,6 +470,7 @@
           bind:originalRubricText
           bind:isRewriting={isRubricRewriting}
           bind:weightsValid
+          bind:weightMode
           {extractedRubric}
           fallbackText={essayPrompt}
           provider={activeProvider}
@@ -501,6 +503,7 @@
             {leniency}
             isRubricRewriting={isRubricRewriting}
             {weightsValid}
+            {weightMode}
             bind:originalRubricText
             bind:rubricText
             bind:rubricMaxScore

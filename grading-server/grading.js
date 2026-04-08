@@ -97,6 +97,18 @@ export function generateScoringAnchors(rubric) {
 export function buildBatchPrompt(rubric, students, anchors, bridgeResponses = null, calibrationExamples = null) {
   const maxScore = rubric.maxScore || '10';
   const { virtualMax, factor: scoreFactor } = getScaleInfo(maxScore);
+
+  // Pre-compute effective points for weighted modes — AI sees only adjusted totals, never raw weights
+  const weightMode = rubric.weightMode;
+  function effectivePoints(item) {
+    if (weightMode === 'category' && item.categoryWeight != null) {
+      return Math.round(item.points * (item.categoryWeight / 100) * 10) / 10;
+    }
+    if (weightMode === 'criterion' && item.criterionWeight != null) {
+      return Math.round(item.points * (item.criterionWeight / 100) * 10) / 10;
+    }
+    return item.points ?? 10;
+  }
   const _scoreHint = 'integer 0-10 (see SCORING SCALE below)';
 
   // Separate custom instructions from essayPrompt if they were appended
@@ -138,7 +150,7 @@ ${essayPrompt}
     }
     prompt += `\nSCORING BY CATEGORY:\n`;
     for (const item of rubric.checklistItems) {
-      if (item.category) prompt += `- ${item.category}: ${item.points} points total\n`;
+      if (item.category) prompt += `- ${item.category}: ${effectivePoints(item)} points total\n`;
     }
     const ctLow = 60;
     const ctHigh = 80;
@@ -252,7 +264,7 @@ CONSISTENCY RULES:
   // Build Chain-of-Rubric criterion names for JSON response template
   const _corItems = (rubric.checklistItems || []).map(c => ({
     name: c.category.replace(/\s*\(\d+\s*pts?\)/i, '').trim(),
-    pts: c.points ?? 10
+    pts: effectivePoints(c)
   }));
   const _corField = _corItems.length > 0
     ? `    "criterion_scores": {${_corItems.map(({name, pts}) => `"${name}": <0-${pts} pts>`).join(', ')}},\n`

@@ -36,6 +36,7 @@
     originalRubricText?: string;
     isRewriting?: boolean;
     weightsValid?: boolean;
+    weightMode?: 'off' | 'category' | 'criterion';
   }
 
   let {
@@ -53,6 +54,7 @@
     originalRubricText = $bindable(''),
     isRewriting = $bindable(false),
     weightsValid = $bindable(true),
+    weightMode = $bindable<'off' | 'category' | 'criterion'>('off'),
   }: Props = $props();
 
   // ── Leniency rewrite state ────────────────────────────────────────
@@ -150,8 +152,6 @@
   // ── Generate state ─────────────────────────────────────────────────
   let isGenerating = $state(false);
   let generateError = $state('');
-
-  let weightMode = $state<'off' | 'category' | 'criterion'>('off');
 
   let tableRows = $derived(textToCriteria(rubricText));
 
@@ -366,19 +366,82 @@
         <button class="btn-secondary small manage-btn" onclick={(e) => { e.preventDefault(); e.stopPropagation(); handleManageLibrary(); }}>Manage Rubrics</button>
       </div>
     {/if}
-    <!-- Rubric textarea — always visible -->
-    <textarea
-      class="rubric-textarea"
-      rows={showActions ? 8 : 5}
-      placeholder={showActions
-        ? 'Rubric criteria will appear here. One per line: Name (10pts): Description\nOr paste question text and click Generate Rubric.'
-        : 'No rubric loaded.'}
-      bind:value={rubricText}
-      disabled={isDisabled || !showActions}
-      readonly={!showActions}
-    ></textarea>
+    {#if tableRows.length > 0 && showActions}
+      <!-- Editable table view -->
+      <div class="rubric-table-container">
+        <table class="rubric-table">
+          <thead>
+            <tr>
+              <th>Category</th>
+              <th>Criteria</th>
+              <th>Description</th>
+              {#if weightMode !== 'off'}
+                <th>Weight %</th>
+              {/if}
+              <th>Pts</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each tableRows as row, i}
+              <tr>
+                <td><input type="text" value={row.category ?? ''} oninput={(e) => updateTableRow(i, 'category', (e.target as HTMLInputElement).value)} disabled={isDisabled} /></td>
+                <td><input type="text" value={row.criteria} oninput={(e) => updateTableRow(i, 'criteria', (e.target as HTMLInputElement).value)} disabled={isDisabled} /></td>
+                <td><textarea value={row.description} oninput={(e) => updateTableRow(i, 'description', (e.target as HTMLTextAreaElement).value)} disabled={isDisabled} rows="1"></textarea></td>
+                {#if weightMode === 'category'}
+                  <td><input class="num-input" type="number" value={row.categoryWeight ?? ''} oninput={(e) => updateTableRow(i, 'categoryWeight', parseFloat((e.target as HTMLInputElement).value) || 0)} disabled={isDisabled} /></td>
+                {:else if weightMode === 'criterion'}
+                  <td><input class="num-input" type="number" value={row.criterionWeight ?? ''} oninput={(e) => updateTableRow(i, 'criterionWeight', parseFloat((e.target as HTMLInputElement).value) || 0)} disabled={isDisabled} /></td>
+                {/if}
+                <td><input class="num-input" type="number" value={row.points} oninput={(e) => updateTableRow(i, 'points', parseFloat((e.target as HTMLInputElement).value) || 0)} disabled={isDisabled} /></td>
+                <td><button class="error-text" onclick={() => removeTableRow(i)} disabled={isDisabled} title="Remove row">&times;</button></td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+        {#if !isDisabled}
+          <button class="btn-secondary small add-row-btn" onclick={addTableRow}>+ Add Row</button>
+        {/if}
+      </div>
+    {:else}
+      <!-- Textarea fallback (no structured criteria yet, or read-only mode) -->
+      <textarea
+        class="rubric-textarea"
+        rows={showActions ? 8 : 5}
+        placeholder={showActions
+          ? 'Rubric criteria will appear here. One per line: Name (10pts): Description\nOr paste question text and click Generate Rubric.'
+          : 'No rubric loaded.'}
+        bind:value={rubricText}
+        disabled={isDisabled || !showActions}
+        readonly={!showActions}
+      ></textarea>
+    {/if}
 
     {#if showActions}
+      <!-- Weight mode toggle + validation -->
+      <div class="weight-mode-toggle">
+        <span>Weights:</span>
+        <select bind:value={weightMode} disabled={isDisabled}>
+          <option value="off">Off</option>
+          <option value="category">By Category</option>
+          <option value="criterion">By Criterion</option>
+        </select>
+        {#if weightMode !== 'off'}
+          {#if internalWeightsValid.valid}
+            <span class="weight-status valid">✓ 100%</span>
+          {:else}
+            <span class="weight-status invalid">⚠ ≠ 100%</span>
+          {/if}
+        {/if}
+      </div>
+      {#if weightMode !== 'off' && !internalWeightsValid.valid && internalWeightsValid.errors.length > 0}
+        <div class="weight-errors">
+          {#each internalWeightsValid.errors as err}
+            <div>• {err}</div>
+          {/each}
+        </div>
+      {/if}
+
       <!-- Leniency slider -->
       <div class="leniency-row">
         <div class="leniency-header">

@@ -37,6 +37,7 @@
     leniency = 50,
     isRubricRewriting = false,
     weightsValid = true,
+    weightMode = 'off' as 'off' | 'category' | 'criterion',
     originalRubricText = $bindable(''),
   } = $props();
 
@@ -136,6 +137,7 @@
     {currentPageUrl}
     {pageLoadedUrl}
     {leniency}
+    {weightMode}
     bind:originalRubricText
     bind:isBatchRunning
     bind:batchPhase
