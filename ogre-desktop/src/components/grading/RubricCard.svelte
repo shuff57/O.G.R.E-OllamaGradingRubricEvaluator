@@ -32,6 +32,8 @@
     model?: string;
     phase?: BatchPhase;
     showActions?: boolean;
+    /** Show rubric table, weight toggle, and leniency slider. Defaults to showActions. */
+    showTable?: boolean;
     leniency?: number;
     originalRubricText?: string;
     isRewriting?: boolean;
@@ -50,6 +52,7 @@
     model = '',
     phase = 'idle' as BatchPhase,
     showActions = true,
+    showTable = showActions,
     leniency = $bindable(50),
     originalRubricText = $bindable(''),
     isRewriting = $bindable(false),
@@ -366,7 +369,7 @@
         <button class="btn-secondary small manage-btn" onclick={(e) => { e.preventDefault(); e.stopPropagation(); handleManageLibrary(); }}>Manage Rubrics</button>
       </div>
     {/if}
-    {#if tableRows.length > 0 && showActions}
+    {#if tableRows.length > 0 && showTable}
       <!-- Editable table view -->
       <div class="rubric-table-container">
         <table class="rubric-table">
@@ -407,17 +410,17 @@
       <!-- Textarea fallback (no structured criteria yet, or read-only mode) -->
       <textarea
         class="rubric-textarea"
-        rows={showActions ? 8 : 5}
-        placeholder={showActions
+        rows={showTable ? 8 : 5}
+        placeholder={showTable
           ? 'Rubric criteria will appear here. One per line: Name (10pts): Description\nOr paste question text and click Generate Rubric.'
           : 'No rubric loaded.'}
         bind:value={rubricText}
-        disabled={isDisabled || !showActions}
-        readonly={!showActions}
+        disabled={isDisabled || !showTable}
+        readonly={!showTable}
       ></textarea>
     {/if}
 
-    {#if showActions}
+    {#if showTable}
       <!-- Weight mode toggle + validation -->
       <div class="weight-mode-toggle">
         <span>Weights:</span>

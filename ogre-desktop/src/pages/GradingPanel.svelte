@@ -478,6 +478,7 @@
           model={activeModel}
           phase={batchPhase}
           showActions={graderSubMode === 'batch'}
+          showTable={true}
         />
         {/if}
         {#if graderSubMode === 'single'}
