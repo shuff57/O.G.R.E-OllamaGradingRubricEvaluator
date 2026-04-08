@@ -17,6 +17,7 @@
   import { generateRubricFromText } from '../../lib/discover';
   import { rewriteRubricAI } from '../../lib/rubric-leniency';
   import type { Rubric } from '../../lib/batch-grader';
+  import { validateWeights } from '../../lib/rubric-utils';
 
   type BatchPhase = 'idle' | 'extracting' | 'review' | 'grading' | 'done';
 
@@ -34,6 +35,7 @@
     leniency?: number;
     originalRubricText?: string;
     isRewriting?: boolean;
+    weightsValid?: boolean;
   }
 
   let {
@@ -50,6 +52,7 @@
     leniency = $bindable(50),
     originalRubricText = $bindable(''),
     isRewriting = $bindable(false),
+    weightsValid = $bindable(true),
   }: Props = $props();
 
   // ── Leniency rewrite state ────────────────────────────────────────
@@ -147,6 +150,36 @@
   // ── Generate state ─────────────────────────────────────────────────
   let isGenerating = $state(false);
   let generateError = $state('');
+
+  let weightMode = $state<'off' | 'category' | 'criterion'>('off');
+
+  let tableRows = $derived(textToCriteria(rubricText));
+
+  let internalWeightsValid = $derived(
+    weightMode === 'off' || tableRows.length === 0
+      ? { valid: true, errors: [] as string[] }
+      : validateWeights(tableRows, weightMode)
+  );
+
+  $effect(() => {
+    weightsValid = internalWeightsValid.valid;
+  });
+
+  function updateTableRow(index: number, field: string, value: any) {
+    const newRows = [...tableRows];
+    newRows[index] = { ...newRows[index], [field]: value };
+    rubricText = criteriaToText(newRows);
+  }
+
+  function addTableRow() {
+    const newRows = [...tableRows, { criteria: 'New Criterion', points: 0, description: '' }];
+    rubricText = criteriaToText(newRows);
+  }
+
+  function removeTableRow(index: number) {
+    const newRows = tableRows.filter((_, i) => i !== index);
+    rubricText = criteriaToText(newRows);
+  }
 
   // Whether the textarea looks like structured criteria (Name (Npts): Desc)
   let looksLikeCriteria = $derived(textToCriteria(rubricText).length > 0);
@@ -819,4 +852,82 @@
     color: var(--color-error, #e55);
     padding: 2px 0;
   }
+
+  .weight-mode-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    font-size: 0.85rem;
+    padding: var(--spacing-2) 0;
+  }
+  .weight-mode-toggle select {
+    padding: 2px 4px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-border);
+    background: var(--color-bg-main);
+    color: var(--color-text-primary);
+  }
+  .weight-status.valid { color: var(--color-success, #22c55e); }
+  .weight-status.invalid { color: var(--color-error, #e55); font-weight: bold; }
+  .weight-errors {
+    background: var(--color-error-bg, rgba(200,50,50,0.08));
+    padding: var(--spacing-2);
+    border-radius: var(--radius-sm);
+    margin-bottom: var(--spacing-2);
+    font-size: 0.8rem;
+    color: var(--color-error, #e55);
+  }
+  .rubric-table-container {
+    width: 100%;
+    overflow-x: auto;
+    margin-bottom: var(--spacing-2);
+  }
+  .rubric-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    table-layout: auto;
+  }
+  .rubric-table th, .rubric-table td {
+    padding: 4px;
+    border-bottom: 1px solid var(--color-border);
+    text-align: left;
+    vertical-align: middle;
+  }
+  .rubric-table input, .rubric-table textarea {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid transparent;
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
+    padding: 2px 4px;
+    border-radius: 2px;
+  }
+  .rubric-table textarea {
+    resize: vertical;
+    min-height: 24px;
+    vertical-align: middle;
+  }
+  .rubric-table input:focus, .rubric-table textarea:focus {
+    border-color: var(--color-primary);
+    background: var(--color-bg-main);
+    outline: none;
+  }
+  .rubric-table .num-input {
+    width: 50px;
+    text-align: right;
+  }
+  .add-row-btn {
+    margin-top: 4px;
+    font-size: 0.8rem;
+  }
+  .error-text {
+    color: var(--color-error, #e55);
+    font-size: 1.2rem;
+    font-weight: bold;
+    padding: 0 4px;
+  }
+
 </style>

@@ -12,6 +12,7 @@
     batchGraderHasStudents = false,
     leniency = 50,
     isRubricRewriting = false,
+    weightsValid = true,
     // Bindable — exposed to shell
     forceRegrade = $bindable(false),
     zeroNoResponse = $bindable(true),
@@ -60,7 +61,7 @@
       <button
         class="btn-primary small"
         onclick={onGenerateAnchors}
-        disabled={!batchGraderHasStudents || isRubricRewriting}
+        disabled={!batchGraderHasStudents || isRubricRewriting || !weightsValid}
       >{isRubricRewriting ? 'Rubric rewriting…' : 'Generate Anchors'}</button>
     </div>
   {:else}
@@ -92,7 +93,7 @@
       <button
         class="btn-primary small"
         onclick={onContinueGrading}
-        disabled={!batchGraderHasStudents || anchorGenerating}
+        disabled={!batchGraderHasStudents || anchorGenerating || !weightsValid}
       >Start Grading</button>
       <button
         class="btn-secondary small"

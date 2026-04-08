@@ -55,3 +55,47 @@
 ### File Size After Task 3
 - rubric-utils.ts: ~211 lines
 - rubric-utils.test.ts: ~621 lines
+
+
+## Task 4: Rubrics Table UI (Svelte)
+
+### Completed Changes
+- Added `formWeightMode` reactive state initialized to `'off'` and syncing with `rubric.weightMode`.
+- Added Weight Mode toggle (radio buttons: Off, By Category, By Criterion) above the criteria table.
+- Added live validation badges based on `formWeightMode` and `validateWeights()`.
+- Added `Category` column (always visible) mapped to `row.category`.
+- Added conditional `Weight %` column mapping to `row.categoryWeight` or `row.criterionWeight` based on the mode.
+- Passed `weightMode` back to `createRubric` and `updateRubric` when mode is not `'off'`.
+- Kept the "Save" and "Create" buttons enabled regardless of weight validation to prevent hard locks.
+
+### Gotchas / Learnings
+- The Svelte language server (LSP) often caches old types for `SavedRubric` or `RubricCriterion`. Running `npx tsc --noEmit` is the source of truth and confirms the code is 100% type-safe.
+- In Svelte 5, using `$: weightValidation = ...` for derived reactive state is still supported for backwards compatibility and matches the file's existing Svelte 4 options-API reactive style.
+- Input fields bind to `row.categoryWeight` and `row.criterionWeight` conditionally in `#if` blocks within the `{#each}` loop, keeping the UI intuitive without cluttering the columns.### Implementation Details
+- Modified \RubricCard.svelte\ to conditionally display a structured table when \looksLikeCriteria\ is true.
+- Added \weightMode\ select (\off\, \category\, \criterion\).
+- Used \$derived\ state to compute validity of weights via \alidateWeights\.
+- Exposed \weightsValid\ bindable prop.
+- Passed \weightsValid\ up through \GradingPanel.svelte\ and into \BatchPanel.svelte\ -> \BatchInstructions.svelte\.
+- Disabled the 'Start Grading' and 'Generate Anchors' buttons in \BatchInstructions.svelte\ when weights are invalid.
+- Successfully verified that typescript builds using \
+px tsc --noEmit\.
+
+
+
+## Task 5: GradingPanel and BatchInstructions - Editable Table & Hard-Lock
+
+### Implementation Details
+- Modified `RubricCard.svelte` to conditionally display a structured HTML table when `looksLikeCriteria` is true.
+- Added `weightMode` select dropdown ('off', 'category', 'criterion') directly to `RubricCard`.
+- Used `$derived` state to compute validity of weights via `validateWeights`.
+- Exposed a `weightsValid` bindable prop from `RubricCard`.
+- Passed `weightsValid` up through `GradingPanel.svelte` and into `BatchPanel.svelte` -> `BatchInstructions.svelte`.
+- Disabled the 'Start Grading' and 'Generate Anchors' buttons in `BatchInstructions.svelte` when weights are invalid.
+- Retained the Leniency slider and unchanged behavior as explicitly constrained.
+- Applied CSS fixes for the editable table rendering within `RubricCard.svelte`.
+
+### Verification
+- `npx svelte-check` passing effectively (ignoring unused CSS warnings and unrelated file errors).
+- `vitest run rubric-utils` passes all tests.
+- Function prop types fixed for Svelte 5 `MouseEventHandler` compliance in batch components.

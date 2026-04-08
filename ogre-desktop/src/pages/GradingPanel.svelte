@@ -67,6 +67,7 @@
   let leniency = $state(50);
   let originalRubricText = $state('');
   let isRubricRewriting = $state(false);
+  let weightsValid = $state(true);
 
   let returnToBatch = $state(false);
   let preselectedProfileId = $state<string | null>(null);
@@ -467,6 +468,7 @@
           bind:leniency
           bind:originalRubricText
           bind:isRewriting={isRubricRewriting}
+          bind:weightsValid
           {extractedRubric}
           fallbackText={essayPrompt}
           provider={activeProvider}
@@ -498,6 +500,7 @@
             externalProfile={globalActiveProfile}
             {leniency}
             isRubricRewriting={isRubricRewriting}
+            {weightsValid}
             bind:originalRubricText
             bind:rubricText
             bind:rubricMaxScore
