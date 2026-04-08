@@ -62,7 +62,7 @@ export function getRubric(id) {
 /**
  * Create a new rubric. Returns the created object.
  */
-export function createRubric({ name, criteria, maxScore, tags, description }) {
+export function createRubric({ name, criteria, maxScore, tags, description, weightMode }) {
   const rubrics = loadRubrics();
   const now = new Date().toISOString();
 
@@ -75,6 +75,7 @@ export function createRubric({ name, criteria, maxScore, tags, description }) {
     tags: Array.isArray(tags) ? tags : [],
     createdAt: now,
     updatedAt: now,
+    ...(weightMode !== undefined && { weightMode }),
   };
 
   rubrics.push(rubric);
@@ -98,6 +99,7 @@ export function updateRubric(id, data) {
     ...(data.criteria !== undefined && { criteria: data.criteria }),
     ...(data.maxScore !== undefined && { maxScore: data.maxScore }),
     ...(data.tags !== undefined && { tags: data.tags }),
+    ...(data.weightMode !== undefined && { weightMode: data.weightMode }),
     updatedAt: new Date().toISOString(),
   };
 
