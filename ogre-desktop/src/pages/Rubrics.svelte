@@ -310,7 +310,7 @@
           </thead>
           <tbody>
             {#each formCriteria as row, i}
-              <tr>
+              <tr class:allocation-row={row.rowType === 'allocation'}>
                 <td><input type="text" bind:value={row.category} placeholder="Category"></td>
                 <td><input type="text" bind:value={row.criteria} placeholder="Criteria name"></td>
                 <td><input type="text" bind:value={row.description} placeholder="Grading description"></td>
@@ -319,11 +319,11 @@
                 {:else if formWeightMode === 'criterion'}
                   <td><input type="number" bind:value={row.criterionWeight} min="0" max="100" style="width: 70px;"></td>
                 {/if}
-                <td><input type="number" bind:value={row.points} min="0" max="1000" style="width: 60px;"></td>
+                <td>{#if row.rowType !== 'allocation'}<input type="number" bind:value={row.points} min="0" max="1000" style="width: 60px;">{:else}<span class="allocation-pts">{row.points}</span>{/if}</td>
                 <td>
-                  <button class="btn-icon-danger" on:click={() => removeCriterionRow(i)} title="Remove">
+                  {#if row.rowType !== 'allocation'}<button class="btn-icon-danger" on:click={() => removeCriterionRow(i)} title="Remove">
                     &times;
-                  </button>
+                  </button>{/if}
                 </td>
               </tr>
             {/each}
@@ -757,5 +757,19 @@
   .modal h3 {
     margin: 0 0 var(--spacing-2) 0;
     color: var(--color-text-primary);
+  }
+
+  /* Allocation row styling */
+  .allocation-row td {
+    background: var(--color-bg-subtle);
+    opacity: 0.85;
+  }
+
+  .allocation-pts {
+    display: block;
+    width: 60px;
+    text-align: center;
+    color: var(--color-text-secondary);
+    font-size: 0.85em;
   }
 </style>

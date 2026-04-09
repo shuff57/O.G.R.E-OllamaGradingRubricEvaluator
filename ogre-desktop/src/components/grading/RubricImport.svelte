@@ -187,7 +187,7 @@
         </div>
         
         {#each stagingRubric.criteria as criterion, i}
-          <div class="criterion-row">
+          <div class="criterion-row" class:allocation-row={criterion.rowType === 'allocation'}>
             <div class="criterion-inputs">
               <input 
                 type="text" 
@@ -202,20 +202,26 @@
                 placeholder="Description" 
               />
             </div>
-            <input 
-              type="number" 
-              class="crit-points"
-              bind:value={criterion.points} 
-              oninput={updateMaxScore}
-              min="0"
-            />
-            <button 
-              class="remove-btn" 
-              onclick={() => removeCriterion(i)}
-              aria-label="Remove criterion"
-            >
-              &times;
-            </button>
+            {#if criterion.rowType !== 'allocation'}
+              <input 
+                type="number" 
+                class="crit-points"
+                bind:value={criterion.points} 
+                oninput={updateMaxScore}
+                min="0"
+              />
+            {:else}
+              <span class="crit-points-readonly">{criterion.points}</span>
+            {/if}
+            {#if criterion.rowType !== 'allocation'}
+              <button 
+                class="remove-btn" 
+                onclick={() => removeCriterion(i)}
+                aria-label="Remove criterion"
+              >
+                &times;
+              </button>
+            {/if}
           </div>
         {/each}
         
@@ -441,6 +447,20 @@
     border-radius: var(--radius-sm);
     text-align: center;
     font-size: 0.9rem;
+  }
+
+  .crit-points-readonly {
+    width: 100%;
+    text-align: center;
+    font-size: 0.9rem;
+    color: var(--color-text-secondary);
+    padding: 4px;
+    display: block;
+  }
+
+  .allocation-row {
+    background: var(--color-bg-card);
+    border-left: 2px solid var(--color-primary-dim);
   }
 
   .remove-btn {
