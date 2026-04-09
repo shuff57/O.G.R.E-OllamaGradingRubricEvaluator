@@ -159,6 +159,18 @@ ${essayPrompt}
 CONCEPTUAL THOROUGHNESS RULE: When a student demonstrates genuine understanding of the underlying concept — correct reasoning, valid approach, or sound logic — but has execution flaws (arithmetic errors, missing units, informal notation, incomplete steps), award ${ctLow}-${ctHigh}% of that category's points. Concept mastery with flawed execution always scores higher than rote correctness without understanding. A student who explains WHY a method works but makes a calculation error deserves more credit than one who copies a formula without understanding it.\n`;
   }
 
+  // Add category weight hints when percentage weights are provided
+  if (rubric.categoryWeights && typeof rubric.categoryWeights === 'object') {
+    const weightEntries = Object.entries(rubric.categoryWeights);
+    if (weightEntries.length > 0) {
+      prompt += `\nCATEGORY WEIGHTS (percentage of total grade):\n`;
+      for (const [cat, pct] of weightEntries) {
+        prompt += `- ${cat}: ${pct}% of total grade\n`;
+      }
+      prompt += `Grade each category on its own merits. These weights will be applied automatically.\n`;
+    }
+  }
+
   // Add rubric targets if present
   if (rubric.rubricItems && rubric.rubricItems.length > 0) {
     prompt += '\nKEY CONCEPTS TO ADDRESS:\n';
@@ -328,7 +340,7 @@ CRITICAL: Return results for ALL ${students.length} students. Use the studentInd
  * @param {Number} maxScore - Maximum possible score
  * @returns {Array} - Array of { studentIndex, score, feedback }
  */
-export function parseBatchResponse(aiText, students, maxScore) {
+export function parseBatchResponse(aiText, students, maxScore, categoryWeights = null, categoryMaxPoints = null) {
   let text = aiText.trim();
 
   // Strip <think>...</think> reasoning blocks (Kimi, DeepSeek, etc.)
@@ -374,13 +386,13 @@ export function parseBatchResponse(aiText, students, maxScore) {
 
   // Attempt 1: Parse full text
   let parsed = tryParse(text);
-  if (parsed) return validateBatchResults(parsed, students, maxScore);
+  if (parsed) return validateBatchResults(parsed, students, maxScore, categoryWeights, categoryMaxPoints);
 
   // Attempt 2: Extract JSON array from surrounding text
   const arrayMatch = text.match(/\[[\s\S]*\]/);
   if (arrayMatch) {
     parsed = tryParse(arrayMatch[0]);
-    if (parsed) return validateBatchResults(parsed, students, maxScore);
+    if (parsed) return validateBatchResults(parsed, students, maxScore, categoryWeights, categoryMaxPoints);
   }
 
   // Attempt 3: Regex extraction of individual student objects
@@ -396,7 +408,7 @@ export function parseBatchResponse(aiText, students, maxScore) {
   }
   if (regexResults.length > 0) {
     console.warn(`Parsed ${regexResults.length}/${students.length} via regex fallback`);
-    return validateBatchResults(regexResults, students, maxScore);
+    return validateBatchResults(regexResults, students, maxScore, categoryWeights);
   }
 
   // Attempt 4: Score-line patterns like "Student 5: 8/10"
@@ -411,7 +423,7 @@ export function parseBatchResponse(aiText, students, maxScore) {
   }
   if (lineResults.length > 0) {
     console.warn(`Parsed ${lineResults.length}/${students.length} via score-line fallback`);
-    return validateBatchResults(lineResults, students, maxScore);
+    return validateBatchResults(lineResults, students, maxScore, categoryWeights);
   }
 
   console.error(`Failed to parse batch response (${text.length} chars). Preview: ${text.slice(0, 500)}`);
@@ -451,10 +463,18 @@ function getScoringScaleString(customDescriptors = null) {
     descriptors.map(s => `${s.score.toString().padStart(2)} – ${s.descriptor}`).join('\n');
 }
 
-function validateBatchResults(parsed, students, maxScore) {
+function validateBatchResults(parsed, students, maxScore, categoryWeights = null, categoryMaxPoints = null) {
   // Build expected index set for validation
   const expectedIndices = new Set(students.map(s => s.index));
   const { factor: _parseFactor } = getScaleInfo(maxScore);
+
+  // Validate that percentage weights sum to ~100 (allow 99-101 for floating point)
+  if (categoryWeights) {
+    const weightSum = Object.values(categoryWeights).reduce((a, b) => a + b, 0);
+    if (weightSum < 99 || weightSum > 101) {
+      console.warn(`[grade] ⚠ Category weights sum to ${weightSum.toFixed(1)}, expected ~100. Proceeding anyway.`);
+    }
+  }
 
   // Always use POSITIONAL mapping: Nth AI result → Nth student in chunk.
   // AI often ignores studentIndex instructions (returns 0-based for every chunk).
@@ -462,8 +482,37 @@ function validateBatchResults(parsed, students, maxScore) {
   const results = parsed.map((item, idx) => {
     let score = parseFloat(item.score);
     if (isNaN(score) || score < 0) score = 0;
+
+    // ── Percentage-weighted composite if criterion_scores present and weights provided ──
+    // Algorithm: sum(catScore / catMaxPts * catWeightPct / 100) * maxScore
+    let usedWeighting = false;
+    if (categoryWeights && item.criterion_scores && typeof item.criterion_scores === 'object') {
+      const catScores = item.criterion_scores;
+      const entries = Object.entries(catScores);
+      let weightedFraction = 0;
+      let validCount = 0;
+      for (const [category, catScore] of entries) {
+        const raw = parseFloat(catScore);
+        if (isNaN(raw) || raw < 0) continue;
+        const weightPct = categoryWeights[category];
+        if (weightPct == null) continue; // skip categories without a weight
+        const catMax = (categoryMaxPoints && categoryMaxPoints[category]) || 10; // fallback to virtual max
+        weightedFraction += (raw / catMax) * (weightPct / 100);
+        validCount++;
+      }
+      if (validCount > 0) {
+        score = weightedFraction * maxScore;
+        usedWeighting = true;
+        console.log(`[grade] pct-weighted: weightedFraction=${weightedFraction.toFixed(4)} maxScore=${maxScore} → ${score.toFixed(2)}`);
+      }
+    }
+    // ── End weighted composite ──
+
     // Descale: AI was prompted with virtualMax, convert back to real maxScore
-    score = score / _parseFactor;  // always descale from virtual-10 to real maxScore
+    // Only descale if we did NOT use percentage weighting (which already produces real-scale score)
+    if (!usedWeighting) {
+      score = score / _parseFactor;  // descale from virtual-10 to real maxScore
+    }
     if (score > maxScore) score = maxScore;
     // Snap to appropriate granularity
     score = snapScore(score, maxScore);
@@ -875,6 +924,18 @@ ${essayPrompt}
 CONCEPTUAL THOROUGHNESS RULE: When a student demonstrates genuine understanding of the underlying concept — correct reasoning, valid approach, or sound logic — but has execution flaws (arithmetic errors, missing units, informal notation, incomplete steps), award 60-80% of that category's points. Concept mastery with flawed execution always scores higher than rote correctness without understanding. A student who explains WHY a method works but makes a calculation error deserves more credit than one who copies a formula without understanding it.\n`;
   }
 
+  // Add category weight hints when percentage weights are provided
+  if (rubric.categoryWeights && typeof rubric.categoryWeights === 'object') {
+    const weightEntries = Object.entries(rubric.categoryWeights);
+    if (weightEntries.length > 0) {
+      prompt += `\nCATEGORY WEIGHTS (percentage of total grade):\n`;
+      for (const [cat, pct] of weightEntries) {
+        prompt += `- ${cat}: ${pct}% of total grade\n`;
+      }
+      prompt += `Grade each category on its own merits. These weights will be applied automatically.\n`;
+    }
+  }
+
   // Add rubric targets if present
   if (rubric.rubricItems && rubric.rubricItems.length > 0) {
     prompt += '\nKEY CONCEPTS TO ADDRESS:\n';
@@ -957,7 +1018,7 @@ ${_sCorField}  "score": <${_sScoreHint}>
  * @param {number} maxScore - Maximum possible score
  * @returns {{ score: number, feedback: string }}
  */
-export function parseSingleGradeResponse(aiText, maxScore) {
+export function parseSingleGradeResponse(aiText, maxScore, categoryWeights = null, categoryMaxPoints = null) {
   let text = aiText.trim();
 
   // Strip <think>...</think> reasoning blocks
@@ -973,14 +1034,14 @@ export function parseSingleGradeResponse(aiText, maxScore) {
   // Attempt 1: Direct JSON parse
   try {
     const parsed = JSON.parse(text);
-    return clampSingleResult(parsed, maxScore);
+    return clampSingleResult(parsed, maxScore, categoryWeights, categoryMaxPoints);
   } catch { /* continue */ }
 
   // Attempt 2: Fix LaTeX backslashes then parse
   try {
     const fixed = text.replace(/\\(?!["\\/bfnrtu])/g, '\\\\');
     const parsed = JSON.parse(fixed);
-    return clampSingleResult(parsed, maxScore);
+    return clampSingleResult(parsed, maxScore, categoryWeights, categoryMaxPoints);
   } catch { /* continue */ }
 
   // Attempt 3: Extract JSON object from surrounding text
@@ -988,30 +1049,65 @@ export function parseSingleGradeResponse(aiText, maxScore) {
   if (objMatch) {
     try {
       const parsed = JSON.parse(objMatch[0]);
-      return clampSingleResult(parsed, maxScore);
+      return clampSingleResult(parsed, maxScore, categoryWeights, categoryMaxPoints);
     } catch { /* continue */ }
     try {
       const fixed = objMatch[0].replace(/\\(?!["\\/bfnrtu])/g, '\\\\');
       const parsed = JSON.parse(fixed);
-      return clampSingleResult(parsed, maxScore);
+      return clampSingleResult(parsed, maxScore, categoryWeights, categoryMaxPoints);
     } catch { /* continue */ }
   }
 
   // Attempt 4: Regex extraction
   const regexMatch = text.match(/"score"\s*:\s*(\d+\.?\d*)\s*,\s*"feedback"\s*:\s*"([^"]*)"/);
   if (regexMatch) {
-    return clampSingleResult({ score: parseFloat(regexMatch[1]), feedback: regexMatch[2] }, maxScore);
+    return clampSingleResult({ score: parseFloat(regexMatch[1]), feedback: regexMatch[2] }, maxScore, categoryWeights, categoryMaxPoints);
   }
 
   return { score: 0, feedback: 'Error parsing AI response. Please try again.' };
 }
 
-function clampSingleResult(parsed, maxScore) {
+function clampSingleResult(parsed, maxScore, categoryWeights = null, categoryMaxPoints = null) {
   let score = parseFloat(parsed.score);
   if (isNaN(score) || score < 0) score = 0;
+
+  // Validate that percentage weights sum to ~100 (allow 99-101 for floating point)
+  if (categoryWeights) {
+    const weightSum = Object.values(categoryWeights).reduce((a, b) => a + b, 0);
+    if (weightSum < 99 || weightSum > 101) {
+      console.warn(`[grade] ⚠ Category weights sum to ${weightSum.toFixed(1)}, expected ~100. Proceeding anyway.`);
+    }
+  }
+
+  // ── Percentage-weighted composite if criterion_scores present and weights provided ──
+  // Algorithm: sum(catScore / catMaxPts * catWeightPct / 100) * maxScore
+  let usedWeighting = false;
+  if (categoryWeights && parsed.criterion_scores && typeof parsed.criterion_scores === 'object') {
+    let weightedFraction = 0;
+    let validCount = 0;
+    for (const [category, catScore] of Object.entries(parsed.criterion_scores)) {
+      const raw = parseFloat(catScore);
+      if (isNaN(raw) || raw < 0) continue;
+      const weightPct = categoryWeights[category];
+      if (weightPct == null) continue; // skip categories without a weight
+      const catMax = (categoryMaxPoints && categoryMaxPoints[category]) || 10; // fallback to virtual max
+      weightedFraction += (raw / catMax) * (weightPct / 100);
+      validCount++;
+    }
+    if (validCount > 0) {
+      score = weightedFraction * maxScore;
+      usedWeighting = true;
+      console.log(`[grade] single pct-weighted: weightedFraction=${weightedFraction.toFixed(4)} maxScore=${maxScore} → ${score.toFixed(2)}`);
+    }
+  }
+  // ── End weighted composite ──
+
   // Descale: AI was prompted with virtualMax, convert back to real maxScore
+  // Only descale if we did NOT use percentage weighting (which already produces real-scale score)
   const { factor: _cf } = getScaleInfo(maxScore);
-  score = score / _cf;  // always descale from virtual-10 to real maxScore
+  if (!usedWeighting) {
+    score = score / _cf;  // descale from virtual-10 to real maxScore
+  }
   if (score > maxScore) score = maxScore;
   score = snapScore(score, maxScore);
   console.log('[grade] single ai_raw=' + parsed.score + ' factor=' + _cf.toFixed(2) + ' final=' + score + ' (max=' + maxScore + ')');

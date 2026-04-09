@@ -556,6 +556,8 @@ export interface BatchGradingRequest {
     rubricItems?: Array<{ category: string; items: string[] }>;
     modelText?: string | null;
     maxScore?: string;
+    /** Percentage weights per category, must sum to 100. Each value represents what % of the total grade that category is worth. */
+    categoryWeights?: Record<string, number>;
   };
   /** Students to grade (filtered — only ungraded students) */
   students: Array<{

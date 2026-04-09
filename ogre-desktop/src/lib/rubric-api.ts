@@ -29,6 +29,8 @@ export interface SavedRubric {
   createdAt: string;
   updatedAt: string;
   weightMode?: 'off' | 'category' | 'criterion';
+  /** Optional category weights for percentage-based scoring (category name → % of total grade, must sum to 100) */
+  categoryWeights?: Record<string, number>;
 }
 
 function authHeaders(): Record<string, string> {

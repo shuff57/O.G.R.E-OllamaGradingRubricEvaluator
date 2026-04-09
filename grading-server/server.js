@@ -612,7 +612,20 @@ app.post('/api/chat', async (c) => {
       );
 
       const maxScore = parseFloat(rubric.maxScore) || 10;
-      const result = parseSingleGradeResponse(aiText, maxScore);
+      const chatCategoryWeights = (rubric.categoryWeights && typeof rubric.categoryWeights === 'object'
+        && Object.keys(rubric.categoryWeights).length > 0) ? rubric.categoryWeights : null;
+      // Build category → max points map from checklistItems (strip points annotation from category names)
+      const chatCategoryMaxPoints = {};
+      if (rubric.checklistItems && Array.isArray(rubric.checklistItems)) {
+        for (const item of rubric.checklistItems) {
+          if (item.category && item.points != null) {
+            const cleanName = item.category.replace(/\s*\(\d+\s*pts?\)/i, '').trim();
+            chatCategoryMaxPoints[cleanName] = parseFloat(item.points) || 10;
+          }
+        }
+      }
+      const result = parseSingleGradeResponse(aiText, maxScore, chatCategoryWeights,
+        Object.keys(chatCategoryMaxPoints).length > 0 ? chatCategoryMaxPoints : null);
 
       return c.json({
         ...result,
@@ -1574,6 +1587,22 @@ app.post('/api/grade', async (c) => {
     rubric.weightMode = weightMode;
   }
 
+  // Extract category weights for weighted scoring (applied at score finalization)
+  const categoryWeights = (rubric.categoryWeights && typeof rubric.categoryWeights === 'object'
+    && Object.keys(rubric.categoryWeights).length > 0) ? rubric.categoryWeights : null;
+
+  // Build category → max points map from checklistItems (strip points annotation from category names)
+  const categoryMaxPoints = {};
+  if (rubric.checklistItems && Array.isArray(rubric.checklistItems)) {
+    for (const item of rubric.checklistItems) {
+      if (item.category && item.points != null) {
+        const cleanName = item.category.replace(/\s*\(\d+\s*pts?\)/i, '').trim();
+        categoryMaxPoints[cleanName] = parseFloat(item.points) || 10;
+      }
+    }
+  }
+  const categoryMaxPtsOrNull = Object.keys(categoryMaxPoints).length > 0 ? categoryMaxPoints : null;
+
   const maxScore = parseFloat(rubric.maxScore) || 10;
   let sseId = 0;
 
@@ -1621,14 +1650,14 @@ app.post('/api/grade', async (c) => {
           console.log(`[${timestamp()}] [sse] Grading chunk ${i + 1}/${chunks.length} (${chunk.students.length} students)...`);
           const prompt = buildBatchPrompt(rubric, chunk.students, anchors, bridgeResponses);
           const aiText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: prompt }], timestamp(), fallbackOptions);
-          const chunkResults = parseBatchResponse(aiText, chunk.students, maxScore);
+          const chunkResults = parseBatchResponse(aiText, chunk.students, maxScore, categoryWeights, categoryMaxPtsOrNull);
           // Guard: if AI dropped trailing students (positional shortfall), retry them once
           const _dropped = chunk.students.slice(chunkResults.length);
           if (_dropped.length > 0) {
             console.warn(`[${timestamp()}] [sse] ⚠ Chunk ${i + 1}: AI dropped ${_dropped.length}/${chunk.students.length} — retrying...`);
             const _retryPrompt = buildBatchPrompt(rubric, _dropped, anchors, null);
             const _retryText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: _retryPrompt }], timestamp(), fallbackOptions);
-            const _retryResults = parseBatchResponse(_retryText, _dropped, maxScore);
+            const _retryResults = parseBatchResponse(_retryText, _dropped, maxScore, categoryWeights, categoryMaxPtsOrNull);
             chunkResults.push(..._retryResults);
             console.log(`[${timestamp()}] [sse] ↺ Retry: recovered ${_retryResults.length}/${_dropped.length}`);
           }
@@ -1669,7 +1698,7 @@ app.post('/api/grade', async (c) => {
         console.log(`[${timestamp()}] [sse] Grading calibration batch (${calStudents.length} students)...`);
         const calPrompt = buildBatchPrompt(rubric, calStudents, anchors, null, calibrationExamples);
         const calText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: calPrompt }], timestamp(), fallbackOptions);
-        const calResults = parseBatchResponse(calText, calStudents, maxScore);
+        const calResults = parseBatchResponse(calText, calStudents, maxScore, categoryWeights, categoryMaxPtsOrNull);
         allResults.push(calResults);
 
         for (const r of calResults) {
@@ -1712,14 +1741,14 @@ app.post('/api/grade', async (c) => {
 
             for (let j = 0; j < wave.length; j++) {
               const chunkIdx = waveStart + j;
-              const chunkResults = parseBatchResponse(waveTexts[j], wave[j].students, maxScore);
+              const chunkResults = parseBatchResponse(waveTexts[j], wave[j].students, maxScore, categoryWeights, categoryMaxPtsOrNull);
               // Guard: if AI dropped trailing students (positional shortfall), retry them once
               const _dropped = wave[j].students.slice(chunkResults.length);
               if (_dropped.length > 0) {
                 console.warn(`[${timestamp()}] [sse] ⚠ Parallel chunk ${chunkIdx + 1}: AI dropped ${_dropped.length}/${wave[j].students.length} — retrying...`);
                 const _retryPrompt = buildBatchPrompt(rubric, _dropped, anchors, bridgeResponses, calibrationExamples);
                 const _retryText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: _retryPrompt }], timestamp(), fallbackOptions);
-                const _retryResults = parseBatchResponse(_retryText, _dropped, maxScore);
+                const _retryResults = parseBatchResponse(_retryText, _dropped, maxScore, categoryWeights, categoryMaxPtsOrNull);
                 chunkResults.push(..._retryResults);
                 console.log(`[${timestamp()}] [sse] ↺ Retry: recovered ${_retryResults.length}/${_dropped.length}`);
               }
@@ -1877,7 +1906,7 @@ app.post('/api/grade', async (c) => {
 
         try {
           const outlierText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: outlierPrompt }], timestamp(), fallbackOptions);
-          const outlierResults = parseBatchResponse(outlierText, outlierStudents, maxScore);
+          const outlierResults = parseBatchResponse(outlierText, outlierStudents, maxScore, categoryWeights, categoryMaxPtsOrNull);
 
           const adjustedResults = [];
           for (const or of outlierResults) {
