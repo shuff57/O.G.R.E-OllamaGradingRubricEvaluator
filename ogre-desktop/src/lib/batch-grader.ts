@@ -54,6 +54,8 @@ export interface Rubric {
   modelText: string | null;
   /** Maximum possible score (as string, e.g. "10") */
   maxScore: string;
+  /** Optional category weights for weighted scoring (category name → weight multiplier, default 1.0) */
+  categoryWeights?: Record<string, number>;
 }
 
 /** CSS selectors for locating elements on a grading page. */

@@ -13,6 +13,8 @@ export interface RubricCriterion {
   description: string;
   points: number;
   question?: number;
+  /** Optional weight multiplier for this criterion (default 1.0) */
+  weight?: number;
 }
 
 export interface SavedRubric {
@@ -24,6 +26,8 @@ export interface SavedRubric {
   tags: string[];
   createdAt: string;
   updatedAt: string;
+  /** Optional category weights for weighted scoring (category name → weight multiplier) */
+  weights?: Record<string, number>;
 }
 
 function authHeaders(): Record<string, string> {

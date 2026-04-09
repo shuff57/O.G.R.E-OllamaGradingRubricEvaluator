@@ -556,6 +556,8 @@ export interface BatchGradingRequest {
     rubricItems?: Array<{ category: string; items: string[] }>;
     modelText?: string | null;
     maxScore?: string;
+    /** Optional category weights for weighted scoring (category name → weight multiplier, default 1.0) */
+    categoryWeights?: Record<string, number>;
   };
   /** Students to grade (filtered — only ungraded students) */
   students: Array<{
