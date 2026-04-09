@@ -54,7 +54,7 @@ export interface Rubric {
   modelText: string | null;
   /** Maximum possible score (as string, e.g. "10") */
   maxScore: string;
-  /** Optional category weights for weighted scoring (category name → weight multiplier, default 1.0) */
+  /** Percentage weights per category, must sum to 100. Each value represents what % of the total grade that category is worth. */
   categoryWeights?: Record<string, number>;
 }
 
