@@ -38,7 +38,7 @@ import type { RubricCriterion } from "./rubric-api";
  * Matches: "Full (2pts)", "Partial (1pts): ...", "Minimal (1pts)", "Missing (0pts)"
  * Does NOT match: "Full Credit (2pts)" (extra words between keyword and paren)
  */
-function isAllocationCriterion(name: string): boolean {
+export function isAllocationCriterion(name: string): boolean {
   return /^(Full|Partial|Minimal|Missing)\s*\(\d/i.test(name);
 }
 

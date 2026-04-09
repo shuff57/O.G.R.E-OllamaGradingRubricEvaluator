@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { listRubrics, createRubric, updateRubric, deleteRubric } from '../lib/rubric-api';
   import type { SavedRubric, RubricCriterion } from '../lib/rubric-api';
-  import { validateWeights } from '../lib/rubric-utils';
+  import { validateWeights, isAllocationCriterion } from '../lib/rubric-utils';
   import RubricImport from '../components/grading/RubricImport.svelte';
   import { generateRubricFromText } from '../lib/discover';
 
@@ -72,6 +72,7 @@
     formMaxScore = rubric.maxScore;
     formTags = rubric.tags.join(', ');
     formCriteria = rubric.criteria.map(c => ({ ...c }));
+    formCriteria = formCriteria.map(c => ({ ...c, rowType: c.rowType ?? (isAllocationCriterion(c.criteria) ? 'allocation' : undefined) }));
     formWeightMode = rubric.weightMode ?? 'off';
     generateText = '';
     generateError = '';
@@ -85,6 +86,7 @@
     formMaxScore = rubric.maxScore;
     formTags = rubric.tags.join(', ');
     formCriteria = rubric.criteria.map(c => ({ ...c }));
+    formCriteria = formCriteria.map(c => ({ ...c, rowType: c.rowType ?? (isAllocationCriterion(c.criteria) ? 'allocation' : undefined) }));
     formWeightMode = rubric.weightMode ?? 'off';
   }
 
