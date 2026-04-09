@@ -16,6 +16,7 @@ export interface RubricCriterion {
   category?: string;
   categoryWeight?: number;
   criterionWeight?: number;
+  rowType?: 'checklist' | 'allocation';
 }
 
 export interface SavedRubric {

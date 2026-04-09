@@ -34,6 +34,15 @@
 import type { RubricCriterion } from "./rubric-api";
 
 /**
+ * Returns true when the criterion name matches allocation row patterns.
+ * Matches: "Full (2pts)", "Partial (1pts): ...", "Minimal (1pts)", "Missing (0pts)"
+ * Does NOT match: "Full Credit (2pts)" (extra words between keyword and paren)
+ */
+function isAllocationCriterion(name: string): boolean {
+  return /^(Full|Partial|Minimal|Missing)\s*\(\d/i.test(name);
+}
+
+/**
  * Serialize an array of RubricCriterion into a human-readable string.
  * Each criterion becomes one line:
  *   "Criterion Name (10pts): Description"
@@ -146,6 +155,9 @@ function parseIndentedCategoryFormat(text: string): RubricCriterion[] {
       };
       if (currentCategory !== undefined) criterion.category = currentCategory;
       results.push(criterion);
+      if (isAllocationCriterion(criterion.criteria)) {
+        results[results.length - 1].rowType = 'allocation';
+      }
     }
     // Non-indented, non-category lines are silently skipped
   }
@@ -190,6 +202,9 @@ function parseCheckboxFormat(text: string): RubricCriterion[] {
       };
       if (currentCategory) criterion.category = currentCategory;
       results.push(criterion);
+      if (isAllocationCriterion(criterion.criteria)) {
+        results[results.length - 1].rowType = 'allocation';
+      }
       continue;
     }
 
@@ -204,6 +219,9 @@ function parseCheckboxFormat(text: string): RubricCriterion[] {
       };
       if (currentCategory !== undefined) criterion.category = currentCategory;
       results.push(criterion);
+      if (isAllocationCriterion(criterion.criteria)) {
+        results[results.length - 1].rowType = 'allocation';
+      }
     }
     // Lines with no ☐ and no tab-checkbox are silently skipped
   }
@@ -269,6 +287,9 @@ export function textToCriteria(text: string): RubricCriterion[] {
     }
 
     results.push(criterion);
+    if (isAllocationCriterion(line)) {
+      results[results.length - 1].rowType = 'allocation';
+    }
   }
 
   return results;

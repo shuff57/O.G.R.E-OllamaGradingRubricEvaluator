@@ -787,3 +787,53 @@ describe("textToCriteria — indented-category format", () => {
     expect(result[0].points).toBe(10);
   });
 });
+
+// ---------------------------------------------------------------------------
+// allocation row detection
+// ---------------------------------------------------------------------------
+
+describe("allocation row detection", () => {
+  it("detects 'Full (2pts)' as allocation row", () => {
+    const result = textToCriteria("Full (2pts)");
+    expect(result).toHaveLength(1);
+    expect(result[0].rowType).toBe("allocation");
+  });
+
+  it("detects 'Partial (1pts): Partial description' as allocation row", () => {
+    const result = textToCriteria("Partial (1pts): Partial description");
+    expect(result).toHaveLength(1);
+    expect(result[0].rowType).toBe("allocation");
+  });
+
+  it("detects 'Missing (0pts)' as allocation row", () => {
+    const result = textToCriteria("Missing (0pts)");
+    expect(result).toHaveLength(1);
+    expect(result[0].rowType).toBe("allocation");
+  });
+
+  it("detects 'Minimal (1pts)' as allocation row", () => {
+    const result = textToCriteria("Minimal (1pts)");
+    expect(result).toHaveLength(1);
+    expect(result[0].rowType).toBe("allocation");
+  });
+
+  it("does NOT set rowType for 'States the CLT (0pts)'", () => {
+    const result = textToCriteria("States the CLT (0pts)");
+    expect(result).toHaveLength(1);
+    expect(result[0].rowType).toBeUndefined();
+  });
+
+  it("does NOT set rowType for 'Full Credit (2pts)' (extra words after keyword)", () => {
+    const result = textToCriteria("Full Credit (2pts)");
+    expect(result).toHaveLength(1);
+    expect(result[0].rowType).toBeUndefined();
+  });
+
+  it("detects allocation rows in checkbox format with 'Full (2):' in criterion text", () => {
+    const text = "Category A\t☐ Full (2): Complete solution with all steps shown";
+    const result = textToCriteria(text);
+    expect(result).toHaveLength(1);
+    expect(result[0].rowType).toBe("allocation");
+    expect(result[0].criteria).toBe("Full (2): Complete solution with all steps shown");
+  });
+});

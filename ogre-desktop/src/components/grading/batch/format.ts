@@ -10,14 +10,14 @@ import { criteriaToText } from '../../../lib/rubric-utils';
  * Convert a RubricItem array into RubricCriterion[] for use with criteriaToText().
  * Each item in each category becomes one criterion with points: 0.
  */
-function rubricItemsToCriteria(items: RubricItem[]): RubricCriterion[] {
+function rubricItemsToCriteria(items: RubricItem[], rowType?: RubricCriterion['rowType']): RubricCriterion[] {
   const criteria: RubricCriterion[] = [];
   for (const item of items) {
     const category = item.category?.trim() || undefined;
     for (const sub of item.items) {
       const trimmed = sub.trim();
       if (!trimmed) continue;
-      criteria.push({ criteria: trimmed, description: '', points: 0, ...(category ? { category } : {}) });
+      criteria.push({ criteria: trimmed, description: '', points: 0, ...(category ? { category } : {}), ...(rowType ? { rowType } : {}) });
     }
   }
   return criteria;
@@ -42,8 +42,8 @@ export function formatRubricForDisplay(rubric: Rubric, _allVersions?: VersionGro
   // Merge checklist and rubric target items into a single flat criteria list.
   // Checklist items come first, then rubric targets.
   const criteria: RubricCriterion[] = [
-    ...rubricItemsToCriteria(rubric.checklistItems),
-    ...rubricItemsToCriteria(rubric.rubricItems),
+    ...rubricItemsToCriteria(rubric.checklistItems, 'checklist'),
+    ...rubricItemsToCriteria(rubric.rubricItems, 'allocation'),
   ];
 
   if (criteria.length === 0) {
