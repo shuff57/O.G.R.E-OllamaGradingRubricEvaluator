@@ -57,9 +57,10 @@ export function criteriaToText(criteria: RubricCriterion[]): string {
   let lastCategory: string | undefined = undefined;
 
   for (const c of criteria) {
-    // Emit category header when category changes
+    // Emit category header when category changes, including categoryWeight if set
     if (c.category !== undefined && c.category !== lastCategory) {
-      lines.push(`## ${c.category}`);
+      const weightSuffix = c.categoryWeight !== undefined ? ` [${c.categoryWeight}%]` : '';
+      lines.push(`## ${c.category}${weightSuffix}`);
       lastCategory = c.category;
     }
 
@@ -250,10 +251,11 @@ export function textToCriteria(text: string): RubricCriterion[] {
   const LINE_RE =
     /^(.+?)\s*\((\d+(?:\.\d+)?)\s*pts?(?:,\s*(\d+(?:\.\d+)?)%\s*)?\)\s*(?::\s*(.*))?$/i;
 
-  // Category header pattern: "## Category Name"
-  const CATEGORY_RE = /^##\s+(.+)$/;
+  // Category header pattern: "## Category Name" or "## Category Name [N%]"
+  const CATEGORY_RE = /^##\s+(.+?)(?:\s*\[(\d+(?:\.\d+)?)%\])?\s*$/;
 
   let currentCategory: string | undefined = undefined;
+  let currentCategoryWeight: number | undefined = undefined;
 
   for (const raw of lines) {
     const line = raw.trim();
@@ -263,6 +265,7 @@ export function textToCriteria(text: string): RubricCriterion[] {
     const catMatch = CATEGORY_RE.exec(line);
     if (catMatch) {
       currentCategory = catMatch[1].trim();
+      currentCategoryWeight = catMatch[2] !== undefined ? parseFloat(catMatch[2]) : undefined;
       continue;
     }
 
@@ -284,6 +287,10 @@ export function textToCriteria(text: string): RubricCriterion[] {
 
     if (currentCategory !== undefined) {
       criterion.category = currentCategory;
+    }
+
+    if (currentCategoryWeight !== undefined) {
+      criterion.categoryWeight = currentCategoryWeight;
     }
 
     results.push(criterion);

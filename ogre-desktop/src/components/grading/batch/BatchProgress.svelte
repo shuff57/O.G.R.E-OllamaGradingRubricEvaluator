@@ -268,16 +268,24 @@
     // Extract model text from textarea (may be leniency-rewritten)
     const modelText = extractModelTextFromText(text) ?? base?.modelText ?? null;
 
+    // Helper: look up categoryWeight by category name from the scraped rubric's categoryWeights map.
+    // This re-attaches weight data that cannot survive the textarea round-trip.
+    const lookupCategoryWeight = (catName: string): number | undefined =>
+      base?.categoryWeights?.[catName];
+
     // Try structured criteria format first (Name (Npts): Desc)
     const parsed = textToCriteria(text);
     if (parsed.length > 0) {
       return {
         essayPrompt: base?.essayPrompt || '',
-        checklistItems: parsed.map(c => ({
-          category: c.criteria,
-          items: c.description ? [c.description] : [],
-          ...(c.categoryWeight !== undefined ? { categoryWeight: c.categoryWeight } : {}),
-        })),
+        checklistItems: parsed.map(c => {
+          const catWeight = c.categoryWeight ?? lookupCategoryWeight(c.category ?? c.criteria);
+          return {
+            category: c.criteria,
+            items: c.description ? [c.description] : [],
+            ...(catWeight !== undefined ? { categoryWeight: catWeight } : {}),
+          };
+        }),
         rubricItems: base?.rubricItems || [],
         modelText,
         maxScore: rubricMaxScore,
@@ -285,9 +293,9 @@
     }
 
     // Try [Category] / - item format (from formatRubricForDisplay)
-    const checklistItems: { category: string; items: string[] }[] = [];
+    const checklistItems: { category: string; items: string[]; categoryWeight?: number }[] = [];
     const rubricItems: { category: string; items: string[] }[] = [];
-    let current: { category: string; items: string[] } | null = null;
+    let current: { category: string; items: string[]; categoryWeight?: number } | null = null;
     let inRubricTargets = false;
     let inModelSection = false;
     for (const line of text.split('\n')) {
@@ -299,7 +307,8 @@
       if (t === '--- Grading Checklist ---') { inRubricTargets = false; current = null; continue; }
       if (t.startsWith('[') && (t.endsWith(']') || t.match(/\]\s*$/))) {
         const cat = t.replace(/^\[/, '').replace(/\]\s*$/, '');
-        current = { category: cat, items: [] };
+        const catWeight = lookupCategoryWeight(cat);
+        current = { category: cat, items: [], ...(catWeight !== undefined ? { categoryWeight: catWeight } : {}) };
         if (inRubricTargets) rubricItems.push(current);
         else checklistItems.push(current);
       } else if (t.startsWith('-') && current) {
@@ -559,6 +568,18 @@
             rubricItems: rubric.rubricItems,
             modelText: rubric.modelText,
             maxScore: rubric.maxScore,
+            ...(weightMode === 'category' ? (() => {
+              const cws: Record<string, number> = {};
+              const seen = new Set<string>();
+              for (const row of textToCriteria(rubricText)) {
+                const cat = row.category ?? '';
+                if (!seen.has(cat) && row.categoryWeight !== undefined) {
+                  seen.add(cat);
+                  cws[cat] = row.categoryWeight;
+                }
+              }
+              return Object.keys(cws).length > 0 ? { categoryWeights: cws } : {};
+            })() : {}),
           },
           students: studentsToGrade.map(s => ({
             index: s.index,

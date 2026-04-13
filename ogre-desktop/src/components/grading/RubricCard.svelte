@@ -13,7 +13,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { listRubrics, createRubric, updateRubric } from '../../lib/rubric-api';
   import type { SavedRubric } from '../../lib/rubric-api';
-  import { criteriaToText, textToCriteria, validateWeights } from '../../lib/rubric-utils';
+  import { criteriaToText, textToCriteria, validateWeights, isAllocationCriterion } from '../../lib/rubric-utils';
   import { generateRubricFromText } from '../../lib/discover';
   import { rewriteRubricAI } from '../../lib/rubric-leniency';
   import type { Rubric } from '../../lib/batch-grader';
@@ -172,6 +172,80 @@
     newRows[index] = { ...newRows[index], [field]: value };
     rubricText = criteriaToText(newRows);
   }
+
+  /** Update categoryWeight on ALL rows in the same category group */
+  function updateCategoryWeight(index: number, value: number) {
+    const newRows = [...tableRows];
+    const cat = newRows[index].category;
+    for (let i = 0; i < newRows.length; i++) {
+      if (newRows[i].category === cat) {
+        newRows[i] = { ...newRows[i], categoryWeight: value };
+      }
+    }
+    rubricText = criteriaToText(newRows);
+  }
+
+  /** True if this row is the first in its category group */
+  let isFirstInCategory = $derived.by(() => {
+    const result: boolean[] = [];
+    const seen = new Set<string>();
+    for (const row of tableRows) {
+      const cat = row.category ?? '';
+      result.push(!seen.has(cat));
+      seen.add(cat);
+    }
+    return result;
+  });
+
+  /** Rows to display — hides allocation rows (Full/Partial/Minimal/Missing) in category weight mode */
+  let displayRows = $derived.by(() => {
+    if (weightMode !== 'category') return tableRows;
+    return tableRows.filter(r => !isAllocationCriterion(r.criteria));
+  });
+
+  /** Map from original tableRows index → displayRows index, and vice versa */
+  let displayIndexMap = $derived.by(() => {
+    const toDisplay = new Map<number, number>();
+    const toOriginal = new Map<number, number>();
+    if (weightMode !== 'category') {
+      for (let i = 0; i < tableRows.length; i++) {
+        toDisplay.set(i, i);
+        toOriginal.set(i, i);
+      }
+      return { toDisplay, toOriginal };
+    }
+    let di = 0;
+    for (let oi = 0; oi < tableRows.length; oi++) {
+      if (!isAllocationCriterion(tableRows[oi].criteria)) {
+        toDisplay.set(oi, di);
+        toOriginal.set(di, oi);
+        di++;
+      }
+    }
+    return { toDisplay, toOriginal };
+  });
+
+  /** Rowspan count per category group in displayRows (for category weight mode). Undefined when not first row. */
+  let categoryRowCounts = $derived.by(() => {
+    if (weightMode !== 'category') return new Map<string, number>();
+    const counts = new Map<string, number>();
+    for (const row of displayRows) {
+      const cat = row.category ?? '';
+      counts.set(cat, (counts.get(cat) ?? 0) + 1);
+    }
+    return counts;
+  });
+
+  let isFirstInCategoryDisplay = $derived.by(() => {
+    const result: boolean[] = [];
+    const seen = new Set<string>();
+    for (const row of displayRows) {
+      const cat = row.category ?? '';
+      result.push(!seen.has(cat));
+      seen.add(cat);
+    }
+    return result;
+  });
 
   function addTableRow() {
     const newRows = [...tableRows, { criteria: 'New Criterion', points: 0, description: '' }];
@@ -368,33 +442,45 @@
         <button class="btn-secondary small manage-btn" onclick={(e) => { e.preventDefault(); e.stopPropagation(); handleManageLibrary(); }}>Manage Rubrics</button>
       </div>
     {/if}
-    {#if tableRows.length > 0 && showTable}
+    {#if displayRows.length > 0 && showTable}
       <!-- Editable table view -->
       <div class="rubric-table-container">
         <table class="rubric-table">
           <thead>
             <tr>
-              <th>Category</th>
-              <th>Criteria</th>
-              {#if weightMode !== 'off'}
+              {#if weightMode === 'category'}
                 <th>Weight %</th>
               {/if}
-              <th>Pts</th>
+              <th>Category</th>
+              <th>Criteria</th>
+              {#if weightMode === 'criterion'}
+                <th>Weight %</th>
+              {/if}
+              {#if weightMode !== 'category'}
+                <th>Pts</th>
+              {/if}
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {#each tableRows as row, i}
-              <tr>
-                <td><input type="text" value={row.category ?? ''} oninput={(e) => updateTableRow(i, 'category', (e.target as HTMLInputElement).value)} disabled={isDisabled} /></td>
-                <td><input type="text" value={row.criteria} oninput={(e) => updateTableRow(i, 'criteria', (e.target as HTMLInputElement).value)} disabled={isDisabled} /></td>
+            {#each displayRows as row, di}
+              {@const oi = displayIndexMap.toOriginal.get(di) ?? di}
+              <tr class:category-first-row={weightMode === 'category' && isFirstInCategoryDisplay[di]}>
                 {#if weightMode === 'category'}
-                  <td><input class="num-input" type="number" value={row.categoryWeight ?? ''} oninput={(e) => updateTableRow(i, 'categoryWeight', parseFloat((e.target as HTMLInputElement).value) || 0)} disabled={isDisabled} /></td>
+                  {#if isFirstInCategoryDisplay[di]}
+                    <td class="weight-cell" rowspan={categoryRowCounts.get(row.category ?? '') ?? 1}>
+                      <input class="num-input weight-input" type="number" value={row.categoryWeight ?? ''} oninput={(e) => updateCategoryWeight(oi, parseFloat((e.target as HTMLInputElement).value) || 0)} disabled={isDisabled} placeholder="%" />
+                    </td>
+                  {/if}
                 {:else if weightMode === 'criterion'}
-                  <td><input class="num-input" type="number" value={row.criterionWeight ?? ''} oninput={(e) => updateTableRow(i, 'criterionWeight', parseFloat((e.target as HTMLInputElement).value) || 0)} disabled={isDisabled} /></td>
+                  <td><input class="num-input" type="number" value={row.criterionWeight ?? ''} oninput={(e) => updateTableRow(oi, 'criterionWeight', parseFloat((e.target as HTMLInputElement).value) || 0)} disabled={isDisabled} /></td>
                 {/if}
-                <td><input class="num-input" type="number" value={row.points} oninput={(e) => updateTableRow(i, 'points', parseFloat((e.target as HTMLInputElement).value) || 0)} disabled={isDisabled} /></td>
-                <td><button class="error-text" onclick={() => removeTableRow(i)} disabled={isDisabled} title="Remove row">&times;</button></td>
+                <td><input type="text" value={row.category ?? ''} oninput={(e) => updateTableRow(oi, 'category', (e.target as HTMLInputElement).value)} disabled={isDisabled} /></td>
+                <td><input type="text" value={row.criteria} oninput={(e) => updateTableRow(oi, 'criteria', (e.target as HTMLInputElement).value)} disabled={isDisabled} /></td>
+                {#if weightMode !== 'category'}
+                  <td><input class="num-input" type="number" value={row.points} oninput={(e) => updateTableRow(oi, 'points', parseFloat((e.target as HTMLInputElement).value) || 0)} disabled={isDisabled} /></td>
+                {/if}
+                <td><button class="error-text" onclick={() => removeTableRow(oi)} disabled={isDisabled} title="Remove row">&times;</button></td>
               </tr>
             {/each}
           </tbody>
@@ -981,6 +1067,18 @@
   .rubric-table .num-input {
     width: 50px;
     text-align: right;
+  }
+  .rubric-table .weight-cell {
+    vertical-align: middle;
+    text-align: center;
+    border-right: 2px solid var(--color-border, #444);
+  }
+  .rubric-table .weight-input {
+    width: 55px;
+    text-align: center;
+  }
+  .rubric-table .category-first-row {
+    border-top: 2px solid var(--color-border, #444);
   }
   .add-row-btn {
     margin-top: 4px;
