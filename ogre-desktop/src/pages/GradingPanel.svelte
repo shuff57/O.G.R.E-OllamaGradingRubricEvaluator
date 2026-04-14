@@ -7,7 +7,6 @@
   import AgentChat from '../components/grading/AgentChat.svelte';
   import BatchPanel from '../components/grading/batch/BatchPanel.svelte';
   import DiscoveryPanel from '../components/grading/DiscoveryPanel.svelte';
-  import SkillPicker from '../components/skills/SkillPicker.svelte';
   import { captureWebviewScreenshot, hideWebview, showWebview, getActiveTabId } from '../lib/browser';
   import { getSetting, setSetting } from '../lib/db';
   import type { SavedRubric } from '../lib/rubric-api';
@@ -69,7 +68,7 @@
   let originalRubricText = $state('');
   let isRubricRewriting = $state(false);
   let weightsValid = $state(true);
-  let weightMode = $state<'off' | 'category' | 'criterion'>('off');
+let weightMode = $state<'category' | 'criterion'>('category');
 
   let returnToBatch = $state(false);
   let preselectedProfileId = $state<string | null>(null);
@@ -124,11 +123,16 @@
     if (!saved) return undefined;
     return {
       maxScore: String(saved.maxScore),
-      checklistItems: saved.criteria.map(c => ({
-        category: c.criteria,
-        points: c.points,
-        items: c.description ? [c.description] : [],
-      })),
+      checklistItems: saved.criteria.map(c => {
+        // Re-attach categoryWeight: prefer per-criterion value, fall back to top-level map
+        const catWeight = c.categoryWeight ?? saved.categoryWeights?.[c.category ?? c.criteria];
+        return {
+          category: c.criteria,
+          points: c.points,
+          items: c.description ? [c.description] : [],
+          ...(catWeight !== undefined ? { categoryWeight: catWeight } : {}),
+        };
+      }),
     };
   }
 
@@ -460,26 +464,25 @@
           />
         {/if}
         <ProviderSelector bind:provider={activeProvider} bind:model={activeModel} />
-        <SkillPicker />
-        <RubricCard
-          bind:selectedRubric
-          bind:rubricText
-          bind:rubricMaxScore
-          bind:sourceRubricId
-          bind:leniency
-          bind:originalRubricText
-          bind:isRewriting={isRubricRewriting}
-          bind:weightsValid
-          bind:weightMode
-          {extractedRubric}
-          fallbackText={essayPrompt}
-          provider={activeProvider}
-          model={activeModel}
-          phase={batchPhase}
-          showActions={graderSubMode === 'batch'}
-          showTable={true}
-        />
         {#if graderSubMode === 'single'}
+          <RubricCard
+            bind:selectedRubric
+            bind:rubricText
+            bind:rubricMaxScore
+            bind:sourceRubricId
+            bind:leniency
+            bind:originalRubricText
+            bind:isRewriting={isRubricRewriting}
+            bind:weightsValid
+            bind:weightMode
+            {extractedRubric}
+            fallbackText={essayPrompt}
+            provider={activeProvider}
+            model={activeModel}
+            phase={batchPhase}
+            showActions={false}
+            showTable={true}
+          />
           <StudentWorkCard
             onScreenshot={handleScreenshot}
             provider={activeProvider}
@@ -490,6 +493,7 @@
             {isCapturing}
             {captureError}
             studentName={singleStudentName}
+            {weightMode}
           />
         {:else}
           <BatchPanel
@@ -513,6 +517,26 @@
             bind:batchPhase
             bind:essayPrompt
           />
+          {#if batchPhase !== 'idle'}
+            <RubricCard
+              bind:selectedRubric
+              bind:rubricText
+              bind:rubricMaxScore
+              bind:sourceRubricId
+              bind:leniency
+              bind:originalRubricText
+              bind:isRewriting={isRubricRewriting}
+              bind:weightsValid
+              bind:weightMode
+              {extractedRubric}
+              fallbackText={essayPrompt}
+              provider={activeProvider}
+              model={activeModel}
+              phase={batchPhase}
+              showActions={true}
+              showTable={true}
+            />
+          {/if}
         {/if}
       {/if}
       {#if activeMode === 'agent'}

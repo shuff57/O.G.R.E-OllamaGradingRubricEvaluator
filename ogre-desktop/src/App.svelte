@@ -6,7 +6,6 @@
   import Settings from './pages/settings/Settings.svelte';
   import Rubrics from './pages/Rubrics.svelte';
   import Browser from './pages/Browser.svelte';
-  import Skills from './pages/Skills.svelte';
   import SiteProfiles from './pages/SiteProfiles.svelte';
   import SetupWizard from './pages/SetupWizard.svelte';
   import UpdateModal from './components/UpdateModal.svelte';
@@ -18,7 +17,6 @@
     RubricsIcon,
     ProfilesIcon,
     BrowserIcon,
-    SkillsIcon,
     SettingsIcon,
   } from './components/icons/index';
   import { getSetting, insertGradingSession } from './lib/db';
@@ -215,10 +213,6 @@
         <!-- Tools group -->
         <div class="nav-group">
           <span class="nav-group-label">Tools</span>
-          <button class:active={currentPage === 'skills'} onclick={() => navigate('skills')} title="AI Skills">
-            <span class="icon"><SkillsIcon /></span>
-            <span class="label">AI Skills</span>
-          </button>
           <button class:active={currentPage === 'profiles'} onclick={() => navigate('profiles')} title="Site Templates">
             <span class="icon"><ProfilesIcon /></span>
             <span class="label">Site Templates</span>
@@ -253,8 +247,6 @@
         <Browser />
       {:else if currentPage === 'profiles'}
         <SiteProfiles />
-      {:else if currentPage === 'skills'}
-        <Skills />
       {:else if currentPage === 'settings'}
         <Settings />
       {/if}
