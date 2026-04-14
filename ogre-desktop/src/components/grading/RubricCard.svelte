@@ -13,7 +13,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { listRubrics, createRubric, updateRubric } from '../../lib/rubric-api';
   import type { SavedRubric } from '../../lib/rubric-api';
-  import { criteriaToText, textToCriteria, validateWeights, isAllocationCriterion } from '../../lib/rubric-utils';
+  import { criteriaToText, textToCriteria, validateWeights, isAllocationCriterion, getFullCreditPoints } from '../../lib/rubric-utils';
   import { generateRubricFromText } from '../../lib/discover';
   import { rewriteRubricAI } from '../../lib/rubric-leniency';
   import type { Rubric } from '../../lib/batch-grader';
@@ -247,6 +247,12 @@
     return result;
   });
 
+  /** Map from original tableRows index → full-credit points (from "Full" allocation row) */
+  let fullCreditMap = $derived.by(() => {
+    if (weightMode === 'off') return new Map<number, number>();
+    return getFullCreditPoints(tableRows);
+  });
+
   function addTableRow() {
     const newRows = [...tableRows, { criteria: 'New Criterion', points: 0, description: '' }];
     rubricText = criteriaToText(newRows);
@@ -478,7 +484,7 @@
                 <td><input type="text" value={row.category ?? ''} oninput={(e) => updateTableRow(oi, 'category', (e.target as HTMLInputElement).value)} disabled={isDisabled} /></td>
                 <td><input type="text" value={row.criteria} oninput={(e) => updateTableRow(oi, 'criteria', (e.target as HTMLInputElement).value)} disabled={isDisabled} /></td>
                 {#if weightMode !== 'category'}
-                  <td><input class="num-input" type="number" value={row.points} oninput={(e) => updateTableRow(oi, 'points', parseFloat((e.target as HTMLInputElement).value) || 0)} disabled={isDisabled} /></td>
+                  <td><input class="num-input" type="number" value={row.points === 0 && fullCreditMap.has(oi) ? fullCreditMap.get(oi)! : row.points} oninput={(e) => updateTableRow(oi, 'points', parseFloat((e.target as HTMLInputElement).value) || 0)} disabled={isDisabled} /></td>
                 {/if}
                 <td><button class="error-text" onclick={() => removeTableRow(oi)} disabled={isDisabled} title="Remove row">&times;</button></td>
               </tr>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { criteriaToText, textToCriteria, hasUnsavedChanges, validateWeights } from "./rubric-utils";
+import { criteriaToText, textToCriteria, hasUnsavedChanges, validateWeights, getFullCreditPoints } from "./rubric-utils";
 import type { RubricCriterion } from "./rubric-api";
 
 // ---------------------------------------------------------------------------
@@ -467,6 +467,38 @@ describe("criterionWeight round-trip", () => {
       expect(parsed[i].criterionWeight).toBe(criteria[i].criterionWeight);
       expect(parsed[i].category).toBe(criteria[i].category);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getFullCreditPoints
+// ---------------------------------------------------------------------------
+
+describe("getFullCreditPoints", () => {
+  it("maps non-allocation rows to their Full allocation points", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "Thesis Statement", points: 0, description: "", category: "Writing" },
+      { criteria: "Full (2pts)", points: 2, description: "Complete thesis", category: "Writing", rowType: "allocation" },
+      { criteria: "Partial (1pts)", points: 1, description: "Incomplete thesis", category: "Writing", rowType: "allocation" },
+      { criteria: "Missing (0pts)", points: 0, description: "No thesis", category: "Writing", rowType: "allocation" },
+      { criteria: "Evidence", points: 0, description: "", category: "Writing" },
+      { criteria: "Full (3pts)", points: 3, description: "Strong evidence", category: "Writing", rowType: "allocation" },
+      { criteria: "Missing (0pts)", points: 0, description: "No evidence", category: "Writing", rowType: "allocation" },
+    ];
+    const result = getFullCreditPoints(criteria);
+    expect(result.get(0)).toBe(2); // Thesis → Full (2pts)
+    expect(result.get(4)).toBe(3); // Evidence → Full (3pts)
+    expect(result.has(1)).toBe(false); // Full row itself not mapped
+    expect(result.has(2)).toBe(false); // Partial row not mapped
+  });
+
+  it("returns empty map for criteria without allocation rows", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "Thesis", points: 5, description: "A thesis" },
+      { criteria: "Evidence", points: 5, description: "Evidence" },
+    ];
+    const result = getFullCreditPoints(criteria);
+    expect(result.size).toBe(0);
   });
 });
 

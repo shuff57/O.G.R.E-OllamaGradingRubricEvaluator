@@ -43,6 +43,32 @@ export function isAllocationCriterion(name: string): boolean {
 }
 
 /**
+ * Build a map from criterion index → max points (from its "Full" allocation row).
+ * For non-allocation rows, scans subsequent rows to find the first "Full (Npts)" row.
+ * Returns undefined for rows that have no matching "Full" allocation.
+ */
+export function getFullCreditPoints(criteria: RubricCriterion[]): Map<number, number> {
+  const result = new Map<number, number>();
+  for (let i = 0; i < criteria.length; i++) {
+    if (isAllocationCriterion(criteria[i].criteria)) continue;
+    // Scan forward for the "Full" allocation row belonging to this criterion
+    for (let j = i + 1; j < criteria.length; j++) {
+      const c = criteria[j];
+      if (isAllocationCriterion(c.criteria)) {
+        if (/^Full\s*\(/i.test(c.criteria)) {
+          result.set(i, c.points);
+          break;
+        }
+      } else {
+        // Reached next non-allocation row — no Full allocation found
+        break;
+      }
+    }
+  }
+  return result;
+}
+
+/**
  * Serialize an array of RubricCriterion into a human-readable string.
  * Each criterion becomes one line:
  *   "Criterion Name (10pts): Description"
