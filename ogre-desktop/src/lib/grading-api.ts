@@ -36,6 +36,7 @@ export interface GradeRubric {
   checklistItems?: Array<{
     category: string;
     points?: number;
+    categoryWeight?: number;
     items: string[];
   }>;
   rubricItems?: Array<{
@@ -57,6 +58,8 @@ export interface GradeRequest {
   provider?: string;
   /** Model override (defaults to provider's configured model) */
   model?: string;
+  /** Weight mode — controls how rubric category/criterion weights are applied to point targets */
+  weightMode?: 'off' | 'category' | 'criterion';
   /** Callback fired before each retry attempt */
   onRetry?: (attempt: number, error: Error) => void;
 }
@@ -201,7 +204,9 @@ export async function gradeStudent(req: GradeRequest): Promise<GradeResponse> {
   // The "message" field is used as additional instructions in the prompt
   const body: Record<string, unknown> = {
     message: req.instructions || "Grade this student work.",
-    rubric: req.rubric || { maxScore: "10" },
+    rubric: req.weightMode
+      ? { ...(req.rubric || { maxScore: "10" }), weightMode: req.weightMode }
+      : (req.rubric || { maxScore: "10" }),
     studentWork: req.studentWork,
   };
 
@@ -558,6 +563,8 @@ export interface BatchGradingRequest {
     maxScore?: string;
     /** Percentage weights per category, must sum to 100. Each value represents what % of the total grade that category is worth. */
     categoryWeights?: Record<string, number>;
+    /** Percentage weights per criterion within each category. Each category's criteria must sum to 100%. Structure: { category: { criterion: weight } } */
+    criterionWeights?: Record<string, Record<string, number>>;
   };
   /** Students to grade (filtered — only ungraded students) */
   students: Array<{

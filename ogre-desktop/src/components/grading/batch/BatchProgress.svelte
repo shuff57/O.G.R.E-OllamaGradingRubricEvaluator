@@ -580,6 +580,17 @@
               }
               return Object.keys(cws).length > 0 ? { categoryWeights: cws } : {};
             })() : {}),
+            ...(weightMode === 'criterion' ? (() => {
+              const cws: Record<string, Record<string, number>> = {};
+              for (const row of textToCriteria(rubricText)) {
+                const cat = row.category ?? '';
+                if (row.criterionWeight !== undefined && row.criterionWeight > 0) {
+                  if (!cws[cat]) cws[cat] = {};
+                  cws[cat][row.criteria] = row.criterionWeight;
+                }
+              }
+              return Object.keys(cws).length > 0 ? { criterionWeights: cws } : {};
+            })() : {}),
           },
           students: studentsToGrade.map(s => ({
             index: s.index,

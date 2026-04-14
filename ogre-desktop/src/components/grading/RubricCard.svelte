@@ -197,9 +197,9 @@
     return result;
   });
 
-  /** Rows to display — hides allocation rows (Full/Partial/Minimal/Missing) in category weight mode */
+  /** Rows to display — hides allocation rows (Full/Partial/Minimal/Missing) in category/criterion weight mode */
   let displayRows = $derived.by(() => {
-    if (weightMode !== 'category') return tableRows;
+    if (weightMode === 'off') return tableRows;
     return tableRows.filter(r => !isAllocationCriterion(r.criteria));
   });
 
@@ -207,7 +207,7 @@
   let displayIndexMap = $derived.by(() => {
     const toDisplay = new Map<number, number>();
     const toOriginal = new Map<number, number>();
-    if (weightMode !== 'category') {
+    if (weightMode === 'off') {
       for (let i = 0; i < tableRows.length; i++) {
         toDisplay.set(i, i);
         toOriginal.set(i, i);
@@ -225,9 +225,9 @@
     return { toDisplay, toOriginal };
   });
 
-  /** Rowspan count per category group in displayRows (for category weight mode). Undefined when not first row. */
+  /** Rowspan count per category group in displayRows (for category/criterion weight mode). Undefined when not first row. */
   let categoryRowCounts = $derived.by(() => {
-    if (weightMode !== 'category') return new Map<string, number>();
+    if (weightMode === 'off') return new Map<string, number>();
     const counts = new Map<string, number>();
     for (const row of displayRows) {
       const cat = row.category ?? '';
@@ -465,7 +465,7 @@
           <tbody>
             {#each displayRows as row, di}
               {@const oi = displayIndexMap.toOriginal.get(di) ?? di}
-              <tr class:category-first-row={weightMode === 'category' && isFirstInCategoryDisplay[di]}>
+              <tr class:category-first-row={weightMode !== 'off' && isFirstInCategoryDisplay[di]}>
                 {#if weightMode === 'category'}
                   {#if isFirstInCategoryDisplay[di]}
                     <td class="weight-cell" rowspan={categoryRowCounts.get(row.category ?? '') ?? 1}>

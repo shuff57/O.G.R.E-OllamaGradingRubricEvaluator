@@ -447,6 +447,30 @@ describe("round-trip and edge cases", () => {
 });
 
 // ---------------------------------------------------------------------------
+// criterionWeight round-trip
+// ---------------------------------------------------------------------------
+
+describe("criterionWeight round-trip", () => {
+  it("preserves criterionWeight through textToCriteria → criteriaToText", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "Thesis", points: 5, description: "Clear thesis statement", category: "Writing", criterionWeight: 30 },
+      { criteria: "Evidence", points: 5, description: "Uses evidence", category: "Writing", criterionWeight: 40 },
+      { criteria: "Grammar", points: 5, description: "Correct grammar", category: "Writing", criterionWeight: 30 },
+      { criteria: "Setup", points: 5, description: "Correct setup", category: "Math", criterionWeight: 50 },
+      { criteria: "Calculation", points: 5, description: "Correct calc", category: "Math", criterionWeight: 50 },
+    ];
+    const text = criteriaToText(criteria);
+    const parsed = textToCriteria(text);
+    expect(parsed.length).toBe(5);
+    for (let i = 0; i < criteria.length; i++) {
+      expect(parsed[i].criteria).toBe(criteria[i].criteria);
+      expect(parsed[i].criterionWeight).toBe(criteria[i].criterionWeight);
+      expect(parsed[i].category).toBe(criteria[i].category);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // validateWeights (Task 3)
 // ---------------------------------------------------------------------------
 

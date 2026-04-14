@@ -101,13 +101,16 @@ export function buildBatchPrompt(rubric, students, anchors, bridgeResponses = nu
   // Pre-compute effective points for weighted modes — AI sees only adjusted totals, never raw weights
   const weightMode = rubric.weightMode;
   function effectivePoints(item) {
+    const max = parseFloat(maxScore) || 10;
     if (weightMode === 'category' && item.categoryWeight != null) {
-      return Math.round(item.points * (item.categoryWeight / 100) * 10) / 10;
+      const base = item.points > 0 ? item.points : max;
+      return Math.round(base * (item.categoryWeight / 100) * 10) / 10;
     }
     if (weightMode === 'criterion' && item.criterionWeight != null) {
-      return Math.round(item.points * (item.criterionWeight / 100) * 10) / 10;
+      const base = item.points > 0 ? item.points : max;
+      return Math.round(base * (item.criterionWeight / 100) * 10) / 10;
     }
-    return item.points ?? 10;
+    return item.points > 0 ? item.points : max;
   }
   const _scoreHint = 'integer 0-10 (see SCORING SCALE below)';
 
@@ -168,6 +171,21 @@ CONCEPTUAL THOROUGHNESS RULE: When a student demonstrates genuine understanding 
         prompt += `- ${cat}: ${pct}% of total grade\n`;
       }
       prompt += `Grade each category on its own merits. These weights will be applied automatically.\n`;
+    }
+  }
+
+  // Add criterion weight hints when per-criterion weights are provided
+  if (rubric.criterionWeights && typeof rubric.criterionWeights === 'object') {
+    const catEntries = Object.entries(rubric.criterionWeights);
+    if (catEntries.length > 0) {
+      prompt += `\nCRITERION WEIGHTS (within each category, criteria percentages must sum to 100%):\n`;
+      for (const [cat, criteria] of catEntries) {
+        prompt += `- ${cat}:\n`;
+        for (const [criterion, pct] of Object.entries(criteria)) {
+          prompt += `  - ${criterion}: ${pct}%\n`;
+        }
+      }
+      prompt += `Weight each criterion proportionally within its category. These weights will be applied automatically.\n`;
     }
   }
 
@@ -892,6 +910,21 @@ export function buildSingleGradePrompt(rubric, studentWork, instructions, consta
   const { calibration, overrideInstructions } = extractCustomInstructions(customInstructions);
   const _gradingPhilosophy = constants?.gradingPhilosophy ?? GRADING_PHILOSOPHY;
 
+  // Pre-compute effective points for weighted modes — AI sees only adjusted totals, never raw weights
+  const weightMode = rubric.weightMode;
+  function effectivePoints(item) {
+    const max = parseFloat(maxScore) || 10;
+    if (weightMode === 'category' && item.categoryWeight != null) {
+      const base = item.points > 0 ? item.points : max;
+      return Math.round(base * (item.categoryWeight / 100) * 10) / 10;
+    }
+    if (weightMode === 'criterion' && item.criterionWeight != null) {
+      const base = item.points > 0 ? item.points : max;
+      return Math.round(base * (item.criterionWeight / 100) * 10) / 10;
+    }
+    return item.points > 0 ? item.points : max;
+  }
+
   let prompt = `You are an expert grading assistant. Grade this student's work against the provided rubric. Output: JSON object only.
 
 ${overrideInstructions ? `INSTRUCTOR OVERRIDE INSTRUCTIONS (you MUST follow these \u2014 they take absolute precedence):\n${overrideInstructions}\n\n` : ''}GRADING PHILOSOPHY:
@@ -917,7 +950,7 @@ ${essayPrompt}
     }
     prompt += `\nSCORING BY CATEGORY:\n`;
     for (const item of rubric.checklistItems) {
-      if (item.category) prompt += `- ${item.category}: ${item.points} points total\n`;
+      if (item.category) prompt += `- ${item.category}: ${effectivePoints(item)} points total\n`;
     }
     prompt += `\nPARTIAL CREDIT RULE: When a requirement is addressed conceptually but lacks specific values, formulas, or concrete evidence, award 40-60% of that category's points. Award 20-40% if only loosely related; 60-80% if substantially complete but missing one key element. Evaluate each requirement INDEPENDENTLY - do not let strength on one compensate for weakness on another.
 
@@ -970,7 +1003,7 @@ CONCEPTUAL THOROUGHNESS RULE: When a student demonstrates genuine understanding 
   // Build Chain-of-Rubric criterion names for single prompt
   const _sCorItems = (rubric.checklistItems || []).map(c => ({
     name: c.category.replace(/\s*\(\d+\s*pts?\)/i, '').trim(),
-    pts: c.points ?? 10
+    pts: effectivePoints(c)
   }));
   const _sCorNames = _sCorItems.map(c => c.name);
   const _sCorField = _sCorItems.length > 0
