@@ -358,8 +358,7 @@ export function validateWeights(
     return { valid: true, errors: [] };
   }
 
-  const TOLERANCE_LOW = 99.5;
-  const TOLERANCE_HIGH = 100.5;
+  const TOLERANCE = 0.5;
 
   if (mode === "category") {
     // Build a map: category key → first criterion's categoryWeight
@@ -374,7 +373,7 @@ export function validateWeights(
     const sum = Array.from(seen.values()).reduce((acc, w) => acc + w, 0);
     const roundedSum = Math.round(sum * 10) / 10;
 
-    if (sum >= TOLERANCE_LOW && sum <= TOLERANCE_HIGH) {
+    if (Math.abs(sum - 100) <= TOLERANCE) {
       return { valid: true, sum: roundedSum, errors: [] };
     }
 
@@ -394,7 +393,7 @@ export function validateWeights(
   );
   const roundedSum = Math.round(totalSum * 10) / 10;
 
-  if (totalSum >= TOLERANCE_LOW && totalSum <= TOLERANCE_HIGH) {
+  if (Math.abs(totalSum - 100) <= TOLERANCE) {
     return { valid: true, sum: roundedSum, errors: [] };
   }
 
