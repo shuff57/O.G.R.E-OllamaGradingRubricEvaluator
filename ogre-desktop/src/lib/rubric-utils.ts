@@ -387,40 +387,22 @@ export function validateWeights(
     };
   }
 
-  // criterion mode
-  const groups = new Map<string | undefined, RubricCriterion[]>();
-  for (const c of criteria) {
-    const key = c.category;
-    if (!groups.has(key)) {
-      groups.set(key, []);
-    }
-    groups.get(key)!.push(c);
+  // criterion mode: ALL criteria weights across all categories sum to 100%
+  const totalSum = criteria.reduce(
+    (acc, c) => acc + (c.criterionWeight ?? 0),
+    0
+  );
+  const roundedSum = Math.round(totalSum * 10) / 10;
+
+  if (totalSum >= TOLERANCE_LOW && totalSum <= TOLERANCE_HIGH) {
+    return { valid: true, sum: roundedSum, errors: [] };
   }
 
-  const errors: string[] = [];
-  let firstFailingSum: number | undefined;
-
-  for (const [cat, group] of groups) {
-    const groupSum = group.reduce(
-      (acc, c) => acc + (c.criterionWeight ?? 0),
-      0
-    );
-    const roundedGroupSum = Math.round(groupSum * 10) / 10;
-
-    if (groupSum < TOLERANCE_LOW || groupSum > TOLERANCE_HIGH) {
-      const catLabel = cat ?? "(uncategorized)";
-      errors.push(
-        `Category '${catLabel}' criteria weights sum to ${roundedGroupSum}%, must be 100%`
-      );
-      if (firstFailingSum === undefined) {
-        firstFailingSum = roundedGroupSum;
-      }
-    }
-  }
-
-  if (errors.length > 0) {
-    return { valid: false, sum: firstFailingSum, errors };
-  }
-
-  return { valid: true, errors: [] };
+  return {
+    valid: false,
+    sum: roundedSum,
+    errors: [
+      `Criteria weights sum to ${roundedSum}%, must be 100%`,
+    ],
+  };
 }
