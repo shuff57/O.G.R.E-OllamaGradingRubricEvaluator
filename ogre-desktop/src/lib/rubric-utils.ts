@@ -406,3 +406,128 @@ export function validateWeights(
     ],
   };
 }
+
+/**
+ * Distribute weights equally across criteria or categories.
+ * Returns a new array with weight fields set (does not mutate input).
+ *
+ * Category mode: each unique category gets 100 / numCategories.
+ * Criterion mode: each criterion gets 100 / numCriteria.
+ * Rounding: last item gets the remainder so total is exactly 100.
+ */
+export function equalizeWeights(
+  criteria: RubricCriterion[],
+  mode: 'category' | 'criterion'
+): RubricCriterion[] {
+  if (criteria.length === 0) return criteria;
+
+  const result = criteria.map(c => ({ ...c }));
+
+  if (mode === 'category') {
+    // Collect unique categories in order
+    const cats: string[] = [];
+    const seen = new Set<string>();
+    for (const c of criteria) {
+      const cat = c.category ?? '';
+      if (!seen.has(cat)) {
+        cats.push(cat);
+        seen.add(cat);
+      }
+    }
+    const numCats = cats.length;
+    if (numCats === 0) return result;
+
+    const base = Math.floor(100 / numCats * 10) / 10;  // e.g. 33.3 for 3 cats
+    const remainder = Math.round((100 - base * numCats) * 10) / 10;
+
+    const catWeights = new Map<string, number>();
+    cats.forEach((cat, i) => {
+      catWeights.set(cat, i === 0 ? base + remainder : base);
+    });
+
+    for (const c of result) {
+      c.categoryWeight = catWeights.get(c.category ?? '') ?? 0;
+    }
+  } else {
+    // criterion mode: equal per criterion
+    const num = criteria.length;
+    const base = Math.floor(100 / num * 10) / 10;
+    const remainder = Math.round((100 - base * num) * 10) / 10;
+
+    result.forEach((c, i) => {
+      c.criterionWeight = i === 0 ? base + remainder : base;
+    });
+  }
+
+  return result;
+}
+
+/**
+ * Auto-fill weights from points proportion.
+ * Returns a new array with weight fields set (does not mutate input).
+ *
+ * Category mode: weight proportional to total points in that category.
+ * Criterion mode: weight proportional to each criterion's points.
+ * Rounding: last item gets the remainder so total is exactly 100.
+ */
+export function autoFillWeights(
+  criteria: RubricCriterion[],
+  mode: 'category' | 'criterion'
+): RubricCriterion[] {
+  if (criteria.length === 0) return criteria;
+
+  const result = criteria.map(c => ({ ...c }));
+
+  if (mode === 'category') {
+    // Sum points per category
+    const catPoints = new Map<string, number>();
+    const cats: string[] = [];
+    const seen = new Set<string>();
+    for (const c of criteria) {
+      const cat = c.category ?? '';
+      if (!seen.has(cat)) {
+        cats.push(cat);
+        seen.add(cat);
+        catPoints.set(cat, 0);
+      }
+      catPoints.set(cat, (catPoints.get(cat) ?? 0) + c.points);
+    }
+
+    const totalPoints = Array.from(catPoints.values()).reduce((a, b) => a + b, 0);
+    if (totalPoints === 0) return equalizeWeights(criteria, mode);
+
+    // Distribute proportionally, rounding to 1 decimal
+    let allocated = 0;
+    const catWeights = new Map<string, number>();
+    cats.forEach((cat, i) => {
+      if (i === cats.length - 1) {
+        catWeights.set(cat, Math.round((100 - allocated) * 10) / 10);
+      } else {
+        const w = Math.round((catPoints.get(cat)! / totalPoints) * 1000) / 10;
+        catWeights.set(cat, w);
+        allocated += w;
+      }
+    });
+
+    for (const c of result) {
+      c.categoryWeight = catWeights.get(c.category ?? '') ?? 0;
+    }
+  } else {
+    // criterion mode: proportional to points
+    const totalPoints = criteria.reduce((a, c) => a + c.points, 0);
+    if (totalPoints === 0) return equalizeWeights(criteria, mode);
+
+    let allocated = 0;
+    result.forEach((c, i) => {
+      if (i === result.length - 1) {
+        c.criterionWeight = Math.round((100 - allocated) * 10) / 10;
+      } else {
+        const w = Math.round((c.points / totalPoints) * 1000) / 10;
+        c.criterionWeight = w;
+        allocated += w;
+      }
+    });
+  }
+
+  return result;
+}

@@ -13,7 +13,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { listRubrics, createRubric, updateRubric } from '../../lib/rubric-api';
   import type { SavedRubric } from '../../lib/rubric-api';
-  import { criteriaToText, textToCriteria, validateWeights, isAllocationCriterion, getFullCreditPoints } from '../../lib/rubric-utils';
+  import { criteriaToText, textToCriteria, validateWeights, isAllocationCriterion, getFullCreditPoints, equalizeWeights, autoFillWeights } from '../../lib/rubric-utils';
   import { generateRubricFromText } from '../../lib/discover';
   import { rewriteRubricAI } from '../../lib/rubric-leniency';
   import type { Rubric } from '../../lib/batch-grader';
@@ -37,7 +37,7 @@
     originalRubricText?: string;
     isRewriting?: boolean;
     weightsValid?: boolean;
-    weightMode?: 'off' | 'category' | 'criterion';
+    weightMode?: 'category' | 'criterion';
   }
 
   let {
@@ -56,7 +56,7 @@
     originalRubricText = $bindable(''),
     isRewriting = $bindable(false),
     weightsValid = $bindable(true),
-    weightMode = $bindable<'off' | 'category' | 'criterion'>('off'),
+    weightMode = $bindable<'category' | 'criterion'>('category'),
   }: Props = $props();
 
   // ── Leniency rewrite state ────────────────────────────────────────
@@ -158,7 +158,7 @@
   let tableRows = $derived(textToCriteria(rubricText));
 
   let internalWeightsValid = $derived(
-    weightMode === 'off' || tableRows.length === 0
+    tableRows.length === 0
       ? { valid: true, errors: [] as string[] }
       : validateWeights(tableRows, weightMode)
   );
@@ -185,6 +185,25 @@
     rubricText = criteriaToText(newRows);
   }
 
+  /** Apply equal weights across criteria or categories */
+  function handleEqualize() {
+    const filled = equalizeWeights(tableRows, weightMode);
+    rubricText = criteriaToText(filled);
+  }
+
+  /** Auto-fill weights when weightMode changes (only if current weights are all zero/undefined) */
+  $effect(() => {
+    const _mode = weightMode; // track mode changes
+    if (tableRows.length === 0) return;
+    const hasAnyWeight = weightMode === 'category'
+      ? tableRows.some(c => (c.categoryWeight ?? 0) !== 0)
+      : tableRows.some(c => (c.criterionWeight ?? 0) !== 0);
+    if (!hasAnyWeight) {
+      const filled = autoFillWeights(tableRows, _mode);
+      rubricText = criteriaToText(filled);
+    }
+  });
+
   /** True if this row is the first in its category group */
   let isFirstInCategory = $derived.by(() => {
     const result: boolean[] = [];
@@ -199,7 +218,6 @@
 
   /** Rows to display — hides allocation rows (Full/Partial/Minimal/Missing) in category/criterion weight mode */
   let displayRows = $derived.by(() => {
-    if (weightMode === 'off') return tableRows;
     return tableRows.filter(r => !isAllocationCriterion(r.criteria));
   });
 
@@ -207,13 +225,7 @@
   let displayIndexMap = $derived.by(() => {
     const toDisplay = new Map<number, number>();
     const toOriginal = new Map<number, number>();
-    if (weightMode === 'off') {
-      for (let i = 0; i < tableRows.length; i++) {
-        toDisplay.set(i, i);
-        toOriginal.set(i, i);
-      }
-      return { toDisplay, toOriginal };
-    }
+    // Always filter allocation rows when weights are active
     let di = 0;
     for (let oi = 0; oi < tableRows.length; oi++) {
       if (!isAllocationCriterion(tableRows[oi].criteria)) {
@@ -227,7 +239,7 @@
 
   /** Rowspan count per category group in displayRows (for category/criterion weight mode). Undefined when not first row. */
   let categoryRowCounts = $derived.by(() => {
-    if (weightMode === 'off') return new Map<string, number>();
+    // Always compute category row counts
     const counts = new Map<string, number>();
     for (const row of displayRows) {
       const cat = row.category ?? '';
@@ -249,7 +261,6 @@
 
   /** Map from original tableRows index → full-credit points (from "Full" allocation row) */
   let fullCreditMap = $derived.by(() => {
-    if (weightMode === 'off') return new Map<number, number>();
     return getFullCreditPoints(tableRows);
   });
 
@@ -462,7 +473,7 @@
               {#if weightMode === 'criterion'}
                 <th>Weight %</th>
               {/if}
-              {#if weightMode !== 'category'}
+              {#if weightMode === 'off'}
                 <th>Pts</th>
               {/if}
               <th></th>
@@ -471,7 +482,7 @@
           <tbody>
             {#each displayRows as row, di}
               {@const oi = displayIndexMap.toOriginal.get(di) ?? di}
-              <tr class:category-first-row={weightMode !== 'off' && isFirstInCategoryDisplay[di]}>
+              <tr class:category-first-row={isFirstInCategoryDisplay[di]}>
                 {#if weightMode === 'category'}
                   {#if isFirstInCategoryDisplay[di]}
                     <td class="weight-cell" rowspan={categoryRowCounts.get(row.category ?? '') ?? 1}>
@@ -483,7 +494,7 @@
                 {/if}
                 <td><input type="text" value={row.category ?? ''} oninput={(e) => updateTableRow(oi, 'category', (e.target as HTMLInputElement).value)} disabled={isDisabled} /></td>
                 <td><input type="text" value={row.criteria} oninput={(e) => updateTableRow(oi, 'criteria', (e.target as HTMLInputElement).value)} disabled={isDisabled} /></td>
-                {#if weightMode !== 'category'}
+                {#if weightMode === 'off'}
                   <td><input class="num-input" type="number" value={row.points === 0 && fullCreditMap.has(oi) ? fullCreditMap.get(oi)! : row.points} oninput={(e) => updateTableRow(oi, 'points', parseFloat((e.target as HTMLInputElement).value) || 0)} disabled={isDisabled} /></td>
                 {/if}
                 <td><button class="error-text" onclick={() => removeTableRow(oi)} disabled={isDisabled} title="Remove row">&times;</button></td>
@@ -514,11 +525,16 @@
       <div class="weight-mode-toggle">
         <span>Weights:</span>
         <select bind:value={weightMode} disabled={isDisabled}>
-          <option value="off">Off</option>
           <option value="category">By Category</option>
           <option value="criterion">By Criterion</option>
         </select>
-        {#if weightMode !== 'off'}
+        <button
+          class="weight-action-btn"
+          onclick={handleEqualize}
+          disabled={isDisabled || tableRows.length === 0}
+          title="Distribute weights equally"
+        >Equal</button>
+        {#if weightMode}
           {#if internalWeightsValid.valid}
             <span class="weight-status valid">✓ 100%</span>
           {:else}
@@ -526,7 +542,7 @@
           {/if}
         {/if}
       </div>
-      {#if weightMode !== 'off' && !internalWeightsValid.valid && internalWeightsValid.errors.length > 0}
+      {#if !internalWeightsValid.valid && internalWeightsValid.errors.length > 0}
         <div class="weight-errors">
           {#each internalWeightsValid.errors as err}
             <div>• {err}</div>
@@ -1024,6 +1040,24 @@
   }
   .weight-status.valid { color: var(--color-success, #22c55e); }
   .weight-status.invalid { color: var(--color-error, #e55); font-weight: bold; }
+  .weight-action-btn {
+    padding: 2px 8px;
+    font-size: 0.75rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-border);
+    background: var(--color-bg-main);
+    color: var(--color-text-primary);
+    cursor: pointer;
+  }
+  .weight-action-btn:hover:not(:disabled) {
+    background: var(--color-primary);
+    color: var(--color-primary-text);
+    border-color: var(--color-primary);
+  }
+  .weight-action-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
   .weight-errors {
     background: var(--color-error-bg, rgba(200,50,50,0.08));
     padding: var(--spacing-2);

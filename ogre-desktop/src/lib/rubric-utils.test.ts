@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { criteriaToText, textToCriteria, hasUnsavedChanges, validateWeights, getFullCreditPoints } from "./rubric-utils";
+import { criteriaToText, textToCriteria, hasUnsavedChanges, validateWeights, getFullCreditPoints, equalizeWeights, autoFillWeights } from "./rubric-utils";
 import type { RubricCriterion } from "./rubric-api";
 
 // ---------------------------------------------------------------------------
@@ -673,6 +673,131 @@ describe("validateWeights", () => {
     const original = JSON.stringify(criteria);
     validateWeights(criteria, "category");
     validateWeights(criteria, "criterion");
+    expect(JSON.stringify(criteria)).toBe(original);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// equalizeWeights
+// ---------------------------------------------------------------------------
+
+describe("equalizeWeights", () => {
+  it("distributes weights equally across categories (category mode)", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "A1", description: "", points: 5, category: "A" },
+      { criteria: "A2", description: "", points: 5, category: "A" },
+      { criteria: "B1", description: "", points: 5, category: "B" },
+    ];
+    const result = equalizeWeights(criteria, "category");
+    // 2 categories: 50% each
+    expect(result[0].categoryWeight).toBe(50);
+    expect(result[1].categoryWeight).toBe(50);
+    expect(result[2].categoryWeight).toBe(50);
+    // Validate
+    const v = validateWeights(result, "category");
+    expect(v.valid).toBe(true);
+  });
+
+  it("distributes weights equally across criteria (criterion mode)", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "A", description: "", points: 5, category: "X" },
+      { criteria: "B", description: "", points: 5, category: "X" },
+      { criteria: "C", description: "", points: 5, category: "Y" },
+      { criteria: "D", description: "", points: 5, category: "Y" },
+    ];
+    const result = equalizeWeights(criteria, "criterion");
+    // 4 criteria: 25% each
+    expect(result[0].criterionWeight).toBe(25);
+    expect(result[1].criterionWeight).toBe(25);
+    expect(result[2].criterionWeight).toBe(25);
+    expect(result[3].criterionWeight).toBe(25);
+    const v = validateWeights(result, "criterion");
+    expect(v.valid).toBe(true);
+  });
+
+  it("handles 3 categories with remainder", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "A", description: "", points: 5, category: "A" },
+      { criteria: "B", description: "", points: 5, category: "B" },
+      { criteria: "C", description: "", points: 5, category: "C" },
+    ];
+    const result = equalizeWeights(criteria, "category");
+    const v = validateWeights(result, "category");
+    expect(v.valid).toBe(true);
+    const sum = result.filter((_, i) => i === 0 || result[i].category !== result[i-1].category)
+      .reduce((acc, c) => acc + (c.categoryWeight ?? 0), 0);
+    expect(sum).toBeCloseTo(100);
+  });
+
+  it("returns empty array unchanged", () => {
+    const result = equalizeWeights([], "category");
+    expect(result).toEqual([]);
+  });
+
+  it("does not mutate input", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "A", description: "", points: 5, category: "A" },
+    ];
+    const original = JSON.stringify(criteria);
+    equalizeWeights(criteria, "category");
+    expect(JSON.stringify(criteria)).toBe(original);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// autoFillWeights
+// ---------------------------------------------------------------------------
+
+describe("autoFillWeights", () => {
+  it("distributes category weights proportional to points", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "A1", description: "", points: 3, category: "A" },
+      { criteria: "A2", description: "", points: 3, category: "A" },
+      { criteria: "B1", description: "", points: 7, category: "B" },
+    ];
+    const result = autoFillWeights(criteria, "category");
+    // A total=6, B=7, total=13. A≈46.2%, B≈53.8%
+    const aWeight = result[0].categoryWeight!;
+    const bWeight = result[2].categoryWeight!;
+    expect(aWeight + bWeight).toBeCloseTo(100);
+    expect(bWeight).toBeGreaterThan(aWeight);
+    const v = validateWeights(result, "category");
+    expect(v.valid).toBe(true);
+  });
+
+  it("distributes criterion weights proportional to points", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "A", description: "", points: 3 },
+      { criteria: "B", description: "", points: 7 },
+    ];
+    const result = autoFillWeights(criteria, "criterion");
+    expect(result[0].criterionWeight! + result[1].criterionWeight!).toBeCloseTo(100);
+    expect(result[1].criterionWeight!).toBeGreaterThan(result[0].criterionWeight!);
+    const v = validateWeights(result, "criterion");
+    expect(v.valid).toBe(true);
+  });
+
+  it("falls back to equal when all points are zero", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "A", description: "", points: 0, category: "A" },
+      { criteria: "B", description: "", points: 0, category: "B" },
+    ];
+    const result = autoFillWeights(criteria, "category");
+    expect(result[0].categoryWeight).toBe(50);
+    expect(result[1].categoryWeight).toBe(50);
+  });
+
+  it("returns empty array unchanged", () => {
+    const result = autoFillWeights([], "criterion");
+    expect(result).toEqual([]);
+  });
+
+  it("does not mutate input", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "A", description: "", points: 10 },
+    ];
+    const original = JSON.stringify(criteria);
+    autoFillWeights(criteria, "criterion");
     expect(JSON.stringify(criteria)).toBe(original);
   });
 });
