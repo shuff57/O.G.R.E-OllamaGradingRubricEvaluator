@@ -161,9 +161,9 @@ async function callProviderDirect(provider, config, messages, timestamp, options
   console.log(`[${timestamp}] [direct] Calling ${provider} AI (${config.model})...`);
   const start = Date.now();
   
-  // Timeout: 600s for local Ollama (large batches can take minutes), 120s for cloud
+  // Timeout: 600s for local Ollama (large batches can take minutes), 300s for cloud (thinking models need extra time), 30s for others
   const providerLc = provider.toLowerCase();
-  const timeoutMs = providerLc === 'ollama-cloud' ? 120000 : providerLc === 'ollama' || providerLc === 'ollama-local' ? 600000 : 30000;
+  const timeoutMs = providerLc === 'ollama-cloud' ? 300000 : providerLc === 'ollama' || providerLc === 'ollama-local' ? 600000 : 30000;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   
@@ -209,7 +209,10 @@ async function callProviderDirect(provider, config, messages, timestamp, options
     throw err;
   }
 
-  const responseText = await response.text();
+  const responseText = await Promise.race([
+    response.text(),
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`${provider} body-read timed out after ${timeoutMs / 1000}s`)), timeoutMs)),
+  ]);
   let data;
   try {
     data = JSON.parse(responseText);
@@ -1649,14 +1652,34 @@ app.post('/api/grade', async (c) => {
 
           console.log(`[${timestamp()}] [sse] Grading chunk ${i + 1}/${chunks.length} (${chunk.students.length} students)...`);
           const prompt = buildBatchPrompt(rubric, chunk.students, anchors, bridgeResponses);
-          const aiText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: prompt }], timestamp(), fallbackOptions);
+          const _kaStartA = Date.now();
+          const _kaIntervalA = setInterval(() => {
+            const elapsed = Math.round((Date.now() - _kaStartA) / 1000);
+            stream.writeSSE({ event: 'heartbeat', data: JSON.stringify({ phase: 'waiting', elapsed }), id: String(sseId++) }).catch(() => {});
+          }, 30000);
+          let aiText;
+          try {
+            aiText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: prompt }], timestamp(), fallbackOptions);
+          } finally {
+            clearInterval(_kaIntervalA);
+          }
           const chunkResults = parseBatchResponse(aiText, chunk.students, maxScore, categoryWeights, categoryMaxPtsOrNull);
           // Guard: if AI dropped trailing students (positional shortfall), retry them once
           const _dropped = chunk.students.slice(chunkResults.length);
           if (_dropped.length > 0) {
             console.warn(`[${timestamp()}] [sse] ⚠ Chunk ${i + 1}: AI dropped ${_dropped.length}/${chunk.students.length} — retrying...`);
             const _retryPrompt = buildBatchPrompt(rubric, _dropped, anchors, null);
-            const _retryText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: _retryPrompt }], timestamp(), fallbackOptions);
+            const _kaStartB = Date.now();
+            const _kaIntervalB = setInterval(() => {
+              const elapsed = Math.round((Date.now() - _kaStartB) / 1000);
+              stream.writeSSE({ event: 'heartbeat', data: JSON.stringify({ phase: 'waiting', elapsed }), id: String(sseId++) }).catch(() => {});
+            }, 30000);
+            let _retryText;
+            try {
+              _retryText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: _retryPrompt }], timestamp(), fallbackOptions);
+            } finally {
+              clearInterval(_kaIntervalB);
+            }
             const _retryResults = parseBatchResponse(_retryText, _dropped, maxScore, categoryWeights, categoryMaxPtsOrNull);
             chunkResults.push(..._retryResults);
             console.log(`[${timestamp()}] [sse] ↺ Retry: recovered ${_retryResults.length}/${_dropped.length}`);
@@ -1697,7 +1720,17 @@ app.post('/api/grade', async (c) => {
 
         console.log(`[${timestamp()}] [sse] Grading calibration batch (${calStudents.length} students)...`);
         const calPrompt = buildBatchPrompt(rubric, calStudents, anchors, null, calibrationExamples);
-        const calText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: calPrompt }], timestamp(), fallbackOptions);
+        const _kaStartC = Date.now();
+        const _kaIntervalC = setInterval(() => {
+          const elapsed = Math.round((Date.now() - _kaStartC) / 1000);
+          stream.writeSSE({ event: 'heartbeat', data: JSON.stringify({ phase: 'waiting', elapsed }), id: String(sseId++) }).catch(() => {});
+        }, 30000);
+        let calText;
+        try {
+          calText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: calPrompt }], timestamp(), fallbackOptions);
+        } finally {
+          clearInterval(_kaIntervalC);
+        }
         const calResults = parseBatchResponse(calText, calStudents, maxScore, categoryWeights, categoryMaxPtsOrNull);
         allResults.push(calResults);
 
@@ -1732,12 +1765,22 @@ app.post('/api/grade', async (c) => {
           for (let waveStart = 0; waveStart < remainingChunks.length; waveStart += maxConcurrent) {
             const wave = remainingChunks.slice(waveStart, waveStart + maxConcurrent);
 
-            const waveTexts = await Promise.all(
-              wave.map(chunk => {
-                const prompt = buildBatchPrompt(rubric, chunk.students, anchors, bridgeResponses, calibrationExamples);
-                return callProviderDirect(provider, providerConfig, [{ role: 'user', content: prompt }], timestamp(), fallbackOptions);
-              })
-            );
+            const _kaStartD = Date.now();
+            const _kaIntervalD = setInterval(() => {
+              const elapsed = Math.round((Date.now() - _kaStartD) / 1000);
+              stream.writeSSE({ event: 'heartbeat', data: JSON.stringify({ phase: 'waiting', elapsed }), id: String(sseId++) }).catch(() => {});
+            }, 30000);
+            let waveTexts;
+            try {
+              waveTexts = await Promise.all(
+                wave.map(chunk => {
+                  const prompt = buildBatchPrompt(rubric, chunk.students, anchors, bridgeResponses, calibrationExamples);
+                  return callProviderDirect(provider, providerConfig, [{ role: 'user', content: prompt }], timestamp(), fallbackOptions);
+                })
+              );
+            } finally {
+              clearInterval(_kaIntervalD);
+            }
 
             for (let j = 0; j < wave.length; j++) {
               const chunkIdx = waveStart + j;
