@@ -85,6 +85,12 @@ export interface BatchErrorEvent {
   message: string;
 }
 
+/** Heartbeat event — emitted every 30s while waiting for AI response. */
+export interface BatchHeartbeatEvent {
+  phase: string;
+  elapsed: number;
+}
+
 /** Typed callbacks for batch grading SSE events. */
 export interface BatchGradingCallbacks {
   /** Phase updates: extracting, grading, calibration, outlier-review, etc. */
@@ -99,6 +105,8 @@ export interface BatchGradingCallbacks {
   onDone?: (data: BatchDoneEvent) => void | Promise<void>;
   /** Server-side error. */
   onError?: (data: BatchErrorEvent) => void | Promise<void>;
+  /** Keepalive heartbeat while waiting for AI response. */
+  onHeartbeat?: (data: BatchHeartbeatEvent) => void | Promise<void>;
 }
 
 /** Cancellation token checked during stream reading. */
@@ -167,6 +175,9 @@ async function dispatchBatchEvent(
         break;
       case 'error':
         await callbacks.onError?.(data as BatchErrorEvent);
+        break;
+      case 'heartbeat':
+        await callbacks.onHeartbeat?.(data as BatchHeartbeatEvent);
         break;
       default:
         // Unknown event type — silently ignore

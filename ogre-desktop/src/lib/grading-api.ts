@@ -59,7 +59,7 @@ export interface GradeRequest {
   /** Model override (defaults to provider's configured model) */
   model?: string;
   /** Weight mode — controls how rubric category/criterion weights are applied to point targets */
-  weightMode?: 'off' | 'category' | 'criterion';
+  weightMode?: 'category' | 'criterion';
   /** Callback fired before each retry attempt */
   onRetry?: (attempt: number, error: Error) => void;
 }
@@ -546,6 +546,7 @@ export type {
   BatchOutlierEvent,
   BatchDoneEvent,
   BatchErrorEvent,
+  BatchHeartbeatEvent,
 } from "./sse-parser";
 
 /** Request parameters for batch grading via POST /api/grade. */
@@ -582,8 +583,8 @@ export interface BatchGradingRequest {
   sweep?: "none" | "compact" | "pairwise" | "auto";
   /** Custom grading instructions (appended to system prompt) */
   customInstructions?: string;
-  /** Weight mode for rubric scoring: 'off', 'category', or 'criterion' */
-  weightMode?: 'off' | 'category' | 'criterion';
+  /** Weight mode for rubric scoring: 'category' or 'criterion' */
+  weightMode?: 'category' | 'criterion';
 }
 
 /** Handle returned by startBatchGrading for cancellation. */
@@ -624,7 +625,7 @@ export function startBatchGrading(
   if (request.customInstructions) {
     body.customInstructions = request.customInstructions;
   }
-  if (request.weightMode && request.weightMode !== 'off') {
+  if (request.weightMode) {
     body.weightMode = request.weightMode;
   }
 
@@ -689,6 +690,9 @@ export function startBatchGrading(
         },
         onError: (d) => {
           if (!token.cancelled) return callbacks.onError?.(d);
+        },
+        onHeartbeat: (d) => {
+          if (!token.cancelled) return callbacks.onHeartbeat?.(d);
         },
       };
 

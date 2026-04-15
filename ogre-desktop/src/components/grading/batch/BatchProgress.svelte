@@ -22,6 +22,7 @@
     BatchProgressEvent,
     BatchDoneEvent,
     BatchErrorEvent,
+    BatchHeartbeatEvent,
   } from '../../../lib/grading-api';
   import { saveBatchSession, clearBatchSession } from '../../../lib/db';
   import { refreshPageData, buildBatchResetState, stopActiveBatch } from '../../../lib/page-refresh';
@@ -42,7 +43,7 @@
     currentPageUrl = '',
     pageLoadedUrl = '',
     leniency = 50,
-    weightMode = 'off' as 'off' | 'category' | 'criterion',
+    weightMode = 'category' as 'category' | 'criterion',
     // Bindable — batch lifecycle state exposed to shell
     originalRubricText = $bindable(''),
     isBatchRunning = $bindable(false),
@@ -57,6 +58,7 @@
     anchorText = $bindable(''),
     anchorGenerating = $bindable(false),
     batchGraderHasStudents = $bindable(false),
+    isBatchPaused = $bindable(false),
   } = $props();
 
   // ── Internal State ─────────────────────────────────────────────────────
@@ -66,7 +68,6 @@
   let batchLog = $state<BatchLogEntry[]>([]);
   let isLogExpanded = $state(false);
   let logContainer: HTMLElement | undefined = $state(undefined);
-  let isBatchPaused = $state(false);
   let currentStudentName = $state('');
   let phaseMessage = $state('');
   let pausedResultBuffer: Array<{ studentIndex: number; score: number; feedback: string }> = [];
@@ -599,7 +600,7 @@
             ...(s.prompt ? { prompt: s.prompt } : {}),
           })),
           customInstructions: instructionsParts.length > 0 ? instructionsParts.join('\n\n') : undefined,
-          ...(weightMode && weightMode !== 'off' ? { weightMode } : {}),
+          weightMode,
         },
         {
           onProgress: handleSSEProgress,
@@ -607,6 +608,9 @@
           onOutlier: handleSSEOutlier,
           onDone: handleSSEDone,
           onError: handleSSEError,
+          onHeartbeat: (data) => {
+            phaseMessage = `AI is thinking... (${data.elapsed}s elapsed)`;
+          },
         },
       );
     } catch (err) {
