@@ -1018,3 +1018,102 @@ describe("allocation row detection", () => {
     expect(result[0].criteria).toBe("Full (2): Complete solution with all steps shown");
   });
 });
+
+  it("distributes 25% across 4 categories (category mode)", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "A1", description: "", points: 5, category: "A" },
+      { criteria: "A2", description: "", points: 5, category: "A" },
+      { criteria: "B1", description: "", points: 5, category: "B" },
+      { criteria: "B2", description: "", points: 5, category: "B" },
+      { criteria: "C1", description: "", points: 5, category: "C" },
+      { criteria: "D1", description: "", points: 5, category: "D" },
+    ];
+    const result = equalizeWeights(criteria, "category");
+    // 4 categories: 25% each
+    const uniqueCats = new Map<string, number>();
+    for (const c of result) {
+      if (!uniqueCats.has(c.category!)) uniqueCats.set(c.category!, c.categoryWeight!);
+    }
+    expect(uniqueCats.size).toBe(4);
+    for (const [, w] of uniqueCats) {
+      expect(w).toBe(25);
+    }
+    // All criteria in same category share same categoryWeight
+    for (const c of result) {
+      expect(c.categoryWeight).toBe(uniqueCats.get(c.category!)!);
+    }
+    const v = validateWeights(result, "category");
+    expect(v.valid).toBe(true);
+  });
+
+  it("round-trips equalized category weights through text", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "A1", description: "", points: 5, category: "Alpha" },
+      { criteria: "A2", description: "", points: 5, category: "Alpha" },
+      { criteria: "B1", description: "", points: 5, category: "Beta" },
+      { criteria: "C1", description: "", points: 5, category: "Gamma" },
+      { criteria: "D1", description: "", points: 5, category: "Delta" },
+    ];
+    const equalized = equalizeWeights(criteria, "category");
+    const text = criteriaToText(equalized);
+    const reparsed = textToCriteria(text);
+    // Each criterion should have its categoryWeight preserved
+    for (let i = 0; i < reparsed.length; i++) {
+      expect(reparsed[i].categoryWeight).toBe(equalized[i].categoryWeight);
+    }
+  });
+
+  it("autoFillWeights category mode gives per-CATEGORY weights, not per-criterion", () => {
+    // 4 categories, 2 criteria each = 8 total criteria, all same points
+    const criteria: RubricCriterion[] = [
+      { criteria: "A1", description: "", points: 5, category: "CatA" },
+      { criteria: "A2", description: "", points: 5, category: "CatA" },
+      { criteria: "B1", description: "", points: 5, category: "CatB" },
+      { criteria: "B2", description: "", points: 5, category: "CatB" },
+      { criteria: "C1", description: "", points: 5, category: "CatC" },
+      { criteria: "C2", description: "", points: 5, category: "CatC" },
+      { criteria: "D1", description: "", points: 5, category: "CatD" },
+      { criteria: "D2", description: "", points: 5, category: "CatD" },
+    ];
+    const result = autoFillWeights(criteria, "category");
+    // 4 cats with equal points => 25% each
+    for (const c of result) {
+      expect(c.categoryWeight).toBe(25);
+    }
+    // criterionWeight should NOT be set (we're in category mode)
+    for (const c of result) {
+      expect(c.criterionWeight).toBeUndefined();
+    }
+    const v = validateWeights(result, "category");
+    expect(v.valid).toBe(true);
+  });
+
+  it("autoFillWeights category mode with unequal points distributes per-CATEGORY proportional weights", () => {
+    const criteria: RubricCriterion[] = [
+      { criteria: "A1", description: "", points: 10, category: "CatA" },
+      { criteria: "A2", description: "", points: 10, category: "CatA" },
+      { criteria: "A3", description: "", points: 10, category: "CatA" },
+      { criteria: "B1", description: "", points: 10, category: "CatB" },
+      { criteria: "B2", description: "", points: 10, category: "CatB" },
+      { criteria: "C1", description: "", points: 5, category: "CatC" },
+      { criteria: "C2", description: "", points: 5, category: "CatC" },
+      { criteria: "D1", description: "", points: 5, category: "CatD" },
+    ];
+    const result = autoFillWeights(criteria, "category");
+    // CatA=30/65 ≈ 46.2%, CatB=20/65 ≈ 30.8%, CatC=10/65 ≈ 15.4%, CatD=5/65 ≈ 7.7%
+    // Check that each category has ONE weight value shared across all its criteria
+    const catWeights = new Map<string, number>();
+    for (const c of result) {
+      const w = c.categoryWeight!;
+      if (!catWeights.has(c.category!)) catWeights.set(c.category!, w);
+      else expect(c.categoryWeight).toBe(catWeights.get(c.category!));
+    }
+    expect(catWeights.size).toBe(4);
+    // Verify sum is approximately 100
+    const sum = Array.from(catWeights.values()).reduce((a, b) => a + b, 0);
+    expect(Math.abs(sum - 100)).toBeLessThanOrEqual(0.5);
+    // Verify CatA > CatB > CatC > CatD (proportional to points)
+    expect(catWeights.get("CatA")!).toBeGreaterThan(catWeights.get("CatB")!);
+    expect(catWeights.get("CatB")!).toBeGreaterThan(catWeights.get("CatC")!);
+    expect(catWeights.get("CatC")!).toBeGreaterThan(catWeights.get("CatD")!);
+  });

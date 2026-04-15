@@ -195,7 +195,17 @@
 
   /** Apply equal weights across criteria or categories */
   function handleEqualize() {
-    const filled = equalizeWeights(tableRows, weightMode);
+    // Clear stale weights from the other mode before equalizing
+    const cleared = tableRows.map(c => {
+      if (weightMode === 'category') {
+        const { criterionWeight, ...rest } = c;
+        return criterionWeight !== undefined ? rest : c;
+      } else {
+        const { categoryWeight, ...rest } = c;
+        return categoryWeight !== undefined ? rest : c;
+      }
+    });
+    const filled = equalizeWeights(cleared, weightMode);
     rubricText = criteriaToText(filled);
   }
 
@@ -203,11 +213,21 @@
   $effect(() => {
     const _mode = weightMode; // track mode changes
     if (tableRows.length === 0) return;
-    const hasAnyWeight = weightMode === 'category'
+    const hasAnyWeight = _mode === 'category'
       ? tableRows.some(c => (c.categoryWeight ?? 0) !== 0)
       : tableRows.some(c => (c.criterionWeight ?? 0) !== 0);
     if (!hasAnyWeight) {
-      const filled = autoFillWeights(tableRows, _mode);
+      // Clear stale weights from the other mode before auto-filling
+      const cleared = tableRows.map(c => {
+        if (_mode === 'category') {
+          const { criterionWeight, ...rest } = c;
+          return criterionWeight !== undefined ? rest : c;
+        } else {
+          const { categoryWeight, ...rest } = c;
+          return categoryWeight !== undefined ? rest : c;
+        }
+      });
+      const filled = autoFillWeights(cleared, _mode);
       rubricText = criteriaToText(filled);
     }
   });
@@ -540,13 +560,13 @@
           class="weight-action-btn"
           onclick={handleEqualize}
           disabled={isDisabled || tableRows.length === 0}
-          title="Distribute weights equally"
+          title={`Distribute weights equally (${weightMode === 'category' ? new Set(tableRows.map(c => c.category ?? '')).size + ' categories' : tableRows.length + ' criteria'})`}
         >Equal</button>
         {#if weightMode}
           {#if internalWeightsValid.valid}
-            <span class="weight-status valid">✓ 100%</span>
+            <span class="weight-status valid">✓ {internalWeightsValid.sum}%</span>
           {:else}
-            <span class="weight-status invalid">⚠ ≠ 100%</span>
+            <span class="weight-status invalid">⚠ {internalWeightsValid.sum ?? '?'}% ≠ 100%</span>
           {/if}
         {/if}
       </div>
