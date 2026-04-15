@@ -37,8 +37,11 @@
     leniency = 50,
     isRubricRewriting = false,
     weightsValid = true,
-    weightMode = 'off' as 'off' | 'category' | 'criterion',
+    weightMode = 'category' as 'category' | 'criterion',
     originalRubricText = $bindable(''),
+    anchorText = $bindable(''),
+    anchorGenerating = $bindable(false),
+    batchGraderHasStudents = $bindable(false),
   } = $props();
 
   // ── Bridging state between sub-components ──────────────────────────────
@@ -56,21 +59,23 @@
   let localEmbedEnabled = $state(false);
   let localModelLoaded = $state(true);
 
-  // Instructions → shell → Progress
+  // Instructions
   let forceRegrade = $state(false);
   let zeroNoResponse = $state(true);
   let isReviewMode = $state(false);
-  let anchorText = $state('');
-  let anchorGenerating = $state(false);
 
   // Progress → shell → Results
   let isBatchPaused = $state(false);
   let batchError = $state('');
-  let batchGraderHasStudents = $state(false);
 
   // Component reference for method forwarding
   let progressRef: BatchProgress;
   let profileRef: BatchProfileSelector;
+
+  // Expose generate-anchors handler to parent shell
+  function handleGenerateAnchors() {
+    progressRef?.handleGenerateAnchors();
+  }
 
   // ── URL change coordination ────────────────────────────────────────────
   // Shell coordinates: Progress resets first (via its own effect on pageLoadedUrl),
@@ -111,18 +116,9 @@
 
   <BatchInstructions
     {isBatchRunning}
-    {batchPhase}
-    {anchorGenerating}
-    {batchGraderHasStudents}
-    {leniency}
-    {isRubricRewriting}
-    {weightsValid}
     bind:forceRegrade
     bind:zeroNoResponse
     bind:isReviewMode
-    bind:anchorText
-    onGenerateAnchors={() => progressRef?.handleGenerateAnchors()}
-    onContinueGrading={() => progressRef?.handleContinueGrading()}
   />
 
   <BatchProgress

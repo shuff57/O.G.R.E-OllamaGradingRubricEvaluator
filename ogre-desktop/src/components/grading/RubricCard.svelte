@@ -38,6 +38,10 @@
     isRewriting?: boolean;
     weightsValid?: boolean;
     weightMode?: 'category' | 'criterion';
+    anchorGenerating?: boolean;
+    anchorText?: string;
+    batchGraderHasStudents?: boolean;
+    onGenerateAnchors?: () => void;
   }
 
   let {
@@ -57,6 +61,10 @@
     isRewriting = $bindable(false),
     weightsValid = $bindable(true),
     weightMode = $bindable<'category' | 'criterion'>('category'),
+    anchorGenerating = false,
+    anchorText = $bindable(''),
+    batchGraderHasStudents = false,
+    onGenerateAnchors = () => {},
   }: Props = $props();
 
   // ── Leniency rewrite state ────────────────────────────────────────
@@ -641,6 +649,48 @@
       {/if}
     {/if}
 
+    <!-- Generate Anchors (review phase only) -->
+    {#if phase === 'review' && showActions}
+      {#if !anchorText.trim() && !anchorGenerating}
+        <div class="review-step">
+          <div class="step-hint">
+            Review the rubric above and adjust leniency if desired, then generate scoring anchors.
+          </div>
+          <button
+            class="btn-primary small"
+            onclick={onGenerateAnchors}
+            disabled={!batchGraderHasStudents || isRewriting || !weightsValid}
+          >{isRewriting ? 'Rubric rewriting…' : 'Generate Anchors'}</button>
+        </div>
+      {:else}
+        <div class="anchors-card">
+          <div class="anchors-header">
+            <span class="anchors-title">Scoring Anchors</span>
+            {#if anchorGenerating}
+              <span class="anchors-generating">
+                <span class="spinner" aria-hidden="true"></span>
+                Generating examples...
+              </span>
+            {:else}
+              <span class="anchors-hint">Edit to adjust how scores are calibrated before grading starts.</span>
+            {/if}
+          </div>
+          <textarea
+            class="instructions-textarea anchors-textarea"
+            rows="5"
+            placeholder={anchorGenerating ? 'Generating calibration examples from your rubric…' : ''}
+            bind:value={anchorText}
+            disabled={anchorGenerating}
+          ></textarea>
+        </div>
+        <button
+          class="btn-secondary small"
+          onclick={onGenerateAnchors}
+          disabled={anchorGenerating || isRewriting}
+        >Regenerate Anchors</button>
+      {/if}
+    {/if}
+
   </div>
 </details>
 
@@ -1129,6 +1179,89 @@
     font-size: 1.2rem;
     font-weight: bold;
     padding: 0 4px;
+  }
+
+  /* ── Anchors (review phase in rubric card) ── */
+  .review-step {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+    padding: var(--spacing-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-main);
+  }
+  .review-step .step-hint {
+    font-size: 0.82rem;
+    color: var(--color-text-secondary);
+  }
+  .anchors-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+    padding: var(--spacing-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-main);
+  }
+  .anchors-header {
+    display: flex;
+    align-items: baseline;
+    gap: var(--spacing-2);
+  }
+  .anchors-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    white-space: nowrap;
+  }
+  .anchors-hint {
+    font-size: 0.78rem;
+    color: var(--color-text-secondary);
+  }
+  .anchors-generating {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-1);
+    font-size: 0.78rem;
+    color: var(--color-text-secondary);
+  }
+  .spinner {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    opacity: 0.8;
+    flex-shrink: 0;
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  .instructions-textarea {
+    width: 100%;
+    background-color: var(--color-bg-main);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-primary);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-2);
+    font-family: var(--font-body);
+    font-size: 0.85rem;
+    resize: vertical;
+  }
+  .instructions-textarea:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px var(--color-primary-bg);
+  }
+  .instructions-textarea:disabled {
+    opacity: 0.6;
+  }
+  .anchors-textarea {
+    resize: vertical;
+    min-height: 90px;
   }
 
 </style>

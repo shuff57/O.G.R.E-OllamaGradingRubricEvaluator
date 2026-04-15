@@ -17,6 +17,8 @@
   import { ICON_STRIP_WIDTH } from '../lib/constants';
   import { createDebouncedRefresh, refreshPageData } from '../lib/page-refresh';
 
+  let batchPanelRef: BatchPanel;
+
   let {
     isCollapsed = $bindable(false),
     width = $bindable(400),
@@ -68,7 +70,12 @@
   let originalRubricText = $state('');
   let isRubricRewriting = $state(false);
   let weightsValid = $state(true);
-let weightMode = $state<'category' | 'criterion'>('category');
+  let weightMode = $state<'category' | 'criterion'>('category');
+
+  // Anchor state — lifted for RubricCard in batch mode
+  let anchorText = $state('');
+  let anchorGenerating = $state(false);
+  let batchGraderHasStudents = $state(false);
 
   let returnToBatch = $state(false);
   let preselectedProfileId = $state<string | null>(null);
@@ -497,6 +504,7 @@ let weightMode = $state<'category' | 'criterion'>('category');
           />
         {:else}
           <BatchPanel
+            bind:this={batchPanelRef}
             provider={activeProvider}
             model={activeModel}
             bind:isBatchRunning={batchRunning}
@@ -516,6 +524,9 @@ let weightMode = $state<'category' | 'criterion'>('category');
             bind:sourceRubricId
             bind:batchPhase
             bind:essayPrompt
+            bind:anchorText
+            bind:anchorGenerating
+            bind:batchGraderHasStudents
           />
           {#if batchPhase !== 'idle'}
             <RubricCard
@@ -535,6 +546,10 @@ let weightMode = $state<'category' | 'criterion'>('category');
               phase={batchPhase}
               showActions={true}
               showTable={true}
+              bind:anchorText
+              {anchorGenerating}
+              {batchGraderHasStudents}
+              onGenerateAnchors={() => batchPanelRef?.handleGenerateAnchors()}
             />
           {/if}
         {/if}

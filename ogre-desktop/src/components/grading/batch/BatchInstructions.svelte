@@ -1,29 +1,16 @@
 <script lang="ts">
   /**
-   * BatchInstructions — Regrade All toggle, fill-mode toggle (Auto/Review),
-   * and scoring anchors display. Strictness presets moved to BatchWeights.
+   * BatchInstructions — Regrade All toggle and fill-mode toggle (Auto/Review).
    */
 
   // ── Props ──────────────────────────────────────────────────────────────
   let {
     isBatchRunning = false,
-    batchPhase = 'idle' as string,
-    anchorGenerating = false,
-    batchGraderHasStudents = false,
-    leniency = 50,
-    isRubricRewriting = false,
-    weightsValid = true,
     // Bindable — exposed to shell
     forceRegrade = $bindable(false),
     zeroNoResponse = $bindable(true),
     isReviewMode = $bindable(false),
-    anchorText = $bindable(''),
-    // Callbacks
-    onGenerateAnchors = () => {},
-    onContinueGrading = () => {},
   } = $props();
-
-  let anchorsReady = $derived(anchorText.trim().length > 0 && !anchorGenerating);
 </script>
 
 <!-- ── Grading Options ─────────────────────────────────────────────── -->
@@ -49,60 +36,6 @@
     </label>
   </div>
 </details>
-
-<!-- ── Review phase: rubric review → generate anchors → start grading ── -->
-{#if batchPhase === 'review'}
-  {#if !anchorsReady && !anchorGenerating}
-    <!-- Step 1: Teacher reviews rubric (and adjusts leniency if desired) -->
-    <div class="review-step">
-      <div class="step-hint">
-        Review the rubric above and adjust leniency if desired, then generate scoring anchors.
-      </div>
-      <button
-        class="btn-primary small"
-        onclick={onGenerateAnchors}
-        disabled={!batchGraderHasStudents || isRubricRewriting || !weightsValid}
-      >{isRubricRewriting ? 'Rubric rewriting…' : 'Generate Anchors'}</button>
-    </div>
-  {:else}
-    <!-- Step 2: Anchors generated (or generating) — show them -->
-    <div class="anchors-card">
-      <div class="anchors-header">
-        <span class="anchors-title">Scoring Anchors</span>
-        {#if anchorGenerating}
-          <span class="anchors-generating">
-            <span class="spinner" aria-hidden="true"></span>
-            Generating examples...
-          </span>
-        {:else}
-          <span class="anchors-hint">Edit to adjust how scores are calibrated before grading starts.</span>
-        {/if}
-      </div>
-
-      <textarea
-        class="instructions-textarea anchors-textarea"
-        rows="5"
-        placeholder={anchorGenerating ? 'Generating calibration examples from your rubric…' : ''}
-        bind:value={anchorText}
-        disabled={anchorGenerating}
-      ></textarea>
-    </div>
-
-    <!-- Step 3: Start grading -->
-    <div class="continue-grading-row">
-      <button
-        class="btn-primary small"
-        onclick={onContinueGrading}
-        disabled={!batchGraderHasStudents || anchorGenerating || !weightsValid}
-      >Start Grading</button>
-      <button
-        class="btn-secondary small"
-        onclick={onGenerateAnchors}
-        disabled={anchorGenerating || isRubricRewriting}
-      >Regenerate Anchors</button>
-    </div>
-  {/if}
-{/if}
 
 <!-- ── Fill Mode Toggle ────────────────────────────────────────────── -->
 <div class="fill-mode-toggle" class:disabled={isBatchRunning}>
@@ -313,87 +246,4 @@
     opacity: 0.6;
   }
 
-  /* ── Scoring Anchors card ── */
-  .anchors-card {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-2);
-    padding: var(--spacing-3);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-bg-main);
-  }
-  .anchors-header {
-    display: flex;
-    align-items: baseline;
-    gap: var(--spacing-2);
-  }
-  .anchors-title {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--color-text-primary);
-    white-space: nowrap;
-  }
-  .anchors-hint {
-    font-size: 0.78rem;
-    color: var(--color-text-secondary);
-  }
-  .anchors-textarea {
-    resize: vertical;
-    min-height: 90px;
-  }
-
-  .anchors-generating {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-1);
-    font-size: 0.78rem;
-    color: var(--color-text-secondary);
-  }
-
-  .spinner {
-    display: inline-block;
-    width: 12px;
-    height: 12px;
-    border: 2px solid currentColor;
-    border-top-color: transparent;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-    opacity: 0.8;
-    flex-shrink: 0;
-  }
-
-  @keyframes spin {
-    to { transform: rotate(360deg); }
-  }
-
-  /* ── Review Step (pre-anchors) ── */
-  .review-step {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-2);
-    padding: var(--spacing-3);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-bg-main);
-  }
-  .step-hint {
-    font-size: 0.82rem;
-    color: var(--color-text-secondary);
-  }
-
-  /* ── Continue Grading Row ── */
-  .continue-grading-row {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-3, 12px);
-    padding: var(--spacing-3, 12px);
-    background: rgba(99, 102, 241, 0.08);
-    border: 1px solid var(--color-primary, #6366f1);
-    border-radius: var(--radius-md, 6px);
-    margin-top: 4px;
-  }
-  .continue-grading-row .btn-primary {
-    flex-shrink: 0;
-  }
 </style>
