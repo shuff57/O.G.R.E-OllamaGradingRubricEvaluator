@@ -280,10 +280,16 @@
       return {
         essayPrompt: base?.essayPrompt || '',
         checklistItems: parsed.map(c => {
-          const catWeight = c.categoryWeight ?? lookupCategoryWeight(c.category ?? c.criteria);
+          // c.category = section header (e.g. "Statistical Decision")
+          // c.criteria = the actual rubric item text (e.g. "The student correctly identifies...")
+          // c.description = supplementary detail (often empty for MOM rubrics)
+          // The server needs the criterion text in `items`, not as the category name.
+          const catName = c.category ?? c.criteria;
+          const catWeight = c.categoryWeight ?? lookupCategoryWeight(catName);
+          const itemText = c.description ? `${c.criteria}: ${c.description}` : c.criteria;
           return {
-            category: c.criteria,
-            items: c.description ? [c.description] : [],
+            category: catName,
+            items: [itemText],
             ...(catWeight !== undefined ? { categoryWeight: catWeight } : {}),
           };
         }),
@@ -387,10 +393,7 @@
           .join('\n\n');
       }
     } catch (err) {
-      const anchors = scoringAnchors;
-      anchorText = anchors
-        .map(a => `${a.label}: ${a.description}`)
-        .join('\n');
+      batchError = `Anchor generation failed: ${err instanceof Error ? err.message : String(err)}`;
     } finally {
       anchorGenerating = false;
     }
