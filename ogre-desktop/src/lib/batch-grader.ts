@@ -288,6 +288,10 @@ export async function extractStudents(selectors: SiteSelectors): Promise<Student
       var responseDiv = (part1Div && part1Div.querySelectorAll(':scope > div').length > 1)
         ? part1Div.querySelectorAll(':scope > div')[1]
         : null;
+      // Fallback: MOM essay responses often live in div.introtext as a sibling of the question div
+      if (!responseDiv && region) {
+        responseDiv = region.querySelector(':scope > div.introtext');
+      }
       var fbBox = sel.feedbackBox ? s.querySelector(sel.feedbackBox) : null;
 
       // Extract per-student prompt text (with their specific jittered values)

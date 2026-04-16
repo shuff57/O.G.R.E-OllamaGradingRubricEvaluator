@@ -4,7 +4,7 @@
  */
 
 ;
-import { getHandshakeToken } from "./provider-sync";
+import { ensureHandshakeToken } from "./provider-sync";
 
 const SERVER_BASE = "http://localhost:3456";
 
@@ -28,13 +28,13 @@ export interface SavedRubric {
   tags: string[];
   createdAt: string;
   updatedAt: string;
-  weightMode?: 'off' | 'category' | 'criterion';
+  weightMode?: 'category' | 'criterion';
   /** Optional category weights for percentage-based scoring (category name → % of total grade, must sum to 100) */
   categoryWeights?: Record<string, number>;
 }
 
-function authHeaders(): Record<string, string> {
-  const token = getHandshakeToken();
+async function authHeaders(): Promise<Record<string, string>> {
+  const token = await ensureHandshakeToken();
   return {
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -44,7 +44,7 @@ function authHeaders(): Record<string, string> {
 export async function listRubrics(): Promise<SavedRubric[]> {
   const res = await fetch(`${SERVER_BASE}/api/rubrics`, {
     method: "GET",
-    headers: authHeaders(),
+    headers: await authHeaders(),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
@@ -59,7 +59,7 @@ export async function createRubric(
 ): Promise<SavedRubric> {
   const res = await fetch(`${SERVER_BASE}/api/rubrics`, {
     method: "POST",
-    headers: authHeaders(),
+    headers: await authHeaders(),
     body: JSON.stringify(rubric),
   });
   if (!res.ok) {
@@ -76,7 +76,7 @@ export async function updateRubric(
 ): Promise<SavedRubric> {
   const res = await fetch(`${SERVER_BASE}/api/rubrics/${id}`, {
     method: "PUT",
-    headers: authHeaders(),
+    headers: await authHeaders(),
     body: JSON.stringify(updates),
   });
   if (!res.ok) {
@@ -90,7 +90,7 @@ export async function updateRubric(
 export async function deleteRubric(id: string): Promise<void> {
   const res = await fetch(`${SERVER_BASE}/api/rubrics/${id}`, {
     method: "DELETE",
-    headers: authHeaders(),
+    headers: await authHeaders(),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');

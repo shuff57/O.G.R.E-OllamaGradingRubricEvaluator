@@ -21,7 +21,7 @@
   let formMaxScore = 10;
   let formTags = '';
   let formCriteria: RubricCriterion[] = [];
-  let formWeightMode: 'off' | 'category' | 'criterion' = 'off';
+  let formWeightMode: 'category' | 'criterion' = 'category';
 
   let confirmDeleteId: string | null = null;
 
@@ -30,9 +30,9 @@
   let generating = false;
   let generateError = '';
 
-  $: weightValidation = formWeightMode !== 'off' 
-    ? validateWeights(formCriteria, formWeightMode as 'category' | 'criterion')
-    : { valid: true, errors: [] };
+  $: weightValidation = formCriteria.length === 0
+    ? { valid: true, errors: [] }
+    : validateWeights(formCriteria, formWeightMode);
 
   onMount(async () => {
     await loadData();
@@ -59,7 +59,7 @@
     formMaxScore = 10;
     formTags = '';
     formCriteria = [{ criteria: '', description: '', points: 0 }];
-    formWeightMode = 'off';
+    formWeightMode = 'category';
     generateText = '';
     generateError = '';
   }
@@ -73,7 +73,7 @@
     formTags = rubric.tags.join(', ');
     formCriteria = rubric.criteria.map(c => ({ ...c }));
     formCriteria = formCriteria.map(c => ({ ...c, rowType: c.rowType ?? (isAllocationCriterion(c.criteria) ? 'allocation' : undefined) }));
-    formWeightMode = rubric.weightMode ?? 'off';
+    formWeightMode = rubric.weightMode ?? 'category';
     generateText = '';
     generateError = '';
   }
@@ -87,7 +87,7 @@
     formTags = rubric.tags.join(', ');
     formCriteria = rubric.criteria.map(c => ({ ...c }));
     formCriteria = formCriteria.map(c => ({ ...c, rowType: c.rowType ?? (isAllocationCriterion(c.criteria) ? 'allocation' : undefined) }));
-    formWeightMode = rubric.weightMode ?? 'off';
+    formWeightMode = rubric.weightMode ?? 'category';
   }
 
   function cancelForm() {
@@ -121,7 +121,7 @@
           maxScore: formMaxScore,
           tags,
           criteria,
-          weightMode: formWeightMode !== 'off' ? formWeightMode : undefined,
+          weightMode: formWeightMode,
         } as any);
       } else if (editing) {
         await updateRubric(editing.id, {
@@ -130,7 +130,7 @@
           maxScore: formMaxScore,
           tags,
           criteria,
-          weightMode: formWeightMode !== 'off' ? formWeightMode : undefined,
+          weightMode: formWeightMode,
         } as any);
       }
       cancelForm();
@@ -259,9 +259,6 @@
         <label>Weight Mode</label>
         <div style="display: flex; gap: var(--spacing-4); margin-top: var(--spacing-1);">
           <label style="display: flex; align-items: center; gap: var(--spacing-1); font-weight: normal; cursor: pointer;">
-            <input type="radio" bind:group={formWeightMode} value="off"> Off
-          </label>
-          <label style="display: flex; align-items: center; gap: var(--spacing-1); font-weight: normal; cursor: pointer;">
             <input type="radio" bind:group={formWeightMode} value="category"> By Category
           </label>
           <label style="display: flex; align-items: center; gap: var(--spacing-1); font-weight: normal; cursor: pointer;">
@@ -275,7 +272,7 @@
           <span class="form-label-text">Criteria</span>
           <span class="text-muted">({totalPoints(formCriteria)} pts total)</span>
         </div>
-        {#if formWeightMode !== 'off'}
+        {#if formWeightMode}
           <div style="margin: var(--spacing-2) 0; font-size: 0.85em;">
             {#if formWeightMode === 'category'}
               {#if weightValidation.valid}
@@ -303,7 +300,7 @@
               <th style="width: 150px;">Category</th>
               <th>Criteria</th>
               <th>Description</th>
-              {#if formWeightMode !== 'off'}
+              {#if formWeightMode}
                 <th style="width: 80px;">Weight %</th>
               {/if}
               <th style="width: 70px;">Points</th>

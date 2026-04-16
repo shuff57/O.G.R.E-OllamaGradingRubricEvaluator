@@ -370,8 +370,14 @@
       const currentModel = model;
       const currentRubric = buildRubricFromText();
 
-      if (!currentProvider || !currentModel) return;
-      if (!currentRubric.checklistItems.length && !currentRubric.rubricItems.length) return;
+      if (!currentProvider || !currentModel) {
+        batchError = 'No AI provider/model selected — configure one in Settings.';
+        return;
+      }
+      if (!currentRubric.checklistItems.length && !currentRubric.rubricItems.length) {
+        batchError = 'No rubric criteria found — extract or enter a rubric first.';
+        return;
+      }
 
       const currentLeniency = leniency;
       const anchorResponses = await generateAnchors({
@@ -492,9 +498,17 @@
     isAutoStopped = false;
     batchError = '';
 
-    const studentsToGrade = versionCount > 1
-      ? batchGrader.getStudentsForVersion(currentVersionIndex)
+    // When forceRegrade is checked, use all students (except no-response)
+    // regardless of whether they were filtered during extraction
+    const baseStudents = forceRegrade
+      ? batchGrader.students.filter(s => !batchGrader.noResponseStudents.includes(s))
       : batchGrader.studentsToGrade;
+    const studentsToGrade = versionCount > 1
+      ? baseStudents.filter(s => {
+          const versionStudents = batchGrader.getStudentsForVersion(currentVersionIndex);
+          return versionStudents.some(vs => vs.index === s.index);
+        })
+      : baseStudents;
 
     if (studentsToGrade.length === 0) {
       if (versionCount > 1 && batchGrader.advanceVersion()) {

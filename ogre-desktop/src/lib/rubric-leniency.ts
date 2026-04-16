@@ -9,12 +9,12 @@
  * - AI-powered: sends rubric to LLM for intelligent rewrite (slower, higher quality)
  */
 
-import { getHandshakeToken } from './provider-sync';
+import { ensureHandshakeToken } from './provider-sync';
 
 const SERVER_BASE = 'http://localhost:3456';
 
-function authHeaders(): Record<string, string> {
-  const token = getHandshakeToken();
+async function authHeaders(): Promise<Record<string, string>> {
+  const token = await ensureHandshakeToken();
   return {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -136,8 +136,9 @@ export function rewriteRubricRuleBased(rubricText: string, leniency: number): st
       inModelSection = false;
     }
 
-    // Skip structural headers: "--- ... ---", "[Category]", "[Category(N pts)]", empty lines
+    // Skip structural headers: "--- ... ---", "## Category [N%]", "[Category]", "[Category(N pts)]", empty lines
     if (trimmed.startsWith('---') ||
+        trimmed.startsWith('## ') ||
         (trimmed.startsWith('[') && trimmed.endsWith(']')) ||
         (trimmed.startsWith('[') && trimmed.match(/\]\s*$/)) ||
         !trimmed) {
@@ -211,7 +212,7 @@ REWRITTEN RUBRIC:`;
 
   const response = await fetch(`${SERVER_BASE}/api/chat`, {
     method: 'POST',
-    headers: authHeaders(),
+    headers: await authHeaders(),
     body: JSON.stringify({
       message: prompt,
       ...(options?.provider ? { provider: options.provider } : {}),

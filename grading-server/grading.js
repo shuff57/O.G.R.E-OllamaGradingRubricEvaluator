@@ -151,9 +151,9 @@ ${essayPrompt}
         }
       }
     }
-    prompt += `\nSCORING BY CATEGORY:\n`;
+    prompt += `\nSCORING BY CATEGORY (score each 0-10, server applies weights automatically):\n`;
     for (const item of rubric.checklistItems) {
-      if (item.category) prompt += `- ${item.category}: ${effectivePoints(item)} points total\n`;
+      if (item.category) prompt += `- ${item.category}: 10 points\n`;
     }
     const ctLow = 60;
     const ctHigh = 80;
@@ -292,12 +292,12 @@ CONSISTENCY RULES:
   }
 
   // Build Chain-of-Rubric criterion names for JSON response template
+  // Always use 0-10 scale per category — server applies category weights afterward
   const _corItems = (rubric.checklistItems || []).map(c => ({
     name: c.category.replace(/\s*\(\d+\s*pts?\)/i, '').trim(),
-    pts: effectivePoints(c)
   }));
   const _corField = _corItems.length > 0
-    ? `    "criterion_scores": {${_corItems.map(({name, pts}) => `"${name}": <0-${pts} pts>`).join(', ')}},\n`
+    ? `    "criterion_scores": {${_corItems.map(({name}) => `"${name}": <0-10>`).join(', ')}},\n`
     : '';
   // Response format instructions — use actual student indices so AI doesn't guess
   const firstIdx = students[0]?.index ?? 0;
@@ -514,7 +514,7 @@ function validateBatchResults(parsed, students, maxScore, categoryWeights = null
         if (isNaN(raw) || raw < 0) continue;
         const weightPct = categoryWeights[category];
         if (weightPct == null) continue; // skip categories without a weight
-        const catMax = (categoryMaxPoints && categoryMaxPoints[category]) || 10; // fallback to virtual max
+        const catMax = (categoryMaxPoints && categoryMaxPoints[category]) || 10;
         weightedFraction += (raw / catMax) * (weightPct / 100);
         validCount++;
       }
@@ -948,9 +948,9 @@ ${essayPrompt}
         }
       }
     }
-    prompt += `\nSCORING BY CATEGORY:\n`;
+    prompt += `\nSCORING BY CATEGORY (score each 0-10, server applies weights automatically):\n`;
     for (const item of rubric.checklistItems) {
-      if (item.category) prompt += `- ${item.category}: ${effectivePoints(item)} points total\n`;
+      if (item.category) prompt += `- ${item.category}: 10 points\n`;
     }
     prompt += `\nPARTIAL CREDIT RULE: When a requirement is addressed conceptually but lacks specific values, formulas, or concrete evidence, award 40-60% of that category's points. Award 20-40% if only loosely related; 60-80% if substantially complete but missing one key element. Evaluate each requirement INDEPENDENTLY - do not let strength on one compensate for weakness on another.
 

@@ -9,7 +9,7 @@ const MODEL = process.argv[2] || 'glm-5:cloud';
 const LABEL = process.argv[3] || 'test';
 
 const data = JSON.parse(readFileSync('C:/tmp/mom-benchmark-data.json', 'utf8'));
-const allStudents = data.students.filter(s => s.response.trim().length > 5);
+const allStudents = (data.allStudents || data.students).filter(s => s.response.trim().length > 5);
 
 const rubric = {
   essayPrompt: allStudents[0].prompt,

@@ -10,7 +10,7 @@
 
 ;
 import { evalScriptJSON, captureWebviewScreenshot, getEmbeddedUrl } from "./browser";
-import { getHandshakeToken } from "./provider-sync";
+import { getHandshakeToken, ensureHandshakeToken } from "./provider-sync";
 import type { RubricCriterion } from "./rubric-api";
 import { withRetry } from "./ai-retry";
 import { buildSmartWalkScript } from "./dom-snapshot";
@@ -583,8 +583,8 @@ function normalizeProviderId(id: string): string {
 /**
  * Auth headers for grading server requests.
  */
-function authHeaders(): Record<string, string> {
-  const token = getHandshakeToken();
+async function authHeaders(): Promise<Record<string, string>> {
+  const token = await ensureHandshakeToken();
   return {
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -622,7 +622,7 @@ async function callDiscoveryAI(
   const response = await withRetry(async () => {
     const res = await fetch(`${SERVER_BASE}/api/chat`, {
       method: "POST",
-      headers: authHeaders(),
+      headers: await authHeaders(),
       body: JSON.stringify(body),
     });
     if (!res.ok) {
@@ -1414,7 +1414,7 @@ export async function generateRubricFromText(
     throw new Error("Assignment text is required for rubric generation");
   }
 
-  const token = getHandshakeToken();
+  const token = await ensureHandshakeToken();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),

@@ -69,7 +69,6 @@
       <button
         class="btn-primary"
         onclick={onContinueGrading}
-        disabled={!batchGraderHasStudents}
       >
         Start Grading
       </button>
@@ -80,7 +79,9 @@
 <style>
   /* ── Footer / Controls ── */
   .panel-footer {
-    padding-top: var(--spacing-2);
+    padding: var(--spacing-3) var(--spacing-4);
+    background-color: var(--color-bg-sidebar);
+    border-top: 1px solid var(--color-border);
     flex-shrink: 0;
   }
 

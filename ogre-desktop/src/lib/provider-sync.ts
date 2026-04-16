@@ -21,6 +21,25 @@ export function getHandshakeToken(): string | null {
   return handshakeToken;
 }
 
+/**
+ * Return the handshake token, fetching it from the server if not yet cached.
+ * Use this in code paths where the token is required but pushOnStartup()
+ * may not have run yet (e.g., Rubrics page loaded before Dashboard).
+ */
+export async function ensureHandshakeToken(): Promise<string | null> {
+  if (handshakeToken) return handshakeToken;
+  try {
+    const res = await fetch(`${SERVER_BASE}/api/handshake`);
+    if (res.ok) {
+      const data = await res.json();
+      handshakeToken = data.token;
+    }
+  } catch {
+    // Server not reachable
+  }
+  return handshakeToken;
+}
+
 // ── Health Check ────────────────────────────────────────────────────────
 
 /**
