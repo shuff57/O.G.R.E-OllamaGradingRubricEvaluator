@@ -7,6 +7,12 @@ import type { RubricCriterion } from '../../../lib/rubric-api';
 import { criteriaToText } from '../../../lib/rubric-utils';
 
 /**
+ * Regex to match a point suffix in a MOM rubric category name.
+ * Examples: "Statistical Decision(4 pts)", "Conclusion in Context(3pts)"
+ */
+const POINT_SUFFIX_RE = /\((\d+(?:\.\d+)?)\s*pts?\)/i;
+
+/**
  * Convert a RubricItem array into RubricCriterion[] for use with criteriaToText().
  * Each item in each category becomes one criterion with points: 0.
  */
@@ -26,25 +32,37 @@ function rubricItemsToCriteria(items: RubricItem[], rowType?: RubricCriterion['r
 /**
  * Format rubric for the review textarea.
  *
- * Emits criteriaToText()-compatible output so that RubricCard's textToCriteria()
- * can parse it back into table rows. Format:
+ * On MyOpenMath pages, `rubricItems` contains TWO logical sections in one <details> block:
+ *   1. Short-label rows — category names WITHOUT a point suffix, items are plain sentences ← USE THESE
+ *   2. Detailed rows   — category names WITH "(N pts)" suffix, items are "Target: ..." AI detail
  *
- *   ## Category Name
- *   Criterion description (0pts)
- *   ...
+ * We want the short-label rows for the teacher-facing RubricCard. They have clean names and
+ * no AI noise. Deduplicate items within each row (DOM sometimes emits each item twice).
  *
- * The --- Model Response --- block is appended after the criteria block so it
- * is preserved for human review (it is also stored in extractedRubric.modelText).
- *
- * If NO checklist/rubric criteria exist, falls back to a plain-text message.
+ * Falls back to all rubricItems (deduped) if no short-label rows exist, then to checklistItems.
  */
 export function formatRubricForDisplay(rubric: Rubric, _allVersions?: VersionGroup[]): string {
-  // Merge checklist and rubric target items into a single flat criteria list.
-  // Checklist items come first, then rubric targets.
-  const criteria: RubricCriterion[] = [
-    ...rubricItemsToCriteria(rubric.checklistItems, 'checklist'),
-    ...rubricItemsToCriteria(rubric.rubricItems, 'allocation'),
-  ];
+  let sourceItems = rubric.checklistItems;
+  let rowType: RubricCriterion['rowType'] = 'checklist';
+
+  if (rubric.rubricItems && rubric.rubricItems.length > 0) {
+    // Prefer short-label rows (no point suffix) — these are the clean teacher-facing rows
+    const shortRows = rubric.rubricItems.filter(item =>
+      !POINT_SUFFIX_RE.test(item.category)
+    );
+
+    const base = shortRows.length > 0 ? shortRows : rubric.rubricItems;
+
+    // Deduplicate items within each row (MOM DOM sometimes emits each <li> twice)
+    sourceItems = base.map(item => ({
+      ...item,
+      items: Array.from(new Set(item.items.map(s => s.trim()).filter(Boolean))),
+    }));
+
+    rowType = 'allocation';
+  }
+
+  const criteria: RubricCriterion[] = rubricItemsToCriteria(sourceItems, rowType);
 
   if (criteria.length === 0) {
     return '(No rubric data found on page)';
