@@ -1,6 +1,9 @@
 import { app, BrowserWindow } from 'electron'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { registerIpcHandlers } from './ipc-handlers'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 import { initDatabase } from './database'
 import { spawnServer, stopServer } from './server-manager'
 import { setCdpPort } from './cdp-bridge'
@@ -31,7 +34,7 @@ function createWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      preload: path.join(process.cwd(), 'dist-electron', 'preload.cjs'),
+      preload: path.join(__dirname, 'preload.cjs'),
     },
   })
 
@@ -40,7 +43,7 @@ function createWindow(): BrowserWindow {
   } else if (isDev) {
     void win.loadURL('http://localhost:5173')
   } else {
-    void win.loadFile(path.join(process.cwd(), 'dist', 'index.html'))
+    void win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
   }
 
   return win
