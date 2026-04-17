@@ -187,21 +187,13 @@ export async function rewriteRubricAI(
     ? `${pct}% more lenient — make criteria easier to satisfy, accept vaguer answers, less precise terminology, partial understanding counts as meeting the criterion`
     : `${pct}% more strict — make criteria harder to satisfy, require precise terminology, exact formulas, explicit conditions, thorough explanation`;
 
-  const lenientTargetGuidance = direction === 'lenient'
-    ? `- Target: lines must ALSO be rewritten to be more lenient — replace exact formulas with conceptual descriptions, replace specific values with general relationships, replace "must state X" with "mentions X or equivalent". For example:
-  Target: "IQR = Q3 - Q1 = 32 - 16 = 16" → Target: "Mentions that IQR is the difference between quartiles, or shows the general calculation"
-  Target: "Because 80 > 56, the maximum IS an outlier" → Target: "Identifies that the maximum exceeds the upper fence and is therefore an outlier"`
-    : `- Target: lines must ALSO be rewritten to be more strict — require exact notation, complete formulas with all steps shown, explicit variable definitions, and precise terminology. For example:
-  Target: "IQR = Q3 - Q1 = 16" → Target: "Explicitly defines IQR = Q3 - Q1, shows substitution IQR = 32 - 16 = 16, and states units if applicable"`;
-
   const prompt = `Rewrite the following rubric criteria to be ${directionDesc}.
 
 RULES:
-- Keep ALL category names in [brackets] EXACTLY the same
-- Keep ALL point values EXACTLY the same
-- Keep the EXACT same formatting structure (indentation, dashes, line breaks)
-- Rewrite BOTH the criterion descriptions AND the Target: lines
-${lenientTargetGuidance}
+- Keep ALL "## Category [N%]" header lines EXACTLY the same
+- Keep ALL point values in "(Npts)" EXACTLY the same
+- Keep the EXACT same formatting structure (headers, line breaks)
+- Rewrite ONLY the criterion description text to be more ${direction}
 - Return the COMPLETE rewritten rubric, not just changed parts
 - Do NOT add explanations or commentary — return ONLY the rubric text
 
@@ -245,12 +237,43 @@ REWRITTEN RUBRIC:`;
   }
 
   // Validate: result should have similar structure to original
-  const origLines = rubricText.split('\n').filter(l => l.trim().startsWith('-')).length;
-  const resultLines = result.split('\n').filter(l => l.trim().startsWith('-')).length;
+  // Count criteria lines — those matching "Name (Npts)" pattern, not headers or blanks
+  const CRITERIA_LINE = /\(\d+(?:\.\d+)?\s*pts?\)/i;
+  const origLines = rubricText.split('\n').filter(l => CRITERIA_LINE.test(l)).length;
+  const resultLines = result.split('\n').filter(l => CRITERIA_LINE.test(l)).length;
 
-  if (resultLines < origLines * 0.7) {
+  if (origLines > 0 && resultLines < origLines * 0.7) {
     throw new Error(`AI rewrite lost too many criteria (${resultLines} vs ${origLines} original)`);
   }
 
   return result.trim();
+}
+
+/**
+ * Restore `## Category [N%]` weight annotations that an AI rewrite may have stripped.
+ * Compares category headers in the rewritten text against the original and re-adds
+ * missing `[N%]` suffixes.
+ */
+export function restoreCategoryWeights(rewritten: string, original: string): string {
+  const HEADER_RE = /^##\s+(.+?)(?:\s*\[(\d+(?:\.\d+)?)%\])?\s*$/;
+  const weights = new Map<string, number>();
+  for (const line of original.split('\n')) {
+    const m = HEADER_RE.exec(line.trim());
+    if (m && m[2] !== undefined) {
+      weights.set(m[1].trim().toLowerCase(), parseFloat(m[2]));
+    }
+  }
+  if (weights.size === 0) return rewritten;
+
+  return rewritten.split('\n').map(line => {
+    const m = HEADER_RE.exec(line.trim());
+    if (m) {
+      const name = m[1].trim();
+      const w = weights.get(name.toLowerCase());
+      if (w !== undefined && m[2] === undefined) {
+        return `## ${name} [${w}%]`;
+      }
+    }
+    return line;
+  }).join('\n');
 }

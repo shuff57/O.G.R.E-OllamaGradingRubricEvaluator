@@ -15,7 +15,7 @@
   import type { SavedRubric } from '../../lib/rubric-api';
   import { criteriaToText, textToCriteria, validateWeights, isAllocationCriterion, getFullCreditPoints, equalizeWeights, autoFillWeights } from '../../lib/rubric-utils';
   import { generateRubricFromText } from '../../lib/discover';
-  import { rewriteRubricAI } from '../../lib/rubric-leniency';
+  import { rewriteRubricAI, restoreCategoryWeights } from '../../lib/rubric-leniency';
   import type { Rubric } from '../../lib/batch-grader';
 
   type BatchPhase = 'idle' | 'extracting' | 'review' | 'grading' | 'done';
@@ -86,12 +86,14 @@
     }
   });
 
-  // Auto-rewrite when a new rubric arrives and leniency is not center (saved default)
+  // Auto-rewrite when a new rubric arrives and leniency is not center (saved default).
+  // Skip during grading — BatchProgress handles version-advance rewrites directly.
   let prevOriginal = '';
   $effect(() => {
     const text = originalRubricText;
     if (!text || text === prevOriginal) return;
     prevOriginal = text;
+    if (phase === 'grading' || phase === 'done') return;
     if (leniency !== 50) triggerAIRewrite();
   });
 
@@ -106,31 +108,6 @@
   });
 
   // AI rewrite on slider release (the only rewrite path)
-  /** Restore ## Category [N%] weight annotations the AI rewrite may have stripped. */
-  function restoreCategoryWeights(rewritten: string, original: string): string {
-    const HEADER_RE = /^##\s+(.+?)(?:\s*\[(\d+(?:\.\d+)?)%\])?\s*$/;
-    const weights = new Map<string, number>();
-    for (const line of original.split('\n')) {
-      const m = HEADER_RE.exec(line.trim());
-      if (m && m[2] !== undefined) {
-        weights.set(m[1].trim().toLowerCase(), parseFloat(m[2]));
-      }
-    }
-    if (weights.size === 0) return rewritten;
-
-    return rewritten.split('\n').map(line => {
-      const m = HEADER_RE.exec(line.trim());
-      if (m) {
-        const name = m[1].trim();
-        const w = weights.get(name.toLowerCase());
-        if (w !== undefined && m[2] === undefined) {
-          return `## ${name} [${w}%]`;
-        }
-      }
-      return line;
-    }).join('\n');
-  }
-
   function triggerAIRewrite() {
     const val = leniency;
     if (val === 50 || !originalRubricText) return;

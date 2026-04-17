@@ -29,7 +29,7 @@
   import { textToCriteria } from '../../../lib/rubric-utils';
   import ResponseRenderer from '../../ResponseRenderer.svelte';
   import { formatRubricForDisplay, normalizeAnchorTextToVirtual10 } from './format';
-  // Rule-based rewrite removed — AI rewrite only, triggered by slider in RubricCard
+  import { rewriteRubricAI, restoreCategoryWeights } from '../../../lib/rubric-leniency';
 
   // ── Props (read-only from shell) ───────────────────────────────────────
   let {
@@ -258,6 +258,25 @@
     rubricText = text;
   }
 
+  /**
+   * Apply leniency rewrite to the current rubricText if leniency is not center.
+   * Used during version-advance to ensure the new version's rubric gets rewritten
+   * before anchors are generated and grading starts.
+   */
+  async function applyLeniencyRewrite(): Promise<void> {
+    if (leniency === 50 || !rubricText) return;
+    try {
+      const raw = rubricText;
+      const result = await rewriteRubricAI(
+        raw, leniency,
+        { provider: provider || undefined, model: model || undefined },
+      );
+      rubricText = restoreCategoryWeights(result, raw);
+    } catch {
+      // Non-fatal — continue with un-rewritten rubric rather than blocking grading
+    }
+  }
+
   // ── Build rubric object from current textarea text ──────────────────────
   // Parses the textarea into structured rubric data, extracting model text
   // (ideal answer) from the "--- Model Response ---" section. When leniency
@@ -277,23 +296,28 @@
     // Try structured criteria format first (Name (Npts): Desc)
     const parsed = textToCriteria(text);
     if (parsed.length > 0) {
+      // Group parsed criteria by category for checklistItems format.
+      // When criteria come from the rewritten rubricText, these ARE the
+      // grading criteria — don't also send raw rubricItems (which may
+      // contain stale "Target:" text from the DOM extraction).
+      const groupedChecklist: { category: string; items: string[]; categoryWeight?: number }[] = [];
+      const seenCats = new Map<string, { items: string[]; categoryWeight?: number }>();
+      for (const c of parsed) {
+        const catName = c.category ?? c.criteria;
+        const catWeight = c.categoryWeight ?? lookupCategoryWeight(catName);
+        const itemText = c.description ? `${c.criteria}: ${c.description}` : c.criteria;
+        if (seenCats.has(catName)) {
+          seenCats.get(catName)!.items.push(itemText);
+        } else {
+          const entry = { items: [itemText], ...(catWeight !== undefined ? { categoryWeight: catWeight } : {}) };
+          seenCats.set(catName, entry);
+          groupedChecklist.push({ category: catName, ...entry });
+        }
+      }
       return {
         essayPrompt: base?.essayPrompt || '',
-        checklistItems: parsed.map(c => {
-          // c.category = section header (e.g. "Statistical Decision")
-          // c.criteria = the actual rubric item text (e.g. "The student correctly identifies...")
-          // c.description = supplementary detail (often empty for MOM rubrics)
-          // The server needs the criterion text in `items`, not as the category name.
-          const catName = c.category ?? c.criteria;
-          const catWeight = c.categoryWeight ?? lookupCategoryWeight(catName);
-          const itemText = c.description ? `${c.criteria}: ${c.description}` : c.criteria;
-          return {
-            category: catName,
-            items: [itemText],
-            ...(catWeight !== undefined ? { categoryWeight: catWeight } : {}),
-          };
-        }),
-        rubricItems: base?.rubricItems || [],
+        checklistItems: groupedChecklist,
+        rubricItems: [],
         modelText,
         maxScore: rubricMaxScore,
       };
@@ -514,6 +538,7 @@
       if (versionCount > 1 && batchGrader.advanceVersion()) {
         currentVersionIndex = batchGrader.currentVersionIndex;
         updateVersionDisplay();
+        await applyLeniencyRewrite();
         handleContinueGrading();
         return;
       }
@@ -757,6 +782,9 @@
       phaseMessage = `Version ${currentVersionIndex} of ${versionCount} complete. Starting version ${currentVersionIndex + 1} (${vStudents.length} students)...`;
       updateVersionDisplay();
 
+      // Apply leniency rewrite to new version's rubric before generating anchors
+      await applyLeniencyRewrite();
+
       // Regenerate AI anchors for the new version's rubric
       anchorGenerating = true;
       try {
@@ -765,14 +793,16 @@
         const versionRubric = batchGrader.getRubricForVersion(currentVersionIndex);
 
         if (currentProvider && currentModel && versionRubric) {
+          // Use rewritten rubricText criteria for anchors, not raw extraction
+          const currentRubricForAnchors = buildRubricFromText();
           const anchorResponses = await generateAnchors({
             provider: currentProvider,
             model: currentModel,
             rubric: {
-              essayPrompt: versionRubric.essayPrompt,
-              checklistItems: versionRubric.checklistItems,
-              rubricItems: versionRubric.rubricItems,
-              modelText: versionRubric.modelText,
+              essayPrompt: currentRubricForAnchors.essayPrompt || versionRubric.essayPrompt,
+              checklistItems: currentRubricForAnchors.checklistItems,
+              rubricItems: currentRubricForAnchors.rubricItems,
+              modelText: currentRubricForAnchors.modelText ?? versionRubric.modelText,
               maxScore: '10',
             },
           });

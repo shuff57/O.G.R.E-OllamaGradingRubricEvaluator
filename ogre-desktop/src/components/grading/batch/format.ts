@@ -64,58 +64,72 @@ export function formatRubricForDisplay(rubric: Rubric, _allVersions?: VersionGro
 
   let categoryWeightMap: Map<string, number> | undefined;
 
+  // Extract category weights from rubricItems (detailed rows with "(N pts)" suffix)
+  // regardless of which source we use for display content.
   if (rubric.rubricItems && rubric.rubricItems.length > 0) {
-    // Prefer short-label rows (no point suffix) — these are the clean teacher-facing rows
-    const shortRows = rubric.rubricItems.filter(item =>
-      !POINT_SUFFIX_RE.test(item.category)
-    );
-
-    const base = shortRows.length > 0 ? shortRows : rubric.rubricItems;
-
-    // Deduplicate items within each row (MOM DOM sometimes emits each <li> twice)
-    sourceItems = base.map(item => ({
-      ...item,
-      items: Array.from(new Set(item.items.map(s => s.trim()).filter(Boolean))),
-    }));
-
-    rowType = 'allocation';
-
-    // Build a map of base-name → raw points from the detailed rows (e.g. "Statistical Decision(4 pts)" → 4)
-    // Then convert raw points to percentage weights so validateWeights() is satisfied.
-    if (shortRows.length > 0) {
-      const rawPointMap = new Map<string, number>();
-      for (const item of rubric.rubricItems) {
-        const match = item.category?.match(POINT_SUFFIX_RE);
-        if (match) {
-          const baseName = item.category.replace(POINT_SUFFIX_RE, '').trim();
-          // Use the first occurrence of each base name
-          if (!rawPointMap.has(baseName)) {
-            rawPointMap.set(baseName, parseFloat(match[1]));
-          }
-        }
-      }
-
-      if (rawPointMap.size > 0) {
-        const totalPoints = Array.from(rawPointMap.values()).reduce((a, b) => a + b, 0);
-        if (totalPoints > 0) {
-          // Convert raw points to % weights that sum to 100
-          categoryWeightMap = new Map<string, number>();
-          const entries = Array.from(rawPointMap.entries());
-          let assignedSoFar = 0;
-          entries.forEach(([name, pts], idx) => {
-            let pct: number;
-            if (idx === entries.length - 1) {
-              // Last category gets the remainder to guarantee sum = 100
-              pct = Math.round((100 - assignedSoFar) * 10) / 10;
-            } else {
-              pct = Math.round((pts / totalPoints) * 1000) / 10; // one decimal place
-            }
-            categoryWeightMap!.set(name, pct);
-            assignedSoFar += pct;
-          });
+    const rawPointMap = new Map<string, number>();
+    for (const item of rubric.rubricItems) {
+      const match = item.category?.match(POINT_SUFFIX_RE);
+      if (match) {
+        const baseName = item.category.replace(POINT_SUFFIX_RE, '').trim();
+        if (!rawPointMap.has(baseName)) {
+          rawPointMap.set(baseName, parseFloat(match[1]));
         }
       }
     }
+
+    if (rawPointMap.size > 0) {
+      const totalPoints = Array.from(rawPointMap.values()).reduce((a, b) => a + b, 0);
+      if (totalPoints > 0) {
+        categoryWeightMap = new Map<string, number>();
+        const entries = Array.from(rawPointMap.entries());
+        let assignedSoFar = 0;
+        entries.forEach(([name, pts], idx) => {
+          let pct: number;
+          if (idx === entries.length - 1) {
+            pct = Math.round((100 - assignedSoFar) * 10) / 10;
+          } else {
+            pct = Math.round((pts / totalPoints) * 1000) / 10;
+          }
+          categoryWeightMap!.set(name, pct);
+          assignedSoFar += pct;
+        });
+      }
+    }
+  }
+
+  // Display priority: checklistItems first (teacher-facing requirements),
+  // rubricItems only as fallback (contain AI "Target:" scoring detail).
+  const hasChecklist = sourceItems && sourceItems.length > 0 &&
+    sourceItems.some(item => item.items && item.items.length > 0);
+
+  if (hasChecklist) {
+    // Deduplicate checklist items
+    sourceItems = sourceItems.map(item => ({
+      ...item,
+      items: Array.from(new Set(item.items.map(s => s.trim()).filter(Boolean))),
+    }));
+    rowType = 'allocation';
+  } else if (rubric.rubricItems && rubric.rubricItems.length > 0) {
+    // Fallback: use rubricItems, cleaning up "(N pts)" and "Target:" noise
+    const shortRows = rubric.rubricItems.filter(item =>
+      !POINT_SUFFIX_RE.test(item.category)
+    );
+    const base = shortRows.length > 0 ? shortRows : rubric.rubricItems;
+    const needsCategoryCleanup = shortRows.length === 0;
+
+    sourceItems = base.map(item => ({
+      ...item,
+      category: needsCategoryCleanup ? item.category?.replace(POINT_SUFFIX_RE, '').trim() : item.category,
+      items: Array.from(new Set(item.items.map(s => {
+        let t = s.trim();
+        t = t.replace(/\n\s*Target:[\s\S]*$/, '').trim();
+        t = t.replace(/^Target:\s*/, '');
+        t = t.replace(/^"(.*)"$/, '$1');
+        return t;
+      }).filter(Boolean))),
+    }));
+    rowType = 'allocation';
   }
 
   const criteria: RubricCriterion[] = rubricItemsToCriteria(sourceItems, rowType, categoryWeightMap);

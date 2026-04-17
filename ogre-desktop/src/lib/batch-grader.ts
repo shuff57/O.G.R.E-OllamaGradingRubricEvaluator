@@ -380,6 +380,24 @@ export async function extractRubric(selectors: SiteSelectors, studentIndex: numb
         }).filter(function(x) { return x.category || x.items.length; });
       }
 
+      // Fallback: find checklist by summary text if initial child-index path missed it
+      if (!checklistItems.length) {
+        Array.from(region.querySelectorAll('details')).forEach(function(det) {
+          var summary = det.querySelector('summary');
+          if (!summary || summary.textContent.indexOf('Checklist') === -1) return;
+          var div = det.querySelector('div');
+          if (!div) return;
+          var rows = Array.from(div.querySelectorAll('tr')).map(function(tr) {
+            var bEl = tr.querySelector('b');
+            return {
+              category: bEl ? bEl.textContent.trim() : '',
+              items: Array.from(tr.querySelectorAll('label')).map(function(l) { return l.textContent.trim(); })
+            };
+          }).filter(function(x) { return x.category || x.items.length; });
+          if (rows.length && !checklistItems.length) { checklistItems = rows; }
+        });
+      }
+
       var part2Div = region.querySelectorAll(':scope > div')[1]; // Second direct div = Part 2/rubric
       var rubDetails = part2Div ? part2Div.querySelector('details') : null;
       var rubDiv = rubDetails ? rubDetails.querySelector('div') : null;
