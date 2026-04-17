@@ -77,16 +77,9 @@
   // Track the last rewritten text so we can detect external changes (extraction)
   let lastRewrittenText = $state('');
 
-  // Capture original rubric text when it changes externally (extraction, library load)
-  $effect(() => {
-    const text = rubricText;
-    if (!text) return;
-    if (text !== lastRewrittenText && text !== originalRubricText) {
-      originalRubricText = text;
-    }
-  });
-
   // Auto-rewrite when a new rubric arrives and leniency is not center (saved default).
+  // originalRubricText is set explicitly by setExtractedRubricText() (extraction)
+  // and the Tier 1 effect (library load) — NOT from user edits to the rubric card.
   // Skip during grading — BatchProgress handles version-advance rewrites directly.
   let prevOriginal = '';
   $effect(() => {
@@ -319,7 +312,9 @@
     if (phase !== 'idle') return;
     if (selectedRubric) {
       sourceRubricId = selectedRubric.id;
-      rubricText = criteriaToText(selectedRubric.criteria);
+      const text = criteriaToText(selectedRubric.criteria);
+      originalRubricText = text;
+      rubricText = text;
       rubricMaxScore = String(selectedRubric.maxScore);
     } else if (!extractedRubric && fallbackText && !rubricText) {
       // Only fill with fallback if textarea is currently empty (don't overwrite user edits)
