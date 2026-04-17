@@ -11,7 +11,7 @@
   import BatchProfileSelector from './BatchProfileSelector.svelte';
   import BatchInstructions from './BatchInstructions.svelte';
   import BatchProgress from './BatchProgress.svelte';
-  import BatchResults from './BatchResults.svelte';
+  // BatchResults is rendered by GradingPanel (outside scrollable area)
   import type { SavedRubric } from '../../../lib/rubric-api';
   import type { Rubric, SiteProfile } from '../../../lib/batch-grader';
   import { DEFAULT_MYOPENMATH_PROFILE } from '../../../lib/batch-grader';
@@ -42,6 +42,9 @@
     anchorText = $bindable(''),
     anchorGenerating = $bindable(false),
     batchGraderHasStudents = $bindable(false),
+    isBatchPaused = $bindable(false),
+    savedSessionStudent = $bindable<string | null>(null),
+    profileWarning = $bindable(''),
   } = $props();
 
   // ── Bridging state between sub-components ──────────────────────────────
@@ -53,29 +56,30 @@
     if (externalProfile) activeProfile = externalProfile;
   });
   let currentPageUrl = $state('');
-  let savedSessionStudent = $state<string | null>(null);
   let resumeAfter = $state('');
-  let profileWarning = $state('');
   let localEmbedEnabled = $state(false);
   let localModelLoaded = $state(true);
+  let batchError = $state('');
 
   // Instructions
   let forceRegrade = $state(false);
   let zeroNoResponse = $state(true);
   let isReviewMode = $state(false);
 
-  // Progress → shell → Results
-  let isBatchPaused = $state(false);
-  let batchError = $state('');
-
   // Component reference for method forwarding
   let progressRef: BatchProgress;
   let profileRef: BatchProfileSelector;
 
-  // Expose generate-anchors handler to parent shell
-  function handleGenerateAnchors() {
+  // Expose handlers to parent shell (called by GradingPanel on behalf of BatchResults / RubricCard)
+  export function handleGenerateAnchors() {
     progressRef?.handleGenerateAnchors();
   }
+  export function handleExtract() { progressRef?.handleExtract(); }
+  export function handleContinueGrading() { progressRef?.handleContinueGrading(); }
+  export function handlePauseBatch() { progressRef?.handlePauseBatch(); }
+  export function handleStopBatch() { progressRef?.handleStopBatch(); }
+  export function handleCancelBatch() { progressRef?.handleCancelBatch(); }
+  export function handleReset() { progressRef?.handleReset(); }
 
   // ── URL change coordination ────────────────────────────────────────────
   // Shell coordinates: Progress resets first (via its own effect on pageLoadedUrl),
@@ -147,24 +151,10 @@
     bind:anchorText
     bind:anchorGenerating
     bind:batchGraderHasStudents
+    bind:isBatchPaused
   />
 </section>
 
-<BatchResults
-  {batchPhase}
-  {isBatchRunning}
-  {isBatchPaused}
-  {savedSessionStudent}
-  {profileWarning}
-  {batchGraderHasStudents}
-  onExtract={() => progressRef?.handleExtract()}
-  onContinueGrading={() => progressRef?.handleContinueGrading()}
-  onPauseBatch={() => progressRef?.handlePauseBatch()}
-  onStopBatch={() => progressRef?.handleStopBatch()}
-  onCancelBatch={() => progressRef?.handleCancelBatch()}
-  onReset={() => progressRef?.handleReset()}
-  {onRequestDiscovery}
-/>
 
 <style>
   .batch-panel {

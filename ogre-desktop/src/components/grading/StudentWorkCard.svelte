@@ -28,6 +28,8 @@
     captureError?: string;
     /** Optional student name — shown in result heading and prepended to AI prompt. */
     studentName?: string;
+    /** Weight mode — passed through to gradeStudent() for silent point-target calculation */
+weightMode?: 'category' | 'criterion';
   }
 
   let {
@@ -40,6 +42,7 @@
     isCapturing = false,
     captureError = '',
     studentName = '',
+    weightMode,
   }: Props = $props();
 
   // State
@@ -99,6 +102,7 @@
         rubric: rubric || { maxScore: '10' },
         provider: provider || undefined,
         model: model || undefined,
+        weightMode: weightMode || undefined,
       });
 
       lastGradeResult = result;
