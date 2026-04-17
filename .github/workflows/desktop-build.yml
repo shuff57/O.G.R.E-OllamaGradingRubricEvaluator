@@ -37,7 +37,7 @@ jobs:
         working-directory: ogre-desktop
 
       - name: Build Electron app
-        run: npm run electron:build
+        run: npx vite build && npx electron-builder --win --publish never
         working-directory: ogre-desktop
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -90,7 +90,7 @@ jobs:
             artifacts/ogre-desktop-windows-nsis/*.exe
             artifacts/ogre-desktop-updater/latest.yml
           draft: false
-          prerelease: false
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') }}
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
