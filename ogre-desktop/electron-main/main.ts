@@ -22,6 +22,7 @@ if (process.platform === 'linux') {
 }
 
 app.commandLine.appendSwitch('remote-debugging-port', '9223')
+app.commandLine.appendSwitch('remote-allow-origins', '*')
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
