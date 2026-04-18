@@ -334,7 +334,7 @@ FEEDBACK FORMAT RULE: The feedback string must contain one section for EACH numb
   {
     "studentIndex": ${firstIdx},
     ${_corField}    "score": <${_scoreHint}>
-    "feedback": "Hi [name],${_feedbackExample}"
+    "feedback": "<p>Hi [name],</p>${_feedbackExample}"
   },
   {
     "studentIndex": ${secondIdx},
@@ -1038,7 +1038,7 @@ Return ONLY valid JSON. No markdown code fences. No explanation text.
 
 {
 ${_sCorField}  "score": <${_sScoreHint}>
-  "feedback": "Hi [name],${_sFeedbackExample}"
+  "feedback": "<p>Hi [name],</p>${_sFeedbackExample}"
 }`;
 
   return prompt;

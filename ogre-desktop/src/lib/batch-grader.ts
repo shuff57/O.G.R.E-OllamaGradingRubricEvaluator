@@ -893,9 +893,18 @@ export async function fillGrade(
     var fbBox = sel.feedbackBox ? student.querySelector(sel.feedbackBox) : null;
 
     if (fbCfg.type === 'tinymce-inline' || fbCfg.type === 'contenteditable') {
-      var html = fbCfg.htmlWrap
-        ? '<p>' + feedbackText.replace(/\\n/g, '</p><p>') + '</p>'
-        : feedbackText;
+      // If the feedback already looks like HTML (leading tag), use it as-is and
+      // collapse surrounding whitespace. Otherwise wrap newline-separated text
+      // in <p> blocks.
+      var isHtml = /^\s*</.test(feedbackText);
+      var html;
+      if (isHtml) {
+        html = feedbackText.replace(/\\n+/g, '');
+      } else if (fbCfg.htmlWrap) {
+        html = '<p>' + feedbackText.replace(/\\n/g, '</p><p>') + '</p>';
+      } else {
+        html = feedbackText;
+      }
       if (fbBox) {
         fbBox.innerHTML = html;
         if (fbBox.classList) fbBox.classList.remove('skipmathrender');
