@@ -898,6 +898,7 @@ export async function fillGrade(
         : feedbackText;
       if (fbBox) {
         fbBox.innerHTML = html;
+        if (fbBox.classList) fbBox.classList.remove('skipmathrender');
         fbBox.dispatchEvent(new Event('input', { bubbles: true }));
       }
       if (fbCfg.requiresHiddenSync && sel.feedbackHidden) {
@@ -912,8 +913,15 @@ export async function fillGrade(
       }
     }
 
-    // Trigger MathJax to re-render any newly inserted LaTeX
-    try { if (window.MathJax && window.MathJax.typeset) window.MathJax.typeset(); } catch(e) {}
+    // Trigger math render. MOM's rendermathnode() drives MathJax's AsciiMath
+    // input jax (backtick delimiters). Fall back to MathJax.typeset().
+    try {
+      if (fbBox && typeof window.rendermathnode === 'function') {
+        window.rendermathnode(fbBox);
+      } else if (window.MathJax && window.MathJax.typeset) {
+        window.MathJax.typeset();
+      }
+    } catch(e) {}
     return { success: true };
   })()`);
 

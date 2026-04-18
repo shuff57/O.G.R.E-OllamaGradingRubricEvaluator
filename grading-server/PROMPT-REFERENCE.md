@@ -147,10 +147,18 @@ This appears OUTSIDE the JSON template to ensure the AI reads it before
 generating output:
 
 ```
-FEEDBACK FORMAT RULE: The feedback field must contain one section for EACH
-numbered requirement from GRADING REQUIREMENTS above. Do NOT group feedback
-by category. Each numbered requirement gets its own section.
+FEEDBACK FORMAT RULE: The feedback string must contain one section for EACH
+numbered requirement from GRADING REQUIREMENTS. Do NOT group by category.
+Use HTML tags: <strong> for the requirement header, <blockquote> for the
+student's words (or "You did not address this."), <p> for your evaluation,
+<em> for the "To improve" line. Wrap all math expressions in backticks, e.g.
+`x^2 + 3x` or `p < 0.05`. For ANY requirement that is not at full credit, you
+MUST include both (a) a specific reason citing the student's words or
+omission, and (b) a "To improve" line with an actionable next step.
 ```
+
+MOM's feedback box does not render Markdown — it stores HTML and renders math
+from backtick-delimited ASCIIMath via `rendermathnode()` / MathJax.
 
 ---
 
@@ -175,44 +183,34 @@ by category. Each numbered requirement gets its own section.
 
 ## Feedback Format (inside the feedback string)
 
-The AI is instructed to write this exact structure for each numbered requirement:
+The AI is instructed to write this exact HTML structure for each numbered
+requirement:
 
-```markdown
-**Requirement: Name the appropriate statistical test for this scenario.**
-> You said: "I would use a one-way ANOVA because we are comparing three groups."
+```html
+<p><strong>Name the appropriate statistical test for this scenario.</strong></p>
+<blockquote>You said: "I would use a one-way ANOVA because we are comparing three groups."</blockquote>
+<p>Correct! One-way ANOVA is the right choice for comparing means across three independent groups with one factor.</p>
 
-Correct! One-way ANOVA is the right choice for comparing means across three
-independent groups with one factor.
+<p><strong>Explain why this test fits the study design.</strong></p>
+<blockquote>You said: "ANOVA works because there are more than two groups."</blockquote>
+<p>Incomplete. You identified the multi-group aspect, but did not mention that the groups are independent or that we are comparing means of a continuous variable.</p>
+<p><em>To improve: Explain that the design has one independent variable with three levels, the groups are independent, and the response variable is continuous.</em></p>
 
-**Requirement: Explain why this test fits the study design.**
-> You said: "ANOVA works because there are more than two groups."
-
-This is on the right track but incomplete. You identified the multi-group
-aspect, but did not mention that the groups are independent or that we are
-comparing means of a continuous variable.
-
-*To improve: Explain that the design has one independent variable with three
-levels, the groups are independent (not paired/repeated), and the response
-variable is continuous.*
-
-**Requirement: Explain why a paired t-test would not be appropriate here.**
-> You did not address this.
-
-A paired t-test requires two related measurements on the same subjects (e.g.,
-pre/post). This scenario has three separate groups of different people, so
-pairing does not apply.
-
-*To improve: State that paired tests need matched or repeated-measures data,
-which this design lacks.*
+<p><strong>Explain why a paired t-test would not be appropriate here.</strong></p>
+<blockquote>You did not address this.</blockquote>
+<p>A paired t-test requires two related measurements on the same subjects. This scenario has three separate groups, so pairing does not apply (e.g. the statistic `t = (\bar{d})/(s_d/\sqrt{n})` assumes matched pairs).</p>
+<p><em>To improve: State that paired tests need matched or repeated-measures data, which this design lacks.</em></p>
 ```
 
 ### Key formatting rules:
-- **Bold** for the requirement label — makes it visually distinct
-- `> Blockquote` for the student's words — clearly separates "what they said"
-- Plain text for the teacher's feedback — the evaluation/explanation
-- `*Italic*` for the improvement suggestion — visually distinct call-to-action
+- `<strong>` for the requirement label — makes it visually distinct
+- `<blockquote>` for the student's words — clearly separates "what they said"
+- `<p>` for the teacher's evaluation
+- `<em>` for the "To improve" line — visually distinct call-to-action
 - One section per requirement, never grouped by category
-- `$...$` for inline math where appropriate (rendered by KaTeX)
+- Backticks `` `...` `` for inline math (ASCIIMath, rendered by MathJax)
+- Any requirement not at full credit MUST include both a reason and a
+  "To improve" line
 
 ---
 

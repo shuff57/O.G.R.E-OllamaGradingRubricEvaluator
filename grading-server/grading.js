@@ -315,20 +315,20 @@ CONSISTENCY RULES:
   let _feedbackExample = '';
   if (_allReqs.length > 0) {
     // Show first 2 requirements as examples (one addressed, one not)
-    _feedbackExample = `\\n\\n**${_allReqs[0]}**\\n> You said: \\"[quote what student wrote]\\"\\n\\n[Correct/Incorrect/Incomplete — explain WHY]\\n\\n*To improve: [specific suggestion]*`;
+    _feedbackExample = `\\n<p><strong>${_allReqs[0]}</strong></p>\\n<blockquote>You said: \\"[quote what student wrote]\\"</blockquote>\\n<p>[Correct/Incorrect/Incomplete — explain WHY; wrap math in backticks, e.g. \`x^2 + 3x\`]</p>\\n<p><em>To improve: [specific suggestion]</em></p>`;
     if (_allReqs.length > 1) {
-      _feedbackExample += `\\n\\n**${_allReqs[1]}**\\n> You did not address this.\\n\\n[Explain what was expected]`;
+      _feedbackExample += `\\n<p><strong>${_allReqs[1]}</strong></p>\\n<blockquote>You did not address this.</blockquote>\\n<p>[Explain what was expected]</p>\\n<p><em>To improve: [specific suggestion]</em></p>`;
     }
     // Show the rest as stubs so the AI knows to continue
     for (let i = 2; i < _allReqs.length; i++) {
-      _feedbackExample += `\\n\\n**${_allReqs[i]}**\\n> You said: ...\\n\\n...`;
+      _feedbackExample += `\\n<p><strong>${_allReqs[i]}</strong></p>\\n<blockquote>You said: ...</blockquote>\\n<p>...</p>`;
     }
   }
 
   prompt += `
 ${_corItems.length > 0 ? `GRADING PROCESS:\nFor each student: (1) score each category independently using the PARTIAL CREDIT RULE above, (2) record category scores in criterion_scores, (3) sum for the final score. Do NOT adjust scores to hit a desired total.\n` : ''}
 
-FEEDBACK FORMAT RULE: The feedback string must contain one section for EACH numbered requirement from GRADING REQUIREMENTS. Do NOT group by category. Each requirement gets its own bolded header. criterion_scores uses categories for scoring, but feedback MUST be per-requirement.
+FEEDBACK FORMAT RULE: The feedback string must contain one section for EACH numbered requirement from GRADING REQUIREMENTS. Do NOT group by category. Use HTML tags: <strong> for the requirement header, <blockquote> for the student's words (or "You did not address this."), <p> for your evaluation, <em> for the "To improve" line. Wrap all math expressions in backticks, e.g. \`x^2 + 3x\` or \`p < 0.05\`. For ANY requirement that is not at full credit, you MUST include both (a) a specific reason citing the student's words or omission, and (b) a "To improve" line with an actionable next step. criterion_scores uses categories for scoring, but feedback MUST be per-requirement.
 
 [
   {
@@ -1020,18 +1020,18 @@ CONCEPTUAL THOROUGHNESS RULE: When a student demonstrates genuine understanding 
   }
   let _sFeedbackExample = '';
   if (_sAllReqs.length > 0) {
-    _sFeedbackExample = `\\n\\n**${_sAllReqs[0]}**\\n> You said: \\"[quote]\\"\\n\\n[Correct/Incorrect — WHY]\\n\\n*To improve: [suggestion]*`;
+    _sFeedbackExample = `\\n<p><strong>${_sAllReqs[0]}</strong></p>\\n<blockquote>You said: \\"[quote]\\"</blockquote>\\n<p>[Correct/Incorrect — explain WHY; wrap math in backticks, e.g. \`x^2 + 3x\`]</p>\\n<p><em>To improve: [suggestion]</em></p>`;
     if (_sAllReqs.length > 1) {
-      _sFeedbackExample += `\\n\\n**${_sAllReqs[1]}**\\n> You did not address this.\\n\\n[What was expected]`;
+      _sFeedbackExample += `\\n<p><strong>${_sAllReqs[1]}</strong></p>\\n<blockquote>You did not address this.</blockquote>\\n<p>[What was expected]</p>\\n<p><em>To improve: [suggestion]</em></p>`;
     }
     for (let i = 2; i < _sAllReqs.length; i++) {
-      _sFeedbackExample += `\\n\\n**${_sAllReqs[i]}**\\n> You said: ...\\n\\n...`;
+      _sFeedbackExample += `\\n<p><strong>${_sAllReqs[i]}</strong></p>\\n<blockquote>You said: ...</blockquote>\\n<p>...</p>`;
     }
   }
 
   prompt += `
 ${_sCorNames.length > 0 ? 'GRADING PROCESS: Score each category independently using the PARTIAL CREDIT RULE, then sum for the final score.\n' : ''}
-FEEDBACK FORMAT RULE: The feedback string must contain one section for EACH numbered requirement from GRADING REQUIREMENTS. Do NOT group by category. Each requirement gets its own bolded header. criterion_scores uses categories for scoring, but feedback MUST be per-requirement.
+FEEDBACK FORMAT RULE: The feedback string must contain one section for EACH numbered requirement from GRADING REQUIREMENTS. Do NOT group by category. Use HTML tags: <strong> for the requirement header, <blockquote> for the student's words (or "You did not address this."), <p> for your evaluation, <em> for the "To improve" line. Wrap all math expressions in backticks, e.g. \`x^2 + 3x\` or \`p < 0.05\`. For ANY requirement that is not at full credit, you MUST include both (a) a specific reason citing the student's words or omission, and (b) a "To improve" line with an actionable next step. criterion_scores uses categories for scoring, but feedback MUST be per-requirement.
 
 RESPONSE FORMAT:
 Return ONLY valid JSON. No markdown code fences. No explanation text.
