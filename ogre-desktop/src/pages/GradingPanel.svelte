@@ -6,6 +6,7 @@
   import StudentWorkCard from '../components/grading/StudentWorkCard.svelte';
   import AgentChat from '../components/grading/AgentChat.svelte';
   import BatchPanel from '../components/grading/batch/BatchPanel.svelte';
+  import BatchResults from '../components/grading/batch/BatchResults.svelte';
   import DiscoveryPanel from '../components/grading/DiscoveryPanel.svelte';
   import { captureWebviewScreenshot, hideWebview, showWebview, getActiveTabId } from '../lib/browser';
   import { getSetting, setSetting } from '../lib/db';
@@ -76,6 +77,9 @@
   let anchorText = $state('');
   let anchorGenerating = $state(false);
   let batchGraderHasStudents = $state(false);
+  let isBatchPaused = $state(false);
+  let savedSessionStudent = $state<string | null>(null);
+  let batchProfileWarning = $state('');
 
   let returnToBatch = $state(false);
   let preselectedProfileId = $state<string | null>(null);
@@ -527,6 +531,9 @@
             bind:anchorText
             bind:anchorGenerating
             bind:batchGraderHasStudents
+            bind:isBatchPaused
+            bind:savedSessionStudent
+            bind:profileWarning={batchProfileWarning}
           />
           {#if batchPhase !== 'idle'}
             <RubricCard
@@ -575,6 +582,23 @@
         />
       {/if}
     </div>
+    {#if activeMode === 'grader' && graderSubMode === 'batch'}
+      <BatchResults
+        {batchPhase}
+        isBatchRunning={batchRunning}
+        {isBatchPaused}
+        {savedSessionStudent}
+        profileWarning={batchProfileWarning}
+        {batchGraderHasStudents}
+        onExtract={() => batchPanelRef?.handleExtract()}
+        onContinueGrading={() => batchPanelRef?.handleContinueGrading()}
+        onPauseBatch={() => batchPanelRef?.handlePauseBatch()}
+        onStopBatch={() => batchPanelRef?.handleStopBatch()}
+        onCancelBatch={() => batchPanelRef?.handleCancelBatch()}
+        onReset={() => batchPanelRef?.handleReset()}
+        onRequestDiscovery={() => onRequestDiscovery()}
+      />
+    {/if}
   {/if}
 </div>
 

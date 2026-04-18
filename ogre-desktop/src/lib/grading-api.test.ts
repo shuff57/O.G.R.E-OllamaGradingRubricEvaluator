@@ -937,20 +937,20 @@ describe("startBatchGrading", () => {
     expect(callBody.weightMode).toBe('criterion');
   });
 
-  it("omits weightMode from body when set to 'off'", async () => {
+  it("always includes weightMode in body when provided", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       body: { getReader: vi.fn() },
     });
 
-    startBatchGrading({ ...defaultRequest, weightMode: 'off' }, {});
+    startBatchGrading({ ...defaultRequest, weightMode: 'category' }, {});
 
     await vi.waitFor(() => {
       expect(mockFetch).toHaveBeenCalled();
     });
 
     const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
-    expect(callBody).not.toHaveProperty('weightMode');
+    expect(callBody.weightMode).toBe('category');
   });
 
   it("omits weightMode from body when not provided (backward compat)", async () => {

@@ -639,11 +639,23 @@ export function startBatchGrading(
           ? `${body.customInstructions}\n\n${skillInjection}`
           : skillInjection;
       }
-      const response = await fetch(`${SERVER_BASE}/api/grade`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify(body),
-      });
+      // 15-minute timeout — batch grading 30+ students on cloud models can take 10+ minutes
+      const batchController = new AbortController();
+      const batchTimeoutId = setTimeout(
+        () => batchController.abort(new Error('Batch grading timed out after 15 minutes')),
+        900_000,
+      );
+      let response: Response;
+      try {
+        response = await fetch(`${SERVER_BASE}/api/grade`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify(body),
+          signal: batchController.signal,
+        });
+      } finally {
+        clearTimeout(batchTimeoutId);
+      }
 
       if (token.cancelled) return;
 

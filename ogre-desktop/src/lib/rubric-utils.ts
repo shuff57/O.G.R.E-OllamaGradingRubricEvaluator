@@ -114,6 +114,24 @@ export function criteriaToText(criteria: RubricCriterion[]): string {
  * - category is set when a "## Category" header precedes the criterion
  */
 /**
+ * Remove duplicate criteria from a parsed array.
+ * Deduplication key: category (lowercased, empty string when absent) + criteria name (lowercased).
+ * First occurrence wins; subsequent duplicates are dropped.
+ * This ensures that rubric text generated from multiple sources (e.g. checklist +
+ * allocation sections on MOM pages, or library rubrics with repeated entries) never
+ * produces duplicate rows in the UI regardless of which parser was used.
+ */
+function dedupCriteria(criteria: RubricCriterion[]): RubricCriterion[] {
+  const seen = new Set<string>();
+  return criteria.filter((c) => {
+    const key = `${(c.category ?? '').toLowerCase()}|${c.criteria.toLowerCase()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/**
  * Returns true when the text looks like a checkbox rubric.
  * Detected by the presence of a tab character immediately followed by the ☐ symbol.
  */
@@ -189,7 +207,7 @@ function parseIndentedCategoryFormat(text: string): RubricCriterion[] {
     // Non-indented, non-category lines are silently skipped
   }
 
-  return results;
+  return dedupCriteria(results);
 }
 
 /**
@@ -253,7 +271,7 @@ function parseCheckboxFormat(text: string): RubricCriterion[] {
     // Lines with no ☐ and no tab-checkbox are silently skipped
   }
 
-  return results;
+  return dedupCriteria(results);
 }
 
 export function textToCriteria(text: string): RubricCriterion[] {
@@ -325,7 +343,7 @@ export function textToCriteria(text: string): RubricCriterion[] {
     }
   }
 
-  return results;
+  return dedupCriteria(results);
 }
 
 /**
