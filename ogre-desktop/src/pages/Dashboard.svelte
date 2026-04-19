@@ -4,6 +4,10 @@
   import { getProviderConfigs, getGradingSessions } from '../lib/db';
   import { pushOnStartup } from '../lib/provider-sync';
 
+  // Injected by Vite define() from package.json at build time
+  declare const __APP_VERSION__: string;
+  const appVersion = __APP_VERSION__;
+
   /** Incremented by App.svelte when a new grading session is recorded */
   let { sessionVersion = 0, onnavigate = (_page: string) => {} }: {
     sessionVersion?: number;
@@ -86,7 +90,7 @@
 <div class="dashboard">
   <header>
     <h1>O.G.R.E Desktop</h1>
-    <span class="version">v0.1.0</span>
+    <span class="version">v{appVersion}</span>
   </header>
 
   <section class="health-indicators">
