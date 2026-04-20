@@ -119,70 +119,83 @@ export function isConnected(): boolean {
 
 /**
  * Click an element matching the CSS selector.
- * Uses DOM.scrollIntoViewIfNeeded + DOM.getBoxModel + Input.dispatchMouseEvent.
+ * Delegates to cdpMouseClick for CDP mouse event dispatch.
  */
 export async function pwClick(selector: string): Promise<ActionResult> {
   try {
     if (!cdp.isConnected()) return { success: false, error: 'Not connected to CDP' };
-
-    const expression = `document.querySelector('${escapeSelector(selector)}')`;
-    const blocked = checkDangerousPatterns(expression);
-    if (blocked) return { success: false, error: `Blocked dangerous pattern: ${blocked}` };
-
-    // Resolve element to remote object
-    const evalResult = await cdp.send('Runtime.evaluate', {
-      expression,
-      returnByValue: false,
-    }) as { result: { objectId?: string } };
-
-    const objectId = evalResult.result?.objectId;
-    if (!objectId) return { success: false, error: `Element not found: ${selector}` };
-
-    // Scroll into view
-    await cdp.send('DOM.scrollIntoViewIfNeeded', { objectId });
-
-    // Get box model for center coordinates, with JS-click fallback for hidden/animating elements
-    let clickDone = false;
-    try {
-      const boxResult = await cdp.send('DOM.getBoxModel', { objectId }) as {
-        model: { content: number[] };
-      };
-      const content = boxResult.model.content;
-      const x = (content[0] + content[4]) / 2;
-      const y = (content[1] + content[5]) / 2;
-
-      // Click: mousePressed + mouseReleased
-      await cdp.send('Input.dispatchMouseEvent', {
-        type: 'mousePressed', x, y, button: 'left', clickCount: 1,
-      });
-      await cdp.send('Input.dispatchMouseEvent', {
-        type: 'mouseReleased', x, y, button: 'left', clickCount: 1,
-      });
-      clickDone = true;
-    } catch (layoutErr: unknown) {
-      // Element has no layout object (e.g. dropdown item still animating) — fall back to JS click
-      const msg = layoutErr instanceof Error ? layoutErr.message : String(layoutErr);
-      if (!msg.toLowerCase().includes('layout object')) throw layoutErr;
-    }
-
-    // JS-click fallback: fires the click event directly, no layout coordinates needed
-    if (!clickDone) {
-      await cdp.send('Runtime.callFunctionOn', {
-        objectId,
-        functionDeclaration: 'function() { this.click(); }',
-        returnByValue: false,
-      });
-    }
-
-    return { success: true };
+    return await cdpMouseClick(selector);
   } catch (err: unknown) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
 /**
+ * Perform a CDP mouse click on the element matching the selector.
+ * Scrolls into view, gets box model center coordinates, and dispatches
+ * mousePressed + mouseReleased events. Falls back to JS click on layout errors.
+ * Shared by pwClick and pwType (for contenteditable activation).
+ */
+async function cdpMouseClick(selector: string): Promise<ActionResult> {
+  const escaped = escapeSelector(selector);
+  const expression = `document.querySelector('${escaped}')`;
+  const blocked = checkDangerousPatterns(expression);
+  if (blocked) return { success: false, error: `Blocked dangerous pattern: ${blocked}` };
+
+  const evalResult = await cdp.send('Runtime.evaluate', {
+    expression,
+    returnByValue: false,
+  }) as { result: { objectId?: string } };
+
+  const objectId = evalResult.result?.objectId;
+  if (!objectId) return { success: false, error: `Element not found: ${selector}` };
+
+  await cdp.send('DOM.scrollIntoViewIfNeeded', { objectId });
+
+  let clickDone = false;
+  try {
+    const boxResult = await cdp.send('DOM.getBoxModel', { objectId }) as {
+      model: { content: number[] };
+    };
+    const content = boxResult.model.content;
+    const x = (content[0] + content[4]) / 2;
+    const y = (content[1] + content[5]) / 2;
+
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mousePressed', x, y, button: 'left', clickCount: 1,
+    });
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased', x, y, button: 'left', clickCount: 1,
+    });
+    clickDone = true;
+  } catch (layoutErr: unknown) {
+    const msg = layoutErr instanceof Error ? layoutErr.message : String(layoutErr);
+    if (!msg.toLowerCase().includes('layout object')) throw layoutErr;
+  }
+
+  if (!clickDone) {
+    await cdp.send('Runtime.callFunctionOn', {
+      objectId,
+      functionDeclaration: 'function() { this.click(); }',
+      returnByValue: false,
+    });
+  }
+
+  return { success: true };
+}
+
+/**
  * Type text into an input element matching the CSS selector.
  * When clear is true, clears the field first before typing.
+ *
+ * For contenteditable elements (TinyMCE inline editors, etc.), performs a real
+ * CDP mouse click first to activate the editor, then uses innerHTML for HTML
+ * content or Input.insertText for plain text. This ensures rich-text editors
+ * like MOM's TinyMCE-inline properly receive and render the content.
+ *
+ * innerHTML is required here because MOM's TinyMCE-inline editors expect HTML;
+ * the content is teacher-authored feedback from the grading system, not
+ * arbitrary untrusted input.
  */
 export async function pwType(
   selector: string,
@@ -194,7 +207,75 @@ export async function pwType(
 
     const escaped = escapeSelector(selector);
 
-    // Focus the element
+    // Detect whether the target element is contenteditable
+    const detectExpr = `(function(){
+  var el = document.querySelector('${escaped}');
+  if (!el) return null;
+  return {
+    isContentEditable: !!el.isContentEditable,
+    tagName: (el.tagName || '').toUpperCase()
+  };
+})()`;
+    const detectBlocked = checkDangerousPatterns(detectExpr);
+    if (detectBlocked) return { success: false, error: `Blocked dangerous pattern: ${detectBlocked}` };
+
+    const detectResult = await cdp.send('Runtime.evaluate', {
+      expression: detectExpr,
+      returnByValue: true,
+    }) as { result: { value?: { isContentEditable: boolean; tagName: string } | null } };
+
+    const elInfo = detectResult.result?.value;
+
+    if (elInfo?.isContentEditable) {
+      // ── Contenteditable path (TinyMCE-inline, fbbox, etc.) ──
+      // Activate the editor with a real mouse click first — TinyMCE requires
+      // mousedown/mouseup events to initialize its editor state, not just .focus()
+      await cdpMouseClick(selector);
+
+      // Build HTML content — MOM's TinyMCE-inline editors require HTML,
+      // not plain text. innerHTML is safe here: content is teacher-authored
+      // feedback from the grading system, not arbitrary untrusted input.
+      const isHtml = /^\s*</.test(text);
+      let html: string;
+      if (isHtml) {
+        html = text.replace(/\\n+/g, '');
+      } else {
+        html = '<p>' + text.replace(/\n/g, '</p><p>') + '</p>';
+      }
+
+      // Set innerHTML on the contenteditable div, sync hidden field, and
+      // trigger MOM's math renderer. This mirrors the batch-grader's fillGrade.
+      const fillExpr = `(function(){
+  var el = document.querySelector('${escaped}');
+  if (!el) return;
+  el.innerHTML = ${JSON.stringify(html)};
+  if (el.classList) el.classList.remove('skipmathrender');
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+
+  // Sync hidden form field (MOM pattern: input[name^="fb-"])
+  var section = el.closest('div[data-lastchange], form, body');
+  if (section) {
+    var hidden = section.querySelector('input[type="hidden"][name^="fb-"]');
+    if (hidden) hidden.value = ${JSON.stringify(html)};
+  }
+
+  // Trigger math rendering
+  try {
+    if (typeof window.rendermathnode === 'function') {
+      window.rendermathnode(el);
+    } else if (window.MathJax && window.MathJax.typeset) {
+      window.MathJax.typeset();
+    }
+  } catch(e) {}
+})()`;
+      const fillBlocked = checkDangerousPatterns(fillExpr);
+      if (fillBlocked) return { success: false, error: `Blocked dangerous pattern: ${fillBlocked}` };
+
+      await cdp.send('Runtime.evaluate', { expression: fillExpr });
+      return { success: true };
+    }
+
+    // ── Standard input/textarea path ──
     const focusExpr = `document.querySelector('${escaped}')?.focus()`;
     const blocked = checkDangerousPatterns(focusExpr);
     if (blocked) return { success: false, error: `Blocked dangerous pattern: ${blocked}` };

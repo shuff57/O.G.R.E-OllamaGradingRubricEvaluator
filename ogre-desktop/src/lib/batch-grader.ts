@@ -13,6 +13,7 @@
 
 import { evalScript, evalScriptJSON } from './browser';
 import { ensureTurndownLoaded } from './markdown-extract';
+import { marked } from 'marked';
 
 // ============================================================================
 // TypeScript Interfaces
@@ -838,6 +839,32 @@ export function formatRubricForReview(rubric: Rubric | null): string {
  * @param feedbackConfig - Feedback type configuration
  * @throws Error if the student is not found or fill fails
  */
+
+/**
+ * Convert AI feedback text to HTML for contenteditable feedback boxes.
+ *
+ * If the text is already HTML (starts with a tag), strips inter-tag newlines.
+ * If the text contains markdown patterns (**bold**, > blockquote, etc.), converts
+ * to HTML using marked. Otherwise wraps in <p> tags.
+ */
+function feedbackToHtml(text: string, htmlWrap: boolean): string {
+  // Already HTML — strip inter-tag newlines that would create spurious <p><br></p>
+  if (/^\s*</.test(text)) {
+    return text.replace(/\n+/g, '');
+  }
+
+  // Markdown detected — convert to HTML
+  if (/\*\*|__|^>/m.test(text)) {
+    return marked.parse(text, { async: false }) as string;
+  }
+
+  // Plain text — wrap in <p> tags
+  if (htmlWrap) {
+    return '<p>' + text.replace(/\n/g, '</p><p>') + '</p>';
+  }
+  return text;
+}
+
 export async function fillGrade(
   studentIndex: number,
   score: number | string,
@@ -848,12 +875,18 @@ export async function fillGrade(
 ): Promise<void> {
   const fbConfig = feedbackConfig || { type: 'tinymce-inline' as const, requiresHiddenSync: true, htmlWrap: true };
 
+  // Pre-convert feedback to HTML before injecting into the page.
+  // This handles markdown fallback (when AI returns **bold** or > quote instead of
+  // <strong>/<blockquote>) as well as the existing HTML and plain-text paths.
+  const html = feedbackToHtml(feedback, fbConfig.htmlWrap);
+
   const result = await evalScriptJSON<FillResult>(`(function() {
     var sel = ${JSON.stringify(selectors)};
     var idx = ${JSON.stringify(studentIndex)};
     var expectedName = ${JSON.stringify(studentName || '')};
     var scoreVal = ${JSON.stringify(String(score))};
-    var feedbackText = ${JSON.stringify(feedback)};
+    var fbHtml = ${JSON.stringify(html)};
+    var fbRawText = ${JSON.stringify(feedback)};
     var fbCfg = ${JSON.stringify(fbConfig)};
 
     if (!sel.studentSection) return { success: false, error: 'No studentSection selector' };
@@ -893,30 +926,20 @@ export async function fillGrade(
     var fbBox = sel.feedbackBox ? student.querySelector(sel.feedbackBox) : null;
 
     if (fbCfg.type === 'tinymce-inline' || fbCfg.type === 'contenteditable') {
-      // If the feedback already looks like HTML (leading tag), use it as-is and
-      // collapse surrounding whitespace. Otherwise wrap newline-separated text
-      // in <p> blocks.
-      var isHtml = /^\s*</.test(feedbackText);
-      var html;
-      if (isHtml) {
-        html = feedbackText.replace(/\\n+/g, '');
-      } else if (fbCfg.htmlWrap) {
-        html = '<p>' + feedbackText.replace(/\\n/g, '</p><p>') + '</p>';
-      } else {
-        html = feedbackText;
-      }
+      // innerHTML is required here: MOM's TinyMCE-inline editors expect HTML.
+      // Content is teacher-authored AI feedback, not arbitrary untrusted input.
       if (fbBox) {
-        fbBox.innerHTML = html;
+        fbBox.innerHTML = fbHtml;
         if (fbBox.classList) fbBox.classList.remove('skipmathrender');
         fbBox.dispatchEvent(new Event('input', { bubbles: true }));
       }
       if (fbCfg.requiresHiddenSync && sel.feedbackHidden) {
         var hidden = student.querySelector(sel.feedbackHidden);
-        if (hidden) hidden.value = html;
+        if (hidden) hidden.value = fbHtml;
       }
     } else {
       if (fbBox) {
-        fbBox.value = feedbackText;
+        fbBox.value = fbRawText;
         fbBox.dispatchEvent(new Event('input', { bubbles: true }));
         fbBox.dispatchEvent(new Event('change', { bubbles: true }));
       }

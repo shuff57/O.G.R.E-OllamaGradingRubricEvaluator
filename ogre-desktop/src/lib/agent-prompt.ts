@@ -151,9 +151,15 @@ AVAILABLE ACTIONS AND PARAMETERS:
    {"action": "triple_click", "params": {"selector": "CSS selector"}, "reasoning": "..."}
    Use this instead of type with clear:true when the element is a contenteditable div or textarea.
 
-2. type — Type text into an input field
+2. type — Type text into an input field or contenteditable editor
    {"action": "type", "params": {"selector": "CSS selector", "text": "text to type", "clear": true}, "reasoning": "..."}
    Note: "clear" is optional, set to true to clear existing value first
+   For contenteditable elements (MOM feedback boxes), the action automatically:
+   - Clicks into the editor to activate it (TinyMCE requires mousedown/mouseup)
+   - Sets innerHTML for HTML content or wraps plain text in <p> tags
+   - Syncs the hidden form field (input[name^="fb-"]) so feedback persists on save
+   - Triggers math rendering (rendermathnode/MathJax)
+   Prefer type over triple_click+type for MOM feedback boxes.
 
 3. scroll — Scroll the page by a fixed pixel amount
    {"action": "scroll", "params": {"direction": "down", "amount": 300}, "reasoning": "..."}
