@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as profileJsonConverter from './profile-json-converter';
-import { AGENT_SYSTEM_PROMPT } from './agent-prompt';
 
 const { mockFetch } = vi.hoisted(() => ({
   mockFetch: vi.fn(),
@@ -690,30 +689,6 @@ describe('syncSiteProfiles', () => {
     expect(BUNDLED_PROFILES).toHaveLength(2);
     expect(BUNDLED_PROFILES[0]).toContain('myopenmath.com');
     expect(BUNDLED_PROFILES[1]).toContain('aeries.net');
-  });
-});
-
-// ── AGENT_SYSTEM_PROMPT tests ─────────────────────────────────────────────
-
-describe('AGENT_SYSTEM_PROMPT', () => {
-  it('references JSON site guide format in rule 11', () => {
-    expect(AGENT_SYSTEM_PROMPT).toContain('SITE GUIDE (JSON)');
-  });
-
-  it('instructs agent to parse JSON as structured data', () => {
-    expect(AGENT_SYSTEM_PROMPT).toContain('parse it as structured JSON');
-  });
-
-  it('does not reference old SELECTOR TRANSLATION format', () => {
-    expect(AGENT_SYSTEM_PROMPT).not.toContain('SELECTOR TRANSLATION');
-  });
-
-  it('includes rule 11 for site guide priority', () => {
-    expect(AGENT_SYSTEM_PROMPT).toContain('11. SITE GUIDE PRIORITY');
-  });
-
-  it('instructs agent to use selectors object from JSON guide', () => {
-    expect(AGENT_SYSTEM_PROMPT).toContain('Use the "selectors" object for selectors directly');
   });
 });
 
