@@ -1,5 +1,19 @@
 {
-  "autoDreamEnabled": true,
+  "permissions": {
+    "allow": [
+      "Bash(npx vitest *)",
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "Bash(npx vite *)",
+      "Bash(npx electron *)",
+      "mcp__plugin_playwright_playwright__browser_navigate",
+      "mcp__plugin_playwright_playwright__browser_evaluate",
+      "mcp__plugin_playwright_playwright__browser_take_screenshot",
+      "Bash(git add *)",
+      "Bash(git push *)",
+      "Bash(npx electron-builder *)"
+    ]
+  },
   "hooks": {
     "SessionStart": [
       {
@@ -13,5 +27,6 @@
         ]
       }
     ]
-  }
+  },
+  "autoDreamEnabled": true
 }

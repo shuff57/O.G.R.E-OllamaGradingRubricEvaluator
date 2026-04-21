@@ -1,0 +1,113 @@
+F3 QA — rubric-allocation-readonly feature
+Date: 2026-04-09
+Analyst: Sisyphus-Junior
+
+FILES READ:
+  - ogre-desktop/src/components/grading/batch/format.ts (80 lines)
+  - ogre-desktop/src/lib/rubric-utils.ts (393 lines)
+  - ogre-desktop/src/components/grading/RubricImport.svelte (538 lines)
+  - ogre-desktop/src/pages/Rubrics.svelte (775 lines)
+
+========================================================
+SCENARIO A — Import flow (scraped rubric → staging UI)
+========================================================
+RESULT: ✅ PASS
+
+Evidence:
+1. format.ts:44-47 — Both call sites exist:
+     rubricItemsToCriteria(rubric.checklistItems, 'checklist')
+     rubricItemsToCriteria(rubric.rubricItems, 'allocation')
+   rowType is spread onto every criterion via: ...(rowType ? { rowType } : {})
+
+2. RubricImport.svelte:190 — .criterion-row div rendered for ALL rows:
+     <div class="criterion-row" class:allocation-row={criterion.rowType === 'allocation'}>
+
+3. RubricImport.svelte:205-215 — Points input guarded:
+     {#if criterion.rowType !== 'allocation'}
+       <input type="number" .../>
+     {:else}
+       <span class="crit-points-readonly">{criterion.points}</span>
+     {/if}
+
+4. RubricImport.svelte:216-224 — Delete button guarded:
+     {#if criterion.rowType !== 'allocation'}
+       <button class="remove-btn" ...>&times;</button>
+     {/if}
+
+5. Name and description inputs (lines 193-203) are NOT inside any rowType guard — always editable.
+   The criterion-row div is never hidden entirely.
+
+========================================================
+SCENARIO B — Library editor (saved rubric → Rubrics.svelte)
+========================================================
+RESULT: ✅ PASS
+
+Evidence:
+1. rubric-utils.ts:41-43 — isAllocationCriterion() regex:
+     /^(Full|Partial|Minimal|Missing)\s*\(\d/i
+   Applied in standard LINE_RE parse path at line 290:
+     if (isAllocationCriterion(line)) { results[results.length-1].rowType = 'allocation'; }
+   Input "Full (2pts): Full description" — regex matches "Full (" at start → rowType set.
+
+2. Rubrics.svelte:313 — class:allocation-row applied:
+     <tr class:allocation-row={row.rowType === 'allocation'}>
+
+3. Rubrics.svelte:322 — Points input guarded (inline {#if}):
+     {#if row.rowType !== 'allocation'}
+       <input type="number" ...>
+     {:else}
+       <span class="allocation-pts">{row.points}</span>
+     {/if}
+
+4. Rubrics.svelte:324-326 — Delete button guarded:
+     {#if row.rowType !== 'allocation'}
+       <button class="btn-icon-danger" ...>&times;</button>
+     {/if}
+
+5. Category/criteria/description inputs (lines 314-316) are NOT guarded — always editable.
+
+========================================================
+SCENARIO C — Checklist rows still editable
+========================================================
+RESULT: ✅ PASS
+
+Evidence:
+- For rowType='checklist' or undefined: criterion.rowType !== 'allocation' → TRUE
+- RubricImport.svelte: points input and delete button render normally (guard evaluates true)
+- Rubrics.svelte: points input and delete button render normally (guard evaluates true)
+- Name/description/category inputs have no rowType guard in either file — always render
+
+========================================================
+SCENARIO D — Round-trip robustness
+========================================================
+RESULT: ✅ PASS
+
+Evidence:
+1. criteriaToText() (rubric-utils.ts:55-75): Serializes to "Full (2pts): Description"
+   rowType is NOT serialized (not part of text output) → lost after round-trip.
+
+2. Re-detection in standard LINE_RE path (line 290):
+   isAllocationCriterion called on full `line` string "Full (2pts): Description"
+   Regex /^(Full|Partial|Minimal|Missing)\s*\(\d/i anchored at ^ — matches "Full (" → rowType restored ✅
+
+3. Re-detection in parseCheckboxFormat (lines 205-207 and 222-224):
+   isAllocationCriterion called on criterion.criteria (bare name after ☐ strip)
+   e.g., "Full (2pts)" → /^Full\s*\(\d/ matches → rowType restored ✅
+
+4. Re-detection in parseIndentedCategoryFormat (lines 158-160):
+   isAllocationCriterion called on criterion.criteria (trimmed indented text)
+   e.g., "Full (2pts)" → matches → rowType restored ✅
+
+All three parse paths restore rowType after text round-trip.
+
+========================================================
+INTEGRATION SUMMARY
+========================================================
+Scenarios: 4/4 pass
+Integration points verified:
+  - format.ts → RubricImport.svelte (via rowType propagation): ✅
+  - rubric-utils.ts textToCriteria → Rubrics.svelte (via rowType detection): ✅
+  - Round-trip serialization/re-detection across all 3 parse paths: ✅
+  - Checklist rows unaffected by new guards: ✅
+
+VERDICT: APPROVE

@@ -1,0 +1,89 @@
+src/components/icons/index.ts(1,41): error TS2307: Cannot find module './CollapseIcon.svelte' or its corresponding type declarations.
+src/components/icons/index.ts(2,42): error TS2307: Cannot find module './DashboardIcon.svelte' or its corresponding type declarations.
+src/components/icons/index.ts(3,40): error TS2307: Cannot find module './HistoryIcon.svelte' or its corresponding type declarations.
+src/components/icons/index.ts(4,37): error TS2307: Cannot find module './LogsIcon.svelte' or its corresponding type declarations.
+src/components/icons/index.ts(5,40): error TS2307: Cannot find module './RubricsIcon.svelte' or its corresponding type declarations.
+src/components/icons/index.ts(6,41): error TS2307: Cannot find module './ProfilesIcon.svelte' or its corresponding type declarations.
+src/components/icons/index.ts(7,40): error TS2307: Cannot find module './BrowserIcon.svelte' or its corresponding type declarations.
+src/components/icons/index.ts(8,39): error TS2307: Cannot find module './SkillsIcon.svelte' or its corresponding type declarations.
+src/components/icons/index.ts(9,41): error TS2307: Cannot find module './SettingsIcon.svelte' or its corresponding type declarations.
+src/components/skills/__tests__/SkillCard.test.ts(6,9): error TS2739: Type '{ id: string; name: string; description: string; content: string; source: null; source_id: null; is_active: number; created_at: string; updated_at: string; }' is missing the following properties from type 'Skill': url_pattern, learned_corrections
+src/lib/agent-dom.test.ts(206,30): error TS2307: Cannot find module './agent-dom?raw' or its corresponding type declarations.
+src/lib/agent-dom.test.ts(222,30): error TS2307: Cannot find module './agent-dom?raw' or its corresponding type declarations.
+src/lib/agent-dom.test.ts(235,30): error TS2307: Cannot find module './agent-dom?raw' or its corresponding type declarations.
+src/lib/agent-loop.integration.test.ts(78,61): error TS2345: Argument of type 'number | undefined' is not assignable to parameter of type 'number | bigint'.
+  Type 'undefined' is not assignable to type 'number | bigint'.
+src/lib/batch-grader.ts(1596,36): error TS2550: Property 'findLastIndex' does not exist on type 'BatchLogEntry[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2023' or later.
+src/lib/batch-grader.ts(1596,50): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/lib/batch-grader.ts(1598,34): error TS2550: Property 'findLastIndex' does not exist on type 'BatchLogEntry[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2023' or later.
+src/lib/batch-grader.ts(1598,48): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/lib/browser-eval.integration.test.ts(144,3): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(name: string | Function, fn?: TestFunction<object> | undefined, options?: number | undefined): void', gave the following error.
+    Argument of type '{ timeout: number; }' is not assignable to parameter of type 'number'.
+  Overload 2 of 2, '(name: string | Function, options?: TestCollectorOptions | undefined, fn?: TestFunction<object> | undefined): void', gave the following error.
+    Type '() => Promise<void>' has no properties in common with type 'TestCollectorOptions'.
+src/lib/browser-eval.integration.test.ts(212,3): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(name: string | Function, fn?: TestFunction<object> | undefined, options?: number | undefined): void', gave the following error.
+    Argument of type '{ timeout: number; }' is not assignable to parameter of type 'number'.
+  Overload 2 of 2, '(name: string | Function, options?: TestCollectorOptions | undefined, fn?: TestFunction<object> | undefined): void', gave the following error.
+    Type '() => Promise<void>' has no properties in common with type 'TestCollectorOptions'.
+src/lib/confirmation-flow.test.ts(458,7): error TS2322: Type 'null' is not assignable to type 'string | undefined'.
+src/lib/confirmation-flow.test.ts(459,7): error TS2322: Type 'null' is not assignable to type 'string | undefined'.
+src/lib/confirmation-flow.test.ts(509,34): error TS2322: Type 'null' is not assignable to type 'string | undefined'.
+src/lib/db.test.ts(332,3): error TS2322: Type '{ id: string; name: string; description: string; content: string; source: string | null; source_id: string | null; is_active: number; url_pattern: string | null; learned_corrections?: string | ... 1 more ... | undefined; created_at: string; updated_at: string; }' is not assignable to type 'Skill'.
+  Types of property 'learned_corrections' are incompatible.
+    Type 'string | null | undefined' is not assignable to type 'string | null'.
+      Type 'undefined' is not assignable to type 'string | null'.
+src/lib/discover.test.ts(468,56): error TS2345: Argument of type '({ depth: number; tag: string; childCount: number; attrs?: undefined; } | { depth: number; tag: string; attrs: { class: string; id?: undefined; }; childCount: number; } | { depth: number; tag: string; attrs: { ...; }; childCount: number; })[]' is not assignable to parameter of type '{ depth: number; tag: string; attrs?: Record<string, string> | undefined; text?: string | undefined; childCount?: number | undefined; }[]'.
+  Type '{ depth: number; tag: string; childCount: number; attrs?: undefined; } | { depth: number; tag: string; attrs: { class: string; id?: undefined; }; childCount: number; } | { depth: number; tag: string; attrs: { ...; }; childCount: number; }' is not assignable to type '{ depth: number; tag: string; attrs?: Record<string, string> | undefined; text?: string | undefined; childCount?: number | undefined; }'.
+    Type '{ depth: number; tag: string; attrs: { class: string; id?: undefined; }; childCount: number; }' is not assignable to type '{ depth: number; tag: string; attrs?: Record<string, string> | undefined; text?: string | undefined; childCount?: number | undefined; }'.
+      Types of property 'attrs' are incompatible.
+        Type '{ class: string; id?: undefined; }' is not assignable to type 'Record<string, string>'.
+          Property 'id' is incompatible with index signature.
+            Type 'undefined' is not assignable to type 'string'.
+src/lib/discover.test.ts(475,7): error TS2345: Argument of type '({ depth: number; tag: string; childCount: number; attrs?: undefined; } | { depth: number; tag: string; attrs: { class: string; id?: undefined; }; childCount: number; } | { depth: number; tag: string; attrs: { ...; }; childCount: number; })[]' is not assignable to parameter of type '{ depth: number; tag: string; attrs?: Record<string, string> | undefined; text?: string | undefined; childCount?: number | undefined; }[]'.
+  Type '{ depth: number; tag: string; childCount: number; attrs?: undefined; } | { depth: number; tag: string; attrs: { class: string; id?: undefined; }; childCount: number; } | { depth: number; tag: string; attrs: { ...; }; childCount: number; }' is not assignable to type '{ depth: number; tag: string; attrs?: Record<string, string> | undefined; text?: string | undefined; childCount?: number | undefined; }'.
+    Type '{ depth: number; tag: string; attrs: { class: string; id?: undefined; }; childCount: number; }' is not assignable to type '{ depth: number; tag: string; attrs?: Record<string, string> | undefined; text?: string | undefined; childCount?: number | undefined; }'.
+      Types of property 'attrs' are incompatible.
+        Type '{ class: string; id?: undefined; }' is not assignable to type 'Record<string, string>'.
+          Property 'id' is incompatible with index signature.
+            Type 'undefined' is not assignable to type 'string'.
+src/lib/discover.test.ts(485,7): error TS2345: Argument of type '({ depth: number; tag: string; childCount: number; attrs?: undefined; } | { depth: number; tag: string; attrs: { class: string; id?: undefined; }; childCount: number; } | { depth: number; tag: string; attrs: { ...; }; childCount: number; })[]' is not assignable to parameter of type '{ depth: number; tag: string; attrs?: Record<string, string> | undefined; text?: string | undefined; childCount?: number | undefined; }[]'.
+  Type '{ depth: number; tag: string; childCount: number; attrs?: undefined; } | { depth: number; tag: string; attrs: { class: string; id?: undefined; }; childCount: number; } | { depth: number; tag: string; attrs: { ...; }; childCount: number; }' is not assignable to type '{ depth: number; tag: string; attrs?: Record<string, string> | undefined; text?: string | undefined; childCount?: number | undefined; }'.
+    Type '{ depth: number; tag: string; attrs: { class: string; id?: undefined; }; childCount: number; }' is not assignable to type '{ depth: number; tag: string; attrs?: Record<string, string> | undefined; text?: string | undefined; childCount?: number | undefined; }'.
+      Types of property 'attrs' are incompatible.
+        Type '{ class: string; id?: undefined; }' is not assignable to type 'Record<string, string>'.
+          Property 'id' is incompatible with index signature.
+            Type 'undefined' is not assignable to type 'string'.
+src/lib/discover.test.ts(495,7): error TS2345: Argument of type '({ depth: number; tag: string; childCount: number; attrs?: undefined; } | { depth: number; tag: string; attrs: { class: string; id?: undefined; }; childCount: number; } | { depth: number; tag: string; attrs: { ...; }; childCount: number; })[]' is not assignable to parameter of type '{ depth: number; tag: string; attrs?: Record<string, string> | undefined; text?: string | undefined; childCount?: number | undefined; }[]'.
+  Type '{ depth: number; tag: string; childCount: number; attrs?: undefined; } | { depth: number; tag: string; attrs: { class: string; id?: undefined; }; childCount: number; } | { depth: number; tag: string; attrs: { ...; }; childCount: number; }' is not assignable to type '{ depth: number; tag: string; attrs?: Record<string, string> | undefined; text?: string | undefined; childCount?: number | undefined; }'.
+    Type '{ depth: number; tag: string; attrs: { class: string; id?: undefined; }; childCount: number; }' is not assignable to type '{ depth: number; tag: string; attrs?: Record<string, string> | undefined; text?: string | undefined; childCount?: number | undefined; }'.
+      Types of property 'attrs' are incompatible.
+        Type '{ class: string; id?: undefined; }' is not assignable to type 'Record<string, string>'.
+          Property 'id' is incompatible with index signature.
+            Type 'undefined' is not assignable to type 'string'.
+src/lib/discovery-intent.test.ts(230,42): error TS2322: Type '"chat"' is not assignable to type 'IntentMode'.
+src/lib/discovery-intent.test.ts(233,8): error TS2322: Type '"chat"' is not assignable to type 'IntentMode'.
+src/lib/markdown-extract.ts(9,21): error TS7016: Could not find a declaration file for module 'turndown-plugin-gfm'. 'C:/Users/shuff57/Documents/GitHub/O.G.R.E-OllamaGradingRubricEvaluator/ogre-desktop/node_modules/turndown-plugin-gfm/lib/turndown-plugin-gfm.cjs.js' implicitly has an 'any' type.
+  Try `npm i --save-dev @types/turndown-plugin-gfm` if it exists or add a new declaration (.d.ts) file containing `declare module 'turndown-plugin-gfm';`
+src/lib/oauth.ts(630,9): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(input: string | URL | Request, init?: RequestInit | undefined): Promise<Response>', gave the following error.
+    Type '{ "anthropic-version": string; "anthropic-beta": string; "user-agent": string; "anthropic-dangerous-direct-browser-access": string; Authorization: string; 'x-api-key'?: undefined; } | { "anthropic-version": string; ... 4 more ...; Authorization?: undefined; }' is not assignable to type 'HeadersInit | undefined'.
+      Type '{ "anthropic-version": string; "anthropic-beta": string; "user-agent": string; "anthropic-dangerous-direct-browser-access": string; Authorization: string; 'x-api-key'?: undefined; }' is not assignable to type 'HeadersInit | undefined'.
+        Type '{ "anthropic-version": string; "anthropic-beta": string; "user-agent": string; "anthropic-dangerous-direct-browser-access": string; Authorization: string; 'x-api-key'?: undefined; }' is not assignable to type 'undefined'.
+  Overload 2 of 2, '(input: URL | RequestInfo, init?: RequestInit | undefined): Promise<Response>', gave the following error.
+    Type '{ "anthropic-version": string; "anthropic-beta": string; "user-agent": string; "anthropic-dangerous-direct-browser-access": string; Authorization: string; 'x-api-key'?: undefined; } | { "anthropic-version": string; ... 4 more ...; Authorization?: undefined; }' is not assignable to type 'HeadersInit | undefined'.
+      Type '{ "anthropic-version": string; "anthropic-beta": string; "user-agent": string; "anthropic-dangerous-direct-browser-access": string; Authorization: string; 'x-api-key'?: undefined; }' is not assignable to type 'HeadersInit | undefined'.
+        Type '{ "anthropic-version": string; "anthropic-beta": string; "user-agent": string; "anthropic-dangerous-direct-browser-access": string; Authorization: string; 'x-api-key'?: undefined; }' is not assignable to type 'undefined'.
+src/lib/profile-editor.ts(292,5): error TS2322: Type 'import("C:/Users/shuff57/Documents/GitHub/O.G.R.E-OllamaGradingRubricEvaluator/ogre-desktop/src/lib/discover").NavigationConfig' is not assignable to type 'import("C:/Users/shuff57/Documents/GitHub/O.G.R.E-OllamaGradingRubricEvaluator/ogre-desktop/src/lib/batch-grader").NavigationConfig'.
+  Types of property 'nextButton' are incompatible.
+    Type 'string | null | undefined' is not assignable to type 'string | undefined'.
+      Type 'null' is not assignable to type 'string | undefined'.
+src/lib/profile-precedence.test.ts(10,62): error TS2322: Type '{ id: string; name: string; description: string; content: string; source: string | null; source_id: string | null; is_active: number; url_pattern: string | null; learned_corrections?: string | ... 1 more ... | undefined; created_at: string; updated_at: string; }' is not assignable to type 'Skill'.
+  Types of property 'learned_corrections' are incompatible.
+    Type 'string | null | undefined' is not assignable to type 'string | null'.
+      Type 'undefined' is not assignable to type 'string | null'.
+src/lib/type-mappers.ts(91,5): error TS2322: Type 'import("C:/Users/shuff57/Documents/GitHub/O.G.R.E-OllamaGradingRubricEvaluator/ogre-desktop/src/lib/discover").NavigationConfig' is not assignable to type 'import("C:/Users/shuff57/Documents/GitHub/O.G.R.E-OllamaGradingRubricEvaluator/ogre-desktop/src/lib/batch-grader").NavigationConfig'.
+  Types of property 'nextButton' are incompatible.
+    Type 'string | null | undefined' is not assignable to type 'string | undefined'.
+      Type 'null' is not assignable to type 'string | undefined'.

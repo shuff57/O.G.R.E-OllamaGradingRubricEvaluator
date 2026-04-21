@@ -1,44 +1,10 @@
 {
-  "active_plan": "C:\\Users\\shuff57\\Documents\\GitHub\\O.G.R.E-OllamaGradingRubricEvaluator\\.sisyphus\\plans\\fix-zero-no-response.md",
-  "started_at": "2026-04-08T14:39:41.277Z",
+  "active_plan": "C:\\Users\\shuff57\\Documents\\GitHub\\O.G.R.E-OllamaGradingRubricEvaluator\\.sisyphus\\plans\\ollama-heartbeat.md",
+  "started_at": "2026-04-15T00:00:00.000Z",
   "session_ids": [
-    "ses_292863b00ffe8Zsc8FnHI4vawz",
-    "ses_2926e4842ffeHvbF03VXFRWwHT",
-    "ses_2926bb5e8ffeSG3HOeZCXasDUo",
-    "ses_29205317affe4DR2h3yrCkHTkt",
-    "ses_2919b7068ffes6SQvJ2IrPOxKo",
-    "ses_2919503abffeem6EZx8qbnMPQh",
-    "ses_2918e898effeg4KDa6xhFa17gF",
-    "ses_2918dd1c1ffep8q9lQ6UMBm9nG",
-    "ses_2917dd501ffeGJ0DTxkC3ZbK5H",
-    "ses_291781694ffe7PlN2TnKyGbGQj",
-    "ses_29173db8bffeNNvT0cR4qkzPMp",
-    "ses_2915faa32ffe50JpzQMXsHhm1O",
-    "ses_2915f96f6ffeTmjMY7X3zEduvf",
-    "ses_2915ed0b7ffeIjLQ1BSVLnKS2g",
-    "ses_2915fc2eeffeZRAl8eLNHL5U6c",
-    "ses_2915f2961ffe41h1bRCwAuG1sO"
+    "ses_26de20ee2ffeTQ5a0XEya2kS07"
   ],
-  "plan_name": "fix-zero-no-response",
+  "plan_name": "ollama-heartbeat",
   "agent": "atlas",
-  "task_sessions": {
-    "todo:1": {
-      "task_key": "todo:1",
-      "task_label": "1",
-      "task_title": "Write 3 filter-logic tests in `batch-grader.test.ts`",
-      "session_id": "ses_2926e4842ffeHvbF03VXFRWwHT",
-      "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-04-08T14:49:59.010Z"
-    },
-    "todo:2": {
-      "task_key": "todo:2",
-      "task_label": "2",
-      "task_title": "Add `zeroNoResponse` toggle to `BatchInstructions.svelte`",
-      "session_id": "ses_2926bb5e8ffeSG3HOeZCXasDUo",
-      "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-04-08T14:53:05.886Z"
-    }
-  }
+  "task_sessions": {}
 }

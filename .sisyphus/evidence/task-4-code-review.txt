@@ -1,0 +1,20 @@
+<tbody>
+  {#each formCriteria as row, i}
+    <tr class:allocation-row={row.rowType === 'allocation'}>
+      <td><input type="text" bind:value={row.category} placeholder="Category"></td>
+      <td><input type="text" bind:value={row.criteria} placeholder="Criteria name"></td>
+      <td><input type="text" bind:value={row.description} placeholder="Grading description"></td>
+      {#if formWeightMode === 'category'}
+        <td><input type="number" bind:value={row.categoryWeight} min="0" max="100" style="width: 70px;"></td>
+      {:else if formWeightMode === 'criterion'}
+        <td><input type="number" bind:value={row.criterionWeight} min="0" max="100" style="width: 70px;"></td>
+      {/if}
+      <td>{#if row.rowType !== 'allocation'}<input type="number" bind:value={row.points} min="0" max="1000" style="width: 60px;">{:else}<span class="allocation-pts">{row.points}</span>{/if}</td>
+      <td>
+        {#if row.rowType !== 'allocation'}<button class="btn-icon-danger" on:click={() => removeCriterionRow(i)} title="Remove">
+          &times;
+        </button>{/if}
+      </td>
+    </tr>
+  {/each}
+</tbody>

@@ -1,0 +1,12 @@
+=== Scenario 4 & 5: Source Code Evidence ===
+
+File: C:\Users\shuff57\Documents\GitHub\O.G.R.E-OllamaGradingRubricEvaluator\ogre-desktop\src\components\grading\StudentWorkCard.svelte
+
+Line 245:         {#if studentName}
+Line 221:             <ResponseRenderer content={`$$${feedbackLatex}$$`} />
+Line 248:         <ResponseRenderer content={aiResponse} />
+
+--- Scenario 5: Lines 94-96 ---
+Line 94:       const workWithName = studentName
+Line 95:         ? `Student: ${studentName}\n\n${studentWork.trim()}`
+Line 96:         : studentWork.trim();
