@@ -217,33 +217,71 @@ REWRITTEN RUBRIC:`;
     throw new Error(`Rewrite failed: HTTP ${response.status}`);
   }
 
-  // Parse SSE response — collect all text chunks
+  // Parse SSE response — collect all text chunks.
+  // The server emits events: status | message | done | error. Track event names so
+  // we surface `error` events as thrown exceptions instead of silently accumulating
+  // an empty result (which hid provider/model failures like bad model names).
   const text = await response.text();
   let result = '';
+  let serverError: string | null = null;
   for (const block of text.split('\n\n').filter(b => b.trim())) {
+    let eventName: string | null = null;
+    let dataLine: string | null = null;
     for (const line of block.split('\n')) {
-      if (line.startsWith('data: ')) {
-        try {
-          const data = JSON.parse(line.slice(6));
-          if (data.content) result += data.content;
-          else if (data.token) result += data.token;
-          else if (data.text) result += data.text;
-          else if (typeof data === 'string') result += data;
-        } catch {
-          // Skip unparseable lines
-        }
-      }
+      if (line.startsWith('event: ')) eventName = line.slice(7).trim();
+      else if (line.startsWith('data: ')) dataLine = line.slice(6);
+    }
+    if (!dataLine) continue;
+    let data: unknown;
+    try { data = JSON.parse(dataLine); } catch { continue; }
+
+    if (eventName === 'error') {
+      serverError = (typeof data === 'object' && data !== null && 'message' in data)
+        ? String((data as { message?: string }).message ?? 'Unknown server error')
+        : JSON.stringify(data);
+      break;
+    }
+    if (typeof data === 'object' && data !== null) {
+      const d = data as { content?: string; token?: string; text?: string };
+      if (d.content) result += d.content;
+      else if (d.token) result += d.token;
+      else if (d.text) result += d.text;
+    } else if (typeof data === 'string') {
+      result += data;
     }
   }
 
-  // Validate: result should have similar structure to original
-  // Count criteria lines — those matching "Name (Npts)" pattern, not headers or blanks
-  const CRITERIA_LINE = /\(\d+(?:\.\d+)?\s*pts?\)/i;
+  if (serverError) {
+    throw new Error(
+      `AI rewrite server error ` +
+      `(provider=${options?.provider ?? 'default'}, model=${options?.model ?? 'default'}): ${serverError}`
+    );
+  }
+
+  // Early check: empty response is a distinct failure mode from structure loss.
+  if (!result.trim()) {
+    throw new Error(
+      `AI rewrite returned empty response ` +
+      `(provider=${options?.provider ?? 'default'}, model=${options?.model ?? 'default'}). ` +
+      `Check server logs or try a different model.`
+    );
+  }
+
+  // Validate: result should have similar structure to original.
+  // Count criteria lines — those with a "(N pts)" / "(N points)" point annotation.
+  // Accept variants the AI may produce: pts/pt/points/point, with or without internal spaces.
+  const CRITERIA_LINE = /\(\s*\d+(?:\.\d+)?\s*(?:pts?|points?)\s*\)/i;
   const origLines = rubricText.split('\n').filter(l => CRITERIA_LINE.test(l)).length;
   const resultLines = result.split('\n').filter(l => CRITERIA_LINE.test(l)).length;
 
   if (origLines > 0 && resultLines < origLines * 0.7) {
-    throw new Error(`AI rewrite lost too many criteria (${resultLines} vs ${origLines} original)`);
+    // Include a snippet of what the AI returned so the failure is diagnosable.
+    const preview = result.trim().slice(0, 300).replace(/\s+/g, ' ');
+    const ellipsis = result.length > 300 ? '…' : '';
+    throw new Error(
+      `AI rewrite lost too many criteria (${resultLines} vs ${origLines} original). ` +
+      `Got: "${preview}${ellipsis}"`
+    );
   }
 
   return result.trim();
