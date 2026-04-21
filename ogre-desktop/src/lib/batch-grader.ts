@@ -15,6 +15,36 @@ import { evalScript, evalScriptJSON } from './browser';
 import { ensureTurndownLoaded } from './markdown-extract';
 import { marked } from 'marked';
 
+/**
+ * JS helper injected into every evalScriptJSON call below.
+ *
+ * Returns the Nth part-content div inside a question region, handling both
+ * single-part and multi-part MOM questions.
+ *
+ * - Single-part: `region > div` is the Part 1 container directly.
+ *   `getPartContent(region, 0)` returns it.
+ * - Multi-part ("Part 1 of 2"): each part is wrapped in `div.seqsepwrap`
+ *   containing [hidden `div.seqscoreresult`, `p.seqsep` label, real content div].
+ *   The helper drills through seqsepwrap and returns the real content div, so
+ *   downstream `.children[0]` / `.children[1]` access lands on the prompt/
+ *   response rather than on the hidden seqscoreresult (which produced empty
+ *   fingerprints and collapsed all students onto one "version").
+ */
+const GET_PART_CONTENT_HELPER = `
+  function getPartContent(region, partIndex) {
+    if (!region) return null;
+    var directDivs = region.querySelectorAll(':scope > div');
+    var target = directDivs[partIndex];
+    if (!target) return null;
+    if ((target.className || '').indexOf('seqsepwrap') >= 0) {
+      return Array.from(target.children).find(function(c) {
+        return c.tagName === 'DIV' && (c.className || '').indexOf('seqscoreresult') < 0;
+      }) || target;
+    }
+    return target;
+  }
+`;
+
 // ============================================================================
 // TypeScript Interfaces
 // ============================================================================
@@ -278,6 +308,7 @@ export async function extractStudents(selectors: SiteSelectors): Promise<Student
 
   for (let i = 0; i < count; i++) {
     const student = await evalScriptJSON<Student | null>(`(function() {
+      ${GET_PART_CONTENT_HELPER}
       var sel = ${selJson};
       var s = document.querySelectorAll(sel.studentSection)[${i}];
       if (!s) return null;
@@ -285,7 +316,7 @@ export async function extractStudents(selectors: SiteSelectors): Promise<Student
       // Jump to this student so the extraction is visible
       s.scrollIntoView({ block: 'start' });
       var region = sel.questionRegion ? s.querySelector(sel.questionRegion) : null;
-      var part1Div = region ? region.querySelector(':scope > div') : null; // First direct div = Part 1 content
+      var part1Div = getPartContent(region, 0);
       var responseDiv = (part1Div && part1Div.querySelectorAll(':scope > div').length > 1)
         ? part1Div.querySelectorAll(':scope > div')[1]
         : null;
@@ -353,6 +384,7 @@ export async function extractStudents(selectors: SiteSelectors): Promise<Student
 export async function extractRubric(selectors: SiteSelectors, studentIndex: number = 0): Promise<Rubric> {
   await ensureTurndownLoaded();
   const result = await evalScriptJSON<Rubric | null>(`(function() {
+    ${GET_PART_CONTENT_HELPER}
     var sel = ${JSON.stringify(selectors)};
     if (!sel.studentSection) return null;
     var first = document.querySelectorAll(sel.studentSection)[${studentIndex}];
@@ -366,7 +398,7 @@ export async function extractRubric(selectors: SiteSelectors, studentIndex: numb
     var essayPrompt = '';
 
     if (region) {
-      var part1Div = region ? region.querySelector(':scope > div') : null; // First direct div = Part 1 content
+      var part1Div = getPartContent(region, 0);
       var promptDiv = part1Div ? part1Div.children[0] : null;
 
       var checkDetails = promptDiv ? promptDiv.querySelector('details') : null;
@@ -493,6 +525,7 @@ export async function extractRubric(selectors: SiteSelectors, studentIndex: numb
  */
 export async function extractPromptFingerprints(selectors: SiteSelectors): Promise<Record<number, string>> {
   const result = await evalScriptJSON<Record<number, string>>(`(function() {
+    ${GET_PART_CONTENT_HELPER}
     var sel = ${JSON.stringify(selectors)};
     if (!sel.studentSection) return {};
     var sections = document.querySelectorAll(sel.studentSection);
@@ -500,13 +533,17 @@ export async function extractPromptFingerprints(selectors: SiteSelectors): Promi
     for (var i = 0; i < sections.length; i++) {
       var region = sel.questionRegion ? sections[i].querySelector(sel.questionRegion) : null;
       if (!region) { fingerprints[i] = ''; continue; }
-      // part1Div is the first direct child of the question region (= Part 1 container).
+      // part1Div is the Part 1 content container (unwrapped from seqsepwrap if present).
       // children[0] of part1Div is the prompt+checklist area — it excludes the student
       // response div (children[1]), which is unique per student and must NOT be included
       // in the fingerprint.
-      var part1Div = region.querySelector(':scope > div');
+      var part1Div = getPartContent(region, 0);
       var promptArea = part1Div ? part1Div.children[0] : null;
-      var raw = promptArea ? promptArea.textContent : (part1Div ? part1Div.textContent : '');
+      // Fall back to part1Div.textContent if promptArea is missing OR empty
+      // (a truthy-but-empty element would otherwise collapse every student to "").
+      var raw = (promptArea && promptArea.textContent.trim())
+        ? promptArea.textContent
+        : (part1Div ? part1Div.textContent : '');
       // Strip numeric tokens (integers, decimals, comma-separated numbers, currency
       // prefixes) so per-student randomised values don't split a single version into
       // many.  The structural words that distinguish real versions are preserved.
@@ -548,6 +585,7 @@ export async function extractVersionPromptData(
 ): Promise<{ essayPrompt: string; modelText: string | null }> {
   await ensureTurndownLoaded();
   const result = await evalScriptJSON<{ essayPrompt: string; modelText: string | null } | null>(`(function() {
+    ${GET_PART_CONTENT_HELPER}
     var sel = ${JSON.stringify(selectors)};
     if (!sel.studentSection) return null;
     var student = document.querySelectorAll(sel.studentSection)[${studentIndex}];
@@ -559,8 +597,8 @@ export async function extractVersionPromptData(
     var essayPrompt = '';
     var modelText = null;
 
-    // Extract essay prompt from Part 1 promptDiv
-    var part1Div = region.querySelector(':scope > div'); // First direct div = Part 1 content
+    // Extract essay prompt from Part 1 promptDiv (unwrapped from seqsepwrap if present)
+    var part1Div = getPartContent(region, 0);
     var promptDiv = part1Div ? part1Div.children[0] : null;
     if (promptDiv) {
       var promptPs = promptDiv.querySelectorAll(':scope > p, :scope > div > p, :scope > ul, :scope > ol');
@@ -588,8 +626,8 @@ export async function extractVersionPromptData(
       }
     }
 
-    // Extract model text from Part 2 rubric details
-    var part2Div = region.querySelectorAll(':scope > div')[1]; // Second direct div = Part 2/rubric
+    // Extract model text from Part 2 rubric details (unwrapped from seqsepwrap if present)
+    var part2Div = getPartContent(region, 1);
     var rubDetails = part2Div ? part2Div.querySelector('details') : null;
     var rubDiv = rubDetails ? rubDetails.querySelector('div') : null;
     if (rubDiv) {
