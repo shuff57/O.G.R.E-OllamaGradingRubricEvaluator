@@ -13,8 +13,8 @@ import { captureInteractiveDom, formatDomForPrompt } from './agent-dom';
 import { captureAccessibilityTree, captureWebviewScreenshot, getEmbeddedUrl } from './browser';
 import { sendAgentRequest, parseAgentResponse } from './agent-api';
 import { executeAction } from './browser-actions';
-import { AGENT_SYSTEM_PROMPT } from './agent-prompt';
-import { buildSiteContextInjection, buildSkillInjection } from './skills-api';
+import { buildSiteContextInjection } from './skills-api';
+import { buildHarness, captureHarnessContext } from './runtime-harness';
 import type {
   AgentMode,
   AgentAction,
@@ -206,25 +206,18 @@ export function createAgentController(): AgentController {
     const loopConfig: AgentConfig = { ...DEFAULT_AGENT_CONFIG, ...config.config };
     const signal = config.signal ?? internalAbort.signal;
 
-    // Get current browser URL and build site context injection if a profile matches
-    let siteContext = '';
-    try {
-      const currentUrl = await getEmbeddedUrl();
-      if (currentUrl) {
-        siteContext = await buildSiteContextInjection(currentUrl);
-      }
-    } catch {
-      // No browser open or URL unavailable — skip injection
-    }
-    let skillContent = '';
-    try {
-      skillContent = await buildSkillInjection();
-    } catch {}
+    const startTime = Date.now();
 
-    const systemPromptParts = [AGENT_SYSTEM_PROMPT];
-    if (skillContent) systemPromptParts.push(skillContent);
-    if (siteContext) systemPromptParts.push(siteContext);
-    const systemPrompt = systemPromptParts.join('\n\n');
+    const ctx = await captureHarnessContext({
+      mode: 'agent',
+      sessionGoal: config.initialMessage,
+      stepCount: 0,
+      loopConfig,
+      startTime,
+      provider: config.provider,
+      model: config.model,
+    });
+    const systemPrompt = buildHarness(ctx);
 
     // Conversation history — includes system role and optional screenshot field
     const conversationHistory: AgentMessage[] = [
@@ -233,12 +226,13 @@ export function createAgentController(): AgentController {
     ];
 
     let stepCount = 0;
-    const startTime = Date.now();
     let lastActionKey = '';
     let lastActionRepeatCount = 0;
     let consecutiveFailures = 0;
     let consecutiveTextResponses = 0;
-    let lastSiteContext = siteContext;
+    // TODO(harness): per-turn re-capture will update lastSiteContext via harness in a follow-up.
+    // For now, initialize to '' so the post-navigate refresh block below still detects first-load.
+    let lastSiteContext = '';
 
     const isCompact = config.compact ?? true;
     /** Tracks the action key of the last selector failure that triggered a screenshot retry */

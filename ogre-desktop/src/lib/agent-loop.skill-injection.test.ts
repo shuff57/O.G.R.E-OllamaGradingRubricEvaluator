@@ -23,9 +23,10 @@ vi.mock('./agent-api', () => ({
 vi.mock('./browser-actions', () => ({
   executeAction: vi.fn().mockResolvedValue({ success: true }),
 }));
-vi.mock('./agent-prompt', () => ({
-  AGENT_SYSTEM_PROMPT: 'You are a browser agent.',
-}));
+vi.mock('./agent-prompt', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./agent-prompt')>();
+  return { ...actual };
+});
 vi.mock('./skills-api', () => ({
   buildSiteContextInjection: vi
     .fn()
@@ -33,13 +34,17 @@ vi.mock('./skills-api', () => ({
   buildSkillInjection: vi
     .fn()
     .mockResolvedValue('--- SKILL: TestSkill ---\nDo the task step by step.\n--- END SKILL ---'),
+  getMatchingSkillsForUrl: vi.fn().mockResolvedValue([]),
+}));
+vi.mock('./profile-precedence', () => ({
+  selectBestProfile: vi.fn().mockReturnValue(null),
 }));
 
 import { sendAgentRequest } from './agent-api';
 import { getEmbeddedUrl } from './browser';
 import { buildSiteContextInjection, buildSkillInjection } from './skills-api';
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.resetAllMocks();
   vi.mocked(sendAgentRequest).mockResolvedValue({
     action: 'done',
@@ -53,6 +58,10 @@ beforeEach(() => {
   vi.mocked(buildSkillInjection).mockResolvedValue(
     '--- SKILL: TestSkill ---\nDo the task step by step.\n--- END SKILL ---',
   );
+  const { getMatchingSkillsForUrl } = await import('./skills-api');
+  (getMatchingSkillsForUrl as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+  const { selectBestProfile } = await import('./profile-precedence');
+  (selectBestProfile as ReturnType<typeof vi.fn>).mockReturnValue(null);
 });
 
 describe('agent-loop skill injection', () => {
@@ -69,7 +78,8 @@ describe('agent-loop skill injection', () => {
     expect(systemMessage!.content).toContain('Do the task step by step.');
   });
 
-  it('skill content appears BEFORE site guide in system prompt', async () => {
+  it('site guide appears BEFORE skill in system prompt (harness layout)', async () => {
+    // The runtime harness renders ## Site guide before ## Installed skill.
     const controller = createAgentController();
     const gen = controller.start({ mode: 'auto', initialMessage: 'test' });
     await collectEvents(gen);
@@ -82,10 +92,10 @@ describe('agent-loop skill injection', () => {
     const guidePos = systemMessage!.content.indexOf('--- SITE GUIDE');
     expect(skillPos).toBeGreaterThanOrEqual(0);
     expect(guidePos).toBeGreaterThanOrEqual(0);
-    expect(skillPos).toBeLessThan(guidePos);
+    expect(guidePos).toBeLessThan(skillPos);
   });
 
-  it('empty skill injection does not add spurious content', async () => {
+  it('empty skill injection renders no-skill-active placeholder', async () => {
     vi.mocked(buildSkillInjection).mockResolvedValue('');
 
     const controller = createAgentController();
@@ -96,10 +106,9 @@ describe('agent-loop skill injection', () => {
     const systemMessage = firstCallMessages.find((m: { role: string }) => m.role === 'system');
 
     expect(systemMessage).toBeDefined();
-    expect(systemMessage!.content).not.toContain('\n\n\n');
-    expect(systemMessage!.content).toBe(
-      'You are a browser agent.\n\n--- SITE GUIDE (JSON): TestSite ---\n{}\n--- END SITE GUIDE ---',
-    );
+    // The harness renders a placeholder when no skill is active
+    expect(systemMessage!.content).toContain('(no skill active)');
+    expect(systemMessage!.content).not.toContain('--- SKILL:');
   });
 
   it('buildSkillInjection is called when loop starts', async () => {

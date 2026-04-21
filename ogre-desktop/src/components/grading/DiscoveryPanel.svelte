@@ -30,11 +30,11 @@
   } from '../../lib/discovery-intent';
   import {
     createTrainingSession,
-    TRAINING_SYSTEM_PROMPT,
     isSaveSignal,
     canSaveTraining,
     type TrainingSession,
   } from '../../lib/training-session';
+  import { buildHarness, captureHarnessContext } from '../../lib/runtime-harness';
   import { synthesizeTraining } from '../../lib/training-synthesizer';
   import { appendLearnedCorrections } from '../../lib/db';
   import { getMatchingSkillsForUrl } from '../../lib/skills-api';
@@ -234,13 +234,28 @@
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
+    const sessionGoal = trainingSession.siteName
+      ? `Discover the structure of ${trainingSession.siteName} for grading.`
+      : 'Discover the structure of the current grading page.';
+
+    const harnessCtx = await captureHarnessContext({
+      mode: 'discover',
+      sessionGoal,
+      stepCount: trainingSession.messages.length,
+      loopConfig: { maxSteps: 20, maxTimeMs: 10 * 60 * 1000 },
+      startTime: Date.now(),
+      provider: provider || undefined,
+      model: model || undefined,
+    });
+    const systemPrompt = buildHarness(harnessCtx);
+
     const lastMsg = messages[messages.length - 1];
     const response = await tauriFetch(`${SERVER_BASE}/api/chat`, {
       method: 'POST',
       headers,
       body: JSON.stringify({
         message: lastMsg.content,
-        systemPrompt: TRAINING_SYSTEM_PROMPT,
+        systemPrompt,
         provider: provider || undefined,
         model: model || undefined,
       }),

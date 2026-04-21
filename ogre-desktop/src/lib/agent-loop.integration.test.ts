@@ -20,6 +20,11 @@ vi.mock('./browser-actions', () => ({
 vi.mock('./skills-api', () => ({
   buildSiteContextInjection: vi.fn().mockResolvedValue('--- SITE GUIDE (JSON): MyOpenMath ---\n{}\n--- END SITE GUIDE ---'),
   buildSkillInjection: vi.fn().mockResolvedValue('--- SKILL: gb-sync ---\nSync gradebook.\n--- END SKILL ---'),
+  getMatchingSkillsForUrl: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock('./profile-precedence', () => ({
+  selectBestProfile: vi.fn().mockReturnValue(null),
 }));
 
 import { sendAgentRequest } from './agent-api';
@@ -67,7 +72,8 @@ describe('agent-loop integration: full pipeline', () => {
     expect(events.some(e => e.type === 'result')).toBe(true);
   });
 
-  it('Scenario 4: skill content appears in system prompt before site guide', async () => {
+  it('Scenario 4: system prompt contains both skill and site guide content', async () => {
+    // The harness renders ## Site guide before ## Installed skill.
     vi.mocked(sendAgentRequest).mockResolvedValue({ action: 'done', params: { success: true, message: 'done' }, reasoning: '' } as any);
     const controller = createAgentController();
     await collectEvents(controller.start({ mode: 'auto', initialMessage: 'sync' }));
@@ -75,7 +81,8 @@ describe('agent-loop integration: full pipeline', () => {
     const sys = msgs.find((m: { role: string }) => m.role === 'system');
     expect(sys?.content).toContain('--- SKILL: gb-sync ---');
     expect(sys?.content).toContain('--- SITE GUIDE (JSON): MyOpenMath ---');
-    expect(sys?.content.indexOf('--- SKILL:')).toBeLessThan(sys?.content.indexOf('--- SITE GUIDE'));
+    // Harness layout: site guide comes before installed skill
+    expect(sys?.content.indexOf('--- SITE GUIDE')).toBeLessThan(sys?.content.indexOf('--- SKILL:'));
   });
 
   it('Scenario 5: text response is non-terminal', async () => {

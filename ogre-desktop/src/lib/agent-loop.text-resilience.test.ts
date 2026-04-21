@@ -20,14 +20,23 @@ vi.mock('./browser-actions', () => ({
 vi.mock('./skills-api', () => ({
   buildSiteContextInjection: vi.fn().mockResolvedValue(''),
   buildSkillInjection: vi.fn().mockResolvedValue(''),
+  getMatchingSkillsForUrl: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock('./runtime-harness', () => ({
+  captureHarnessContext: vi.fn().mockResolvedValue({}),
+  buildHarness: vi.fn().mockReturnValue('You are a browser agent.'),
 }));
 
 import { sendAgentRequest } from './agent-api';
 import { executeAction } from './browser-actions';
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.resetAllMocks();
   vi.mocked(executeAction).mockResolvedValue({ success: true });
+  const { captureHarnessContext, buildHarness } = await import('./runtime-harness');
+  (captureHarnessContext as ReturnType<typeof vi.fn>).mockResolvedValue({});
+  (buildHarness as ReturnType<typeof vi.fn>).mockReturnValue('You are a browser agent.');
 });
 
 describe('agent-loop text response resilience', () => {

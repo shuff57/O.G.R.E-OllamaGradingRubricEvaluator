@@ -19,13 +19,17 @@ vi.mock('./browser-actions', () => ({
   executeAction: vi.fn(),
 }));
 
-vi.mock('./agent-prompt', () => ({
-  AGENT_SYSTEM_PROMPT: 'You are a browser agent.',
-}));
+vi.mock('./agent-prompt', () => ({}));
 
 vi.mock('./skills-api', () => ({
   buildSiteContextInjection: vi.fn().mockResolvedValue(''),
   buildSkillInjection: vi.fn().mockResolvedValue(''),
+  getMatchingSkillsForUrl: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock('./runtime-harness', () => ({
+  captureHarnessContext: vi.fn().mockResolvedValue({ mode: 'agent', sessionGoal: '', currentUrl: '', activeProfileName: null, activeRubric: null, provider: null, model: null, stepCount: 0, maxSteps: 30, timeRemainingMs: 300000, lastActionKey: null, lastError: null, siteGuide: '', installedSkill: '' }),
+  buildHarness: vi.fn().mockReturnValue('You are a browser agent.'),
 }));
 
 import { sendAgentRequest } from './agent-api';
@@ -50,6 +54,9 @@ beforeEach(async () => {
   const { buildSiteContextInjection, buildSkillInjection } = await import('./skills-api');
   (buildSiteContextInjection as ReturnType<typeof vi.fn>).mockResolvedValue('');
   (buildSkillInjection as ReturnType<typeof vi.fn>).mockResolvedValue('');
+  const { captureHarnessContext, buildHarness } = await import('./runtime-harness');
+  (captureHarnessContext as ReturnType<typeof vi.fn>).mockResolvedValue({});
+  (buildHarness as ReturnType<typeof vi.fn>).mockReturnValue('You are a browser agent.');
 });
 
 // ---------------------------------------------------------------------------
@@ -433,17 +440,18 @@ describe('site profile injection', () => {
   });
 
   test('injects site context when URL matches a profile', async () => {
-    const { getEmbeddedUrl } = await import('./browser');
-    const { buildSiteContextInjection } = await import('./skills-api');
-    (getEmbeddedUrl as ReturnType<typeof vi.fn>).mockResolvedValue('https://www.myopenmath.com/course/123');
-    (buildSiteContextInjection as ReturnType<typeof vi.fn>).mockResolvedValue('\n\n--- SITE GUIDE: MOM ---\nMOM content\n--- END SITE GUIDE ---\n\n');
+    const { captureHarnessContext, buildHarness } = await import('./runtime-harness');
+    // Make buildHarness return a prompt containing the site guide content
+    (captureHarnessContext as ReturnType<typeof vi.fn>).mockResolvedValue({ siteGuide: '--- SITE GUIDE: MOM ---\nMOM content\n--- END SITE GUIDE ---' });
+    (buildHarness as ReturnType<typeof vi.fn>).mockReturnValue('You are a browser agent.\n\n--- SITE GUIDE: MOM ---\nMOM content\n--- END SITE GUIDE ---');
     (mockSend as ReturnType<typeof vi.fn>).mockResolvedValue(doneResponse());
 
     const controller = createAgentController();
     const gen = controller.start({ mode: 'auto', initialMessage: 'Help me grade', config: { actionDelayMs: 0, maxSteps: 1, maxTimeMs: 30000, maxSameAction: 3 } });
     await collectEvents(gen);
 
-    expect(buildSiteContextInjection).toHaveBeenCalledWith('https://www.myopenmath.com/course/123');
+    // captureHarnessContext is now responsible for assembling URL + site guide
+    expect(captureHarnessContext).toHaveBeenCalledWith(expect.objectContaining({ mode: 'agent' }));
     const firstCall = (mockSend as ReturnType<typeof vi.fn>).mock.calls[0];
     const callArg = firstCall[0] as { messages: Array<{ role: string; content: string }> };
     const systemMsg = callArg.messages.find(m => m.role === 'system');
@@ -587,13 +595,11 @@ describe('agent-loop: site context refresh after navigate', () => {
     const { getEmbeddedUrl } = await import('./browser');
     const { buildSiteContextInjection } = await import('./skills-api');
 
-    // Start on non-profiled URL, navigate to MOM
+    // Harness startup is mocked — only the post-navigate block calls getEmbeddedUrl.
     (getEmbeddedUrl as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce(null)  // initial URL (no profile)
-      .mockResolvedValue('https://www.myopenmath.com/course.php');  // after navigate
+      .mockResolvedValue('https://www.myopenmath.com/course.php');  // post-navigate URL
     (buildSiteContextInjection as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce('')  // initial context (no profile)
-      .mockResolvedValue('SITE GUIDE: MyOpenMath guide content here');  // after navigate
+      .mockResolvedValue('SITE GUIDE: MyOpenMath guide content here');  // post-navigate guide
 
     mockSend
       .mockResolvedValueOnce(makeNavigateResponse('https://www.myopenmath.com/course.php'))
@@ -622,13 +628,11 @@ describe('agent-loop: site context refresh after navigate', () => {
     const { getEmbeddedUrl } = await import('./browser');
     const { buildSiteContextInjection } = await import('./skills-api');
 
-    // Start on MOM, navigate to google.com (no profile)
+    // Harness startup is mocked — only the post-navigate block calls getEmbeddedUrl.
     (getEmbeddedUrl as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce('https://www.myopenmath.com')  // initial URL
-      .mockResolvedValue('https://www.google.com');  // after navigate
+      .mockResolvedValue('https://www.google.com');  // post-navigate URL (no profile)
     (buildSiteContextInjection as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce('SITE GUIDE: MOM content')  // initial context
-      .mockResolvedValue('');  // no profile for google.com
+      .mockResolvedValue('');  // no guide for google.com
 
     mockSend
       .mockResolvedValueOnce(makeNavigateResponse('https://www.google.com'))
@@ -654,13 +658,12 @@ describe('agent-loop: site context refresh after navigate', () => {
     const { buildSiteContextInjection } = await import('./skills-api');
 
     const MOM_GUIDE = 'SITE GUIDE: MOM content';
-    // Start on MOM page, navigate to another MOM page (same profile)
+    // Harness startup is mocked — lastSiteContext starts as '' (see agent-loop.ts).
+    // Post-navigate: getEmbeddedUrl returns the new MOM page, guide is same as initial.
     (getEmbeddedUrl as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce('https://www.myopenmath.com/course.php')  // initial URL
-      .mockResolvedValue('https://www.myopenmath.com/addassessment.php');  // after navigate
+      .mockResolvedValue('https://www.myopenmath.com/addassessment.php');  // post-navigate URL
     (buildSiteContextInjection as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce(MOM_GUIDE)  // initial context
-      .mockResolvedValue(MOM_GUIDE);  // same guide after navigate
+      .mockResolvedValue(MOM_GUIDE);  // same guide content
 
     mockSend
       .mockResolvedValueOnce(makeNavigateResponse('https://www.myopenmath.com/addassessment.php'))
@@ -679,7 +682,7 @@ describe('agent-loop: site context refresh after navigate', () => {
 
     // buildSiteContextInjection called for the new URL
     expect(buildSiteContextInjection).toHaveBeenCalledWith('https://www.myopenmath.com/addassessment.php');
-    // But since the guide content is the same, no supplementary message should be pushed
-    // (verified by checking the guide content equality check in the implementation)
+    // Since lastSiteContext starts as '' and MOM_GUIDE !== '', a supplementary message IS pushed.
+    // (The duplicate-prevention only fires when the same non-empty guide is returned twice.)
   });
 });

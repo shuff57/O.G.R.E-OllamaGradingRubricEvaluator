@@ -17,13 +17,17 @@ vi.mock('./browser-actions', () => ({
   executeAction: vi.fn(),
 }));
 
-vi.mock('./agent-prompt', () => ({
-  AGENT_SYSTEM_PROMPT: 'You are a browser agent.',
-}));
+vi.mock('./agent-prompt', () => ({}));
 
 vi.mock('./skills-api', () => ({
   buildSiteContextInjection: vi.fn().mockResolvedValue(''),
   buildSkillInjection: vi.fn().mockResolvedValue(''),
+  getMatchingSkillsForUrl: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock('./runtime-harness', () => ({
+  captureHarnessContext: vi.fn().mockResolvedValue({}),
+  buildHarness: vi.fn().mockReturnValue('You are a browser agent.'),
 }));
 
 import { sendAgentRequest } from './agent-api';
@@ -41,6 +45,9 @@ beforeEach(async () => {
   (captureInteractiveDom as ReturnType<typeof vi.fn>).mockResolvedValue([]);
   (formatDomForPrompt as ReturnType<typeof vi.fn>).mockReturnValue('');
   (captureWebviewScreenshot as ReturnType<typeof vi.fn>).mockResolvedValue('data:image/png;base64,abc');
+  const { captureHarnessContext, buildHarness } = await import('./runtime-harness');
+  (captureHarnessContext as ReturnType<typeof vi.fn>).mockResolvedValue({});
+  (buildHarness as ReturnType<typeof vi.fn>).mockReturnValue('You are a browser agent.');
 });
 
 async function collectEvents(gen: AsyncGenerator<any>): Promise<any[]> {
