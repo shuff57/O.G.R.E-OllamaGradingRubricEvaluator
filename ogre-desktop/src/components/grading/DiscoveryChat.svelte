@@ -19,13 +19,14 @@
     idle:         'Ready',
     perception:   'Perceiving',
     dialogue:     'Dialogue',
-    test:         'Testing',
-    synthesizing: 'Synthesizing',
+    // 'test' is baked into the Dialogue step (interaction test runs inline);
+    // no separate Testing label in the indicator.
+    synthesizing: 'Synth',
     saved:        'Saved ✓',
     error:        'Error',
   };
 
-  const PHASE_ORDER = ['idle', 'perception', 'dialogue', 'test', 'synthesizing', 'saved'];
+  const PHASE_ORDER = ['idle', 'perception', 'dialogue', 'synthesizing', 'saved'];
 
   function phaseIndex(p: string): number {
     const idx = PHASE_ORDER.indexOf(p);
