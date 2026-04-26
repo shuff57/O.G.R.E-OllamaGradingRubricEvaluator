@@ -62,23 +62,25 @@ export const HARNESS_CAPABILITIES: Record<HarnessMode, HarnessCapability> = {
     responseFormat: 'json_action',
   },
   discover: {
-    allowedActions: new Set([
-      'readText', 'screenshot', 'waitFor',
-      'discover_page', 'test_profile', 'save_profile',
-      'done',
-    ]),
-    identity: `You are OGRE's page-structure discovery assistant. Your only job is to calibrate how the agent interacts with the current grading page: which elements to click, how to find score inputs, how to target feedback fields.`,
+    // Discover is a conversational flow. The AI reports in text on every turn;
+    // save is a UI button, not an AI action. Only `done` is kept so the AI can
+    // explicitly end the session; test/save/read tools are intentionally off.
+    allowedActions: new Set(['done']),
+    identity: `You are OGRE's page-structure discovery assistant. Your only job is to calibrate how the agent interacts with the current grading page: which elements to click, how to find score inputs, how to target feedback fields. You respond conversationally — you do NOT invoke tool actions (except \`done\`).`,
     extraRules: [
-      'Work in four phases: perception → dialogue → test → save.',
-      'PERCEPTION: reply with {"text": "<markdown report>"} using EXACTLY this template:\n    **Page type:** [description]\n    **Student structure:** [description]\n    **Proposed selectors:**\n    - score_input: [selector]\n    - feedback_box: [selector]\n    - student_name: [selector]\n    - save_button: [selector]\n    **Uncertainties:** [list any]',
-      'DIALOGUE: reply with {"text": "<short conversational reply>"}. Accept corrections in plain English and confirm you understood.',
-      'TEST: once you have at least one confirmed selector, reply with a JSON action ({"action": "readText"|"test_profile"|..., "params": {...}, "reasoning": "..."}) to verify it live. Propose only ONE test at a time.',
-      'Only discuss DOM interaction. Do NOT discuss grades, rubrics, scores, or grading logic.',
-      'If uncertain about a selector, say so — never fabricate.',
-      'Keep messages short and scannable.',
-      'Call done() only after save_profile has succeeded OR the user has said "save"/"done"/"finish"/"looks good".',
+      // Read the first rule carefully — most critical.
+      'CRITICAL FIRST-TURN RULE: Your first response in this training session MUST be a text-only perception report. Do NOT invoke any tool action on the first turn — report from whatever DOM snapshot and page context you already have in this message.',
+      'Reply format: every response is plain text wrapped as {"text": "<content>"}. No JSON actions, no reasoning field — just a text response.',
+      'PERCEPTION (first turn): produce a markdown report using EXACTLY this template:\n    **Page type:** [description]\n    **Student structure:** [description]\n    **Proposed selectors:**\n    - score_input: [selector]\n    - feedback_box: [selector]\n    - student_name: [selector]\n    - save_button: [selector]\n    **Uncertainties:** [list any]',
+      'DIALOGUE (subsequent turns): respond conversationally in short plain text. Accept the user\'s corrections in plain English and confirm you understood. Ask clarifying questions if needed.',
+      'CSS SELECTORS: every proposed selector must be valid standard CSS3. Do NOT use Playwright or jQuery pseudo-classes like `:has-text(...)`, `:contains(...)`, `:visible`, `:hidden`, `:first`, or text-based matchers — they will fail when tested against the live DOM. For buttons identified by text, prefer attribute selectors (`button[id*="save"]`, `button.save-btn`, `#quicksavebtn`) or IDs. If you don\'t know a reliable selector, say so in the **Uncertainties** section rather than guessing with a Playwright selector.',
+      'You do NOT execute tests. If the user suggests testing something, say "I\'d suggest testing: [description]" and let them confirm — the UI will handle the actual run.',
+      'You do NOT save. The user clicks the Save Training button when they are satisfied with the proposed selectors.',
+      'Only discuss DOM interaction (selectors, element targeting, page structure). Do NOT discuss grades, rubrics, scores, or grading logic.',
+      'If uncertain about a selector, say so — never fabricate. Prefer "I\'m not sure which element is the save button" over guessing.',
+      'Keep messages short and scannable — users should be able to scan your response in 5 seconds.',
     ],
-    doneContract: `On done: signal only after save_profile succeeded or the user said "save"/"done". { success: boolean, message: string } summarizing what was learned.`,
+    doneContract: `On done: { success: boolean, message: string } summarizing what was learned. Only signal done if the user explicitly says "done" / "finish" — otherwise keep the conversation open for corrections.`,
     responseFormat: 'json_action',
   },
 };

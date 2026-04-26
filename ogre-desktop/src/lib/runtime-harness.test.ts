@@ -140,15 +140,18 @@ describe('buildHarness', () => {
     expect(agentOutput).toContain('- click:');
     expect(agentOutput).toContain('- discover_page:');
 
-    // Discover does NOT have navigate, runJS, writeCodeMirror
+    // Discover does NOT have navigate, runJS, writeCodeMirror — or any other
+    // agent-mode tools. Discover is a conversational flow; the only action is done.
     expect(discoverOutput).not.toContain('- navigate:');
     expect(discoverOutput).not.toContain('- runJS:');
     expect(discoverOutput).not.toContain('- writeCodeMirror:');
+    expect(discoverOutput).not.toContain('- readText:');
+    expect(discoverOutput).not.toContain('- screenshot:');
+    expect(discoverOutput).not.toContain('- test_profile:');
+    expect(discoverOutput).not.toContain('- save_profile:');
 
-    // Discover does have its allowed tools
-    expect(discoverOutput).toContain('- readText:');
-    expect(discoverOutput).toContain('- discover_page:');
-    expect(discoverOutput).toContain('- save_profile:');
+    // Discover has only done — save/test are UI-driven, not AI-invoked.
+    expect(discoverOutput).toContain('- done:');
   });
 
   it('Test 6: output is deterministic — same context produces identical string', () => {
@@ -187,7 +190,8 @@ describe('HARNESS_CAPABILITIES', () => {
     expect(HARNESS_CAPABILITIES.agent.allowedActions.size).toBe(16);
   });
 
-  it('discover mode has exactly 7 allowed actions', () => {
-    expect(HARNESS_CAPABILITIES.discover.allowedActions.size).toBe(7);
+  it('discover mode has exactly 1 allowed action (done)', () => {
+    expect(HARNESS_CAPABILITIES.discover.allowedActions.size).toBe(1);
+    expect(HARNESS_CAPABILITIES.discover.allowedActions.has('done')).toBe(true);
   });
 });

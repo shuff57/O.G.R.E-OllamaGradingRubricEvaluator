@@ -44,8 +44,16 @@
   import { convertProfileToJSON } from '../../lib/profile-json-converter';
   import {
     testProfile,
-    type ProfileTestReport
+    testSelectorDepth,
+    type ProfileTestReport,
+    type SelectorTestResult,
   } from '../../lib/profile-tester';
+  import type { SiteProfile as BatchSiteProfile } from '../../lib/batch-grader';
+  import {
+    runInteractionTest,
+    formatInteractionReport,
+    type InteractionTestSelectors,
+  } from '../../lib/interaction-tester';
   ;
   import { getHandshakeToken } from '../../lib/provider-sync';
   import { parseSkillMarkdown } from '../../lib/skill-parser';
@@ -229,6 +237,89 @@
 
   // ── Training helpers ──────────────────────────────────────────────────────
 
+  const PERCEPTION_FIELD_MAP: Record<string, string> = {
+    score_input: 'scoreInput',
+    feedback_box: 'feedbackBox',
+    student_name: 'studentName',
+    save_button: 'saveButton',
+    student_section: 'studentSection',
+    question_region: 'questionRegion',
+    full_credit_link: 'fullCreditLink',
+  };
+
+  function parseProposedSelectors(perceptionText: string): Record<string, string> {
+    const out: Record<string, string> = {};
+    const LINE_RE = /^[\s]*[-*]\s+([A-Za-z_][A-Za-z_0-9]*)\s*:\s*(.+?)\s*$/gm;
+    let m: RegExpExecArray | null;
+    while ((m = LINE_RE.exec(perceptionText)) !== null) {
+      const rawField = m[1].toLowerCase();
+      const field = PERCEPTION_FIELD_MAP[rawField] ?? rawField;
+      let selector = m[2].trim();
+
+      // Prefer the content of the first `backtick-wrapped` code span. The AI
+      // often writes `- score_input: \`input.score\` (or \`input.foo\`)` — we
+      // want only the first concrete selector, not the parenthetical
+      // alternative or trailing description.
+      const firstBackticked = selector.match(/`([^`]+)`/);
+      if (firstBackticked) {
+        selector = firstBackticked[1].trim();
+      } else {
+        // No backticks — strip wrapping quotes and drop any parenthetical
+        // descriptive tail so `div[data-lastchange] (student container)` →
+        // `div[data-lastchange]`.
+        selector = selector.replace(/^["']+|["']+$/g, '').trim();
+        selector = selector.replace(/\s*\([^)]*\)\s*$/, '').trim();
+      }
+
+      if (!selector) continue;
+      if (/^[\[(]/.test(selector) && /[\])]$/.test(selector) && selector.length < 40) continue;
+      if (/^(unknown|tbd|unclear|n\/a|none)$/i.test(selector)) continue;
+      out[field] = selector;
+    }
+    return out;
+  }
+
+  async function verifyProposedSelectors(perceptionText: string): Promise<string | null> {
+    const selectors = parseProposedSelectors(perceptionText);
+    if (Object.keys(selectors).length === 0) return null;
+
+    const stubProfile = {
+      id: 'training-verify',
+      name: 'Training Verification',
+      isBuiltIn: false,
+      urlPatterns: [pageLoadedUrl || ''],
+      selectors,
+      feedback: { type: 'textarea', requiresHiddenSync: false, htmlWrap: false },
+      save: { buttonText: 'Save' },
+      navigation: { mode: 'batch' },
+    } as unknown as BatchSiteProfile;
+
+    let results: SelectorTestResult[];
+    try {
+      results = await testSelectorDepth(stubProfile, pageLoadedUrl || '');
+    } catch (e) {
+      console.warn('verifyProposedSelectors: live test failed', e);
+      return null;
+    }
+
+    const lines = ['I ran the selectors you proposed against the live page. Results:'];
+    for (const r of results) {
+      let status: string;
+      if (r.error) {
+        status = `ERROR: ${r.error}`;
+      } else if (r.matchCount === 0) {
+        status = 'NO MATCH — please revise this selector';
+      } else {
+        status = `matched ${r.matchCount} element${r.matchCount === 1 ? '' : 's'}`;
+      }
+      const sample = r.sampleText ? ` — sample text: "${r.sampleText.slice(0, 60)}"` : '';
+      lines.push(`- ${r.field}: \`${r.selector}\` → ${status}${sample}`);
+    }
+    lines.push('');
+    lines.push('Please revise any selectors that did not match, or confirm the report if it looks correct.');
+    return lines.join('\n');
+  }
+
   async function sendTrainingMessage(messages: ChatMessage[]): Promise<string> {
     const token = getHandshakeToken();
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -250,7 +341,7 @@
     const systemPrompt = buildHarness(harnessCtx);
 
     const lastMsg = messages[messages.length - 1];
-    const response = await tauriFetch(`${SERVER_BASE}/api/chat`, {
+    const response = await fetch(`${SERVER_BASE}/api/chat`, {
       method: 'POST',
       headers,
       body: JSON.stringify({
@@ -261,9 +352,62 @@
       }),
     });
 
-    const raw = getResponseData(response);
-    const data = typeof raw === 'string' ? JSON.parse(raw) : raw as { content?: string };
-    return data.content || '';
+    if (!response.ok) {
+      throw new Error(`Training chat failed: HTTP ${response.status}`);
+    }
+
+    // Solver mode (no rubric in request) returns an SSE stream. Events:
+    // status | message | done | error. Accumulate content from message events;
+    // throw if an error event arrives so the real failure surfaces.
+    const text = await response.text();
+    let content = '';
+    let serverError: string | null = null;
+    for (const block of text.split('\n\n').filter(b => b.trim())) {
+      let eventName: string | null = null;
+      let dataLine: string | null = null;
+      for (const line of block.split('\n')) {
+        if (line.startsWith('event: ')) eventName = line.slice(7).trim();
+        else if (line.startsWith('data: ')) dataLine = line.slice(6);
+      }
+      if (!dataLine) continue;
+      let parsed: unknown;
+      try { parsed = JSON.parse(dataLine); } catch { continue; }
+
+      if (eventName === 'error') {
+        serverError = (typeof parsed === 'object' && parsed !== null && 'message' in parsed)
+          ? String((parsed as { message?: string }).message ?? 'Unknown server error')
+          : JSON.stringify(parsed);
+        break;
+      }
+      if (typeof parsed === 'object' && parsed !== null) {
+        const d = parsed as { content?: string };
+        if (d.content) content += d.content;
+      }
+    }
+
+    if (serverError) {
+      throw new Error(`Training chat server error (provider=${provider || 'default'}, model=${model || 'default'}): ${serverError}`);
+    }
+
+    // The Discover harness tells the AI to wrap responses as {"text": "..."}.
+    // The server streams that verbatim. Unwrap it here so the rest of the UI
+    // (and parsers like verifyProposedSelectors) see the plain markdown with
+    // real newlines, not an opaque JSON string.
+    //
+    // Models often wrap JSON in ```json fences. Strip those first.
+    let unwrapped = content.trim();
+    const fenceMatch = unwrapped.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
+    if (fenceMatch) unwrapped = fenceMatch[1].trim();
+
+    if (unwrapped.startsWith('{') && unwrapped.endsWith('}')) {
+      try {
+        const parsed = JSON.parse(unwrapped) as { text?: unknown };
+        if (parsed && typeof parsed.text === 'string') {
+          return parsed.text;
+        }
+      } catch { /* not valid JSON — fall through to raw content */ }
+    }
+    return content;
   }
 
   async function resolveSkillForUrl(): Promise<{ skillId: string; siteName: string } | null> {
@@ -313,6 +457,94 @@
           phase: 'dialogue',
           messages: [...trainingSession.messages, assistantMsg],
         };
+
+        // Auto-verify: run the AI's proposed selectors against the live page and
+        // inject the match-count report. AI then refines in its follow-up turn.
+        // If parsing finds no selectors (AI ignored the template), skip silently.
+        const verifyReport = await verifyProposedSelectors(reply);
+        if (verifyReport) {
+          const verifyMsg: ChatMessage = {
+            role: 'user',
+            content: verifyReport,
+            timestamp: new Date().toISOString(),
+          };
+          trainingSession = {
+            ...trainingSession,
+            messages: [...trainingSession.messages, verifyMsg],
+          };
+          try {
+            const followup = await sendTrainingMessage(trainingSession.messages);
+            const followupMsg: ChatMessage = {
+              role: 'assistant',
+              content: followup,
+              timestamp: new Date().toISOString(),
+            };
+            trainingSession = {
+              ...trainingSession,
+              messages: [...trainingSession.messages, followupMsg],
+            };
+          } catch (e) {
+            console.warn('follow-up after verify failed', e);
+          }
+
+          // Interaction test phase: actually click + type + read using the
+          // proposed selectors so the user can see the AI perform in the
+          // embedded browser. Non-destructive — captures originals, restores
+          // after each step, never clicks Save.
+          //
+          // Parse from the LATEST assistant message first (the follow-up,
+          // which may contain refined selectors after the verify report),
+          // then fall back to the original perception for any fields the
+          // follow-up didn't re-declare. Later entries override earlier.
+          const latestAssistant = [...trainingSession.messages].reverse().find(m => m.role === 'assistant');
+          const originalSelectors = parseProposedSelectors(reply);
+          const refinedSelectors = latestAssistant && latestAssistant.content !== reply
+            ? parseProposedSelectors(latestAssistant.content)
+            : {};
+          const testSelectors: Record<string, string> = { ...originalSelectors, ...refinedSelectors };
+          const hasTestable = testSelectors.scoreInput || testSelectors.feedbackBox || testSelectors.saveButton;
+          if (hasTestable) {
+            // Interaction test runs inline within the Dialogue phase — no
+            // separate Testing phase label. The cursor animation is the
+            // user-visible signal that the test is happening.
+            try {
+              const interactionSelectors: InteractionTestSelectors = {
+                scoreInput: testSelectors.scoreInput,
+                feedbackBox: testSelectors.feedbackBox,
+                saveButton: testSelectors.saveButton,
+              };
+              const report = await runInteractionTest(interactionSelectors);
+              const reportMsg: ChatMessage = {
+                role: 'user',
+                content: formatInteractionReport(report),
+                timestamp: new Date().toISOString(),
+              };
+              trainingSession = {
+                ...trainingSession,
+                phase: 'dialogue',
+                messages: [...trainingSession.messages, reportMsg],
+              };
+              // Let the AI acknowledge the interaction test result.
+              try {
+                const ack = await sendTrainingMessage(trainingSession.messages);
+                const ackMsg: ChatMessage = {
+                  role: 'assistant',
+                  content: ack,
+                  timestamp: new Date().toISOString(),
+                };
+                trainingSession = {
+                  ...trainingSession,
+                  messages: [...trainingSession.messages, ackMsg],
+                };
+              } catch (e) {
+                console.warn('follow-up after interaction test failed', e);
+              }
+            } catch (e) {
+              console.warn('interaction test failed', e);
+              trainingSession = { ...trainingSession, phase: 'dialogue' };
+            }
+          }
+        }
       } catch (e) {
         trainingSession = { ...trainingSession, phase: 'error', error: String(e) };
       }
