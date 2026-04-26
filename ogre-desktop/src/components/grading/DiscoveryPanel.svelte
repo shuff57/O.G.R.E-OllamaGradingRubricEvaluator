@@ -376,10 +376,24 @@
     }
     trainingSession = { ...trainingSession, phase: 'synthesizing' };
     try {
-      const { corrections } = await synthesizeTraining(trainingSession.messages, sendTrainingMessage);
-      if (corrections.length > 0) {
-        await appendLearnedCorrections(trainingSession.skillId, corrections);
+      const { corrections } = await synthesizeTraining(trainingSession.messages, {
+        provider: provider || undefined,
+        model: model || undefined,
+      });
+      if (corrections.length === 0) {
+        // Loud failure — synthesis returned nothing to save. Phase stays
+        // visible as 'error' rather than flipping to 'saved' and pretending.
+        trainingSession = {
+          ...trainingSession,
+          phase: 'error',
+          error:
+            'Synthesis extracted 0 corrections from the conversation. ' +
+            'The AI may have refused to emit JSON, or no confirmed selectors were in the transcript. ' +
+            'Check the browser console for the raw AI response, then try saving again.',
+        };
+        return;
       }
+      await appendLearnedCorrections(trainingSession.skillId, corrections);
       trainingSession = { ...trainingSession, phase: 'saved', pendingCorrections: corrections };
     } catch (e) {
       trainingSession = { ...trainingSession, phase: 'error', error: String(e) };
