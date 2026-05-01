@@ -18,6 +18,25 @@ extraResources:
     to: server-bundle
     filter:
       - '**/*'
+      - '!node_modules/typescript/**'
+      - '!node_modules/@types/**'
+      - '!node_modules/bun-types/**'
+      - '!node_modules/@yao-pkg/**'
+      - '!node_modules/vite/**'
+      - '!node_modules/vitest/**'
+      - '!node_modules/@vitest/**'
+      - '!node_modules/rollup/**'
+      - '!node_modules/@rollup/**'
+      - '!node_modules/@babel/**'
+      - '!node_modules/@esbuild/**'
+      - '!node_modules/onnxruntime-node/bin/napi-v6/darwin/**'
+      - '!node_modules/onnxruntime-node/bin/napi-v6/linux/**'
+      - '!node_modules/onnxruntime-node/bin/napi-v6/win32/arm64/**'
+      - '!**/*.md'
+      - '!**/*.map'
+      - '!**/test/**'
+      - '!**/tests/**'
+      - '!**/__tests__/**'
 
 linux:
   target:
