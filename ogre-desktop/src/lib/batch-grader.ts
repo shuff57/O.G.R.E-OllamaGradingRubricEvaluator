@@ -326,11 +326,26 @@ export async function extractStudents(selectors: SiteSelectors): Promise<Student
       }
       var fbBox = sel.feedbackBox ? s.querySelector(sel.feedbackBox) : null;
 
-      // Extract per-student prompt text (with their specific jittered values)
+      // Extract per-student prompt text (with their specific jittered values).
+      // Replace MathJax-rendered equations with their aria-label text BEFORE
+      // markdown conversion, so per-student equation coefficients (e.g. "y hat
+      // equals 30 plus 9 x") survive into the prompt the grading server sees.
+      // Without this, turndown strips the MathJax SVG and the AI has to guess
+      // the equation — leading to cross-student value contamination.
       var promptDiv = part1Div ? part1Div.children[0] : null;
       var studentPrompt = '';
       if (promptDiv) {
-        var promptPs = promptDiv.querySelectorAll(':scope > p, :scope > div > p, :scope > ul, :scope > ol');
+        var clone = promptDiv.cloneNode(true);
+        clone.querySelectorAll('mjx-container, .MathJax, [data-mathml], math').forEach(function(m) {
+          var aria = m.getAttribute('aria-label') || (m.querySelector('[aria-label]') ? m.querySelector('[aria-label]').getAttribute('aria-label') : null);
+          if (aria) {
+            var txt = aria.replace(/,\s*math\s*$/, '').trim();
+            var span = document.createElement('span');
+            span.textContent = ' ' + txt + ' ';
+            m.parentNode.replaceChild(span, m);
+          }
+        });
+        var promptPs = clone.querySelectorAll(':scope > p, :scope > div > p, :scope > ul, :scope > ol');
         studentPrompt = Array.from(promptPs)
           .map(function(p) {
             if (p.closest('details')) return '';
@@ -338,16 +353,26 @@ export async function extractStudents(selectors: SiteSelectors): Promise<Student
           })
           .filter(function(t) { return t.length > 0; })
           .join(' ')
-          .substring(0, 500);
+          .substring(0, 1500);
         if (!studentPrompt || studentPrompt.length < 30) {
-          var fallbackPs = Array.from(region.querySelectorAll('p')).filter(function(p) {
+          var fallbackClone = region.cloneNode(true);
+          fallbackClone.querySelectorAll('mjx-container, .MathJax, [data-mathml], math').forEach(function(m) {
+            var aria = m.getAttribute('aria-label') || (m.querySelector('[aria-label]') ? m.querySelector('[aria-label]').getAttribute('aria-label') : null);
+            if (aria) {
+              var txt = aria.replace(/,\s*math\s*$/, '').trim();
+              var span = document.createElement('span');
+              span.textContent = ' ' + txt + ' ';
+              m.parentNode.replaceChild(span, m);
+            }
+          });
+          var fallbackPs = Array.from(fallbackClone.querySelectorAll('p')).filter(function(p) {
             return !p.closest('details');
           });
           var fallbackText = fallbackPs
             .map(function(p) { return p.textContent.trim(); })
             .filter(function(t) { return t.length > 5; })
             .join(' ')
-            .substring(0, 500);
+            .substring(0, 1500);
           if (fallbackText.length > studentPrompt.length) { studentPrompt = fallbackText; }
         }
       }
@@ -447,23 +472,47 @@ export async function extractRubric(selectors: SiteSelectors, studentIndex: numb
         if (modelText === '') modelText = null;
       }
 
-      var promptPs = promptDiv ? promptDiv.querySelectorAll(':scope > p, :scope > div > p') : [];
+      // Replace MathJax-rendered math with aria-label text so the equation
+      // (e.g. "y hat equals 30 plus 9 x") survives turndown's HTML→markdown.
+      var promptClone = promptDiv ? promptDiv.cloneNode(true) : null;
+      if (promptClone) {
+        promptClone.querySelectorAll('mjx-container, .MathJax, [data-mathml], math').forEach(function(m) {
+          var aria = m.getAttribute('aria-label') || (m.querySelector('[aria-label]') ? m.querySelector('[aria-label]').getAttribute('aria-label') : null);
+          if (aria) {
+            var txt = aria.replace(/,\s*math\s*$/, '').trim();
+            var span = document.createElement('span');
+            span.textContent = ' ' + txt + ' ';
+            m.parentNode.replaceChild(span, m);
+          }
+        });
+      }
+      var promptPs = promptClone ? promptClone.querySelectorAll(':scope > p, :scope > div > p') : [];
       essayPrompt = Array.from(promptPs)
         .map(function(p) { try { return window.__turndownService.turndown(p.outerHTML); } catch(e) { return p.textContent.trim(); } })
         .join(' ')
-        .substring(0, 500);
+        .substring(0, 1500);
 
       // Fallback: if essayPrompt still short/empty, scan all <p> in region
       // excluding those inside <details> (which contain rubric/checklist items)
       if (!essayPrompt || essayPrompt.length < 30) {
-        var fallbackPs = Array.from(region.querySelectorAll('p')).filter(function(p) {
+        var fallbackClone = region.cloneNode(true);
+        fallbackClone.querySelectorAll('mjx-container, .MathJax, [data-mathml], math').forEach(function(m) {
+          var aria = m.getAttribute('aria-label') || (m.querySelector('[aria-label]') ? m.querySelector('[aria-label]').getAttribute('aria-label') : null);
+          if (aria) {
+            var txt = aria.replace(/,\s*math\s*$/, '').trim();
+            var span = document.createElement('span');
+            span.textContent = ' ' + txt + ' ';
+            m.parentNode.replaceChild(span, m);
+          }
+        });
+        var fallbackPs = Array.from(fallbackClone.querySelectorAll('p')).filter(function(p) {
           return !p.closest('details');
         });
         var fallbackText = fallbackPs
           .map(function(p) { return p.textContent.trim(); })
           .filter(function(t) { return t.length > 5; })
           .join(' ')
-          .substring(0, 500);
+          .substring(0, 1500);
         if (fallbackText.length > essayPrompt.length) { essayPrompt = fallbackText; }
       }
 

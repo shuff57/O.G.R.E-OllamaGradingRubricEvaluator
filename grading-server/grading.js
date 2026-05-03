@@ -247,10 +247,17 @@ CALIBRATION EXAMPLES (from previously graded batch — you MUST match this scori
     }
 
     const tierLabels = { excellent: 'HIGH QUALITY', adequate: 'AVERAGE QUALITY', belowAverage: 'BELOW AVERAGE', minimal: 'LOW QUALITY', spread: 'REFERENCE' };
+    // Strip specific numeric values from bridge feedback so the AI doesn't pull
+    // one student's jittered numbers (equation coefficients, observed values, etc.)
+    // into another student's evaluation. Numeric content is replaced with [N];
+    // tone/structure stays so the AI still gets calibration cues for scoring.
+    const _stripBridgeNumbers = (text) => String(text || '').replace(/-?\d+(?:\.\d+)?/g, '[N]');
     for (const [tier, examples] of Object.entries(tiers)) {
       prompt += `\n${tierLabels[tier] || tier.toUpperCase()}:\n`;
       for (const br of examples) {
-        prompt += `  - "${br.name || 'Student ' + br.studentIndex}" = ${Math.round(br.score * scoreFactor * 10) / 10}/${virtualMax}: ${(br.feedback || '').substring(0, 300)}\n`;
+        const _scaledScore = Math.round(br.score * scoreFactor * 10) / 10;
+        const _scrubbed = _stripBridgeNumbers((br.feedback || '').substring(0, 300));
+        prompt += `  - "${br.name || 'Student ' + br.studentIndex}" = ${_scaledScore}/${virtualMax}: ${_scrubbed}\n`;
       }
     }
 

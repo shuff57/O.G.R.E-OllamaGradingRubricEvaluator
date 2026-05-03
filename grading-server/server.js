@@ -235,6 +235,35 @@ async function callProviderDirect(provider, config, messages, timestamp, options
 }
 
 /**
+ * Build boilerplate feedback for a student who submitted no response.
+ * Bypasses the AI entirely — eliminates any chance of bleed from bridge
+ * responses or other prompt content into a fabricated evaluation.
+ * Score is 0; feedback is "You did not address this" per requirement.
+ */
+function buildBlankResponseFeedback(rubric, student) {
+  const rawName = (student?.name || '').trim();
+  const firstName = rawName.includes(',')
+    ? rawName.split(',').slice(1).join(',').trim().split(/\s+/)[0]
+    : rawName.split(/\s+/)[0];
+  const greeting = firstName ? `Hi ${firstName},` : 'Hello,';
+  let html = `<p>${greeting}</p>`;
+  if (rubric?.checklistItems && Array.isArray(rubric.checklistItems)) {
+    for (const item of rubric.checklistItems) {
+      if (item?.items && Array.isArray(item.items)) {
+        for (const sub of item.items) {
+          html += `<p><strong>${sub}</strong></p>`;
+          html += `<blockquote>You did not address this.</blockquote>`;
+          html += `<p>No response was submitted, so this requirement was not evaluated.</p>`;
+        }
+      }
+    }
+  } else {
+    html += `<p>No response was submitted, so this question was not evaluated.</p>`;
+  }
+  return html;
+}
+
+/**
  * Build intelligent bridge responses aligned to scoring anchors.
  * Selects 2-3 examples per anchor tier (excellent, adequate, minimal)
  * so the next chunk has strong calibration references.
@@ -1568,8 +1597,29 @@ app.post('/api/grade', async (c) => {
   }
 
   const { provider, model, rubric, students, strategy, chunkSize: rawChunkSize, sweep, customInstructions, weightMode } = body;
-  const useParallel = strategy === 'parallel'; // default: serial (more reliable)
-  const chunkSize = Math.max(5, Math.min(50, parseInt(rawChunkSize) || 30));
+  // When students have per-student prompts (MOM jitters numeric values per student),
+  // force chunkSize=1 AND serial to prevent the LLM from bleeding one student's numeric
+  // values into another's evaluation. Detection uses TWO signals so MathJax-rendered
+  // jittering (which doesn't show up as different plain-text prompts) still triggers:
+  //   (a) any student.prompt differs from rubric.essayPrompt, OR
+  //   (b) two students have different non-empty prompts.
+  // Either signal means OGRE is sending per-student data, so we treat as jittered.
+  let _hasJittered = false;
+  if (Array.isArray(students) && students.length > 0) {
+    const _promptValues = students
+      .map(s => (s && s.prompt) ? String(s.prompt).trim() : '')
+      .filter(p => p.length > 0);
+    const _uniquePrompts = new Set(_promptValues);
+    const _differsFromRubric = rubric && students.some(s => s && s.prompt && s.prompt !== rubric.essayPrompt);
+    _hasJittered = _uniquePrompts.size > 1 || _differsFromRubric;
+  }
+  const useParallel = _hasJittered ? false : strategy === 'parallel'; // default: serial (more reliable)
+  const chunkSize = _hasJittered
+    ? 1
+    : Math.max(5, Math.min(50, parseInt(rawChunkSize) || 30));
+  if (_hasJittered) {
+    console.log(`[${timestamp()}] [chunkSize] Per-student jittered prompts detected — forcing chunkSize=1 + serial to prevent cross-student value bleed`);
+  }
   // sweep: 'none' (default for single chunk), 'compact', 'pairwise', 'auto' (compact if multi-chunk)
   const sweepMode = sweep || 'auto';
 
@@ -1641,6 +1691,12 @@ app.post('/api/grade', async (c) => {
         totalChunksForClient = chunks.length;
         console.log(`[${timestamp()}] [sse] Strategy: serial | ${chunks.length} chunk(s)`);
         let bridgeResponses = null;
+        // Cumulative pool of all students graded so far in this run. Bridges are picked
+        // from this growing pool (capped at ~8 by buildBridgeResponses' tier selection)
+        // so each subsequent chunk gets richer cross-call calibration. Critical for
+        // chunkSize=1 where a per-chunk bridge would only contain a single student.
+        const _bridgePoolResults = [];
+        const _bridgePoolStudents = [];
 
         for (let i = 0; i < chunks.length; i++) {
           const chunk = chunks[i];
@@ -1651,19 +1707,35 @@ app.post('/api/grade', async (c) => {
           });
 
           console.log(`[${timestamp()}] [sse] Grading chunk ${i + 1}/${chunks.length} (${chunk.students.length} students)...`);
-          const prompt = buildBatchPrompt(rubric, chunk.students, anchors, bridgeResponses);
-          const _kaStartA = Date.now();
-          const _kaIntervalA = setInterval(() => {
-            const elapsed = Math.round((Date.now() - _kaStartA) / 1000);
-            stream.writeSSE({ event: 'heartbeat', data: JSON.stringify({ phase: 'waiting', elapsed }), id: String(sseId++) }).catch(() => {});
-          }, 30000);
-          let aiText;
-          try {
-            aiText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: prompt }], timestamp(), fallbackOptions);
-          } finally {
-            clearInterval(_kaIntervalA);
+
+          // Skip the AI entirely if every student in the chunk left a blank response.
+          // No own-response = the AI has nothing to anchor on and may pull numerical
+          // content from the bridge calibration into fabricated feedback. Boilerplate
+          // "did not address" feedback is correct and cheap.
+          let chunkResults;
+          const _allBlank = chunk.students.every(s => !s?.response || !String(s.response).trim());
+          if (_allBlank) {
+            console.log(`[${timestamp()}] [sse] Chunk ${i + 1}: all blank — skipping AI`);
+            chunkResults = chunk.students.map(s => ({
+              studentIndex: s.index,
+              score: 0,
+              feedback: buildBlankResponseFeedback(rubric, s),
+            }));
+          } else {
+            const prompt = buildBatchPrompt(rubric, chunk.students, anchors, bridgeResponses);
+            const _kaStartA = Date.now();
+            const _kaIntervalA = setInterval(() => {
+              const elapsed = Math.round((Date.now() - _kaStartA) / 1000);
+              stream.writeSSE({ event: 'heartbeat', data: JSON.stringify({ phase: 'waiting', elapsed }), id: String(sseId++) }).catch(() => {});
+            }, 30000);
+            let aiText;
+            try {
+              aiText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: prompt }], timestamp(), fallbackOptions);
+            } finally {
+              clearInterval(_kaIntervalA);
+            }
+            chunkResults = parseBatchResponse(aiText, chunk.students, maxScore, categoryWeights, categoryMaxPtsOrNull);
           }
-          const chunkResults = parseBatchResponse(aiText, chunk.students, maxScore, categoryWeights, categoryMaxPtsOrNull);
           // Guard: if AI dropped trailing students (positional shortfall), retry them once
           const _dropped = chunk.students.slice(chunkResults.length);
           if (_dropped.length > 0) {
@@ -1692,9 +1764,15 @@ app.post('/api/grade', async (c) => {
             console.log(`[${timestamp()}] [sse] ✓ ${name}: ${r.score}/${maxScore}`);
           }
 
+          // Accumulate this chunk's results into the bridge pool BEFORE building
+          // the next bridge — so the next chunk's bridge reflects all students
+          // graded so far, not just the previous chunk.
+          _bridgePoolResults.push(...chunkResults);
+          _bridgePoolStudents.push(...chunk.students);
+
           if (i < chunks.length - 1) {
-            bridgeResponses = buildBridgeResponses(chunkResults, chunk.students, anchors, maxScore);
-            console.log(`[${timestamp()}] [sse] Bridge (${bridgeResponses.length}): ${bridgeResponses.map(b => `${b.name}=${b.score}[${b.tier}]`).join(', ')}`);
+            bridgeResponses = buildBridgeResponses(_bridgePoolResults, _bridgePoolStudents, anchors, maxScore);
+            console.log(`[${timestamp()}] [sse] Bridge (${bridgeResponses.length} from pool of ${_bridgePoolResults.length}): ${bridgeResponses.map(b => `${b.name}=${b.score}[${b.tier}]`).join(', ')}`);
           }
 
           await stream.writeSSE({
