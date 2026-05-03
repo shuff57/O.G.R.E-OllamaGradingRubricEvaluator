@@ -623,7 +623,7 @@
     position: relative;
     height: 100%;
     background-color: var(--color-bg-sidebar);
-    border-left: 1px solid rgba(255,255,255,0.1);
+    border-left: 1px solid var(--color-border);
     box-shadow: -4px 0 20px rgba(0,0,0,0.3);
     display: flex; flex-direction: column;
     transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -705,7 +705,7 @@
   
   .resize-handle:hover,
   .resize-handle:active {
-    background-color: rgba(88, 166, 255, 0.3);
+    background-color: var(--color-primary-bg);
   }
   
   /* ── Single Student Mode Toggle ── */
@@ -778,7 +778,7 @@
 
   .global-profile-name {
     font-size: 0.75rem;
-    color: #22c55e;
+    color: var(--color-success);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -789,9 +789,9 @@
   .btn-discover-global {
     padding: 2px 8px;
     border-radius: var(--radius-sm);
-    border: 1px solid #f59e0b;
+    border: 1px solid var(--color-warning);
     background: transparent;
-    color: #f59e0b;
+    color: var(--color-warning);
     font-size: 0.75rem;
     cursor: pointer;
     white-space: nowrap;
@@ -800,6 +800,6 @@
   }
 
   .btn-discover-global:hover {
-    background: rgba(245, 158, 11, 0.1);
+    background: var(--color-warning-bg);
   }
 </style>
