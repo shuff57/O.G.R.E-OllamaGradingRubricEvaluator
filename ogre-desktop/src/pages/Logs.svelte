@@ -1,6 +1,7 @@
 <script lang="ts">
 import { onMount, onDestroy } from 'svelte';
 import { listenServerLogs } from '../lib/server';
+import EmptyState from '../components/EmptyState.svelte';
 
 const MAX_LINES = 1000;
 let logs: Array<{time: string, message: string, isError: boolean}> = [];
@@ -63,9 +64,15 @@ function handleScroll() {
     class="log-container" 
     bind:this={container} 
     on:scroll={handleScroll}
-  >{#each logs as log}
+  >
+{#if logs.length === 0}
+<EmptyState icon="📜" title="No logs yet" description="Server logs will appear here once the grading server is running." />
+{:else}
+{#each logs as log}
 <span class:error={log.isError}>[{log.time}] {log.message}</span>
-{/each}</pre>
+{/each}
+{/if}
+</pre>
 </div>
 
 <style>

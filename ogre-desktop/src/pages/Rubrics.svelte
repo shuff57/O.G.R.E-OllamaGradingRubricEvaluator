@@ -5,6 +5,7 @@
   import { validateWeights, isAllocationCriterion } from '../lib/rubric-utils';
   import RubricImport from '../components/grading/RubricImport.svelte';
   import { generateRubricFromText } from '../lib/discover';
+  import EmptyState from '../components/EmptyState.svelte';
 
   let rubrics: SavedRubric[] = [];
   let loading = true;
@@ -347,11 +348,13 @@
       <p>Loading rubrics...</p>
     </div>
   {:else if rubrics.length === 0 && !isNew}
-    <div class="empty-state">
-      <h3>No rubrics saved yet</h3>
-      <p class="text-muted">Create a rubric here to get started.</p>
-      <button class="btn-primary" on:click={openCreate}>Create First Rubric</button>
-    </div>
+    <EmptyState
+      icon="📋"
+      title="No rubrics saved yet"
+      description="Create a rubric to define grading criteria, or import one from a screenshot."
+      actionLabel="Create First Rubric"
+      onaction={openCreate}
+    />
   {:else}
     <div class="rubric-list">
       {#each rubrics as rubric (rubric.id)}

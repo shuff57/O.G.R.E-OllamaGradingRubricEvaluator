@@ -3,6 +3,7 @@
   import { listenServerStatus } from '../lib/server';
   import { getProviderConfigs, getGradingSessions } from '../lib/db';
   import { pushOnStartup } from '../lib/provider-sync';
+  import EmptyState from '../components/EmptyState.svelte';
 
   // Injected by Vite define() from package.json at build time
   declare const __APP_VERSION__: string;
@@ -127,6 +128,15 @@
 
   <section class="quick-stats">
     <h2>Quick Stats</h2>
+    {#if totalSessions === 0}
+      <EmptyState
+        icon="🎓"
+        title="Welcome to O.G.R.E"
+        description="Your AI grading assistant. Open Grade Now to start evaluating student work."
+        actionLabel="Grade Now"
+        onaction={() => onnavigate('browser')}
+      />
+    {:else}
     <div class="stats-grid">
       <div class="stat">
         <span class="label">Total Sessions</span>
@@ -141,6 +151,7 @@
         <span class="value">{lastSessionDate}</span>
       </div>
     </div>
+    {/if}
   </section>
 </div>
 

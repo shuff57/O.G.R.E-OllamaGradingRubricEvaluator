@@ -6,6 +6,7 @@
   import { deleteEmbeddingsBySessionId } from "../lib/vector-store";
   import { getEmbeddingStats, getSessionEmbeddingCounts, type EmbeddingStats } from "../lib/embedding-stats";
   import { reEmbedAll } from "../lib/re-embed";
+  import EmptyState from "../components/EmptyState.svelte";
 
   /** Incremented by App.svelte when a new grading session is recorded */
   export let sessionVersion = 0;
@@ -223,11 +224,11 @@
   {/if}
 
   {#if sessions.length === 0}
-    <div class="empty-state">
-      <div class="empty-icon">📂</div>
-      <h3>No grading sessions yet</h3>
-      <p>Grade some students to see your history here!</p>
-    </div>
+    <EmptyState
+      icon="📂"
+      title="No grading sessions yet"
+      description="Grade some students to see your history here. Use Grade Now in the sidebar to get started."
+    />
   {:else}
     <div class="table-wrapper">
       <div class="table-container">
