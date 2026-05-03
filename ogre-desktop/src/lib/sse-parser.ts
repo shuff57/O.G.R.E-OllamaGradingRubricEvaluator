@@ -8,7 +8,7 @@
  *   progress  — { phase, chunkIndex, totalChunks, studentCount, totalStudents }
  *   chunk     — { chunkIndex, results: [{studentIndex, score, feedback}] }
  *   sweep     — { adjustments, count }
- *   outlier   — { adjustedResults: [{studentIndex, score, feedback}] }
+ *   outlier   — { adjustedResults: [{studentIndex, name, originalScore, score, deviation, feedback}] }
  *   done      — { stats, anchors, metadata }
  *   error     — { message }
  */
@@ -22,6 +22,10 @@ export interface BatchStudentResult {
   feedback: string;
   adjusted?: boolean;
   sweepAdjusted?: boolean;
+  // Populated only on outlier-adjustment events; used by the end-of-run review panel.
+  name?: string;
+  originalScore?: number;
+  deviation?: number;
 }
 
 /** Progress event — phase updates during batch grading. */

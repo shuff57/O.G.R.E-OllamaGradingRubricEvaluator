@@ -7,6 +7,8 @@
   import AgentChat from '../components/grading/AgentChat.svelte';
   import BatchPanel from '../components/grading/batch/BatchPanel.svelte';
   import BatchResults from '../components/grading/batch/BatchResults.svelte';
+  import OutlierReport from '../components/grading/batch/OutlierReport.svelte';
+  import type { BatchStudentResult } from '../lib/grading-api';
   import DiscoveryPanel from '../components/grading/DiscoveryPanel.svelte';
   import { captureWebviewScreenshot, hideWebview, showWebview, getActiveTabId } from '../lib/browser';
   import { getSetting, setSetting } from '../lib/db';
@@ -66,6 +68,7 @@
   let extractedRubric = $state<Rubric | null>(null);
   let sourceRubricId = $state<string | null>(null);
   let batchPhase = $state<'idle' | 'extracting' | 'review' | 'grading' | 'done'>('idle');
+  let outlierReport = $state<BatchStudentResult[]>([]);
   let essayPrompt = $state('');
   let leniency = $state(50);
   let originalRubricText = $state('');
@@ -534,6 +537,7 @@
             bind:isBatchPaused
             bind:savedSessionStudent
             bind:profileWarning={batchProfileWarning}
+            bind:outlierReport
           />
           {#if batchPhase !== 'idle'}
             <RubricCard
@@ -583,6 +587,13 @@
       {/if}
     </div>
     {#if activeMode === 'grader' && graderSubMode === 'batch'}
+      {#if batchPhase === 'done' && outlierReport.length > 0}
+        <OutlierReport
+          entries={outlierReport}
+          maxScore={parseFloat(rubricMaxScore) || 10}
+          onDismiss={() => { outlierReport = []; }}
+        />
+      {/if}
       <BatchResults
         {batchPhase}
         isBatchRunning={batchRunning}

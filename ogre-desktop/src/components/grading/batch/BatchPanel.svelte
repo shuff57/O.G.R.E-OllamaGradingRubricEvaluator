@@ -15,6 +15,7 @@
   import type { SavedRubric } from '../../../lib/rubric-api';
   import type { Rubric, SiteProfile } from '../../../lib/batch-grader';
   import { DEFAULT_MYOPENMATH_PROFILE } from '../../../lib/batch-grader';
+  import type { BatchStudentResult } from '../../../lib/grading-api';
 
   // ── Props from GradingPanel (13 props, 7 bindable) ─────────────────────
   type BatchPhase = 'idle' | 'extracting' | 'review' | 'grading' | 'done';
@@ -45,6 +46,7 @@
     isBatchPaused = $bindable(false),
     savedSessionStudent = $bindable<string | null>(null),
     profileWarning = $bindable(''),
+    outlierReport = $bindable<BatchStudentResult[]>([]),
   } = $props();
 
   // ── Bridging state between sub-components ──────────────────────────────
@@ -152,6 +154,7 @@
     bind:anchorGenerating
     bind:batchGraderHasStudents
     bind:isBatchPaused
+    bind:outlierReport
   />
 </section>
 

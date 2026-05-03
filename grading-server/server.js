@@ -2034,6 +2034,8 @@ app.post('/api/grade', async (c) => {
             const mainResult = results.find(r => r.studentIndex === or.studentIndex);
             if (mainResult && or.score !== mainResult.score) {
               const name = students.find(s => s.index === or.studentIndex)?.name || `Student ${or.studentIndex}`;
+              const deviation = outlierAnalysis.outliers.find(o => o.studentIndex === or.studentIndex)?.deviation;
+              const originalScore = mainResult.score;
               // Guard: cap downward adjustments at 1 point to prevent regression-to-mean.
               // Upward adjustments (catching under-scored students) are uncapped.
               let newScore = or.score;
@@ -2050,7 +2052,14 @@ app.post('/api/grade', async (c) => {
                 mainResult.feedback = or.feedback || mainResult.feedback;
                 mainResult.adjusted = true;
                 adjustedCount++;
-                adjustedResults.push({ studentIndex: or.studentIndex, score: newScore, feedback: or.feedback });
+                adjustedResults.push({
+                  studentIndex: or.studentIndex,
+                  name,
+                  originalScore,
+                  score: newScore,
+                  deviation,
+                  feedback: or.feedback,
+                });
               }
             }
           }

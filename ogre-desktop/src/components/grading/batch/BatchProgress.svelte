@@ -23,6 +23,7 @@
     BatchDoneEvent,
     BatchErrorEvent,
     BatchHeartbeatEvent,
+    BatchStudentResult,
   } from '../../../lib/grading-api';
   import { saveBatchSession, clearBatchSession } from '../../../lib/db';
   import { refreshPageData, buildBatchResetState, stopActiveBatch } from '../../../lib/page-refresh';
@@ -59,6 +60,7 @@
     anchorGenerating = $bindable(false),
     batchGraderHasStudents = $bindable(false),
     isBatchPaused = $bindable(false),
+    outlierReport = $bindable<BatchStudentResult[]>([]),
   } = $props();
 
   // ── Internal State ─────────────────────────────────────────────────────
@@ -448,6 +450,7 @@
     phaseMessage = '';
     batchPhase = 'extracting';
     batchLog = [];
+    outlierReport = [];
     startTimer();
 
     try {
@@ -753,6 +756,9 @@
     if (!batchGrader) return;
     phaseMessage = `Applying ${data.adjustedResults.length} outlier adjustment(s)...`;
     const adjustedResults = data.adjustedResults;
+    // Accumulate every adjusted entry so the end-of-run review panel can show
+    // what was changed. Multi-version runs append across versions intentionally.
+    outlierReport = [...outlierReport, ...adjustedResults];
     for (let i = 0; i < adjustedResults.length; i++) {
       const result = adjustedResults[i];
       if (isBatchPaused) {
@@ -944,6 +950,7 @@
     currentVersionIndex = 0;
     versionCount = 1;
     batchGraderHasStudents = false;
+    outlierReport = [];
   }
 
   export function handleResumeSession() {
