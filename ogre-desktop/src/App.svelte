@@ -9,6 +9,8 @@
   import SiteProfiles from './pages/SiteProfiles.svelte';
   import SetupWizard from './pages/SetupWizard.svelte';
   import UpdateModal from './components/UpdateModal.svelte';
+  import ToastContainer from './components/ToastContainer.svelte';
+  import { success, errToast } from './lib/toast-store';
   import {
     CollapseIcon,
     DashboardIcon,
@@ -108,6 +110,9 @@
     unlistenServerStatus = await listenServerStatus(async (status) => {
       if (status === 'running') {
         await pushOnStartup();
+        success('Grading server online');
+      } else if (status === 'stopped') {
+        errToast('Grading server stopped — check logs');
       }
     });
 
@@ -125,7 +130,11 @@
     });
 
     // Sync bundled site profiles on app init (fire-and-forget)
-    syncSiteProfiles().catch(() => {});
+    syncSiteProfiles().then(() => {
+      success('Site profiles synced');
+    }).catch(() => {
+      errToast('Site profile sync failed — check server connection');
+    });
   });
 
   onDestroy(() => {
@@ -261,6 +270,8 @@
   update={pendingUpdate}
   on:close={() => { showUpdateModal = false; }}
 />
+
+<ToastContainer />
 
 <style>
   /* Global styles for the app container */

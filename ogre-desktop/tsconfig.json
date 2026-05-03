@@ -17,6 +17,6 @@
       "$lib/*": ["src/lib/*"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.svelte", "electron-main/**/*.ts"],
+  "include": ["src/**/*.ts", "src/**/*.svelte", "src/**/*.svelte.ts", "electron-main/**/*.ts"],
   "exclude": ["node_modules", "dist", "dist-electron"]
 }
