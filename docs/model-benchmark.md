@@ -46,21 +46,53 @@ Benchmark comparing AI models on rubric-based essay grading using the **full OGR
 
 **Cascade** and **Q397B** were excluded — both too slow for practical use (cascade >90s/student local, Q397B ~2min/student cloud with thinking tokens).
 
+### May 2026 additions
+
+| Student | Base | DSv4-Flash | DSv4-Pro‡ | Kimi-K2.6§ | Granite4.1 | Gemma4-26L | Laguna§ | Cascade2§ |
+|---------|------|-----------|----------|-----------|-----------|-----------|---------|----------|
+| Brandt, Laura | 1.50 | 2.50 | 2.50 | 2.50 | 3.50 | 2.00 | 2.75 | 2.75 |
+| Calderon, Gabriella | 2.75 | 2.75 | 2.75 | 2.75 | 3.50 | 3.50 | 3.25 | 3.25 |
+| Chagoya, Julie | 3.25 | 3.50 | 3.50 | 3.25 | 3.50 | 3.50 | 3.25 | 2.50 |
+| Costner, Adam | 0.75 | 0.75 | 2.00 | 1.50 | 3.25 | 1.50 | 1.50 | 0.75 |
+| Disney, Ben | 1.50 | 1.50 | 2.00 | 2.50 | 3.25 | 2.00 | 2.75 | 0.00 |
+| Franco, Melody | 2.50 | 2.75 | 2.75 | 2.50 | 4.00 | 3.50 | 2.75 | 3.25 |
+| Fuentes, Nayeli | 2.50 | 2.50 | 2.75 | 2.00 | 3.50 | 2.75 | 2.75 | 2.50 |
+| Garcia, Hazel | 3.25 | 3.50 | 2.75 | 3.25 | 3.50 | 3.50 | 3.25 | 3.25 |
+| Goodwin, Reed | 2.75 | 3.50 | 3.25 | 3.25 | 4.00 | 4.00 | 3.50 | 3.25 |
+| Hastain, Emma | 2.75 | 3.25 | 3.25 | 2.75 | 3.50 | 3.50 | 3.25 | 3.25 |
+| Humble, Layla | 2.50 | 3.25 | 2.75 | 3.25 | 4.00 | 3.25 | 4.00 | 2.75 |
+| Lakhanpal, Neha | 0.75 | 0.75 | 0.75 | 0.75 | 0.75 | 1.25 | 1.25 | 0.75 |
+| Matthews, Sammy | 1.25 | 2.00 | 2.00 | 2.00 | 2.75 | 2.50 | 2.75 | 4.00 |
+| Quiroz, Paulina | 0.75 | 1.50 | 0.75 | 1.25 | — | 1.50 | 2.00 | 0.75 |
+| Rosales, Elizabeth | 1.25 | 1.50 | 1.50 | 1.50 | 2.75 | 2.00 | 2.50 | 2.50 |
+| Sutton, Caidin | 3.50 | 3.25 | 3.50 | 3.25 | 3.50 | 4.00 | 3.25 | 2.75 |
+| Tuman, Charlie | 2.75 | 2.75 | 3.25 | 2.75 | 4.00 | 3.50 | 3.25 | 3.25 |
+
+‡DSv4-Pro: 4 attempts, finally got a clean 17/17. Earlier attempts hit ~25-30% transient FAILED rate with *different* students failing each run, confirming Ollama-cloud routing/timeout issues (not model behavior). The clean run shown here scored Quiroz, Lakhanpal, and Sutton all exactly at baseline.
+§Models requiring `think:false` to grade reliably: **Kimi-K2.6** (0/17 with thinking on — exhausts num_predict mid-reasoning), **Laguna-xs.2** (default thinking timed out at 5 min/student), **Nemotron-Cascade-2** (default thinking timed out), **Gemma4 26B local** (default thinking timed out — but cloud variant Gemma4 31B did not need it). Disabling thinking moved all four from unusable to working.
+
 ## Model Rankings
 
 | Rank | Model | Type | Size | Avg Error | Bias | N | Quiroz | Lakhan | Verdict |
 |------|-------|------|------|-----------|------|---|--------|--------|---------|
 | 1 | **Stat-Grader 9B** | Ollama local | 6 GB | **0.26** | +0.24 | 17 | 2.00 | 0.75 | Best local model — near-Sonnet accuracy |
-| 2 | **Gemma4 31B** | Ollama cloud | Cloud | **0.35** | +0.35 | 17 | 1.25 | 0.75 | Excellent — caught both litmus, low inflation |
-| 3 | **Nemotron-3-super** | Ollama cloud | Cloud | **0.41** | +0.41 | 17 | 1.25 | 0.75 | Excellent — good discrimination |
-| 4 | **GLM-5** | Ollama cloud | Cloud | **0.44** | +0.44 | 17 | 1.25 | 0.75 | Good |
-| 5 | **GLM-5.1** | Ollama cloud | Cloud | **0.49** | +0.40 | 17 | 1.25 | 1.50 | Good — slight regression from GLM-5, missed Lakhanpal |
-| 6 | **Minimax-M2.7** | Ollama cloud | Cloud | **0.62** | +0.53 | 17 | 1.50 | 0.75 | Decent — caught Lakhanpal but inflates Matthews to 4/4 |
-| 7 | **Opus-Distilled 9B** | Ollama local | 5.6 GB | **0.63** | +0.51 | 17 | 0.75 | 0.75 | Good — caught both litmus students |
-| 8 | **Nem4B** | Ollama local | 2.8 GB | **1.21** | +1.21 | 17 | 0.75 | 0.75 | Poor — heavy inflation despite catching errors |
-| 9 | **LFM 2.5-thinking** | Ollama local | 731 MB | **1.23** | +0.95 | 11 | N/A | N/A | Poor — batch failures, inflates with pipeline |
-| 10 | **Nemotron-nano 30B** | Ollama cloud | Cloud | **1.40** | +1.40 | 17 | 4.00 | 2.00 | Poor — gave Quiroz 4/4 (wrong answer) |
-| 11 | **LFM2** | Ollama local | 14 GB | **1.44** | +1.44 | 17 | 3.50 | 3.25 | Very poor — everything 3.50 |
+| 2 | **DeepSeek-V4 Flash** | Ollama cloud | Cloud | **0.34** | +0.31 | 17 | 1.50 | 0.75 | Best clean-run cloud — caught Costner & Lakhanpal exactly, low inflation, no flakiness |
+| 3 | **Gemma4 31B** | Ollama cloud | Cloud | **0.35** | +0.35 | 17 | 1.25 | 0.75 | Excellent — caught both litmus, low inflation |
+| 4 | **Kimi-K2.6** § | Ollama cloud | Cloud (1T MoE) | **0.37** | +0.28 | 17 | 1.25 | 0.75 | Strong — caught Lakhanpal exactly, fastest cloud (~16s/student). Requires `think:false` |
+| 5 | **DeepSeek-V4 Pro** ‡ § | Ollama cloud | Cloud | **0.40** | +0.34 | 17 | 0.75 | 0.75 | Caught BOTH litmus AND Sutton exactly — but Costner outlier 2.00 (vs 0.75) drags avg up. Flaky cloud, took 4 attempts to get clean run |
+| 6 | **Nemotron-3-super** | Ollama cloud | Cloud | **0.41** | +0.41 | 17 | 1.25 | 0.75 | Excellent — good discrimination |
+| 7 | **GLM-5** | Ollama cloud | Cloud | **0.44** | +0.44 | 17 | 1.25 | 0.75 | Good |
+| 8 | **GLM-5.1** | Ollama cloud | Cloud | **0.49** | +0.40 | 17 | 1.25 | 1.50 | Good — slight regression from GLM-5, missed Lakhanpal |
+| 9 | **Minimax-M2.7** | Ollama cloud | Cloud | **0.62** | +0.53 | 17 | 1.50 | 0.75 | Decent — caught Lakhanpal but inflates Matthews to 4/4 |
+| 10 | **Opus-Distilled 9B** | Ollama local | 5.6 GB | **0.63** | +0.51 | 17 | 0.75 | 0.75 | Good — caught both litmus students |
+| 11 | **Nemotron-Cascade-2** § | Ollama local | 17 GB (30B/3B-MoE) | **0.66** | +0.31 | 17 | 0.75 | 0.75 | Discriminative — lowest local-model bias, caught all three litmus exactly, but Disney 0.00 (over-strict) and Matthews 4.00 (over-inflated). Requires `think:false` |
+| 12 | **Gemma4 26B local** § | Ollama local | 17 GB | **0.68** | +0.68 | 17 | 1.50 | 1.25 | Mid-tier — moderate inflation, ~75s/student. Requires `think:false` |
+| 13 | **Laguna-xs.2** § | Ollama local | 23 GB (33B/3B-MoE) | **0.72** | +0.69 | 17 | 2.00 | 1.25 | Mid-tier inflator — designed for agentic coding, not grading. Requires `think:false` |
+| 14 | **Granite 4.1 8B** | Ollama local | 5.3 GB | **1.11** | +1.11 | 16 | — | 0.75 | Poor — heavy inflation, gave Franco/Goodwin/Humble/Tuman 4/4 |
+| 15 | **Nem4B** | Ollama local | 2.8 GB | **1.21** | +1.21 | 17 | 0.75 | 0.75 | Poor — heavy inflation despite catching errors |
+| 16 | **LFM 2.5-thinking** | Ollama local | 731 MB | **1.23** | +0.95 | 11 | N/A | N/A | Poor — batch failures, inflates with pipeline |
+| 17 | **Nemotron-nano 30B** | Ollama cloud | Cloud | **1.40** | +1.40 | 17 | 4.00 | 2.00 | Poor — gave Quiroz 4/4 (wrong answer) |
+| 18 | **LFM2** | Ollama local | 14 GB | **1.44** | +1.44 | 17 | 3.50 | 3.25 | Very poor — everything 3.50 |
 
 **Metrics:**
 - **Avg Error** = mean |score - baseline| across graded students (lower = better)
@@ -104,32 +136,59 @@ GLM-5.1 (0.49 error) is slightly worse than GLM-5 (0.44) on this benchmark. It i
 ### 7. Minimax-M2.7 is mid-tier with an inflation problem
 Minimax (0.62 error) sits near Opus-Distilled. It caught Lakhanpal (0.75) but inflated Matthews to 4.00 (baseline 1.25) — the biggest single-student error among viable models. Quiroz scored 1.50 (should be 0.75).
 
-### 7. Litmus test: pipeline improved error detection
+### 8. DeepSeek-V4 Flash is the new top cloud model (May 2026)
+DeepSeek-V4 Flash (0.34 error, +0.31 bias) edged past Gemma4 31B (0.35) by catching Costner *exactly* (0.75 vs baseline 0.75) and Lakhanpal (0.75). 17/17 graded clean, ~37 min wall time. No `think:false` needed — it's a non-thinking variant. Currently the best cloud option for production grading.
+
+### 9. DeepSeek-V4 Pro caught all three litmus students exactly — but Costner is its blind spot
+After 4 attempts, DSv4-Pro completed a clean 17/17 with avg error 0.40, bias +0.34. It scored **Lakhanpal 0.75, Quiroz 0.75, AND Sutton 3.50 — all exact baseline matches**. The persistent weakness: Costner scored 2.00 (vs baseline 0.75) — it inflated this student in *every* run that included him, so this is model behavior, not noise. Without Costner the avg error would be ~0.32. Required `think:false`. The 4-attempt success rate exposes Ollama-cloud's per-student failure rate (~25-30%, different students each run, transient routing/timeout — not content-specific).
+
+### 10. Kimi K2.6 is competitive once thinking is disabled
+With default `think:true`, Kimi-K2.6 emits all reasoning into the `thinking` field and runs out of `num_predict` (4096) before producing JSON content — 0/17 on first attempt. With `think:false`, it grades 17/17 cleanly in ~16s/student (~4.6 min total — fastest cloud model). Avg error 0.37, caught Lakhanpal exactly, Quiroz at 1.25. The 1T-parameter MoE architecture is overkill for grading but works.
+
+### 11. Granite 4.1 8B inflates heavily — not usable for grading
+IBM Granite 4.1 8B (5.3 GB local, dense decoder-only) gave Franco/Goodwin/Humble/Tuman a 4/4 against baselines of 2.50–2.75. Avg error 1.11 places it in the inflation tier alongside Nem4B (1.21) and LFM2 (1.44). It did catch Lakhanpal at 0.75 exactly, suggesting the model can recognize incoherent responses but can't discriminate the middle of the rubric. The pipeline's CRITICAL 8+ rule appears to read as "default high" rather than "rare exception" for this size class.
+
+### 12. Local thinking models all need `think:false` for grading
+Four newly-tested local thinking-capable models (Gemma4 26B, Laguna-xs.2, Nemotron-Cascade-2) plus Kimi-K2.6 cloud all hit 5-min per-student timeouts or 0/17-grade failures with default thinking enabled. Disabling thinking moved them all from unusable to working. The pattern: with thinking on, the model spends its `num_predict` budget (4096) inside the reasoning trace and never emits parseable JSON content. **Recommendation: `think:false` should be the default for any grading benchmark; thinking is only useful for tasks where the chain-of-reasoning *is* the output.**
+
+### 13. Nemotron-Cascade-2 is the lowest-bias local model
+Cascade-2 (30B/3B-active MoE, 17 GB local) scored avg error 0.66 with bias only +0.31 — the lowest bias of any local model and tied with DSv4-Flash for lowest cloud-or-local bias overall. It caught all three litmus students at 0.75 exactly (Costner/Lakhanpal/Quiroz). The high error vs. low bias means it's grading bidirectionally — under-scoring Disney (0.00 vs baseline 1.50) and over-scoring Matthews (4.00 vs baseline 1.25). With consistency tuning this could be the best local alternative to Stat-Grader. Requires `think:false`.
+
+### 14. Gemma4 26B local underperforms its cloud sibling
+Gemma4 26B local (17 GB, ~75s/student) scored avg error 0.68 — about 2x worse than the Gemma4 31B cloud variant (0.35). Same model family, different size, different inference path; the local quantization or the missing 5B params clearly matter for this task. Mid-tier — usable but Cascade-2 and Stat-Grader 9B are both better local options.
+
+### 15. Laguna-xs.2 is built for agentic coding, not grading
+Laguna-xs.2 (33B/3B-active MoE, 23 GB) scored Quiroz 2.00 (vs baseline 0.75) and Lakhanpal 1.25 (vs baseline 0.75) — heavy inflation on the litmus students. Avg error 0.72, bias +0.69. The model is designed for "agentic coding and long-horizon work" — it's not tuned for the kind of structured rubric judgment grading requires. Skip for grading.
+
+### 16. Litmus test: pipeline improved error detection
 5 of 8 pipeline models correctly penalized Quiroz (wrong answer) vs 5 of 10 in the plain-prompt benchmark. Lakhanpal was caught by 6 of 8 pipeline models.
 
-### 8. Always use the OGRE pipeline
+### 17. Always use the OGRE pipeline
 Stat-Grader went from 0.65 → 0.26 error with the pipeline. The prompt matters more than the model for mid-tier models.
 
 ## Recommendations
 
 1. **Default grading model:** Sonnet (with OGRE prompt) — the optimization target and most consistent
 2. **Best local model:** Stat-Grader 9B + OGRE pipeline (0.26 error) — near-Sonnet accuracy at 6 GB
-3. **Best Ollama cloud:** Gemma4 31B (0.35 error) — best cloud accuracy, caught both litmus tests
-4. **Strong cloud alternatives:** Nemotron-3-super (0.41) or GLM-5 (0.44) — reliable, slight inflation
-5. **Good cloud alternatives:** GLM-5.1 (0.49) — slight regression from GLM-5
+3. **Best Ollama cloud:** DeepSeek-V4 Flash (0.34 error) — caught Costner & Lakhanpal exactly, no flakiness, no `think:false` needed
+4. **Strong cloud alternatives:** Gemma4 31B (0.35), Kimi-K2.6 (0.37, requires `think:false`), DeepSeek-V4 Pro (0.40, requires `think:false` and is flaky), Nemotron-3-super (0.41)
+5. **Good cloud alternatives:** GLM-5 (0.44), GLM-5.1 (0.49)
 6. **Mid-tier cloud:** Minimax-M2.7 (0.62) — usable but watch for outlier inflation
-6. **Good local alternative:** Opus-Distilled 9B (0.63 error, 5.6 GB) — catches errors, personalized feedback
-7. **Avoid:** LFM2, LFM 2.5-thinking, Nemotron-nano 30B, Nemotron-3-nano 4B — pipeline doesn't fix inflation
-8. **Run-to-run mitigation:** For models with variance (GLM-5), use the consistency sweep with fixed 2σ threshold and 1-pt drop cap
+7. **Best local alternative to Stat-Grader:** Opus-Distilled 9B (0.63 error, 5.6 GB) — catches errors, personalized feedback. Cascade-2 (0.66, 17 GB local MoE, requires `think:false`) is also a strong contender with the lowest local-model bias.
+8. **Avoid for grading:** LFM2, LFM 2.5-thinking, Nemotron-nano 30B, Nemotron-3-nano 4B, **Granite 4.1 8B**, **Laguna-xs.2** (agentic-coding-tuned), **Gemma4 26B local** (use cloud variant instead) — all inflate or miscalibrate
+9. **Always pass `think:false` for thinking-capable models** when grading — thinking budget exhausts inside reasoning trace and prevents JSON emission. Confirmed for: Kimi-K2.6, Gemma4 26B local, Laguna-xs.2, Nemotron-Cascade-2, DeepSeek-V4 Pro.
+10. **VRAM hygiene for sequential local benchmarks:** Use `ollama stop <model>` between models when total combined VRAM exceeds GPU. Without explicit unloads, Ollama's auto-unload may not happen before the next model load, causing "model failed to load" errors (observed with cascade-2 after gemma4:26b/laguna).
+11. **Run-to-run mitigation:** For models with variance (GLM-5), use the consistency sweep with fixed 2σ threshold and 1-pt drop cap
 
 ## Test Environment
 
 - **March run:** 2026-03-29 (plain prompt), 2026-03-30 (full pipeline)
 - **April run:** 2026-04-16 (Gemma4, GLM-5.1, Minimax-M2.7 — full pipeline, same dataset)
+- **May run:** 2026-05-01 (DeepSeek-V4 Flash, DeepSeek-V4 Pro, Kimi-K2.6, Granite 4.1 8B, Gemma4 26B local, Laguna-xs.2 q4_K_M, Nemotron-Cascade-2 30B — full pipeline, same dataset; all four thinking-capable local models required `think:false`)
 - **Platform:** Windows 11, Ollama, Claude Code subagents
 - **Question:** MyOpenMath gradeallq2.php — mean vs median with outlier
 - **Students:** 17 with responses, 3 jittered versions
 - **Baseline:** Sonnet with full OGRE production prompt (grading philosophy, virtual 0-10 scale, partial credit rules)
 - **Pipeline:** Full OGRE production prompt via `buildBatchPrompt` (grading philosophy, scoring anchors, partial-credit rules, 0-10 virtual scale)
 - **Opus-Distilled:** Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled (Q4_K_M GGUF, 5.6 GB) from HuggingFace/Jackrong — installed as `opus-distilled:latest` in Ollama
-- **Benchmark script:** `_pipeline-bench-robust.mjs` — 1 student per AI call, direct Ollama, `buildBatchPrompt` with scoring anchors
+- **Benchmark scripts:** `_pipeline-bench-robust.mjs` (default — thinking on/auto), `_pipeline-bench-nothink.mjs` (passes `think:false` for thinking-capable models). 1 student per AI call, direct Ollama, `buildBatchPrompt` with scoring anchors
