@@ -127,7 +127,7 @@
 
   /** Extract markdown content from the last assistant message and save as a skill. */
   async function saveSkillFromChat() {
-    const lastMsg = messages.findLast(
+    const lastMsg = [...messages].reverse().find(
       (m) => m.role === "assistant" && (m.content.includes("```markdown") || m.content.includes("```")),
     );
     if (!lastMsg) return;

@@ -227,7 +227,7 @@
         const data = await response.json();
         const models = data.models?.map((m: any) => m.name) || [];
 
-        fetchedModels[providerId] = models.map(m => ({ id: m, name: m }));
+        fetchedModels[providerId] = models.map((m: string) => ({ id: m, name: m }));
         fetchedModels = fetchedModels;
 
         // Auto-select first model if none selected

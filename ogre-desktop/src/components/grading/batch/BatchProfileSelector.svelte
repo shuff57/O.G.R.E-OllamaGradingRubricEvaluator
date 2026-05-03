@@ -171,7 +171,7 @@
         embedStatusInterval = setInterval(async () => {
           embedPollAttempts++;
           if (embedPollAttempts >= MAX_EMBED_POLL_ATTEMPTS) {
-            clearInterval(embedStatusInterval);
+            if (embedStatusInterval) clearInterval(embedStatusInterval);
             embedStatusInterval = null;
             embedLoadFailed = true;    // show failure warning (spinner hidden via template)
             localEmbedEnabled = false; // disable local embedding
@@ -189,7 +189,7 @@
                 }
               } else if (data.error) {
                 // Server reports a definitive load failure — stop polling immediately
-                clearInterval(embedStatusInterval);
+                if (embedStatusInterval) clearInterval(embedStatusInterval);
                 embedStatusInterval = null;
                 embedLoadFailed = true;    // show failure warning (spinner hidden via template)
                 localEmbedEnabled = false; // disable local embedding
@@ -282,10 +282,10 @@
         <span class="resume-text">Previous session stopped at <strong>{savedSessionStudent}</strong></span>
       </div>
       <div class="resume-session-actions">
-        <button class="btn-primary small" onclick={onResumeSession}>
+        <button class="btn-primary small" onclick={() => onResumeSession()}>
           Resume from {savedSessionStudent}
         </button>
-        <button class="btn-secondary small" onclick={onStartFresh}>
+        <button class="btn-secondary small" onclick={() => onStartFresh()}>
           Start Fresh
         </button>
       </div>

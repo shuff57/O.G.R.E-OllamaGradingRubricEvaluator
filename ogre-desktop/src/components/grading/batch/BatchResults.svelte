@@ -35,40 +35,40 @@
         <button class="btn-primary full-width" onclick={() => onRequestDiscovery()}>
           Discover This Page
         </button>
-        <button class="btn-link" onclick={onExtract}>
+        <button class="btn-link" onclick={() => onExtract()}>
           Or use default profile anyway
         </button>
       </div>
     {:else}
-      <button class="btn-primary full-width" onclick={onExtract}>
+      <button class="btn-primary full-width" onclick={() => onExtract()}>
         Start Batch
       </button>
     {/if}
   {:else if batchPhase === 'extracting'}
-    <button class="btn-danger full-width" onclick={onCancelBatch}>
+    <button class="btn-danger full-width" onclick={() => onCancelBatch()}>
       Cancel
     </button>
   {:else if batchPhase === 'grading' && isBatchRunning}
     <div class="batch-controls">
-      <button class="btn-secondary" onclick={onPauseBatch}>
+      <button class="btn-secondary" onclick={() => onPauseBatch()}>
         {isBatchPaused ? 'Resume' : 'Pause'}
       </button>
-      <button class="btn-danger" onclick={onStopBatch}>
+      <button class="btn-danger" onclick={() => onStopBatch()}>
         Stop
       </button>
     </div>
   {:else if batchPhase === 'done'}
-    <button class="btn-secondary full-width" onclick={onReset}>
+    <button class="btn-secondary full-width" onclick={() => onReset()}>
       New Batch
     </button>
   {:else if batchPhase === 'review'}
     <div class="batch-controls">
-      <button class="btn-secondary" onclick={onCancelBatch}>
+      <button class="btn-secondary" onclick={() => onCancelBatch()}>
         Cancel
       </button>
       <button
         class="btn-primary"
-        onclick={onContinueGrading}
+        onclick={() => onContinueGrading()}
       >
         Start Grading
       </button>

@@ -150,7 +150,7 @@
           <button class="btn-secondary" onclick={handleSyncLocal} disabled={syncing}>
             {syncing ? 'Syncing...' : 'Sync Local Skills'}
           </button>
-          <button class="btn-primary" onclick={() => fileInput.click()}>
+          <button class="btn-primary" onclick={() => fileInput?.click()}>
             Import Skill (.md)
           </button>
           <input 

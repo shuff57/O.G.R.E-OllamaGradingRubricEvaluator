@@ -521,6 +521,7 @@
   // ── Phase 2: Continue to grading after review ──────────────────────────
   export async function handleContinueGrading() {
     if (!batchGrader) return;
+    const grader = batchGrader;
 
     isAutoStopped = false;
     batchError = '';
@@ -528,11 +529,11 @@
     // When forceRegrade is checked, use all students (except no-response)
     // regardless of whether they were filtered during extraction
     const baseStudents = forceRegrade
-      ? batchGrader.students.filter(s => !batchGrader.noResponseStudents.includes(s))
-      : batchGrader.studentsToGrade;
+      ? grader.students.filter(s => !grader.noResponseStudents.includes(s))
+      : grader.studentsToGrade;
     const studentsToGrade = versionCount > 1
       ? baseStudents.filter(s => {
-          const versionStudents = batchGrader.getStudentsForVersion(currentVersionIndex);
+          const versionStudents = grader.getStudentsForVersion(currentVersionIndex);
           return versionStudents.some(vs => vs.index === s.index);
         })
       : baseStudents;

@@ -5,8 +5,7 @@
   import { pushOnStartup } from '../lib/provider-sync';
   import EmptyState from '../components/EmptyState.svelte';
 
-  // Injected by Vite define() from package.json at build time
-  declare const __APP_VERSION__: string;
+  // Injected by Vite define() from package.json at build time (declared in src/types/globals.d.ts)
   const appVersion = __APP_VERSION__;
 
   /** Incremented by App.svelte when a new grading session is recorded */
@@ -22,7 +21,7 @@
   let lastSessionDate = $state('Never');
 
   // Poll server health every 5 seconds
-  let healthInterval: number;
+  let healthInterval: ReturnType<typeof setInterval>;
   let unlistenServer: () => void;
 
   async function loadStats() {

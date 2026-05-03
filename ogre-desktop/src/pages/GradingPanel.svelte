@@ -20,7 +20,7 @@
   import { ICON_STRIP_WIDTH } from '../lib/constants';
   import { createDebouncedRefresh, refreshPageData } from '../lib/page-refresh';
 
-  let batchPanelRef: BatchPanel;
+  let batchPanelRef = $state<BatchPanel>();
 
   let {
     isCollapsed = $bindable(false),
@@ -566,7 +566,7 @@
         {/if}
       {/if}
       {#if activeMode === 'agent'}
-        <AgentChat {pageLoadedUrl} activeProfileName={globalComputedProfile.name} {onRequestDiscovery} />
+        <AgentChat {pageLoadedUrl} />
       {/if}
       {#if activeMode === 'discovery'}
         <ProviderSelector bind:provider={activeProvider} bind:model={activeModel} />

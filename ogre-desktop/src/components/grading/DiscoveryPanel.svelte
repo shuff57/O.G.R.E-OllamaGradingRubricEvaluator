@@ -222,7 +222,7 @@
 
       discoveryResult = workflow.draft;
       validationResults = workflow.validation;
-      screenshot = workflow.screenshot;
+      screenshot = workflow.screenshot ?? '';
 
       phase = 'review';
       lastDiscoveryUrl = pageLoadedUrl;
@@ -598,7 +598,8 @@
   }
 
   async function handleSaveTraining(): Promise<void> {
-    if (!trainingSession.skillId) {
+    const skillId = trainingSession.skillId;
+    if (!skillId) {
       trainingSession = {
         ...trainingSession,
         phase: 'error',
@@ -625,7 +626,7 @@
         };
         return;
       }
-      await appendLearnedCorrections(trainingSession.skillId, corrections);
+      await appendLearnedCorrections(skillId, corrections);
       trainingSession = { ...trainingSession, phase: 'saved', pendingCorrections: corrections };
     } catch (e) {
       trainingSession = { ...trainingSession, phase: 'error', error: String(e) };
@@ -798,7 +799,7 @@
         }),
       });
 
-      const status = (response as TauriResponseWithData).status ?? 500;
+      const status = response.status;
       if (status < 200 || status >= 300) {
         throw new Error(`Generation failed: ${status}`);
       }

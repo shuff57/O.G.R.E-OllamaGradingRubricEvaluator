@@ -498,7 +498,7 @@
               {#if weightMode === 'criterion'}
                 <th>Weight %</th>
               {/if}
-              {#if weightMode === 'off'}
+              {#if (weightMode as string) === 'off'}
                 <th>Pts</th>
               {/if}
               <th></th>
@@ -519,7 +519,7 @@
                 {/if}
                 <td><input type="text" value={row.category ?? ''} oninput={(e) => updateTableRow(oi, 'category', (e.target as HTMLInputElement).value)} disabled={isDisabled} /></td>
                 <td><input type="text" value={row.criteria} oninput={(e) => updateTableRow(oi, 'criteria', (e.target as HTMLInputElement).value)} disabled={isDisabled} /></td>
-                {#if weightMode === 'off'}
+                {#if (weightMode as string) === 'off'}
                   <td><input class="num-input" type="number" value={row.points === 0 && fullCreditMap.has(oi) ? fullCreditMap.get(oi)! : row.points} oninput={(e) => updateTableRow(oi, 'points', parseFloat((e.target as HTMLInputElement).value) || 0)} disabled={isDisabled} /></td>
                 {/if}
                 <td><button class="error-text" onclick={() => removeTableRow(oi)} disabled={isDisabled} title="Remove row">&times;</button></td>

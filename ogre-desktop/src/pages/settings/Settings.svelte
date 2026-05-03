@@ -5,7 +5,7 @@
   import EmbeddingSettings from './EmbeddingSettings.svelte';
   import ColumnSettings from './ColumnSettings.svelte';
 
-  declare const __APP_VERSION__: string;
+  // Injected by Vite define() (declared in src/types/globals.d.ts)
   const appVersion = __APP_VERSION__;
 </script>
 
