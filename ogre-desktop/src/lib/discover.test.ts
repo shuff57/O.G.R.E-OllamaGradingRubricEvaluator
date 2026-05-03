@@ -443,7 +443,7 @@ describe("DISCOVERY_SYSTEM_PROMPT", () => {
 // ── DISCOVERY_USER_PROMPT_TEMPLATE ─────────────────────────────────────────
 
 describe("DISCOVERY_USER_PROMPT_TEMPLATE", () => {
-  const mockDomSnapshot = [
+  const mockDomSnapshot: Array<{ depth: number; tag: string; attrs?: Record<string, string>; text?: string; childCount?: number }> = [
     {
       depth: 0,
       tag: "body",

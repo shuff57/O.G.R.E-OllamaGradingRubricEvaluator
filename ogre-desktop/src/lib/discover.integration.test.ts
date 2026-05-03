@@ -21,9 +21,7 @@ import type { ExtractionConfig } from "./site-profiles";
 import { convertProfileToJSON } from "./profile-json-converter";
 import { formatSiteGuideForAgent, isSiteGuideJSON } from "./site-guide-types";
 
-// @ts-expect-error Vite raw markdown asset import
 import momProfileRaw from "../assets/profiles/myopenmath.md?raw";
-// @ts-expect-error Vite raw markdown asset import
 import aeriesProfileRaw from "../assets/profiles/aeries.md?raw";
 
 // ── Module Mocks (hoisted by vitest) ────────────────────────────────────────

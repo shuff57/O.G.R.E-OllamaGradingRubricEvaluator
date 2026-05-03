@@ -180,7 +180,7 @@ describe('evalScript - Performance', () => {
     
     expect(avgLatency).toBeLessThan(50);
     expect(p99Latency).toBeLessThan(100);
-  }, { timeout: 30000 });
+  }, 30000);
 
   it('Test 18: Parallel execution (10 concurrent calls)', async () => {
     const start = performance.now();
@@ -238,7 +238,7 @@ describe('evalScript - Stress Test', () => {
     console.log('');
     
     expect(failures).toBe(0);
-  }, { timeout: 60000 });
+  }, 60000);
 
   it('Test 20: Large payload return (serialization limit check)', async () => {
     // Create a large array (30 students × 10 fields)

@@ -227,10 +227,10 @@ describe('intentToDiscoveryHints', () => {
   });
 
   it('all three mode literals are handled without throw', () => {
-    const modes: IntentMode[] = ['form', 'chat', 'example'];
+    const modes: IntentMode[] = ['form', 'train', 'example'];
     const payloads: [IntentMode, FormModeInput | ChatMessage[] | ExampleSelection[]][] = [
       ['form', { hasStudentNames: false, hasScoreInputs: false, hasFeedbackFields: false }],
-      ['chat', []],
+      ['train', []],
       ['example', []],
     ];
     for (const [mode, payload] of payloads) {

@@ -416,14 +416,14 @@ describe('URL pattern round-trip (findProfilesByUrl)', () => {
 // ── Edge Case Tests ─────────────────────────────────────────────────────────
 
 describe('confirmation flow edge cases', () => {
-  function makeSels(overrides: Partial<SelectorMap> = {}): SelectorMap {
+  function makeSels(overrides: Partial<Record<keyof SelectorMap, string | null | undefined>> = {}): SelectorMap {
     return {
       studentSection: '.student-section',
       studentName: '.student-name',
       scoreInput: '.score-input',
       feedbackBox: '.feedback-box',
       ...overrides,
-    };
+    } as SelectorMap;
   }
 
   function makeVal(selectors: SelectorMap): ValidationResults {

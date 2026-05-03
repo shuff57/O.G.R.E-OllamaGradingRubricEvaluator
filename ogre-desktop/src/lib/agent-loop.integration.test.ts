@@ -82,7 +82,7 @@ describe('agent-loop integration: full pipeline', () => {
     expect(sys?.content).toContain('--- SKILL: gb-sync ---');
     expect(sys?.content).toContain('--- SITE GUIDE (JSON): MyOpenMath ---');
     // Harness layout: site guide comes before installed skill
-    expect(sys?.content.indexOf('--- SITE GUIDE')).toBeLessThan(sys?.content.indexOf('--- SKILL:'));
+    expect(sys!.content.indexOf('--- SITE GUIDE')).toBeLessThan(sys!.content.indexOf('--- SKILL:'));
   });
 
   it('Scenario 5: text response is non-terminal', async () => {

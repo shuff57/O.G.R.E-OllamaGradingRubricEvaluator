@@ -16,6 +16,7 @@ describe('selectBestProfile', () => {
     source_id: null,
     is_active: 1,
     url_pattern: 'example.com',
+    learned_corrections: null,
     created_at: now.toISOString(),
     updated_at: now.toISOString(),
     ...overrides,

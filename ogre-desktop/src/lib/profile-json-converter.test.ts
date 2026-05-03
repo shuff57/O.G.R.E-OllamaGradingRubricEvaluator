@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { convertProfileToJSON } from './profile-json-converter';
 import { isSiteGuideJSON } from './site-guide-types';
-// @ts-expect-error Vite raw import type is resolved at test runtime
 import momContent from '../assets/profiles/myopenmath.md?raw';
-// @ts-expect-error Vite raw import type is resolved at test runtime
 import aeriesContent from '../assets/profiles/aeries.md?raw';
 
 describe('convertProfileToJSON', () => {

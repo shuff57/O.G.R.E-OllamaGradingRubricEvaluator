@@ -331,6 +331,7 @@ describe("parseSSEStream", () => {
       onOutlier: vi.fn(),
       onDone: vi.fn(),
       onError: vi.fn(),
+      onHeartbeat: vi.fn(),
     };
 
     const text = [

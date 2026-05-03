@@ -11,6 +11,8 @@ describe('Skill Logic', () => {
     source: null,
     source_id: null,
     is_active: 1,
+    url_pattern: null,
+    learned_corrections: null,
     created_at: '',
     updated_at: ''
   };
