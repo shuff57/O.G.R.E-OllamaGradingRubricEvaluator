@@ -351,10 +351,40 @@ FEEDBACK FORMAT RULE: The feedback string must contain one section for EACH numb
   // ... continue for all ${students.length} students
 ]
 
-CRITICAL: Return results for ALL ${students.length} students. Use the studentIndex from each \"--- Student N:\" header.`;
+CRITICAL: Return results for ALL ${students.length} students. Use the studentIndex from each \"--- Student N:\" header.
+
+FORMAT REMINDER: each "feedback" string MUST be HTML with <strong>/<blockquote>/<p>/<em> tags exactly as shown in the template above. Do NOT use markdown (no **bold**, no "> quote", no *italic*).`;
 
 
   return prompt;
+}
+
+/**
+ * If the AI returned markdown-formatted feedback instead of the expected
+ * HTML (DeepSeek and other models occasionally drop the HTML format under
+ * long-context drift), convert markdown markers to the expected tags so
+ * downstream rendering stays consistent. Returns input unchanged when it
+ * already contains HTML tags or has no markdown markers.
+ */
+function normalizeFeedbackHtml(feedback) {
+  if (!feedback || typeof feedback !== 'string') return feedback;
+  if (/<(p|strong|blockquote|em)\b/i.test(feedback)) return feedback;
+  const hasMarkdown = /\*\*[^*\n]+\*\*/.test(feedback) || /^\s*>\s+/m.test(feedback);
+  if (!hasMarkdown) return feedback;
+  console.warn('[grade] feedback returned as markdown — converting to HTML');
+  const out = [];
+  for (let line of feedback.split(/\r?\n/)) {
+    line = line.trim();
+    if (!line) continue;
+    line = line.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+    line = line.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+    if (/^>\s+/.test(line)) {
+      out.push('<blockquote>' + line.replace(/^>\s+/, '') + '</blockquote>');
+    } else {
+      out.push('<p>' + line + '</p>');
+    }
+  }
+  return out.join('');
 }
 
 /**
@@ -543,7 +573,7 @@ function validateBatchResults(parsed, students, maxScore, categoryWeights = null
     score = snapScore(score, maxScore);
     console.log('[grade] batch ai_raw=' + item.score + ' factor=' + _parseFactor.toFixed(2) + ' final=' + score + ' (max=' + maxScore + ')');
     const rawFeedback = Array.isArray(item.feedback) ? item.feedback.join('\n') : (item.feedback || '');
-    const feedback = String(rawFeedback).trim() || 'Graded by AI.';
+    const feedback = normalizeFeedbackHtml(String(rawFeedback).trim()) || 'Graded by AI.';
 
     // Use the actual student index from the chunk, not the AI's studentIndex
     const studentIndex = idx < students.length
@@ -1046,7 +1076,9 @@ Return ONLY valid JSON. No markdown code fences. No explanation text.
 {
 ${_sCorField}  "score": <${_sScoreHint}>
   "feedback": "<p>Hi [name],</p>${_sFeedbackExample}"
-}`;
+}
+
+FORMAT REMINDER: the "feedback" string MUST be HTML with <strong>/<blockquote>/<p>/<em> tags exactly as shown above. Do NOT use markdown (no **bold**, no "> quote", no *italic*).`;
 
   return prompt;
 }
@@ -1151,7 +1183,7 @@ function clampSingleResult(parsed, maxScore, categoryWeights = null, categoryMax
   if (score > maxScore) score = maxScore;
   score = snapScore(score, maxScore);
   console.log('[grade] single ai_raw=' + parsed.score + ' factor=' + _cf.toFixed(2) + ' final=' + score + ' (max=' + maxScore + ')');
-  const feedback = (parsed.feedback || '').trim() || 'Graded by AI.';
+  const feedback = normalizeFeedbackHtml((parsed.feedback || '').trim()) || 'Graded by AI.';
   return { score, feedback };
 }
 
