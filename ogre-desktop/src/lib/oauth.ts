@@ -623,7 +623,7 @@ export async function fetchAvailableModels(
       const validToken = await getValidAnthropicToken();
       const effectiveToken = validToken || accessToken;
 
-      const anthropicAuthHeader = oauthData?.token_type === 'Bearer'
+      const anthropicAuthHeader: Record<string, string> = oauthData?.token_type === 'Bearer'
         ? { 'Authorization': `Bearer ${effectiveToken}` }
         : { 'x-api-key': effectiveToken };
       const res = await fetch("https://api.anthropic.com/v1/models", {

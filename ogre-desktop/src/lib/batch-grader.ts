@@ -1744,9 +1744,9 @@ export class BatchGrader {
     // existing entry rather than pushing a duplicate, so log.length === student count.
     // Primary dedup: match by studentIndex. Fallback: match by studentName (catches
     // cases where the outlier review's positional mapping produces a different index).
-    let existingLogIdx = this._log.findLastIndex(e => e.studentIndex === studentIndex && e.status === 'success');
+    let existingLogIdx = this._log.findLastIndex((e: BatchLogEntry) => e.studentIndex === studentIndex && e.status === 'success');
     if (existingLogIdx < 0 && displayName) {
-      existingLogIdx = this._log.findLastIndex(e => e.studentName === displayName && e.status === 'success');
+      existingLogIdx = this._log.findLastIndex((e: BatchLogEntry) => e.studentName === displayName && e.status === 'success');
     }
     if (existingLogIdx >= 0) {
       this._log[existingLogIdx] = {

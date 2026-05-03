@@ -6,8 +6,8 @@
  * These two overlap but differ in nullability and enum values.
  */
 
-import type { DiscoveryResult, SelectorMap } from './discover';
-import type { SiteProfile, SiteSelectors } from './batch-grader';
+import type { DiscoveryResult, NavigationConfig as DiscoverNavigationConfig, SelectorMap } from './discover';
+import type { NavigationConfig, SiteProfile, SiteSelectors } from './batch-grader';
 import type { ExtractionConfig, SiteProfileWithExtraction } from './site-profiles';
 
 // Feedback types that are valid in SiteProfile (batch-grader)
@@ -41,6 +41,21 @@ export function siteSelectorsToSelectorMap(selectors: SiteSelectors): SelectorMa
     feedbackHidden: selectors.feedbackHidden,
     questionRegion: selectors.questionRegion,
     fullCreditLink: selectors.fullCreditLink,
+  };
+}
+
+/**
+ * Normalize a discover.NavigationConfig (which allows null on optional fields)
+ * to a batch-grader.NavigationConfig (which uses undefined).
+ */
+export function normalizeNavigation(nav: DiscoverNavigationConfig): NavigationConfig {
+  return {
+    mode: nav.mode === 'sequential' ? 'sequential' : 'batch',
+    nextButton: nav.nextButton ?? undefined,
+    prevButton: nav.prevButton ?? undefined,
+    studentIndicator: nav.studentIndicator ?? undefined,
+    submitButton: nav.submitButton ?? undefined,
+    waitForSelector: nav.waitForSelector ?? undefined,
   };
 }
 
@@ -88,7 +103,7 @@ export function discoveryResultToSiteProfile(
       buttonText: result.save.buttonText,
       fallbackText: result.save.fallbackText ?? 'Save',
     },
-    navigation: result.navigation,
+    navigation: normalizeNavigation(result.navigation),
   };
 
   if (extraction !== undefined) {

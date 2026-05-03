@@ -14,7 +14,7 @@
 import type { DiscoveryResult } from './discover';
 import type { SiteProfile, SiteSelectors } from './batch-grader';
 import type { ExtractionConfig, ProfileStorage, SiteProfileWithExtraction } from './site-profiles';
-import { discoveryResultToSiteProfile, selectorMapToSiteSelectors } from './type-mappers';
+import { discoveryResultToSiteProfile, normalizeNavigation, selectorMapToSiteSelectors } from './type-mappers';
 
 // ============================================================================
 // Types
@@ -289,7 +289,7 @@ export function mergeProfiles(
       buttonText: newDiscovery.save.buttonText || existing.save.buttonText,
       fallbackText: newDiscovery.save.fallbackText ?? existing.save.fallbackText,
     },
-    navigation: newDiscovery.navigation,
+    navigation: normalizeNavigation(newDiscovery.navigation),
   };
 }
 

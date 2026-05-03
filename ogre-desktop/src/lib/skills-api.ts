@@ -295,9 +295,7 @@ export async function getMatchingSkillsForUrl(url: string): Promise<Skill[]> {
 
 // ── Bundled Site Profiles ────────────────────────────────────────────────
 
-// @ts-expect-error Vite raw markdown asset import
 import momProfileRaw from '../assets/profiles/myopenmath.md?raw';
-// @ts-expect-error Vite raw markdown asset import
 import aeriesProfileRaw from '../assets/profiles/aeries.md?raw';
 
 /** Bundled site profiles shipped with the app. Exported for testing. */
