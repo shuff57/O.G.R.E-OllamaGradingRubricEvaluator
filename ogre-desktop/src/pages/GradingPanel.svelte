@@ -1,19 +1,15 @@
 <script lang="ts">
-  import { onMount, onDestroy, tick } from 'svelte';
-  import ScreenshotOverlay from '../components/ScreenshotOverlay.svelte';
+  import { onMount, onDestroy } from 'svelte';
   import ProviderSelector from '../components/grading/ProviderSelector.svelte';
   import RubricCard from '../components/grading/RubricCard.svelte';
-  import StudentWorkCard from '../components/grading/StudentWorkCard.svelte';
   import AgentChat from '../components/grading/AgentChat.svelte';
   import BatchPanel from '../components/grading/batch/BatchPanel.svelte';
   import BatchResults from '../components/grading/batch/BatchResults.svelte';
   import OutlierReport from '../components/grading/batch/OutlierReport.svelte';
   import type { BatchStudentResult } from '../lib/grading-api';
   import DiscoveryPanel from '../components/grading/DiscoveryPanel.svelte';
-  import { captureWebviewScreenshot, hideWebview, showWebview, getActiveTabId } from '../lib/browser';
   import { getSetting, setSetting } from '../lib/db';
   import type { SavedRubric } from '../lib/rubric-api';
-  import type { GradeRubric } from '../lib/grading-api';
   import type { Rubric, SiteProfile } from '../lib/batch-grader';
   import { DEFAULT_MYOPENMATH_PROFILE, BUILT_IN_PROFILES } from '../lib/batch-grader';
   import { ProfileStorageImpl } from '../lib/site-profiles';
@@ -35,7 +31,6 @@
   let activeMode = $state('grader'); // 'grader' | 'agent' | 'discovery'
   let graderSubMode = $state('batch'); // 'single' | 'batch'
   let singleStudentName = $state('');
-  let showScreenshotOverlay = $state(false);
   let batchRunning = $state(false);
   let refreshKey = $state(0);
   let isRefreshing = $state(false);
@@ -50,12 +45,6 @@
     if (!pageLoadedUrl) return; // ignore initial empty value
     debouncedPageRefresh(pageLoadedUrl);
   });
-
-  // Screenshot capture state
-  let capturedImage = $state('');
-  let isCapturing = $state(false);
-  let captureError = $state('');
-  let screenshots = $state<string[]>([]);
 
   // Shared state: provider/model selection flows from ProviderSelector → child components
   let activeProvider = $state('ollama-local');
@@ -132,24 +121,6 @@
     if (isCollapsed) isCollapsed = false;
   }
 
-  /** Convert a SavedRubric (library format) to GradeRubric (grading API format). */
-  function toGradeRubric(saved: SavedRubric | null): GradeRubric | undefined {
-    if (!saved) return undefined;
-    return {
-      maxScore: String(saved.maxScore),
-      checklistItems: saved.criteria.map(c => {
-        // Re-attach categoryWeight: prefer per-criterion value, fall back to top-level map
-        const catWeight = c.categoryWeight ?? saved.categoryWeights?.[c.category ?? c.criteria];
-        return {
-          category: c.criteria,
-          points: c.points,
-          items: c.description ? [c.description] : [],
-          ...(catWeight !== undefined ? { categoryWeight: catWeight } : {}),
-        };
-      }),
-    };
-  }
-
   const MODES = [
     { id: 'grader', label: 'Grader', icon: '📝' },
     { id: 'agent', label: 'Agent', icon: '🤖' },
@@ -175,57 +146,7 @@
 
 
 
-  /**
-   * Screenshot flow:
-   *   1. Capture the webview content (while it's still visible)
-   *   2. Hide the webview to reveal the selection overlay
-   *   3. Show the overlay with the captured image
-   *   4. User selects an area → onScreenshotCapture fires
-   *   5. Re-show the webview
-   */
-  async function handleScreenshot() {
-    if (isCapturing) return;
-    isCapturing = true;
-    captureError = '';
-
-    // Save current drawer state so we can restore after capture
-    const wasCollapsed = isCollapsed;
-
-    try {
-      // Hide drawer and floating button before capture for a clean screenshot
-      isCollapsed = true;
-      await tick(); // Wait for DOM to reflect hidden state
-
-      capturedImage = await captureWebviewScreenshot();
-      await hideWebview(getActiveTabId());
-      showScreenshotOverlay = true;
-    } catch (err) {
-      captureError = err instanceof Error ? err.message : 'Screenshot capture failed';
-      setTimeout(() => { if (captureError) captureError = ''; }, 5000);
-    } finally {
-      // Restore drawer and floating button visibility
-      isCollapsed = wasCollapsed;
-      isCapturing = false;
-    }
-  }
-
-  function handleScreenshotCapture(imageData: string) {
-    screenshots = [...screenshots, imageData];
-    closeOverlay();
-  }
-
-  async function closeOverlay() {
-    showScreenshotOverlay = false;
-    capturedImage = '';
-    try { await showWebview(getActiveTabId()); } catch { /* webview may already be visible */ }
-  }
-
-  function handleRemoveScreenshot(index: number) {
-    screenshots = screenshots.filter((_, i) => i !== index);
-  }
-
   // Keyboard shortcuts (Ctrl+B to toggle, Esc to collapse)
-  // Note: Ctrl+Enter for assessment is handled by StudentWorkCard
   function handleKeydown(event: KeyboardEvent) {
     const target = event.target as HTMLElement;
     if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
@@ -475,10 +396,41 @@
             class="student-name-input"
             placeholder="Student name"
             bind:value={singleStudentName}
+            disabled={batchRunning || batchPhase !== 'idle'}
           />
         {/if}
         <ProviderSelector bind:provider={activeProvider} bind:model={activeModel} />
-        {#if graderSubMode === 'single'}
+        <BatchPanel
+          bind:this={batchPanelRef}
+          provider={activeProvider}
+          model={activeModel}
+          bind:isBatchRunning={batchRunning}
+          {pageLoadedUrl}
+          {refreshKey}
+          {selectedRubric}
+          {onRequestDiscovery}
+          externalProfile={globalActiveProfile}
+          {leniency}
+          isRubricRewriting={isRubricRewriting}
+          {weightsValid}
+          {weightMode}
+          singleStudentName={graderSubMode === 'single' ? singleStudentName : ''}
+          bind:originalRubricText
+          bind:rubricText
+          bind:rubricMaxScore
+          bind:extractedRubric
+          bind:sourceRubricId
+          bind:batchPhase
+          bind:essayPrompt
+          bind:anchorText
+          bind:anchorGenerating
+          bind:batchGraderHasStudents
+          bind:isBatchPaused
+          bind:savedSessionStudent
+          bind:profileWarning={batchProfileWarning}
+          bind:outlierReport
+        />
+        {#if batchPhase !== 'idle'}
           <RubricCard
             bind:selectedRubric
             bind:rubricText
@@ -494,75 +446,13 @@
             provider={activeProvider}
             model={activeModel}
             phase={batchPhase}
-            showActions={false}
+            showActions={true}
             showTable={true}
-          />
-          <StudentWorkCard
-            onScreenshot={handleScreenshot}
-            provider={activeProvider}
-            model={activeModel}
-            rubric={toGradeRubric(selectedRubric)}
-            {screenshots}
-            onRemoveScreenshot={handleRemoveScreenshot}
-            {isCapturing}
-            {captureError}
-            studentName={singleStudentName}
-            {weightMode}
-          />
-        {:else}
-          <BatchPanel
-            bind:this={batchPanelRef}
-            provider={activeProvider}
-            model={activeModel}
-            bind:isBatchRunning={batchRunning}
-            {pageLoadedUrl}
-            {refreshKey}
-            {selectedRubric}
-            {onRequestDiscovery}
-            externalProfile={globalActiveProfile}
-            {leniency}
-            isRubricRewriting={isRubricRewriting}
-            {weightsValid}
-            {weightMode}
-            bind:originalRubricText
-            bind:rubricText
-            bind:rubricMaxScore
-            bind:extractedRubric
-            bind:sourceRubricId
-            bind:batchPhase
-            bind:essayPrompt
             bind:anchorText
-            bind:anchorGenerating
-            bind:batchGraderHasStudents
-            bind:isBatchPaused
-            bind:savedSessionStudent
-            bind:profileWarning={batchProfileWarning}
-            bind:outlierReport
+            {anchorGenerating}
+            {batchGraderHasStudents}
+            onGenerateAnchors={() => batchPanelRef?.handleGenerateAnchors()}
           />
-          {#if batchPhase !== 'idle'}
-            <RubricCard
-              bind:selectedRubric
-              bind:rubricText
-              bind:rubricMaxScore
-              bind:sourceRubricId
-              bind:leniency
-              bind:originalRubricText
-              bind:isRewriting={isRubricRewriting}
-              bind:weightsValid
-              bind:weightMode
-              {extractedRubric}
-              fallbackText={essayPrompt}
-              provider={activeProvider}
-              model={activeModel}
-              phase={batchPhase}
-              showActions={true}
-              showTable={true}
-              bind:anchorText
-              {anchorGenerating}
-              {batchGraderHasStudents}
-              onGenerateAnchors={() => batchPanelRef?.handleGenerateAnchors()}
-            />
-          {/if}
         {/if}
       {/if}
       {#if activeMode === 'agent'}
@@ -586,12 +476,13 @@
         />
       {/if}
     </div>
-    {#if activeMode === 'grader' && graderSubMode === 'batch'}
+    {#if activeMode === 'grader'}
       {#if batchPhase === 'done' && outlierReport.length > 0}
         <OutlierReport
           entries={outlierReport}
           maxScore={parseFloat(rubricMaxScore) || 10}
           onDismiss={() => { outlierReport = []; }}
+          onRevert={(entry) => batchPanelRef?.revertOutlier(entry)}
         />
       {/if}
       <BatchResults
@@ -601,6 +492,9 @@
         {savedSessionStudent}
         profileWarning={batchProfileWarning}
         {batchGraderHasStudents}
+        disableStart={graderSubMode === 'single' && !singleStudentName.trim()}
+        disabledReason={graderSubMode === 'single' && !singleStudentName.trim() ? 'Enter a student name first' : ''}
+        startLabel={graderSubMode === 'single' ? 'Grade Student' : 'Start Batch'}
         onExtract={() => batchPanelRef?.handleExtract()}
         onContinueGrading={() => batchPanelRef?.handleContinueGrading()}
         onPauseBatch={() => batchPanelRef?.handlePauseBatch()}
@@ -613,22 +507,10 @@
   {/if}
 </div>
 
-<ScreenshotOverlay
-  bind:visible={showScreenshotOverlay}
-  {capturedImage}
-  onCapture={handleScreenshotCapture}
-  onClose={closeOverlay}
-/>
-
 <style>
   /*
-   * Z-Index Hierarchy (cross-component layering):
-   * - ScreenshotOverlay: 10000 (highest – fullscreen capture overlay, position: fixed)
-   * - GradingPanel: in-flow flex child of .browser-content (no z-index needed)
-   * - Webview: 0 (native OS window, positioned by Tauri bounds)
-   *
-   * Internal z-indexes (scoped within their parent stacking context):
-   * - .resize-handle (GradingPanel): 100 (above panel content)
+   * Z-Index Hierarchy:
+   * - .resize-handle: 100 (above panel content, scoped within GradingPanel)
    */
   .grading-panel {
     position: relative;

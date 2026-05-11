@@ -45,6 +45,7 @@
     pageLoadedUrl = '',
     leniency = 50,
     weightMode = 'category' as 'category' | 'criterion',
+    singleStudentName = '',
     // Bindable — batch lifecycle state exposed to shell
     originalRubricText = $bindable(''),
     isBatchRunning = $bindable(false),
@@ -526,17 +527,48 @@
     isAutoStopped = false;
     batchError = '';
 
-    // When forceRegrade is checked, use all students (except no-response)
-    // regardless of whether they were filtered during extraction
-    const baseStudents = forceRegrade
-      ? grader.students.filter(s => !grader.noResponseStudents.includes(s))
-      : grader.studentsToGrade;
-    const studentsToGrade = versionCount > 1
-      ? baseStudents.filter(s => {
-          const versionStudents = grader.getStudentsForVersion(currentVersionIndex);
-          return versionStudents.some(vs => vs.index === s.index);
-        })
-      : baseStudents;
+    // Single-student mode: ignore batch filters (regrade/version) and grade
+    // only the named student. Match case-insensitively against the student's
+    // displayed name; bail out if no match.
+    let studentsToGrade: typeof grader.students;
+    if (singleStudentName.trim()) {
+      const target = singleStudentName.trim().toLowerCase();
+      const match = grader.students.find(s => s.name.toLowerCase() === target)
+        ?? grader.students.find(s => s.name.toLowerCase().includes(target));
+      if (!match) {
+        batchError = `Student "${singleStudentName}" not found on page.`;
+        return;
+      }
+      if (!match.response.trim()) {
+        batchError = `Student "${match.name}" has no response to grade.`;
+        return;
+      }
+      studentsToGrade = [match];
+
+      // On multi-version pages, point currentVersionIndex at the version that
+      // contains this student so the right essayPrompt/modelText is used.
+      if (versionCount > 1) {
+        const targetVersion = grader.versionGroups.findIndex(g =>
+          g.students.some(s => s.index === match.index)
+        );
+        if (targetVersion >= 0 && targetVersion !== currentVersionIndex) {
+          currentVersionIndex = targetVersion;
+          updateVersionDisplay();
+        }
+      }
+    } else {
+      // When forceRegrade is checked, use all students (except no-response)
+      // regardless of whether they were filtered during extraction
+      const baseStudents = forceRegrade
+        ? grader.students.filter(s => !grader.noResponseStudents.includes(s))
+        : grader.studentsToGrade;
+      studentsToGrade = versionCount > 1
+        ? baseStudents.filter(s => {
+            const versionStudents = grader.getStudentsForVersion(currentVersionIndex);
+            return versionStudents.some(vs => vs.index === s.index);
+          })
+        : baseStudents;
+    }
 
     if (studentsToGrade.length === 0) {
       if (versionCount > 1 && batchGrader.advanceVersion()) {
@@ -757,18 +789,40 @@
     if (!batchGrader) return;
     phaseMessage = `Applying ${data.adjustedResults.length} outlier adjustment(s)...`;
     const adjustedResults = data.adjustedResults;
+    // Capture pre-overwrite feedback so the review panel can offer Revert.
+    // The server sends originalScore but not originalFeedback, so we grab it
+    // from _results before applyGrade replaces it.
+    const priorResults = batchGrader.getSummary().graded;
+    const enriched = adjustedResults.map(r => ({
+      ...r,
+      originalFeedback: r.originalFeedback
+        ?? priorResults.find(p => p.index === r.studentIndex)?.feedback
+        ?? '',
+    }));
     // Accumulate every adjusted entry so the end-of-run review panel can show
     // what was changed. Multi-version runs append across versions intentionally.
-    outlierReport = [...outlierReport, ...adjustedResults];
-    for (let i = 0; i < adjustedResults.length; i++) {
-      const result = adjustedResults[i];
+    outlierReport = [...outlierReport, ...enriched];
+    for (let i = 0; i < enriched.length; i++) {
+      const result = enriched[i];
       if (isBatchPaused) {
         pausedResultBuffer.push(result);
       } else {
-        await applyResult(result, i, adjustedResults.length);
+        await applyResult(result, i, enriched.length);
         await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
+  }
+
+  export async function revertOutlier(entry: BatchStudentResult): Promise<void> {
+    if (!batchGrader) throw new Error('Grading session is no longer active');
+    if (entry.originalScore == null) throw new Error('Original score was not captured for this outlier');
+    const origFeedback = entry.originalFeedback ?? '';
+    await batchGrader.applyGrade(entry.studentIndex, entry.originalScore, origFeedback);
+    try { await batchGrader.save(); } catch { /* non-fatal: MOM autosave may not be wired */ }
+    if (currentPageUrl && entry.name) {
+      try { await saveBatchSession(currentPageUrl, entry.name); } catch { /* non-fatal */ }
+    }
+    updateBatchState();
   }
 
   async function handleSSEDone(data: BatchDoneEvent) {
@@ -782,8 +836,10 @@
       try { await batchGrader.save(); } catch { /* non-fatal */ }
     }
 
-    // Chain to next version if there are more
-    if (versionCount > 1 && batchGrader?.advanceVersion()) {
+    // Chain to next version if there are more — but only in true batch mode.
+    // Single-student mode grades one student and is done, regardless of how
+    // many versions the page contains.
+    if (!singleStudentName.trim() && versionCount > 1 && batchGrader?.advanceVersion()) {
       currentVersionIndex = batchGrader.currentVersionIndex;
       const vStudents = batchGrader.getStudentsForVersion(currentVersionIndex);
       phaseMessage = `Version ${currentVersionIndex} of ${versionCount} complete. Starting version ${currentVersionIndex + 1} (${vStudents.length} students)...`;

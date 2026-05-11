@@ -25,6 +25,7 @@ export interface BatchStudentResult {
   // Populated only on outlier-adjustment events; used by the end-of-run review panel.
   name?: string;
   originalScore?: number;
+  originalFeedback?: string;
   deviation?: number;
 }
 

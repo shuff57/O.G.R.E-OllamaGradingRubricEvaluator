@@ -12,6 +12,9 @@
     savedSessionStudent = null as string | null,
     profileWarning = '',
     batchGraderHasStudents = false,
+    disableStart = false,
+    disabledReason = '',
+    startLabel = 'Start Batch',
     // Callbacks
     onExtract = () => {},
     onContinueGrading = () => {},
@@ -40,9 +43,16 @@
         </button>
       </div>
     {:else}
-      <button class="btn-primary full-width" onclick={() => onExtract()}>
-        Start Batch
+      <button
+        class="btn-primary full-width"
+        onclick={() => onExtract()}
+        disabled={disableStart}
+      >
+        {startLabel}
       </button>
+      {#if disableStart && disabledReason}
+        <small class="start-disabled-reason">{disabledReason}</small>
+      {/if}
     {/if}
   {:else if batchPhase === 'extracting'}
     <button class="btn-danger full-width" onclick={() => onCancelBatch()}>
@@ -167,5 +177,13 @@
 
   .btn-link:hover {
     color: var(--color-text-primary);
+  }
+
+  .start-disabled-reason {
+    display: block;
+    margin-top: var(--spacing-1);
+    text-align: center;
+    color: var(--color-text-secondary);
+    font-size: 0.8rem;
   }
 </style>

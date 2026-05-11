@@ -775,13 +775,36 @@ SCORING ANCHORS:
     prompt += '\n';
   }
 
+  // Build a dynamic per-requirement HTML feedback example from the rubric so the
+  // outlier re-grade output matches the main batch feedback format exactly.
+  const _olAllReqs = [];
+  for (const item of (rubric.checklistItems || [])) {
+    if (item.items) {
+      for (const sub of item.items) {
+        _olAllReqs.push(sub);
+      }
+    }
+  }
+  let _olFeedbackExample = '';
+  if (_olAllReqs.length > 0) {
+    _olFeedbackExample = `\\n<p><strong>${_olAllReqs[0]}</strong></p>\\n<blockquote>You said: \\"[quote what student wrote]\\"</blockquote>\\n<p>[Correct/Incorrect/Incomplete — explain WHY; wrap math in backticks, e.g. \`x^2 + 3x\`]</p>\\n<p><em>To improve: [specific suggestion]</em></p>`;
+    if (_olAllReqs.length > 1) {
+      _olFeedbackExample += `\\n<p><strong>${_olAllReqs[1]}</strong></p>\\n<blockquote>You did not address this.</blockquote>\\n<p>[Explain what was expected]</p>\\n<p><em>To improve: [specific suggestion]</em></p>`;
+    }
+    for (let i = 2; i < _olAllReqs.length; i++) {
+      _olFeedbackExample += `\\n<p><strong>${_olAllReqs[i]}</strong></p>\\n<blockquote>You said: ...</blockquote>\\n<p>...</p>`;
+    }
+  }
+
   prompt += `
 INSTRUCTIONS:
 - Re-read each student's response carefully
 - Compare against the rubric, scoring anchors, and the batch mean (${stats.mean})
 - If the original score seems correct, return the SAME score
 - If the original score was too high or too low, return an ADJUSTED score
-- Provide updated feedback explaining your reasoning
+- Provide updated feedback in the same HTML format as the main batch
+
+FEEDBACK FORMAT RULE: The feedback string must contain one section for EACH numbered requirement from the GRADING CHECKLIST. Do NOT group by category. Use HTML tags: <strong> for the requirement header, <blockquote> for the student's words (or "You did not address this."), <p> for your evaluation, <em> for the "To improve" line. Wrap all math expressions in backticks, e.g. \`x^2 + 3x\` or \`p < 0.05\`. Start the feedback with "<p>Hi [name],</p>" using the student's first name. Do NOT use markdown (no **bold**, no "> quote", no *italic*).
 
 RESPONSE FORMAT:
 You MUST respond with a valid JSON array ONLY. No markdown, no code fences, no explanation.
@@ -789,12 +812,13 @@ You MUST respond with a valid JSON array ONLY. No markdown, no code fences, no e
 [
   {
     "studentIndex": <original student index>,
-    "score": <${scoreFormatHint(maxScore)}>
-    "feedback": "<Use the student's first name from their header. For each rubric criterion, write one section using this structure: (1) state the criterion name, (2) write 'You said ...' quoting or paraphrasing what the student said about that criterion, (3) explain whether what they said was correct, incorrect, or incomplete — and what they would need to add for full credit. If the student's statements conflict with each other, note gently: 'Note: this seems inconsistent with your earlier statement that...'. Use \\n between each section. Write like a high school math teacher talking directly to the student. No em dashes. Short and clear.",
+    "score": <${scoreFormatHint(maxScore)}>,
+    "feedback": "<p>Hi [name],</p>${_olFeedbackExample}",
     "adjusted": <true if score changed, false if kept same>
   }
 ]
 
+FORMAT REMINDER: each "feedback" string MUST be HTML with <strong>/<blockquote>/<p>/<em> tags exactly as shown above. No markdown.
 CRITICAL: Return results for ALL ${outlierStudents.length} student(s) in the array.`;
 
 

@@ -39,6 +39,7 @@
     isRubricRewriting = false,
     weightsValid = true,
     weightMode = 'category' as 'category' | 'criterion',
+    singleStudentName = '',
     originalRubricText = $bindable(''),
     anchorText = $bindable(''),
     anchorGenerating = $bindable(false),
@@ -82,6 +83,7 @@
   export function handleStopBatch() { progressRef?.handleStopBatch(); }
   export function handleCancelBatch() { progressRef?.handleCancelBatch(); }
   export function handleReset() { progressRef?.handleReset(); }
+  export function revertOutlier(entry: BatchStudentResult) { return progressRef?.revertOutlier(entry); }
 
   // ── URL change coordination ────────────────────────────────────────────
   // Shell coordinates: Progress resets first (via its own effect on pageLoadedUrl),
@@ -140,6 +142,7 @@
     {pageLoadedUrl}
     {leniency}
     {weightMode}
+    {singleStudentName}
     bind:originalRubricText
     bind:isBatchRunning
     bind:batchPhase
