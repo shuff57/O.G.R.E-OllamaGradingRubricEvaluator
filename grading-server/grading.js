@@ -1068,7 +1068,7 @@ TASK: Identify any students whose score seems inconsistent relative to peers wit
 ${formatRule}
 
 RESPONSE FORMAT:
-Return a JSON array of adjustments. Only include students that need a score change. Return [] if all scores look consistent.
+Return ONLY a JSON array — no markdown code fences (no \`\`\`json, no \`\`\`), no surrounding text or explanation. Start the response with [ and end with ]. Only include students that need a score change. Return [] if all scores look consistent.
 
 [
   {
@@ -1395,7 +1395,7 @@ TASK: Are these scores consistent with each other? If students gave responses of
 ${formatRule}
 
 RESPONSE FORMAT:
-Return a JSON array of adjustments. Only include students that need a score change. Return [] if all scores look consistent within this band.
+Return ONLY a JSON array — no markdown code fences (no \`\`\`json, no \`\`\`), no surrounding text or explanation. Start the response with [ and end with ]. Only include students that need a score change. Return [] if all scores look consistent within this band.
 
 [
   {

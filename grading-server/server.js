@@ -161,6 +161,39 @@ async function ensureValidAnthropicToken(config) {
   };
 }
 
+/**
+ * Defensive JSON-array parsing for sweep responses. Some models wrap output in
+ * markdown code fences (```json ... ```) or include backticks around math
+ * expressions, which trip a naive JSON.parse on the surrounding text. Strip
+ * common fences, extract the first [...] block, then parse.
+ *
+ * On failure, logs a snippet of the raw response so future regressions can be
+ * diagnosed without rerunning the batch.
+ *
+ * @param {string} text - Raw LLM response
+ * @param {string} label - Context label for error logging (e.g. "compact", "High band")
+ * @returns {Array|null} - Parsed array, or null if no parseable array found
+ */
+function parseSweepAdjustments(text, label) {
+  if (!text) return null;
+  // Strip ```json ... ``` and ``` ... ``` code fences (both with and without language tag).
+  let cleaned = String(text).trim();
+  cleaned = cleaned.replace(/^```(?:json|JSON)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+  // Extract the first balanced-ish [...] block.
+  const match = cleaned.match(/\[[\s\S]*\]/);
+  if (!match) {
+    console.warn(`[sweep-parse] ${label}: no JSON array found in response. Snippet: ${cleaned.slice(0, 300).replace(/\n/g, ' ')}`);
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(match[0]);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch (e) {
+    console.warn(`[sweep-parse] ${label}: JSON.parse failed (${e.message}). Snippet: ${match[0].slice(0, 300).replace(/\n/g, ' ')}`);
+    return null;
+  }
+}
+
 async function callProviderDirect(provider, config, messages, timestamp, options = {}) {
   // Exchange GitHub OAuth token for Copilot session token
   if (provider.toLowerCase() === 'github-models') {
@@ -1943,13 +1976,10 @@ app.post('/api/grade', async (c) => {
             const sweepPrompt = buildCompactSweepPrompt(results, students, anchors, chunkMap, maxScore, rubric);
             const sweepText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: sweepPrompt }], timestamp(), fallbackOptions);
 
-            // Parse the JSON array response
-            const jsonMatch = sweepText.match(/\[[\s\S]*\]/);
-            if (jsonMatch) {
-              const parsed = JSON.parse(jsonMatch[0]);
-              if (Array.isArray(parsed)) {
-                sweepAdjustments = parsed.filter(a => a.studentIndex !== undefined && a.suggestedScore !== undefined && a.suggestedScore !== a.currentScore);
-              }
+            // Parse the JSON array response (defensive: strips markdown fences, logs raw on fail)
+            const parsed = parseSweepAdjustments(sweepText, 'compact');
+            if (parsed) {
+              sweepAdjustments = parsed.filter(a => a.studentIndex !== undefined && a.suggestedScore !== undefined && a.suggestedScore !== a.currentScore);
             }
             console.log(`[${timestamp()}] [sse] Compact sweep: ${sweepAdjustments.length} adjustment(s) suggested`);
 
@@ -1962,17 +1992,14 @@ app.post('/api/grade', async (c) => {
               console.log(`[${timestamp()}] [sse]   Checking ${bp.label} band (${bp.studentIndices.length} students)...`);
               const bandText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: bp.prompt }], timestamp(), fallbackOptions);
 
-              const jsonMatch = bandText.match(/\[[\s\S]*\]/);
-              if (jsonMatch) {
-                const parsed = JSON.parse(jsonMatch[0]);
-                if (Array.isArray(parsed)) {
-                  // Stamp the band label onto each adjustment — the AI doesn't echo it,
-                  // and the client UI groups by band for display.
-                  const bandAdj = parsed
-                    .filter(a => a.studentIndex !== undefined && a.suggestedScore !== undefined && a.suggestedScore !== a.currentScore)
-                    .map(a => ({ ...a, band: bp.label }));
-                  sweepAdjustments.push(...bandAdj);
-                }
+              const parsed = parseSweepAdjustments(bandText, `${bp.label} band`);
+              if (parsed) {
+                // Stamp the band label onto each adjustment — the AI doesn't echo it,
+                // and the client UI groups by band for display.
+                const bandAdj = parsed
+                  .filter(a => a.studentIndex !== undefined && a.suggestedScore !== undefined && a.suggestedScore !== a.currentScore)
+                  .map(a => ({ ...a, band: bp.label }));
+                sweepAdjustments.push(...bandAdj);
               }
             }
             console.log(`[${timestamp()}] [sse] Pairwise sweep: ${sweepAdjustments.length} total adjustment(s)`);
