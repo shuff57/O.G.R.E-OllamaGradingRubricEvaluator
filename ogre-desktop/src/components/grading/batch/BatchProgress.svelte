@@ -63,6 +63,7 @@
     batchGraderHasStudents = $bindable(false),
     isBatchPaused = $bindable(false),
     outlierReport = $bindable<BatchStudentResult[]>([]),
+    isResweepInFlight = $bindable(false),
   } = $props();
 
   // ── Internal State ─────────────────────────────────────────────────────
@@ -95,8 +96,45 @@
   let reviewShowPreview = $state(false);
 
   // ── Re-sweep state ─────────────────────────────────────────────────────
-  let isResweepInFlight = $state(false);
+  // isResweepInFlight is a bindable prop (declared above) so the parent can
+  // pass it through to OutlierReport, whose header button must disable while
+  // a sweep is in flight.
   let resweepHandle: BatchGradingHandle | null = null;
+
+  /**
+   * Build the categoryWeights payload from the rubric textarea. Returns either
+   * { categoryWeights: {...} } or {} so it spreads cleanly into a rubric object.
+   * Mirrors the IIFE used in handleContinueGrading's grade-request build.
+   */
+  function buildCategoryWeightsPayload(): { categoryWeights?: Record<string, number> } {
+    if (weightMode !== 'category') return {};
+    const cws: Record<string, number> = {};
+    const seen = new Set<string>();
+    for (const row of textToCriteria(rubricText)) {
+      const cat = row.category ?? '';
+      if (!seen.has(cat) && row.categoryWeight !== undefined) {
+        seen.add(cat);
+        cws[cat] = row.categoryWeight;
+      }
+    }
+    return Object.keys(cws).length > 0 ? { categoryWeights: cws } : {};
+  }
+
+  /**
+   * Build the criterionWeights payload — { criterionWeights: { cat: { name: w } } } or {}.
+   */
+  function buildCriterionWeightsPayload(): { criterionWeights?: Record<string, Record<string, number>> } {
+    if (weightMode !== 'criterion') return {};
+    const cws: Record<string, Record<string, number>> = {};
+    for (const row of textToCriteria(rubricText)) {
+      const cat = row.category ?? '';
+      if (row.criterionWeight !== undefined && row.criterionWeight > 0) {
+        if (!cws[cat]) cws[cat] = {};
+        cws[cat][row.criteria] = row.criterionWeight;
+      }
+    }
+    return Object.keys(cws).length > 0 ? { criterionWeights: cws } : {};
+  }
 
   // ── Grading Timer ──────────────────────────────────────────────────────
   let elapsedSeconds = $state(0);
@@ -229,8 +267,10 @@
     if (!url) return;
     untrack(() => {
       if (batchActive) return; // Suppress during batch operations
-      if (batchPhase !== 'idle' || isBatchRunning) {
+      if (batchPhase !== 'idle' || isBatchRunning || isResweepInFlight) {
         isAutoStopped = true;
+        if (resweepHandle) { resweepHandle.cancel(); resweepHandle = null; }
+        isResweepInFlight = false;
         stopActiveBatch(batchHandle, batchGrader, pausedResultBuffer);
         const reset = buildBatchResetState();
         batchPhase = reset.batchPhase;
@@ -851,6 +891,8 @@
       reviewResolve = null;
     }
     if (batchHandle) { batchHandle.cancel(); batchHandle = null; }
+    if (resweepHandle) { resweepHandle.cancel(); resweepHandle = null; }
+    isResweepInFlight = false;
     if (batchGrader) batchGrader.stop();
     stopTimer();
     isBatchRunning = false;
@@ -870,6 +912,8 @@
       reviewResolve = null;
     }
     if (batchHandle) { batchHandle.cancel(); batchHandle = null; }
+    if (resweepHandle) { resweepHandle.cancel(); resweepHandle = null; }
+    isResweepInFlight = false;
     if (batchGrader) { batchGrader.stop(); batchGrader = null; }
     stopTimer();
     isBatchRunning = false;
@@ -890,6 +934,8 @@
   export function handleReset() {
     batchActive = false;
     stopTimer();
+    if (resweepHandle) { resweepHandle.cancel(); resweepHandle = null; }
+    isResweepInFlight = false;
     sourceRubricId = null;
     batchPhase = 'idle';
     batchProgress = null;
@@ -962,17 +1008,34 @@
    */
   export async function handleResweep(): Promise<void> {
     if (!batchGrader || isResweepInFlight) return;
+    if (!provider || !model) {
+      phaseMessage = 'Re-sweep failed: select a provider and model first';
+      return;
+    }
     const summary = batchGrader.getSummary();
     const graded = summary.graded;
     if (graded.length < 5) {
       phaseMessage = `Re-sweep needs ≥5 graded students (have ${graded.length})`;
       return;
     }
-    const rubric = batchGrader.rubric;
-    if (!rubric) {
-      phaseMessage = 'Re-sweep failed: no rubric in current session';
+
+    // Use buildRubricFromText so the rubric reflects the current textarea
+    // (leniency rewrites, weight edits) — batchGrader.rubric is missing
+    // categoryWeights/criterionWeights which the server applies on scoring.
+    const currentRubric = buildRubricFromText();
+    if (!currentRubric.checklistItems.length && !currentRubric.rubricItems.length) {
+      phaseMessage = 'Re-sweep failed: no rubric available';
       return;
     }
+    const rubric = {
+      essayPrompt: currentRubric.essayPrompt,
+      checklistItems: currentRubric.checklistItems,
+      rubricItems: currentRubric.rubricItems,
+      modelText: currentRubric.modelText,
+      maxScore: rubricMaxScore,
+      ...buildCategoryWeightsPayload(),
+      ...buildCriterionWeightsPayload(),
+    };
 
     const students = batchGrader.students.map((s) => ({
       index: s.index,
@@ -992,9 +1055,9 @@
 
     resweepHandle = startSweep(
       {
-        provider: provider || undefined,
-        model: model || undefined,
-        rubric: rubric as unknown as Parameters<typeof startSweep>[0]['rubric'],
+        provider,
+        model,
+        rubric,
         students,
         results,
         sweep: 'auto',
@@ -1094,9 +1157,9 @@
           type="button"
           onclick={handleResweep}
           disabled={isResweepInFlight}
-          title="Re-run the band-based consistency check against the current grades"
+          title="Re-runs the band-based peer-consistency check against the AI scores from this run. Does NOT reflect manual edits to the gradebook — re-extract first if you need that."
         >
-          {isResweepInFlight ? 'Re-sweeping…' : 'Re-run consistency check'}
+          {isResweepInFlight ? 'Re-sweeping…' : 'Re-check AI grades'}
         </button>
       </div>
     {/if}

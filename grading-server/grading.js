@@ -1037,9 +1037,9 @@ function buildSweepFeedbackGuidance(rubric) {
  * @returns {string} - Prompt for the AI
  */
 export function buildCompactSweepPrompt(results, students, anchors, chunkMap, maxScore, rubric) {
-  let prompt = `CROSS-CHUNK CONSISTENCY REVIEW
+  let prompt = `CONSISTENCY REVIEW
 
-You previously graded these students across ${new Set(Object.values(chunkMap)).size} separate batches. Different batches may have drifted in scoring standards. Review ALL scores for cross-batch consistency.
+You previously graded these students. Review ALL scores to ensure peers with similar response quality received similar scores.
 
 SCORING ANCHORS:
 - Excellent (${anchors.excellent.score}/${maxScore}): ${anchors.excellent.description}

@@ -48,6 +48,7 @@
     savedSessionStudent = $bindable<string | null>(null),
     profileWarning = $bindable(''),
     outlierReport = $bindable<BatchStudentResult[]>([]),
+    isResweepInFlight = $bindable(false),
   } = $props();
 
   // ── Bridging state between sub-components ──────────────────────────────
@@ -160,6 +161,7 @@
     bind:batchGraderHasStudents
     bind:isBatchPaused
     bind:outlierReport
+    bind:isResweepInFlight
   />
 </section>
 

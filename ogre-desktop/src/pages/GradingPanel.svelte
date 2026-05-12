@@ -58,6 +58,7 @@
   let sourceRubricId = $state<string | null>(null);
   let batchPhase = $state<'idle' | 'extracting' | 'review' | 'grading' | 'done'>('idle');
   let outlierReport = $state<BatchStudentResult[]>([]);
+  let isResweepInFlight = $state(false);
   let essayPrompt = $state('');
   let leniency = $state(50);
   let originalRubricText = $state('');
@@ -429,6 +430,7 @@
           bind:savedSessionStudent
           bind:profileWarning={batchProfileWarning}
           bind:outlierReport
+          bind:isResweepInFlight
         />
         {#if batchPhase !== 'idle'}
           <RubricCard
@@ -485,6 +487,7 @@
           onAccept={(entry) => batchPanelRef?.acceptReviewEntry(entry)}
           onRevert={(entry) => batchPanelRef?.revertOutlier(entry)}
           onResweep={() => batchPanelRef?.handleResweep()}
+          {isResweepInFlight}
         />
       {/if}
       <BatchResults

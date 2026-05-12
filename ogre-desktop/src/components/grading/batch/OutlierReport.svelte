@@ -187,13 +187,15 @@
                   class="btn accept"
                   type="button"
                   onclick={() => accept(entry)}
-                  disabled={isBusy}
+                  disabled={isBusy || isResweepInFlight}
+                  title={isResweepInFlight ? 'Wait for re-sweep to finish before accepting' : ''}
                 >Accept</button>
                 <button
                   class="btn revert"
                   type="button"
                   onclick={() => revert(entry)}
-                  disabled={isBusy}
+                  disabled={isBusy || isResweepInFlight}
+                  title={isResweepInFlight ? 'Wait for re-sweep to finish before reverting' : ''}
                 >{isBusy ? 'Working...' : 'Revert'}</button>
               </span>
             </div>

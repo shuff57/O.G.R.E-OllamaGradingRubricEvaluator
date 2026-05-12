@@ -782,12 +782,14 @@ export function startSweep(
           ? `${body.customInstructions}\n\n${skillInjection}`
           : skillInjection;
       }
-      // 10-minute timeout — sweep does up to 4 LLM calls (pairwise bands), each
-      // can run a few minutes on cloud models, so give it generous headroom.
+      // 15-minute timeout — pairwise sweep can fire up to 4 LLM calls and each
+      // can hit the server's 8-min ollama-cloud per-call timeout, so the worst
+      // case server runtime exceeds a 10-min client cap. Match /api/grade's
+      // 15-min budget; users can cancel via Stop if they want sooner.
       const sweepController = new AbortController();
       const sweepTimeoutId = setTimeout(
-        () => sweepController.abort(new Error("Re-sweep timed out after 10 minutes")),
-        600_000,
+        () => sweepController.abort(new Error("Re-sweep timed out after 15 minutes")),
+        900_000,
       );
       let response: Response;
       try {
