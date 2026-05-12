@@ -8,6 +8,8 @@
     onDismiss = (() => {}) as () => void,
     onAccept = (async (_entry: BatchStudentResult) => {}) as (entry: BatchStudentResult) => void | Promise<void>,
     onRevert = (async (_entry: BatchStudentResult) => {}) as (entry: BatchStudentResult) => void | Promise<void>,
+    onResweep = null as null | (() => void | Promise<void>),
+    isResweepInFlight = false as boolean,
   } = $props();
 
   let errors = $state<Record<number, string>>({});
@@ -131,7 +133,20 @@
         Consistency Review
         <span class="count">{visible.length} adjustment{visible.length === 1 ? '' : 's'}</span>
       </h3>
-      <button class="dismiss" onclick={handleDismiss} aria-label="Dismiss review">&#215;</button>
+      <span class="header-actions">
+        {#if onResweep}
+          <button
+            class="resweep-link"
+            type="button"
+            onclick={onResweep}
+            disabled={isResweepInFlight}
+            title="Re-run the consistency check with the current grades"
+          >
+            {isResweepInFlight ? 'Re-sweeping…' : '↻ Re-run sweep'}
+          </button>
+        {/if}
+        <button class="dismiss" onclick={handleDismiss} aria-label="Dismiss review">&#215;</button>
+      </span>
     </header>
     <p class="hint">
       The grader compared students within similar score bands and flagged these for review.
@@ -270,6 +285,29 @@
     font-size: 0.75rem;
     color: var(--color-text-secondary);
     font-weight: normal;
+  }
+  .header-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .resweep-link {
+    background: transparent;
+    border: 1px solid var(--color-border);
+    color: var(--color-text-secondary);
+    font-size: 0.72rem;
+    padding: 3px 8px;
+    border-radius: var(--radius-sm, 4px);
+    cursor: pointer;
+    font-family: var(--font-body);
+  }
+  .resweep-link:hover:not(:disabled) {
+    background: var(--color-bg-sidebar);
+    color: var(--color-text);
+  }
+  .resweep-link:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
   .dismiss {
     background: transparent;

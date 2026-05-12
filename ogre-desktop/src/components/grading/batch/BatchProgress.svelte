@@ -14,7 +14,7 @@
   } from '../../../lib/batch-grader';
   import type { BatchProgress as BatchProgressType, Rubric, SiteProfile } from '../../../lib/batch-grader';
   import type { BatchLogEntry } from '../../../lib/batch-grader';
-  import { startBatchGrading, generateAnchors } from '../../../lib/grading-api';
+  import { startBatchGrading, startSweep, generateAnchors } from '../../../lib/grading-api';
   import type {
     BatchGradingHandle,
     BatchChunkEvent,
@@ -93,6 +93,10 @@
   let pendingReview = $state<ReviewData | null>(null);
   let reviewResolve: ((decision: { action: 'approve' | 'skip'; score?: number; feedback?: string }) => void) | null = null;
   let reviewShowPreview = $state(false);
+
+  // ── Re-sweep state ─────────────────────────────────────────────────────
+  let isResweepInFlight = $state(false);
+  let resweepHandle: BatchGradingHandle | null = null;
 
   // ── Grading Timer ──────────────────────────────────────────────────────
   let elapsedSeconds = $state(0);
@@ -950,8 +954,81 @@
     }
   }
 
+  /**
+   * Re-run the end-of-grading consistency sweep against the existing graded
+   * students without re-grading them. Used to retry after a sweep failure,
+   * after manual edits, or with a stronger model. Calls the server's
+   * /api/sweep endpoint with the current batch's results + rubric + students.
+   */
+  export async function handleResweep(): Promise<void> {
+    if (!batchGrader || isResweepInFlight) return;
+    const summary = batchGrader.getSummary();
+    const graded = summary.graded;
+    if (graded.length < 5) {
+      phaseMessage = `Re-sweep needs ≥5 graded students (have ${graded.length})`;
+      return;
+    }
+    const rubric = batchGrader.rubric;
+    if (!rubric) {
+      phaseMessage = 'Re-sweep failed: no rubric in current session';
+      return;
+    }
+
+    const students = batchGrader.students.map((s) => ({
+      index: s.index,
+      name: s.name,
+      response: s.response,
+      prompt: s.prompt,
+    }));
+    const results = graded.map((g) => ({
+      studentIndex: g.index,
+      score: g.score,
+      feedback: g.feedback,
+    }));
+
+    isResweepInFlight = true;
+    outlierReport = []; // clear prior review entries so new ones replace them
+    phaseMessage = 'Re-running consistency sweep…';
+
+    resweepHandle = startSweep(
+      {
+        provider: provider || undefined,
+        model: model || undefined,
+        rubric: rubric as unknown as Parameters<typeof startSweep>[0]['rubric'],
+        students,
+        results,
+        sweep: 'auto',
+        weightMode,
+      },
+      {
+        onProgress: (d: BatchProgressEvent) => {
+          if (d.phase === 'consistency-sweep') {
+            phaseMessage = `Re-running consistency sweep (${(d as BatchProgressEvent & { mode?: string }).mode ?? 'pairwise'})…`;
+          } else if (d.phase === 'cloud-fallback') {
+            phaseMessage = 'Cloud fallback: local Ollama unreachable, using cloud GPU…';
+          }
+        },
+        onReview: (d: BatchReviewEvent) => handleSSEReview(d),
+        onDone: (d: BatchDoneEvent) => {
+          isResweepInFlight = false;
+          resweepHandle = null;
+          const pending = d.stats?.reviewPending ?? 0;
+          phaseMessage = pending > 0
+            ? `Re-sweep complete: ${pending} adjustment(s) pending review`
+            : 'Re-sweep complete: no adjustments suggested';
+        },
+        onError: (d: BatchErrorEvent) => {
+          isResweepInFlight = false;
+          resweepHandle = null;
+          phaseMessage = `Re-sweep failed: ${d.message}`;
+        },
+      },
+    );
+  }
+
   onDestroy(() => {
     if (batchHandle) { batchHandle.cancel(); batchHandle = null; }
+    if (resweepHandle) { resweepHandle.cancel(); resweepHandle = null; }
     if (batchGrader) { batchGrader.stop(); batchGrader = null; }
     stopTimer();
   });
@@ -1007,6 +1084,20 @@
     {#if currentStudentName}
       <div class="current-student">
         <small class="text-muted">Filling: {currentStudentName}</small>
+      </div>
+    {/if}
+
+    {#if batchPhase === 'done' && batchGrader && (batchGrader.getSummary().graded.length >= 5)}
+      <div class="resweep-row">
+        <button
+          class="btn-secondary resweep-btn"
+          type="button"
+          onclick={handleResweep}
+          disabled={isResweepInFlight}
+          title="Re-run the band-based consistency check against the current grades"
+        >
+          {isResweepInFlight ? 'Re-sweeping…' : 'Re-run consistency check'}
+        </button>
       </div>
     {/if}
 
@@ -1147,6 +1238,8 @@
 
   .phase-message { margin-top: var(--spacing-1); font-size: 0.8rem; }
   .current-student { margin-top: var(--spacing-1); font-style: italic; }
+  .resweep-row { margin-top: var(--spacing-2); display: flex; justify-content: flex-end; }
+  .resweep-btn { font-size: 0.8rem; padding: 4px 10px; }
 
   .batch-error {
     display: flex;

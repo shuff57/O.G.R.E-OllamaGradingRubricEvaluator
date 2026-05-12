@@ -736,6 +736,132 @@ export function startBatchGrading(
   };
 }
 
+/** Request parameters for re-running the consistency sweep via POST /api/sweep. */
+export interface SweepRequest {
+  provider?: string;
+  model?: string;
+  rubric: BatchGradingRequest["rubric"];
+  students: BatchGradingRequest["students"];
+  /** Existing graded results to re-check (from the last batch run's batchLog). */
+  results: Array<{ studentIndex: number; score: number; feedback: string }>;
+  sweep?: "none" | "compact" | "pairwise" | "auto";
+  customInstructions?: string;
+  weightMode?: "category" | "criterion";
+}
+
+/**
+ * Re-run the consistency sweep against already-graded students via POST /api/sweep.
+ *
+ * Useful for: retrying a sweep that failed mid-run, swapping to a stronger
+ * model for sweep without re-grading, or rechecking after manual score edits.
+ * Emits the same `review` SSE event shape as startBatchGrading so the same
+ * OutlierReport pane can consume both.
+ */
+export function startSweep(
+  request: SweepRequest,
+  callbacks: BatchGradingCallbacks,
+): BatchGradingHandle {
+  const token: CancellationToken & { cancelled: boolean } = { cancelled: false };
+
+  const body: Record<string, unknown> = {
+    provider: request.provider,
+    model: request.model,
+    rubric: request.rubric,
+    students: request.students,
+    results: request.results,
+    sweep: request.sweep,
+  };
+  if (request.customInstructions) body.customInstructions = request.customInstructions;
+  if (request.weightMode) body.weightMode = request.weightMode;
+
+  (async () => {
+    try {
+      const skillInjection = await buildSkillInjection();
+      if (skillInjection) {
+        body.customInstructions = body.customInstructions
+          ? `${body.customInstructions}\n\n${skillInjection}`
+          : skillInjection;
+      }
+      // 10-minute timeout — sweep does up to 4 LLM calls (pairwise bands), each
+      // can run a few minutes on cloud models, so give it generous headroom.
+      const sweepController = new AbortController();
+      const sweepTimeoutId = setTimeout(
+        () => sweepController.abort(new Error("Re-sweep timed out after 10 minutes")),
+        600_000,
+      );
+      let response: Response;
+      try {
+        response = await fetch(`${SERVER_BASE}/api/sweep`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify(body),
+          signal: sweepController.signal,
+        });
+      } finally {
+        clearTimeout(sweepTimeoutId);
+      }
+
+      if (token.cancelled) return;
+
+      if (!response.ok) {
+        let errorMsg = `Re-sweep failed (HTTP ${response.status})`;
+        try {
+          const errData = await response.json();
+          errorMsg = (errData as { error?: string }).error || errorMsg;
+        } catch {
+          /* use status-based message */
+        }
+        callbacks.onError?.({ message: errorMsg });
+        return;
+      }
+
+      const guardedCallbacks: BatchGradingCallbacks = {
+        onProgress: (d) => {
+          if (!token.cancelled) return callbacks.onProgress?.(d);
+        },
+        onChunk: (d) => {
+          if (!token.cancelled) return callbacks.onChunk?.(d);
+        },
+        onSweep: (d) => {
+          if (!token.cancelled) return callbacks.onSweep?.(d);
+        },
+        onOutlier: (d) => {
+          if (!token.cancelled) return callbacks.onOutlier?.(d);
+        },
+        onReview: (d) => {
+          if (!token.cancelled) return callbacks.onReview?.(d);
+        },
+        onDone: (d) => {
+          if (!token.cancelled) return callbacks.onDone?.(d);
+        },
+        onError: (d) => {
+          if (!token.cancelled) return callbacks.onError?.(d);
+        },
+        onHeartbeat: (d) => {
+          if (!token.cancelled) return callbacks.onHeartbeat?.(d);
+        },
+      };
+
+      if (response.body && typeof response.body.getReader === "function") {
+        await parseSSEStream(response.body, guardedCallbacks, token);
+      } else {
+        const text = await response.text();
+        if (!token.cancelled) await parseSSEText(text, guardedCallbacks);
+      }
+    } catch (err) {
+      if (token.cancelled) return;
+      const msg = err instanceof Error ? err.message : String(err);
+      callbacks.onError?.({ message: msg });
+    }
+  })();
+
+  return {
+    cancel: () => {
+      token.cancelled = true;
+    },
+  };
+}
+
 
 // ── Anchor Generation API ─────────────────────────────────────────
 

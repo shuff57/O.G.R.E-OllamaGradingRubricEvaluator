@@ -484,6 +484,7 @@
           onDismiss={() => { outlierReport = []; }}
           onAccept={(entry) => batchPanelRef?.acceptReviewEntry(entry)}
           onRevert={(entry) => batchPanelRef?.revertOutlier(entry)}
+          onResweep={() => batchPanelRef?.handleResweep()}
         />
       {/if}
       <BatchResults

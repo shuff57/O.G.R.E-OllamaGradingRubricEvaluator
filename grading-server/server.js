@@ -194,6 +194,94 @@ function parseSweepAdjustments(text, label) {
   }
 }
 
+/**
+ * Run the end-of-grading consistency sweep against an existing set of results.
+ * Shared between /api/grade (called inline after grading) and /api/sweep
+ * (called standalone to re-run the sweep on already-graded students without
+ * re-grading them). Emits the same `review` SSE event in both cases.
+ *
+ * @returns {Promise<{sweepAdjustments: Array, ran: boolean, effectiveSweep: string}>}
+ */
+async function runConsistencySweep(ctx) {
+  const {
+    stream, getNextSseId, provider, providerConfig, rubric,
+    students, results, anchors, chunkMap, maxScore, sweepMode,
+    timestamp, fallbackOptions,
+  } = ctx;
+
+  // Sweep gate: skip below 5 students because the pairwise band check (which
+  // splits results into 4 bands and requires ≥2 students per band) cannot find
+  // a meaningful signal in tiny batches.
+  const shouldSweep = sweepMode !== 'none' && results.length >= 5;
+  let sweepAdjustments = [];
+  if (!shouldSweep) return { sweepAdjustments, ran: false, effectiveSweep: 'none' };
+
+  const effectiveSweep = sweepMode === 'auto' ? 'pairwise' : sweepMode;
+  console.log(`[${timestamp()}] [sse] Consistency sweep: mode=${effectiveSweep}, students=${results.length}`);
+
+  await stream.writeSSE({
+    event: 'progress',
+    data: JSON.stringify({ phase: 'consistency-sweep', mode: effectiveSweep }),
+    id: getNextSseId(),
+  });
+
+  try {
+    if (effectiveSweep === 'compact') {
+      const sweepPrompt = buildCompactSweepPrompt(results, students, anchors, chunkMap, maxScore, rubric);
+      const sweepText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: sweepPrompt }], timestamp(), fallbackOptions);
+      const parsed = parseSweepAdjustments(sweepText, 'compact');
+      if (parsed) {
+        sweepAdjustments = parsed.filter(a => a.studentIndex !== undefined && a.suggestedScore !== undefined && a.suggestedScore !== a.currentScore);
+      }
+      console.log(`[${timestamp()}] [sse] Compact sweep: ${sweepAdjustments.length} adjustment(s) suggested`);
+    } else if (effectiveSweep === 'pairwise') {
+      const bandPrompts = buildPairwiseSweepPrompts(results, students, anchors, chunkMap, maxScore, rubric);
+      console.log(`[${timestamp()}] [sse] Pairwise sweep: ${bandPrompts.length} band(s) to check`);
+      for (const bp of bandPrompts) {
+        console.log(`[${timestamp()}] [sse]   Checking ${bp.label} band (${bp.studentIndices.length} students)...`);
+        const bandText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: bp.prompt }], timestamp(), fallbackOptions);
+        const parsed = parseSweepAdjustments(bandText, `${bp.label} band`);
+        if (parsed) {
+          const bandAdj = parsed
+            .filter(a => a.studentIndex !== undefined && a.suggestedScore !== undefined && a.suggestedScore !== a.currentScore)
+            .map(a => ({ ...a, band: bp.label }));
+          sweepAdjustments.push(...bandAdj);
+        }
+      }
+      console.log(`[${timestamp()}] [sse] Pairwise sweep: ${sweepAdjustments.length} total adjustment(s)`);
+    }
+
+    if (sweepAdjustments.length > 0) {
+      await stream.writeSSE({
+        event: 'review',
+        data: JSON.stringify({
+          source: 'sweep',
+          adjustments: sweepAdjustments.map(a => {
+            const orig = results.find(r => r.studentIndex === a.studentIndex);
+            const student = students.find(s => s.index === a.studentIndex);
+            return {
+              studentIndex: a.studentIndex,
+              name: student?.name,
+              band: a.band,
+              originalScore: orig?.score,
+              suggestedScore: a.suggestedScore,
+              originalFeedback: orig?.feedback,
+              suggestedFeedback: a.suggestedFeedback,
+              reason: a.reason,
+            };
+          }),
+        }),
+        id: getNextSseId(),
+      });
+    }
+    console.log(`[${timestamp()}] [sse] Sweep complete: ${sweepAdjustments.length} adjustment(s) pending client review`);
+  } catch (sweepErr) {
+    console.warn(`[${timestamp()}] [sse] Consistency sweep failed: ${sweepErr.message}, continuing with original scores`);
+  }
+
+  return { sweepAdjustments, ran: true, effectiveSweep };
+}
+
 async function callProviderDirect(provider, config, messages, timestamp, options = {}) {
   // Exchange GitHub OAuth token for Copilot session token
   if (provider.toLowerCase() === 'github-models') {
@@ -1950,91 +2038,15 @@ app.post('/api/grade', async (c) => {
         }
       }
 
-      // Step 3.5: Consistency sweep
+      // Step 3.5: Consistency sweep — delegated to shared helper (also used by /api/sweep)
       const results = mergeResults(allResults);
-      const numChunks = new Set(Object.values(chunkMap)).size;
-      // Sweep gate: skip below 5 students because the pairwise band check (which
-      // splits results into 4 bands and requires ≥2 students per band for peer
-      // comparison) cannot find a meaningful signal in tiny batches — every band
-      // would either be empty or singleton, wasting the LLM call.
-      const shouldSweep = sweepMode !== 'none' && results.length >= 5;
-      let sweepAdjustments = [];
-
-      if (shouldSweep) {
-        const effectiveSweep = sweepMode === 'auto' ? 'pairwise' : sweepMode;
-        console.log(`[${timestamp()}] [sse] Consistency sweep: mode=${effectiveSweep}, chunks=${numChunks}`);
-
-        await stream.writeSSE({
-          event: 'progress',
-          data: JSON.stringify({ phase: 'consistency-sweep', mode: effectiveSweep }),
-          id: String(sseId++),
-        });
-
-        try {
-          if (effectiveSweep === 'compact') {
-            // Single API call with compact table
-            const sweepPrompt = buildCompactSweepPrompt(results, students, anchors, chunkMap, maxScore, rubric);
-            const sweepText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: sweepPrompt }], timestamp(), fallbackOptions);
-
-            // Parse the JSON array response (defensive: strips markdown fences, logs raw on fail)
-            const parsed = parseSweepAdjustments(sweepText, 'compact');
-            if (parsed) {
-              sweepAdjustments = parsed.filter(a => a.studentIndex !== undefined && a.suggestedScore !== undefined && a.suggestedScore !== a.currentScore);
-            }
-            console.log(`[${timestamp()}] [sse] Compact sweep: ${sweepAdjustments.length} adjustment(s) suggested`);
-
-          } else if (effectiveSweep === 'pairwise') {
-            // Multiple API calls, one per cross-chunk band
-            const bandPrompts = buildPairwiseSweepPrompts(results, students, anchors, chunkMap, maxScore, rubric);
-            console.log(`[${timestamp()}] [sse] Pairwise sweep: ${bandPrompts.length} band(s) to check`);
-
-            for (const bp of bandPrompts) {
-              console.log(`[${timestamp()}] [sse]   Checking ${bp.label} band (${bp.studentIndices.length} students)...`);
-              const bandText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: bp.prompt }], timestamp(), fallbackOptions);
-
-              const parsed = parseSweepAdjustments(bandText, `${bp.label} band`);
-              if (parsed) {
-                // Stamp the band label onto each adjustment — the AI doesn't echo it,
-                // and the client UI groups by band for display.
-                const bandAdj = parsed
-                  .filter(a => a.studentIndex !== undefined && a.suggestedScore !== undefined && a.suggestedScore !== a.currentScore)
-                  .map(a => ({ ...a, band: bp.label }));
-                sweepAdjustments.push(...bandAdj);
-              }
-            }
-            console.log(`[${timestamp()}] [sse] Pairwise sweep: ${sweepAdjustments.length} total adjustment(s)`);
-          }
-
-          // Emit sweep adjustments as a review event for client accept/revert — do not auto-apply
-          if (sweepAdjustments.length > 0) {
-            await stream.writeSSE({
-              event: 'review',
-              data: JSON.stringify({
-                source: 'sweep',
-                adjustments: sweepAdjustments.map(a => {
-                  const orig = results.find(r => r.studentIndex === a.studentIndex);
-                  const student = students.find(s => s.index === a.studentIndex);
-                  return {
-                    studentIndex: a.studentIndex,
-                    name: student?.name,
-                    band: a.band,
-                    originalScore: orig?.score,
-                    suggestedScore: a.suggestedScore,
-                    originalFeedback: orig?.feedback,
-                    suggestedFeedback: a.suggestedFeedback,
-                    reason: a.reason,
-                  };
-                }),
-              }),
-              id: String(sseId++),
-            });
-          }
-          console.log(`[${timestamp()}] [sse] Sweep complete: ${sweepAdjustments.length} adjustment(s) pending client review`);
-
-        } catch (sweepErr) {
-          console.warn(`[${timestamp()}] [sse] Consistency sweep failed: ${sweepErr.message}, continuing with original scores`);
-        }
-      }
+      const { sweepAdjustments, effectiveSweep } = await runConsistencySweep({
+        stream,
+        getNextSseId: () => String(sseId++),
+        provider, providerConfig, rubric, students, results,
+        anchors, chunkMap, maxScore, sweepMode,
+        timestamp, fallbackOptions,
+      });
 
       // Step 4: Done
       const outlierAnalysis = detectOutliers(results);
@@ -2059,7 +2071,7 @@ app.post('/api/grade', async (c) => {
           metadata: {
             totalStudents: students.length,
             chunks: totalChunksForClient,
-            sweepMode: shouldSweep ? (sweepMode === 'auto' ? 'pairwise' : sweepMode) : 'none',
+            sweepMode: effectiveSweep,
             sweepAdjustments: sweepAdjustments.length,
             elapsedSeconds: parseFloat(elapsed),
           },
@@ -2079,6 +2091,118 @@ app.post('/api/grade', async (c) => {
 
     } catch (error) {
       console.error(`[${timestamp()}] [sse] Error:`, error.message);
+      await stream.writeSSE({
+        event: 'error',
+        data: JSON.stringify({ message: error.message }),
+        id: String(sseId++),
+      });
+    }
+  });
+});
+
+/**
+ * Re-sweep Endpoint
+ * POST /api/sweep
+ *
+ * Runs the end-of-grading consistency sweep against already-graded students,
+ * without re-grading them. Use after /api/grade to retry a failed sweep, swap
+ * to a stronger model for the sweep, or re-check after manual score edits.
+ *
+ * Body: { provider, model, rubric, students, results, sweep?, customInstructions?, weightMode? }
+ *   students: [{ index, name, response, prompt? }]
+ *   results:  [{ studentIndex, score, feedback }]
+ *
+ * Emits the same `review` SSE event shape as /api/grade so the client can
+ * route both through the OutlierReport pane unchanged.
+ */
+app.post('/api/sweep', async (c) => {
+  let body;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+
+  const { provider, model, rubric, students, results, sweep, customInstructions, weightMode } = body;
+  const sweepMode = sweep || 'auto';
+
+  if (!provider) return c.json({ error: 'Missing required field: provider' }, 400);
+  if (!model) return c.json({ error: 'Missing required field: model' }, 400);
+  if (!rubric) return c.json({ error: 'Missing required field: rubric' }, 400);
+  if (!students || !Array.isArray(students) || students.length === 0) {
+    return c.json({ error: 'Missing or invalid field: students' }, 400);
+  }
+  if (!results || !Array.isArray(results) || results.length === 0) {
+    return c.json({ error: 'Missing or invalid field: results' }, 400);
+  }
+
+  if (customInstructions) rubric.customInstructions = customInstructions;
+  if (weightMode) rubric.weightMode = weightMode;
+  const maxScore = parseFloat(rubric.maxScore) || 10;
+  let sseId = 0;
+
+  return streamSSE(c, async (stream) => {
+    try {
+      const fallbackOptions = {
+        onFallback: async () => {
+          await stream.writeSSE({
+            event: 'progress',
+            data: JSON.stringify({ phase: 'cloud-fallback', reason: 'Local Ollama unreachable. Using cloud GPU.' }),
+            id: String(sseId++),
+          });
+        },
+      };
+
+      const providerConfig = resolveProviderConfig(provider, model);
+      console.log(`[${timestamp()}] [sse] Re-sweep ${results.length} students | provider=${provider} model=${model}`);
+
+      const anchors = generateScoringAnchors(rubric);
+      // chunkMap is no longer load-bearing post-refactor (band sweep is always-on,
+      // doesn't filter by chunk membership) — pass all-zero so the prompt is valid.
+      const chunkMap = {};
+      for (const r of results) chunkMap[r.studentIndex] = 0;
+
+      const startTime = Date.now();
+      const { sweepAdjustments, ran, effectiveSweep } = await runConsistencySweep({
+        stream,
+        getNextSseId: () => String(sseId++),
+        provider, providerConfig, rubric, students, results,
+        anchors, chunkMap, maxScore, sweepMode,
+        timestamp, fallbackOptions,
+      });
+
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      const outlierAnalysis = detectOutliers(results);
+      console.log(`[${timestamp()}] [sse] ✓ Re-sweep done in ${elapsed}s, ${sweepAdjustments.length} adjustment(s)`);
+
+      await stream.writeSSE({
+        event: 'done',
+        data: JSON.stringify({
+          stats: {
+            mean: outlierAnalysis.mean,
+            stdDev: outlierAnalysis.stdDev,
+            outliers: outlierAnalysis.outliers.length,
+            reviewPending: sweepAdjustments.length,
+          },
+          anchors: {
+            excellent: anchors.excellent.score,
+            adequate: anchors.adequate.score,
+            belowAverage: anchors.belowAverage.score,
+            minimal: anchors.minimal.score,
+          },
+          metadata: {
+            totalStudents: results.length,
+            chunks: 0,
+            sweepMode: ran ? effectiveSweep : 'none',
+            sweepAdjustments: sweepAdjustments.length,
+            elapsedSeconds: parseFloat(elapsed),
+            source: 'resweep',
+          },
+        }),
+        id: String(sseId++),
+      });
+    } catch (error) {
+      console.error(`[${timestamp()}] [sse] Re-sweep error:`, error.message);
       await stream.writeSSE({
         event: 'error',
         data: JSON.stringify({ message: error.message }),

@@ -85,6 +85,7 @@
   export function handleReset() { progressRef?.handleReset(); }
   export function acceptReviewEntry(entry: BatchStudentResult) { return progressRef?.acceptReviewEntry(entry); }
   export function revertOutlier(entry: BatchStudentResult) { return progressRef?.revertOutlier(entry); }
+  export function handleResweep() { return progressRef?.handleResweep(); }
 
   // ── URL change coordination ────────────────────────────────────────────
   // Shell coordinates: Progress resets first (via its own effect on pageLoadedUrl),
