@@ -916,6 +916,21 @@ export function chunkStudentsByPrompt(students, chunkSize = 30, fallbackPrompt =
     console.warn(`[chunkStudentsByPrompt] ${fallbackCount}/${students.length} student(s) had no .prompt — grouped with fallback (rubric.essayPrompt)`);
   }
 
+  // Diagnostic: print each group's first student name + normalised-key prefix so
+  // unexpected splits (e.g. 4 groups detected for 3 actual versions) can be
+  // diagnosed by inspecting which characters differ between false-twin groups.
+  if (groups.size > 1) {
+    console.log(`[chunkStudentsByPrompt] ${groups.size} prompt group(s) detected:`);
+    let idx = 0;
+    for (const [key, groupStudents] of groups) {
+      const first = groupStudents[0];
+      const firstName = (first && first.name) || `Student ${first?.index ?? '?'}`;
+      const keyPreview = key.slice(0, 200).replace(/\n/g, '\\n');
+      console.log(`[chunkStudentsByPrompt]   #${idx} (${groupStudents.length} students, first=${firstName}): "${keyPreview}${key.length > 200 ? '…' : ''}"`);
+      idx++;
+    }
+  }
+
   const chunks = [];
   for (const [promptKey, groupStudents] of groups) {
     for (let i = 0; i < groupStudents.length; i += chunkSize) {
@@ -967,6 +982,50 @@ export function mergeResults(chunkResults) {
 }
 
 /**
+ * Build feedback-format guidance for sweep prompts so that suggestedFeedback
+ * matches the per-requirement HTML structure produced by the main grader.
+ * Without this, sweep adjustments come back in arbitrary formats and break
+ * the per-requirement rendering the gradebook expects.
+ *
+ * @param {Object} rubric - Rubric with checklistItems
+ * @returns {{requirementsList: string, feedbackTemplate: string, formatRule: string}}
+ */
+function buildSweepFeedbackGuidance(rubric) {
+  let requirementsList = '';
+  if (rubric && rubric.checklistItems && rubric.checklistItems.length > 0) {
+    requirementsList = '\nGRADING REQUIREMENTS (suggestedFeedback must contain one section per numbered item):\n';
+    let n = 1;
+    for (const item of rubric.checklistItems) {
+      if (item.items) {
+        for (const sub of item.items) {
+          requirementsList += `${n}. ${sub}\n`;
+          n++;
+        }
+      }
+    }
+  }
+
+  const _allReqs = [];
+  for (const item of ((rubric && rubric.checklistItems) || [])) {
+    if (item.items) for (const sub of item.items) _allReqs.push(sub);
+  }
+  let feedbackTemplate = '';
+  if (_allReqs.length > 0) {
+    feedbackTemplate = `\\n<p><strong>${_allReqs[0]}</strong></p>\\n<blockquote>You said: \\"[quote what student wrote]\\"</blockquote>\\n<p>[Correct/Incorrect/Incomplete — explain WHY; wrap math in backticks, e.g. \`x^2 + 3x\`]</p>\\n<p><em>To improve: [specific suggestion]</em></p>`;
+    if (_allReqs.length > 1) {
+      feedbackTemplate += `\\n<p><strong>${_allReqs[1]}</strong></p>\\n<blockquote>You did not address this.</blockquote>\\n<p>[Explain what was expected]</p>\\n<p><em>To improve: [specific suggestion]</em></p>`;
+    }
+    for (let i = 2; i < _allReqs.length; i++) {
+      feedbackTemplate += `\\n<p><strong>${_allReqs[i]}</strong></p>\\n<blockquote>You said: ...</blockquote>\\n<p>...</p>`;
+    }
+  }
+
+  const formatRule = `FEEDBACK FORMAT RULE: suggestedFeedback must contain one section for EACH numbered requirement above. Do NOT group by category. Use HTML tags: <strong> for the requirement header, <blockquote> for the student's words (or "You did not address this."), <p> for your evaluation, <em> for the "To improve" line. Wrap math expressions in backticks, e.g. \`x^2 + 3x\` or \`p < 0.05\`. For ANY requirement that is not at full credit, include both (a) a specific reason citing the student's words or omission, and (b) a "To improve" line with an actionable next step. Cite a specific rubric requirement that was not met. Do NOT invent additional standards not in the rubric. Do NOT use markdown (no **bold**, no "> quote", no *italic*).`;
+
+  return { requirementsList, feedbackTemplate, formatRule };
+}
+
+/**
  * Build a compact consistency sweep prompt (single API call).
  * Shows all students in a table with scores + excerpts, asks AI to flag misaligned scores.
  * @param {Array} results - Merged grading results (studentIndex, score, feedback)
@@ -974,9 +1033,10 @@ export function mergeResults(chunkResults) {
  * @param {Object} anchors - Scoring anchors
  * @param {Object} chunkMap - Map of studentIndex → chunkIndex for cross-chunk identification
  * @param {number} maxScore - Maximum possible score
+ * @param {Object} rubric - Rubric (for per-requirement feedback formatting guidance)
  * @returns {string} - Prompt for the AI
  */
-export function buildCompactSweepPrompt(results, students, anchors, chunkMap, maxScore) {
+export function buildCompactSweepPrompt(results, students, anchors, chunkMap, maxScore, rubric) {
   let prompt = `CROSS-CHUNK CONSISTENCY REVIEW
 
 You previously graded these students across ${new Set(Object.values(chunkMap)).size} separate batches. Different batches may have drifted in scoring standards. Review ALL scores for cross-batch consistency.
@@ -999,8 +1059,13 @@ STUDENT SCORES:
     prompt += `[#${r.studentIndex}] ${name} | Score: ${r.score}/${maxScore} | Chunk: ${chunk + 1} | "${excerpt}..."\n`;
   }
 
+  const { requirementsList, feedbackTemplate, formatRule } = buildSweepFeedbackGuidance(rubric);
+  prompt += requirementsList;
+
   prompt += `
 TASK: Identify any students whose score seems inconsistent relative to peers with similar response quality. Focus especially on students near chunk boundaries or where similar-quality responses received different scores in different chunks.
+
+${formatRule}
 
 RESPONSE FORMAT:
 Return a JSON array of adjustments. Only include students that need a score change. Return [] if all scores look consistent.
@@ -1010,7 +1075,7 @@ Return a JSON array of adjustments. Only include students that need a score chan
     "studentIndex": <number>,
     "currentScore": <number>,
     "suggestedScore": <number, half-points allowed e.g. 7.5>,
-    "suggestedFeedback": "<HTML feedback in the same format as initial grading: <strong>/<blockquote>/<p>/<em> tags. Required when suggestedScore differs from currentScore.>",
+    "suggestedFeedback": "<p>Hi [name],</p>${feedbackTemplate}",
     "reason": "<brief explanation of why this score should change>"
   }
 ]
@@ -1287,7 +1352,7 @@ function clampSingleResult(parsed, maxScore, categoryWeights = null, categoryMax
   return { score, feedback };
 }
 
-export function buildPairwiseSweepPrompts(results, students, anchors, chunkMap, maxScore) {
+export function buildPairwiseSweepPrompts(results, students, anchors, chunkMap, maxScore, rubric) {
   // Define score bands based on anchors
   const bands = [
     { label: 'High', min: anchors.excellent.score - 1, max: maxScore, key: 'high' },
@@ -1296,6 +1361,7 @@ export function buildPairwiseSweepPrompts(results, students, anchors, chunkMap, 
     { label: 'Low', min: 0, max: anchors.belowAverage.score - 0.5, key: 'low' },
   ];
 
+  const { requirementsList, feedbackTemplate, formatRule } = buildSweepFeedbackGuidance(rubric);
   const prompts = [];
 
   for (const band of bands) {
@@ -1312,7 +1378,7 @@ SCORING ANCHORS:
 - Adequate (${anchors.adequate.score}/${maxScore}): ${anchors.adequate.description}
 - Below Average (${anchors.belowAverage.score}/${maxScore}): ${anchors.belowAverage.description}
 - Minimal (${anchors.minimal.score}/${maxScore}): ${anchors.minimal.description}
-
+${requirementsList}
 STUDENTS IN THIS BAND:
 `;
 
@@ -1326,6 +1392,8 @@ STUDENTS IN THIS BAND:
     prompt += `
 TASK: Are these scores consistent with each other? If students gave responses of similar quality but received different scores, flag them for adjustment.
 
+${formatRule}
+
 RESPONSE FORMAT:
 Return a JSON array of adjustments. Only include students that need a score change. Return [] if all scores look consistent within this band.
 
@@ -1334,7 +1402,7 @@ Return a JSON array of adjustments. Only include students that need a score chan
     "studentIndex": <number>,
     "currentScore": <number>,
     "suggestedScore": <number, half-points allowed e.g. 7.5>,
-    "suggestedFeedback": "<HTML feedback in the same format as initial grading: <strong>/<blockquote>/<p>/<em> tags. Required if suggestedScore differs from currentScore.>",
+    "suggestedFeedback": "<p>Hi [name],</p>${feedbackTemplate}",
     "reason": "<brief explanation>"
   }
 ]

@@ -3,6 +3,29 @@
  * Main HTTP server for batch grading with AI providers
  */
 
+import fs from 'node:fs';
+
+// Tee console output to a stable log file. The desktop app pipes stdout to the
+// renderer (server-log IPC event), but a file gives us an externally-tailable
+// artifact regardless of who launched the server.
+// Use process.cwd() (desktop spawns with cwd=grading-server) for path resolution
+// to avoid any URL/ESM quirks with import.meta.url on Windows.
+{
+  const _logPath = process.cwd() + '/server.log';
+  try {
+    fs.writeFileSync(_logPath, `[boot] ${new Date().toISOString()} pid=${process.pid}\n`);
+  } catch (e) {
+    process.stderr.write(`[tee-init-error] ${e.message}\n`);
+  }
+  const _origLog = console.log.bind(console);
+  const _origWarn = console.warn.bind(console);
+  const _origErr = console.error.bind(console);
+  const _format = (args) => args.map(a => typeof a === 'string' ? a : (() => { try { return JSON.stringify(a); } catch { return String(a); } })()).join(' ');
+  console.log = (...args) => { try { fs.appendFileSync(_logPath, _format(args) + '\n'); } catch {} _origLog(...args); };
+  console.warn = (...args) => { try { fs.appendFileSync(_logPath, '[warn] ' + _format(args) + '\n'); } catch {} _origWarn(...args); };
+  console.error = (...args) => { try { fs.appendFileSync(_logPath, '[err] ' + _format(args) + '\n'); } catch {} _origErr(...args); };
+}
+
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
@@ -162,9 +185,9 @@ async function callProviderDirect(provider, config, messages, timestamp, options
   console.log(`[${timestamp}] [direct] Calling ${provider} AI (${config.model})...`);
   const start = Date.now();
   
-  // Timeout: 600s for local Ollama (large batches can take minutes), 300s for cloud (thinking models need extra time), 30s for others
+  // Timeout: 600s for local Ollama (large batches can take minutes), 480s for cloud (thinking models need extra time), 30s for others
   const providerLc = provider.toLowerCase();
-  const timeoutMs = providerLc === 'ollama-cloud' ? 300000 : providerLc === 'ollama' || providerLc === 'ollama-local' ? 600000 : 30000;
+  const timeoutMs = providerLc === 'ollama-cloud' ? 480000 : providerLc === 'ollama' || providerLc === 'ollama-local' ? 600000 : 30000;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   
@@ -1917,7 +1940,7 @@ app.post('/api/grade', async (c) => {
         try {
           if (effectiveSweep === 'compact') {
             // Single API call with compact table
-            const sweepPrompt = buildCompactSweepPrompt(results, students, anchors, chunkMap, maxScore);
+            const sweepPrompt = buildCompactSweepPrompt(results, students, anchors, chunkMap, maxScore, rubric);
             const sweepText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: sweepPrompt }], timestamp(), fallbackOptions);
 
             // Parse the JSON array response
@@ -1932,7 +1955,7 @@ app.post('/api/grade', async (c) => {
 
           } else if (effectiveSweep === 'pairwise') {
             // Multiple API calls, one per cross-chunk band
-            const bandPrompts = buildPairwiseSweepPrompts(results, students, anchors, chunkMap, maxScore);
+            const bandPrompts = buildPairwiseSweepPrompts(results, students, anchors, chunkMap, maxScore, rubric);
             console.log(`[${timestamp()}] [sse] Pairwise sweep: ${bandPrompts.length} band(s) to check`);
 
             for (const bp of bandPrompts) {
