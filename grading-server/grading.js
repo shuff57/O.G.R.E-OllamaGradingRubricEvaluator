@@ -903,12 +903,17 @@ export function chunkStudentsByPrompt(students, chunkSize = 30, fallbackPrompt =
 
   // Group students by their normalised prompt key, preserving insertion order
   const groups = new Map();
+  let fallbackCount = 0;
   for (const s of students) {
+    if (!s || !s.prompt || !String(s.prompt).trim()) fallbackCount++;
     const key = _promptGroupKey(s, fallbackPrompt);
     if (!groups.has(key)) {
       groups.set(key, []);
     }
     groups.get(key).push(s);
+  }
+  if (fallbackCount > 0) {
+    console.warn(`[chunkStudentsByPrompt] ${fallbackCount}/${students.length} student(s) had no .prompt — grouped with fallback (rubric.essayPrompt)`);
   }
 
   const chunks = [];

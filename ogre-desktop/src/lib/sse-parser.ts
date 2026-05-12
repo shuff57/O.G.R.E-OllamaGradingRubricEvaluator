@@ -89,7 +89,8 @@ export interface BatchDoneEvent {
     mean: number;
     stdDev: number;
     outliers: number;
-    adjusted: number;
+    /** Number of end-of-run sweep adjustments awaiting teacher accept/revert. */
+    reviewPending: number;
   };
   anchors: {
     excellent: number;

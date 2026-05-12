@@ -109,6 +109,19 @@
     if (now < orig) return 'down';
     return 'flat';
   }
+
+  // Confirm before dismissing if there are still unreviewed entries — the
+  // suggestions were never auto-applied, so closing the panel silently discards
+  // them. Without this guard, an accidental click on the × loses work.
+  function handleDismiss() {
+    if (visible.length > 0) {
+      const ok = confirm(
+        `${visible.length} adjustment${visible.length === 1 ? '' : 's'} pending review. Dismiss without accepting or reverting?`,
+      );
+      if (!ok) return;
+    }
+    onDismiss();
+  }
 </script>
 
 {#if visible.length > 0}
@@ -118,7 +131,7 @@
         Consistency Review
         <span class="count">{visible.length} adjustment{visible.length === 1 ? '' : 's'}</span>
       </h3>
-      <button class="dismiss" onclick={onDismiss} aria-label="Dismiss review">&#215;</button>
+      <button class="dismiss" onclick={handleDismiss} aria-label="Dismiss review">&#215;</button>
     </header>
     <p class="hint">
       The grader compared students within similar score bands and flagged these for review.

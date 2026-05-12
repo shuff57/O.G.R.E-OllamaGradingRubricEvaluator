@@ -1897,7 +1897,11 @@ app.post('/api/grade', async (c) => {
       // Step 3.5: Consistency sweep
       const results = mergeResults(allResults);
       const numChunks = new Set(Object.values(chunkMap)).size;
-      const shouldSweep = sweepMode !== 'none' && results.length >= 2;
+      // Sweep gate: skip below 5 students because the pairwise band check (which
+      // splits results into 4 bands and requires ≥2 students per band for peer
+      // comparison) cannot find a meaningful signal in tiny batches — every band
+      // would either be empty or singleton, wasting the LLM call.
+      const shouldSweep = sweepMode !== 'none' && results.length >= 5;
       let sweepAdjustments = [];
 
       if (shouldSweep) {
@@ -1994,7 +1998,7 @@ app.post('/api/grade', async (c) => {
             mean: outlierAnalysis.mean,
             stdDev: outlierAnalysis.stdDev,
             outliers: outlierAnalysis.outliers.length,
-            adjusted: 0,
+            reviewPending: sweepAdjustments.length,
           },
           anchors: {
             excellent: anchors.excellent.score,
