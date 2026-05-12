@@ -83,6 +83,7 @@
   export function handleStopBatch() { progressRef?.handleStopBatch(); }
   export function handleCancelBatch() { progressRef?.handleCancelBatch(); }
   export function handleReset() { progressRef?.handleReset(); }
+  export function acceptReviewEntry(entry: BatchStudentResult) { return progressRef?.acceptReviewEntry(entry); }
   export function revertOutlier(entry: BatchStudentResult) { return progressRef?.revertOutlier(entry); }
 
   // ── URL change coordination ────────────────────────────────────────────

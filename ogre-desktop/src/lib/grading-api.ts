@@ -544,6 +544,8 @@ export type {
   BatchChunkEvent,
   BatchSweepEvent,
   BatchOutlierEvent,
+  BatchReviewEvent,
+  BatchReviewAdjustment,
   BatchDoneEvent,
   BatchErrorEvent,
   BatchHeartbeatEvent,
@@ -696,6 +698,9 @@ export function startBatchGrading(
         },
         onOutlier: (d) => {
           if (!token.cancelled) return callbacks.onOutlier?.(d);
+        },
+        onReview: (d) => {
+          if (!token.cancelled) return callbacks.onReview?.(d);
         },
         onDone: (d) => {
           if (!token.cancelled) return callbacks.onDone?.(d);

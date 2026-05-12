@@ -329,6 +329,7 @@ describe("parseSSEStream", () => {
       onChunk: vi.fn(),
       onSweep: vi.fn(),
       onOutlier: vi.fn(),
+      onReview: vi.fn(),
       onDone: vi.fn(),
       onError: vi.fn(),
       onHeartbeat: vi.fn(),
@@ -339,6 +340,7 @@ describe("parseSSEStream", () => {
       sseBlock("chunk", { chunkIndex: 0, results: [] }),
       sseBlock("sweep", { adjustments: [], count: 0 }),
       sseBlock("outlier", { adjustedResults: [] }),
+      sseBlock("review", { source: "sweep", adjustments: [] }),
       sseBlock("done", { stats: {}, anchors: {}, metadata: {} }),
       sseBlock("error", { message: "test" }),
     ].join("");
@@ -350,6 +352,7 @@ describe("parseSSEStream", () => {
     expect(callbacks.onChunk).toHaveBeenCalledOnce();
     expect(callbacks.onSweep).toHaveBeenCalledOnce();
     expect(callbacks.onOutlier).toHaveBeenCalledOnce();
+    expect(callbacks.onReview).toHaveBeenCalledOnce();
     expect(callbacks.onDone).toHaveBeenCalledOnce();
     expect(callbacks.onError).toHaveBeenCalledOnce();
   });

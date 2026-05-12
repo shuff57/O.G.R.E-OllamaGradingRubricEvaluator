@@ -1,45 +1,87 @@
 <script lang="ts">
+  import { slide } from 'svelte/transition';
   import type { BatchStudentResult } from '../../../lib/grading-api';
 
   let {
     entries = [] as BatchStudentResult[],
     maxScore = 10 as number,
     onDismiss = (() => {}) as () => void,
+    onAccept = (async (_entry: BatchStudentResult) => {}) as (entry: BatchStudentResult) => void | Promise<void>,
     onRevert = (async (_entry: BatchStudentResult) => {}) as (entry: BatchStudentResult) => void | Promise<void>,
   } = $props();
 
-  type RowStatus = 'pending' | 'accepted' | 'reverted';
-  let statuses = $state<Record<number, RowStatus>>({});
   let errors = $state<Record<number, string>>({});
   let expanded = $state<Record<number, boolean>>({});
+  let dismissed = $state<Record<number, boolean>>({});
   let busyIndex = $state<number | null>(null);
+
+  let visible = $derived(entries.filter(e => !dismissed[e.studentIndex]));
+
+  // Band display order — matches the `label` field stamped by the server's
+  // pairwise sweep (see grading-server/grading.js buildPairwiseSweepPrompts).
+  const BAND_ORDER = ['High', 'Upper-Mid', 'Lower-Mid', 'Low'];
+
+  type BandGroup = { band: string; entries: BatchStudentResult[] };
+
+  let grouped = $derived.by((): BandGroup[] => {
+    const map = new Map<string, BatchStudentResult[]>();
+    for (const e of visible) {
+      const band = e.band ?? 'Other';
+      if (!map.has(band)) map.set(band, []);
+      map.get(band)!.push(e);
+    }
+    const result: BandGroup[] = [];
+    // Known bands in display order first
+    for (const band of BAND_ORDER) {
+      if (map.has(band)) {
+        result.push({ band, entries: map.get(band)! });
+        map.delete(band);
+      }
+    }
+    // Remaining (unknown bands or "Other") at the end
+    for (const [band, bandEntries] of map) {
+      result.push({ band, entries: bandEntries });
+    }
+    return result;
+  });
 
   function toggleExpanded(idx: number) {
     expanded = { ...expanded, [idx]: !expanded[idx] };
   }
 
-  function statusOf(idx: number): RowStatus {
-    return statuses[idx] ?? 'pending';
+  function dismiss(idx: number) {
+    dismissed = { ...dismissed, [idx]: true };
   }
 
-  function accept(entry: BatchStudentResult) {
-    statuses = { ...statuses, [entry.studentIndex]: 'accepted' };
-    if (errors[entry.studentIndex]) {
-      const { [entry.studentIndex]: _, ...rest } = errors;
+  function clearError(idx: number) {
+    if (errors[idx]) {
+      const { [idx]: _, ...rest } = errors;
       errors = rest;
+    }
+  }
+
+  async function accept(entry: BatchStudentResult) {
+    if (busyIndex !== null) return;
+    busyIndex = entry.studentIndex;
+    clearError(entry.studentIndex);
+    try {
+      await onAccept(entry);
+      dismiss(entry.studentIndex);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      errors = { ...errors, [entry.studentIndex]: msg };
+    } finally {
+      busyIndex = null;
     }
   }
 
   async function revert(entry: BatchStudentResult) {
     if (busyIndex !== null) return;
     busyIndex = entry.studentIndex;
-    if (errors[entry.studentIndex]) {
-      const { [entry.studentIndex]: _, ...rest } = errors;
-      errors = rest;
-    }
+    clearError(entry.studentIndex);
     try {
       await onRevert(entry);
-      statuses = { ...statuses, [entry.studentIndex]: 'reverted' };
+      dismiss(entry.studentIndex);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       errors = { ...errors, [entry.studentIndex]: msg };
@@ -69,55 +111,50 @@
   }
 </script>
 
-{#if entries.length > 0}
-  <section class="outlier-report" aria-label="Outlier corrections review">
+{#if visible.length > 0}
+  <section class="outlier-report" aria-label="Consistency review">
     <header>
       <h3>
-        Outlier Review
-        <span class="count">{entries.length} adjustment{entries.length === 1 ? '' : 's'}</span>
+        Consistency Review
+        <span class="count">{visible.length} adjustment{visible.length === 1 ? '' : 's'}</span>
       </h3>
-      <button class="dismiss" onclick={onDismiss} aria-label="Dismiss outlier review">×</button>
+      <button class="dismiss" onclick={onDismiss} aria-label="Dismiss review">&#215;</button>
     </header>
     <p class="hint">
-      The grader flagged these scores as statistical outliers (≥2σ from the batch mean) and re-graded them.
-      Click <strong>Accept</strong> to acknowledge the new score, or <strong>Revert</strong> to restore the original.
+      The grader compared students within similar score bands and flagged these for review.
+      Accept the new score+feedback, or revert to the original.
     </p>
-    <ul class="entries">
-      {#each entries as entry (entry.studentIndex)}
-        {@const dir = direction(entry.originalScore, entry.score)}
-        {@const status = statusOf(entry.studentIndex)}
-        {@const isBusy = busyIndex === entry.studentIndex}
-        <li
-          class="entry"
-          class:up={dir === 'up' && status !== 'reverted'}
-          class:down={dir === 'down' && status !== 'reverted'}
-          class:accepted={status === 'accepted'}
-          class:reverted={status === 'reverted'}
-        >
-          <div class="row">
-            <span class="name">{entry.name ?? `Student ${entry.studentIndex}`}</span>
-            <span class="score-change">
-              {#if entry.originalScore != null}
-                {#if status === 'reverted'}
-                  <span class="orig active">{entry.originalScore}</span>
-                  <span class="arrow">←</span>
-                  <span class="now struck">{entry.score}</span>
-                {:else}
+    {#each grouped as group (group.band)}
+      {#if grouped.length > 1}
+        <div class="band-header">{group.band}</div>
+      {/if}
+      <ul class="entries">
+        {#each group.entries as entry (entry.studentIndex)}
+          {@const dir = direction(entry.originalScore, entry.score)}
+          {@const isBusy = busyIndex === entry.studentIndex}
+          <li
+            class="entry"
+            class:up={dir === 'up'}
+            class:down={dir === 'down'}
+            transition:slide={{ duration: 220 }}
+          >
+            <div class="row">
+              <span class="name">{entry.name ?? `Student ${entry.studentIndex}`}</span>
+              <span class="score-change">
+                {#if entry.originalScore != null}
                   <span class="orig">{entry.originalScore}</span>
-                  <span class="arrow">→</span>
+                  <span class="arrow">&rarr;</span>
                   <span class="now">{entry.score}</span>
+                  <span class="max">/ {maxScore}</span>
+                {:else}
+                  <span class="now">{entry.score}</span>
+                  <span class="max">/ {maxScore}</span>
                 {/if}
-                <span class="max">/ {maxScore}</span>
-              {:else}
-                <span class="now">{entry.score}</span>
-                <span class="max">/ {maxScore}</span>
+              </span>
+              {#if entry.deviation != null}
+                <span class="deviation">{formatDeviation(entry.deviation)}</span>
               {/if}
-            </span>
-            {#if entry.deviation != null}
-              <span class="deviation">{formatDeviation(entry.deviation)}</span>
-            {/if}
-            <span class="actions">
-              {#if status === 'pending'}
+              <span class="actions">
                 <button
                   class="btn accept"
                   type="button"
@@ -129,75 +166,67 @@
                   type="button"
                   onclick={() => revert(entry)}
                   disabled={isBusy}
-                >{isBusy ? 'Reverting…' : 'Revert'}</button>
-              {:else if status === 'accepted'}
-                <span class="badge accepted-badge" aria-label="Accepted">✓ Accepted</span>
-                <button
-                  class="btn revert"
-                  type="button"
-                  onclick={() => revert(entry)}
-                  disabled={isBusy}
-                >{isBusy ? 'Reverting…' : 'Revert'}</button>
-              {:else}
-                <span class="badge reverted-badge" aria-label="Reverted">↺ Reverted</span>
-              {/if}
-            </span>
-          </div>
-          {#if entry.feedback || entry.originalFeedback}
-            {@const isOpen = !!expanded[entry.studentIndex]}
-            <div class="diff-block">
-              <button
-                class="compare-toggle"
-                type="button"
-                aria-expanded={isOpen}
-                onclick={() => toggleExpanded(entry.studentIndex)}
-              >
-                <span class="caret" class:open={isOpen}>▸</span>
-                {isOpen ? 'Hide comparison' : 'Compare feedback'}
-              </button>
-              {#if !isOpen && entry.feedback}
-                <p class="reason">{firstSentence(entry.feedback)}</p>
-              {/if}
-              {#if isOpen}
-                <div class="diff-grid">
-                  <div class="diff-pane original">
-                    <div class="diff-head">
-                      <span class="diff-label">Original</span>
-                      {#if entry.originalScore != null}
-                        <span class="diff-score">{entry.originalScore} / {maxScore}</span>
-                      {/if}
-                    </div>
-                    <div class="diff-body">
-                      {#if entry.originalFeedback}
-                        {@html entry.originalFeedback}
-                      {:else}
-                        <em class="diff-empty">(no original feedback captured)</em>
-                      {/if}
-                    </div>
-                  </div>
-                  <div class="diff-pane regraded">
-                    <div class="diff-head">
-                      <span class="diff-label">Regraded</span>
-                      <span class="diff-score">{entry.score} / {maxScore}</span>
-                    </div>
-                    <div class="diff-body">
-                      {#if entry.feedback}
-                        {@html entry.feedback}
-                      {:else}
-                        <em class="diff-empty">(no feedback)</em>
-                      {/if}
-                    </div>
-                  </div>
-                </div>
-              {/if}
+                >{isBusy ? 'Working...' : 'Revert'}</button>
+              </span>
             </div>
-          {/if}
-          {#if errors[entry.studentIndex]}
-            <p class="error" role="alert">Revert failed: {errors[entry.studentIndex]}</p>
-          {/if}
-        </li>
-      {/each}
-    </ul>
+            {#if entry.feedback || entry.originalFeedback}
+              {@const isOpen = !!expanded[entry.studentIndex]}
+              <div class="diff-block">
+                <button
+                  class="compare-toggle"
+                  type="button"
+                  aria-expanded={isOpen}
+                  onclick={() => toggleExpanded(entry.studentIndex)}
+                >
+                  <span class="caret" class:open={isOpen}>&#9658;</span>
+                  {isOpen ? 'Hide comparison' : 'Compare feedback'}
+                </button>
+                {#if !isOpen && entry.reason}
+                  <p class="reason">{entry.reason}</p>
+                {:else if !isOpen && entry.feedback}
+                  <p class="reason">{firstSentence(entry.feedback)}</p>
+                {/if}
+                {#if isOpen}
+                  <div class="diff-grid">
+                    <div class="diff-pane original">
+                      <div class="diff-head">
+                        <span class="diff-label">Original</span>
+                        {#if entry.originalScore != null}
+                          <span class="diff-score">{entry.originalScore} / {maxScore}</span>
+                        {/if}
+                      </div>
+                      <div class="diff-body">
+                        {#if entry.originalFeedback}
+                          {@html entry.originalFeedback}
+                        {:else}
+                          <em class="diff-empty">(no original feedback captured)</em>
+                        {/if}
+                      </div>
+                    </div>
+                    <div class="diff-pane regraded">
+                      <div class="diff-head">
+                        <span class="diff-label">Suggested</span>
+                        <span class="diff-score">{entry.score} / {maxScore}</span>
+                      </div>
+                      <div class="diff-body">
+                        {#if entry.feedback}
+                          {@html entry.feedback}
+                        {:else}
+                          <em class="diff-empty">(no feedback)</em>
+                        {/if}
+                      </div>
+                    </div>
+                  </div>
+                {/if}
+              </div>
+            {/if}
+            {#if errors[entry.studentIndex]}
+              <p class="error" role="alert">{errors[entry.studentIndex]}</p>
+            {/if}
+          </li>
+        {/each}
+      </ul>
+    {/each}
   </section>
 {/if}
 
@@ -246,6 +275,16 @@
     color: var(--color-text-secondary);
     margin: 0 0 10px 0;
   }
+  .band-header {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text-secondary);
+    margin: 10px 0 4px 0;
+    padding: 0 2px;
+    border-bottom: 1px solid var(--color-border);
+  }
   .entries {
     list-style: none;
     margin: 0;
@@ -267,13 +306,6 @@
   }
   .entry.down {
     border-left-color: var(--color-warning, #f59e0b);
-  }
-  .entry.accepted {
-    opacity: 0.85;
-  }
-  .entry.reverted {
-    border-left-color: var(--color-text-subtle);
-    opacity: 0.75;
   }
   .row {
     display: flex;
@@ -300,22 +332,12 @@
     color: var(--color-text-secondary);
     text-decoration: line-through;
   }
-  .orig.active {
-    color: var(--color-text);
-    text-decoration: none;
-    font-weight: 600;
-  }
   .arrow {
     color: var(--color-text-subtle);
   }
   .now {
     font-weight: 600;
     color: var(--color-text);
-  }
-  .now.struck {
-    font-weight: normal;
-    color: var(--color-text-secondary);
-    text-decoration: line-through;
   }
   .max {
     color: var(--color-text-secondary);
@@ -364,20 +386,6 @@
   }
   .btn.revert:hover:not(:disabled) {
     background: rgba(245, 158, 11, 0.08);
-  }
-  .badge {
-    font-size: 0.72rem;
-    padding: 2px 8px;
-    border-radius: 10px;
-    font-family: var(--font-mono);
-  }
-  .accepted-badge {
-    color: var(--color-success, #22c55e);
-    background: rgba(34, 197, 94, 0.12);
-  }
-  .reverted-badge {
-    color: var(--color-text-secondary);
-    background: var(--color-bg-sidebar);
   }
   .reason {
     margin: 6px 0 0 0;

@@ -27,6 +27,9 @@ export interface BatchStudentResult {
   originalScore?: number;
   originalFeedback?: string;
   deviation?: number;
+  // Populated on band-sweep review entries.
+  band?: string;
+  reason?: string;
 }
 
 /** Progress event — phase updates during batch grading. */
@@ -60,6 +63,24 @@ export interface BatchSweepEvent {
 /** Outlier adjustment event — statistical outlier re-grading. */
 export interface BatchOutlierEvent {
   adjustedResults: BatchStudentResult[];
+}
+
+/** One adjustment proposed by the end-of-run band sweep. */
+export interface BatchReviewAdjustment {
+  studentIndex: number;
+  name: string;
+  band: string;
+  originalScore: number;
+  suggestedScore: number;
+  originalFeedback: string;
+  suggestedFeedback: string;
+  reason: string;
+}
+
+/** Review event — end-of-run band-sweep adjustments proposed for teacher review. */
+export interface BatchReviewEvent {
+  source: 'sweep';
+  adjustments: BatchReviewAdjustment[];
 }
 
 /** Done event — final stats and metadata. */
@@ -106,6 +127,8 @@ export interface BatchGradingCallbacks {
   onSweep?: (data: BatchSweepEvent) => void | Promise<void>;
   /** Outlier review adjustments. */
   onOutlier?: (data: BatchOutlierEvent) => void | Promise<void>;
+  /** End-of-run band-sweep review proposals. */
+  onReview?: (data: BatchReviewEvent) => void | Promise<void>;
   /** Batch grading completed successfully. */
   onDone?: (data: BatchDoneEvent) => void | Promise<void>;
   /** Server-side error. */
@@ -174,6 +197,9 @@ async function dispatchBatchEvent(
         break;
       case 'outlier':
         await callbacks.onOutlier?.(data as BatchOutlierEvent);
+        break;
+      case 'review':
+        await callbacks.onReview?.(data as BatchReviewEvent);
         break;
       case 'done':
         await callbacks.onDone?.(data as BatchDoneEvent);

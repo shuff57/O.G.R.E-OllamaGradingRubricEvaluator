@@ -26,9 +26,8 @@ import { marked } from 'marked';
  * - Multi-part ("Part 1 of 2"): each part is wrapped in `div.seqsepwrap`
  *   containing [hidden `div.seqscoreresult`, `p.seqsep` label, real content div].
  *   The helper drills through seqsepwrap and returns the real content div, so
- *   downstream `.children[0]` / `.children[1]` access lands on the prompt/
- *   response rather than on the hidden seqscoreresult (which produced empty
- *   fingerprints and collapsed all students onto one "version").
+ *   downstream `.children[0]` / `.children[1]` access lands on the prompt/response
+ *   rather than on the hidden seqscoreresult.
  */
 const GET_PART_CONTENT_HELPER = `
   function getPartContent(region, partIndex) {
@@ -232,22 +231,6 @@ export interface BatchSummary {
   skipped: string[];
   /** Errors encountered during grading */
   errors: Array<{ name: string; error: string }>;
-}
-
-/** A group of students sharing the same question version. */
-export interface VersionGroup {
-  /** Version identifier (1-based) */
-  versionNumber: number;
-  /** Normalized prompt text fingerprint used for grouping */
-  fingerprint: string;
-  /** Page index of the representative student for this version */
-  representativeIndex: number;
-  /** All students with this version */
-  students: Student[];
-  /** Version-specific essay/question prompt text */
-  essayPrompt: string;
-  /** Version-specific model response text */
-  modelText: string | null;
 }
 
 /** Log entry for a single grading action. */
@@ -550,75 +533,6 @@ export async function extractRubric(selectors: SiteSelectors, studentIndex: numb
 }
 
 /**
- * Extract a prompt text fingerprint from every student's question region.
- *
- * Returns a mapping of student page-index → normalized prompt text (first 500 chars).
- * Students with identical fingerprints share the same question version.
- * Runs as a single evalScriptJSON call for efficiency.
- *
- * Two normalizations are applied so that students on the same version collapse
- * to the same fingerprint even when MOM randomises numeric values per-student:
- *
- *   1. Only the prompt+checklist area (part1.children[0]) is fingerprinted —
- *      NOT the full Part 1 div, which also contains the student's unique response
- *      text.  Using the full Part 1 div was the original bug: every student had a
- *      unique fingerprint simply because their answers differed.
- *
- *   2. Numeric tokens are stripped from the prompt text.  MOM injects different
- *      randomised values (e.g. "$47,200", "12.5%", "350 bacteria") into the same
- *      version's prompt for each student.  Stripping digits collapses those
- *      per-student variants back to a single structural fingerprint per version.
- *
- * @param selectors - CSS selectors from the active site profile
- * @returns Record mapping student index to their normalized prompt fingerprint
- */
-export async function extractPromptFingerprints(selectors: SiteSelectors): Promise<Record<number, string>> {
-  const result = await evalScriptJSON<Record<number, string>>(`(function() {
-    ${GET_PART_CONTENT_HELPER}
-    var sel = ${JSON.stringify(selectors)};
-    if (!sel.studentSection) return {};
-    var sections = document.querySelectorAll(sel.studentSection);
-    var fingerprints = {};
-    for (var i = 0; i < sections.length; i++) {
-      var region = sel.questionRegion ? sections[i].querySelector(sel.questionRegion) : null;
-      if (!region) { fingerprints[i] = ''; continue; }
-      // part1Div is the Part 1 content container (unwrapped from seqsepwrap if present).
-      // children[0] of part1Div is the prompt+checklist area — it excludes the student
-      // response div (children[1]), which is unique per student and must NOT be included
-      // in the fingerprint.
-      var part1Div = getPartContent(region, 0);
-      var promptArea = part1Div ? part1Div.children[0] : null;
-      // Fall back to part1Div.textContent if promptArea is missing OR empty
-      // (a truthy-but-empty element would otherwise collapse every student to "").
-      var raw = (promptArea && promptArea.textContent.trim())
-        ? promptArea.textContent
-        : (part1Div ? part1Div.textContent : '');
-      // Strip numeric tokens (integers, decimals, comma-separated numbers, currency
-      // prefixes) so per-student randomised values don't split a single version into
-      // many.  The structural words that distinguish real versions are preserved.
-      var text = raw
-        .replace(/[$][\\d,]+\\.?\\d*/g, '#')
-        .replace(/\\b[\\d,]+\\.?\\d*\\b/g, '#')
-        .replace(/(#[\\s]*)+/g, '# ')
-        // Strip proper names (including multi-word, accented like "Sebastián")
-        // that follow context patterns so per-student randomised names
-        // don't split versions. Uses [^\\s,] to match any non-space non-comma char
-        // including accented letters (á, é, ñ, etc.).
-        .replace(/,\\s*[A-Z][^\\s,]+(?:\\s+[A-Z][^\\s,]+)*\\s*,/g, ', @, ')
-        .replace(/\\bnamed\\s+[A-Z][^\\s,]+(?:\\s+[A-Z][^\\s,]+)*/gi, 'named @')
-        .replace(/\\bfor\\s+[A-Z][^\\s,]+(?:\\s+[A-Z][^\\s,]+)*/g, 'for @')
-        .replace(/\\s+/g, ' ')
-        .trim()
-        .substring(0, 500);
-      fingerprints[i] = text;
-    }
-    return fingerprints;
-  })()`);
-  const fingerprints = result || {};
-  return fingerprints;
-}
-
-/**
  * Extract the version-specific essayPrompt and modelText from a specific student.
  *
  * Uses the same DOM traversal as extractRubric but only returns the prompt and
@@ -690,43 +604,6 @@ export async function extractVersionPromptData(
     return { essayPrompt: essayPrompt, modelText: modelText };
   })()`);
   return result || { essayPrompt: '', modelText: null };
-}
-
-/**
- * Group students by their prompt fingerprint into version groups.
- *
- * Students with identical fingerprints are placed in the same version group.
- * If all students share one fingerprint, a single group is returned (no-op case).
- *
- * @param students - Array of extracted students
- * @param fingerprints - Mapping of student index → prompt fingerprint
- * @returns Array of version groups, one per distinct fingerprint
- */
-export function groupStudentsByVersion(
-  students: Student[],
-  fingerprints: Record<number, string>,
-): VersionGroup[] {
-  const groups = new Map<string, Student[]>();
-
-  for (const student of students) {
-    const fp = fingerprints[student.index] || '';
-    if (!groups.has(fp)) groups.set(fp, []);
-    groups.get(fp)!.push(student);
-  }
-
-  let versionNumber = 1;
-  const result: VersionGroup[] = [];
-  for (const [fingerprint, groupStudents] of groups) {
-    result.push({
-      versionNumber: versionNumber++,
-      fingerprint,
-      representativeIndex: groupStudents[0].index,
-      students: groupStudents,
-      essayPrompt: '',
-      modelText: null,
-    });
-  }
-  return result;
 }
 
 /**
@@ -1440,12 +1317,6 @@ export class BatchGrader {
   /** Chronological log of all grading actions */
   private _log: BatchLogEntry[] = [];
 
-  /** Version groups detected on the page */
-  private _versionGroups: VersionGroup[] = [];
-
-  /** Index of the version group currently being graded */
-  private _currentVersionIndex: number = 0;
-
   // -- Public Accessors --
 
   /** Get the extracted rubric. */
@@ -1477,70 +1348,6 @@ export class BatchGrader {
     return this._paused;
   }
 
-  /** Get all detected version groups. */
-  get versionGroups(): VersionGroup[] {
-    return this._versionGroups;
-  }
-
-  /** Get the current version group index being graded. */
-  get currentVersionIndex(): number {
-    return this._currentVersionIndex;
-  }
-
-  /** Get the total number of detected versions. */
-  get versionCount(): number {
-    return this._versionGroups.length;
-  }
-
-  /** Whether multiple question versions were detected. */
-  get hasMultipleVersions(): boolean {
-    return this._versionGroups.length > 1;
-  }
-
-  /**
-   * Get the filtered (to-grade) students for a specific version group.
-   *
-   * @param versionIndex - Zero-based version group index
-   * @returns Students needing grading that belong to this version
-   */
-  getStudentsForVersion(versionIndex: number): Student[] {
-    if (versionIndex >= this._versionGroups.length) return [];
-    const versionStudentIndices = new Set(
-      this._versionGroups[versionIndex].students.map(s => s.index),
-    );
-    return this._toGrade.filter(s => versionStudentIndices.has(s.index));
-  }
-
-  /**
-   * Get a merged rubric for a specific version: shared structure + version-specific prompt/model.
-   *
-   * @param versionIndex - Zero-based version group index
-   * @returns Rubric with version-specific essayPrompt and modelText, or null
-   */
-  getRubricForVersion(versionIndex: number): Rubric | null {
-    if (!this._rubric) return null;
-    const group = this._versionGroups[versionIndex];
-    if (!group) return null;
-    return {
-      ...this._rubric,
-      essayPrompt: group.essayPrompt,
-      modelText: group.modelText,
-    };
-  }
-
-  /**
-   * Advance to the next version group.
-   *
-   * @returns true if there are more versions, false if all versions are done
-   */
-  advanceVersion(): boolean {
-    if (this._currentVersionIndex < this._versionGroups.length - 1) {
-      this._currentVersionIndex++;
-      return true;
-    }
-    return false;
-  }
-
   // -- Lifecycle Methods --
 
   /**
@@ -1562,8 +1369,6 @@ export class BatchGrader {
     this._noResponse = [];
     this._log = [];
     this._currentIndex = 0;
-    this._versionGroups = [];
-    this._currentVersionIndex = 0;
 
     // Extract rubric
     try {
@@ -1574,43 +1379,6 @@ export class BatchGrader {
 
     // Extract students
     this._students = await extractStudents(profile.selectors);
-
-    // Detect question versions (batch mode only — sequential mode has no studentSection)
-    if (profile.navigation.mode === 'batch' && profile.selectors.studentSection) {
-      const fingerprints = await extractPromptFingerprints(profile.selectors);
-
-      // Debug: log unique fingerprints to diagnose version splitting
-      const uniqueFps = new Set(Object.values(fingerprints));
-      console.log(`[BatchGrader] ${Object.keys(fingerprints).length} students, ${uniqueFps.size} unique fingerprints`);
-      if (uniqueFps.size > 3) {
-        // Likely a fingerprinting bug — log same-scenario students that got different fps
-        const entries = Object.entries(fingerprints);
-        console.log(`[BatchGrader]   student 0 FULL: "${entries[0]?.[1]}"`);
-        console.log(`[BatchGrader]   student 1 FULL: "${entries[1]?.[1]}"`);
-        // Find two students that SHOULD match (same first 60 chars) but don't
-        for (let j = 2; j < entries.length; j++) {
-          if (entries[j][1].substring(0, 60) === entries[1][1].substring(0, 60) && entries[j][1] !== entries[1][1]) {
-            console.log(`[BatchGrader]   student ${j} FULL (same scenario, different fp): "${entries[j][1]}"`);
-            break;
-          }
-        }
-      }
-
-      this._versionGroups = groupStudentsByVersion(this._students, fingerprints);
-
-      // Extract version-specific prompt/model data from each version's representative student
-      for (const group of this._versionGroups) {
-        try {
-          const data = await extractVersionPromptData(profile.selectors, group.representativeIndex);
-          group.essayPrompt = data.essayPrompt;
-          group.modelText = data.modelText;
-        } catch {
-          // Fallback: use the shared rubric's prompt data
-          group.essayPrompt = this._rubric?.essayPrompt || '';
-          group.modelText = this._rubric?.modelText || null;
-        }
-      }
-    }
 
     // Filter to ungraded students
     let startIndex = 0;

@@ -18,6 +18,7 @@ import {
   parseSingleGradeResponse,
   detectOutliers,
   chunkStudents,
+  chunkStudentsByPrompt,
   mergeResults,
 } from './grading.js';
 import {
@@ -1597,29 +1598,8 @@ app.post('/api/grade', async (c) => {
   }
 
   const { provider, model, rubric, students, strategy, chunkSize: rawChunkSize, sweep, customInstructions, weightMode } = body;
-  // When students have per-student prompts (MOM jitters numeric values per student),
-  // force chunkSize=1 AND serial to prevent the LLM from bleeding one student's numeric
-  // values into another's evaluation. Detection uses TWO signals so MathJax-rendered
-  // jittering (which doesn't show up as different plain-text prompts) still triggers:
-  //   (a) any student.prompt differs from rubric.essayPrompt, OR
-  //   (b) two students have different non-empty prompts.
-  // Either signal means OGRE is sending per-student data, so we treat as jittered.
-  let _hasJittered = false;
-  if (Array.isArray(students) && students.length > 0) {
-    const _promptValues = students
-      .map(s => (s && s.prompt) ? String(s.prompt).trim() : '')
-      .filter(p => p.length > 0);
-    const _uniquePrompts = new Set(_promptValues);
-    const _differsFromRubric = rubric && students.some(s => s && s.prompt && s.prompt !== rubric.essayPrompt);
-    _hasJittered = _uniquePrompts.size > 1 || _differsFromRubric;
-  }
-  const useParallel = _hasJittered ? false : strategy === 'parallel'; // default: serial (more reliable)
-  const chunkSize = _hasJittered
-    ? 1
-    : Math.max(5, Math.min(50, parseInt(rawChunkSize) || 30));
-  if (_hasJittered) {
-    console.log(`[${timestamp()}] [chunkSize] Per-student jittered prompts detected — forcing chunkSize=1 + serial to prevent cross-student value bleed`);
-  }
+  const useParallel = strategy === 'parallel';
+  const chunkSize = Math.max(5, Math.min(50, parseInt(rawChunkSize) || 30));
   // sweep: 'none' (default for single chunk), 'compact', 'pairwise', 'auto' (compact if multi-chunk)
   const sweepMode = sweep || 'auto';
 
@@ -1685,18 +1665,29 @@ app.post('/api/grade', async (c) => {
       const chunkMap = {}; // studentIndex → chunkIndex
       let totalChunksForClient;
 
-      if (!useParallel || students.length <= chunkSize) {
+      // Scout prompt groups: if the page contains structurally-different prompts
+      // (multi-version), the parallel path's heterogeneous calibration would cross-
+      // contaminate bridges. Force serial in that case so the per-group bridge pool
+      // (built in the serial branch below) can isolate calibration correctly.
+      const _scoutChunks = chunkStudentsByPrompt(students, chunkSize, rubric.essayPrompt || '');
+      const _groupCount = new Set(_scoutChunks.map(c => c.promptKey)).size;
+      const _useParallelEffective = useParallel && _groupCount === 1;
+      if (useParallel && !_useParallelEffective) {
+        console.log(`[${timestamp()}] [sse] Forcing serial: ${_groupCount} prompt groups detected (parallel path would cross-contaminate bridges)`);
+      }
+
+      if (!_useParallelEffective || students.length <= chunkSize) {
         // ── Serial strategy (or small batch) ──
-        const chunks = chunkStudents(students, chunkSize);
+        const chunks = _scoutChunks;
         totalChunksForClient = chunks.length;
-        console.log(`[${timestamp()}] [sse] Strategy: serial | ${chunks.length} chunk(s)`);
+        console.log(`[${timestamp()}] [sse] Strategy: serial | ${chunks.length} chunk(s) across ${_groupCount} prompt group(s)`);
         let bridgeResponses = null;
-        // Cumulative pool of all students graded so far in this run. Bridges are picked
-        // from this growing pool (capped at ~8 by buildBridgeResponses' tier selection)
-        // so each subsequent chunk gets richer cross-call calibration. Critical for
-        // chunkSize=1 where a per-chunk bridge would only contain a single student.
-        const _bridgePoolResults = [];
-        const _bridgePoolStudents = [];
+        // Bridge pools bucketed by promptKey. Chunks sharing a prompt group accumulate
+        // into the same pool; chunks from different groups never cross-calibrate. This
+        // prevents "Version A bridges leaking into Version B grading" — a regression
+        // that would exist with a single cumulative pool when multiple structurally
+        // different prompts are on the same page.
+        const _bridgePools = new Map(); // promptKey → { results: [], students: [] }
 
         for (let i = 0; i < chunks.length; i++) {
           const chunk = chunks[i];
@@ -1764,15 +1755,27 @@ app.post('/api/grade', async (c) => {
             console.log(`[${timestamp()}] [sse] ✓ ${name}: ${r.score}/${maxScore}`);
           }
 
-          // Accumulate this chunk's results into the bridge pool BEFORE building
-          // the next bridge — so the next chunk's bridge reflects all students
-          // graded so far, not just the previous chunk.
-          _bridgePoolResults.push(...chunkResults);
-          _bridgePoolStudents.push(...chunk.students);
+          // Accumulate this chunk's results into the per-group bridge pool BEFORE
+          // building the next bridge.
+          const _curKey = chunk.promptKey || '';
+          if (!_bridgePools.has(_curKey)) _bridgePools.set(_curKey, { results: [], students: [] });
+          const _curPool = _bridgePools.get(_curKey);
+          _curPool.results.push(...chunkResults);
+          _curPool.students.push(...chunk.students);
 
           if (i < chunks.length - 1) {
-            bridgeResponses = buildBridgeResponses(_bridgePoolResults, _bridgePoolStudents, anchors, maxScore);
-            console.log(`[${timestamp()}] [sse] Bridge (${bridgeResponses.length} from pool of ${_bridgePoolResults.length}): ${bridgeResponses.map(b => `${b.name}=${b.score}[${b.tier}]`).join(', ')}`);
+            // Build bridges for the next chunk from its own group's pool only.
+            // If the next chunk is the first of a new group, the pool is empty
+            // → bridgeResponses = null → no cross-group contamination.
+            const _nextKey = chunks[i + 1].promptKey || '';
+            const _nextPool = _bridgePools.get(_nextKey);
+            if (_nextPool && _nextPool.results.length > 0) {
+              bridgeResponses = buildBridgeResponses(_nextPool.results, _nextPool.students, anchors, maxScore);
+              console.log(`[${timestamp()}] [sse] Bridge (${bridgeResponses.length} from group pool of ${_nextPool.results.length}): ${bridgeResponses.map(b => `${b.name}=${b.score}[${b.tier}]`).join(', ')}`);
+            } else {
+              bridgeResponses = null;
+              console.log(`[${timestamp()}] [sse] No bridge for next chunk (first of new prompt group)`);
+            }
           }
 
           await stream.writeSSE({
@@ -1784,7 +1787,7 @@ app.post('/api/grade', async (c) => {
       } else {
         // ── Parallel strategy: calibration pre-pass then parallel chunks ──
         const { calibration: calStudents, remaining } = pickCalibrationStudents(students, 5);
-        const remainingChunks = chunkStudents(remaining, chunkSize);
+        const remainingChunks = chunkStudentsByPrompt(remaining, chunkSize, rubric.essayPrompt || '');
         totalChunksForClient = 1 + remainingChunks.length;
 
         console.log(`[${timestamp()}] [sse] Strategy: parallel | calibration=${calStudents.length}, then ${remainingChunks.length} chunk(s) (${remaining.length} students)`);
@@ -1891,10 +1894,10 @@ app.post('/api/grade', async (c) => {
         }
       }
 
-      // Step 3.5: Consistency sweep (only for multi-chunk)
+      // Step 3.5: Consistency sweep
       const results = mergeResults(allResults);
       const numChunks = new Set(Object.values(chunkMap)).size;
-      const shouldSweep = numChunks >= 2 && sweepMode !== 'none';
+      const shouldSweep = sweepMode !== 'none' && results.length >= 2;
       let sweepAdjustments = [];
 
       if (shouldSweep) {
@@ -1936,7 +1939,11 @@ app.post('/api/grade', async (c) => {
               if (jsonMatch) {
                 const parsed = JSON.parse(jsonMatch[0]);
                 if (Array.isArray(parsed)) {
-                  const bandAdj = parsed.filter(a => a.studentIndex !== undefined && a.suggestedScore !== undefined && a.suggestedScore !== a.currentScore);
+                  // Stamp the band label onto each adjustment — the AI doesn't echo it,
+                  // and the client UI groups by band for display.
+                  const bandAdj = parsed
+                    .filter(a => a.studentIndex !== undefined && a.suggestedScore !== undefined && a.suggestedScore !== a.currentScore)
+                    .map(a => ({ ...a, band: bp.label }));
                   sweepAdjustments.push(...bandAdj);
                 }
               }
@@ -1944,141 +1951,39 @@ app.post('/api/grade', async (c) => {
             console.log(`[${timestamp()}] [sse] Pairwise sweep: ${sweepAdjustments.length} total adjustment(s)`);
           }
 
-          // Apply sweep adjustments — cap downward changes at 1 point
-          let sweepCount = 0;
-          for (const adj of sweepAdjustments) {
-            const r = results.find(r => r.studentIndex === adj.studentIndex);
-            if (r && adj.suggestedScore !== r.score) {
-              let newScore = parseFloat(adj.suggestedScore);
-              if (isNaN(newScore) || newScore < 0) continue;
-              if (newScore > maxScore) newScore = maxScore;
-              newScore = Math.round(newScore * 2) / 2; // snap to 0.5
-              // Cap downward adjustments at 1 point to protect accurate first-pass scores
-              if (newScore < r.score) {
-                const drop = r.score - newScore;
-                if (drop > 1) {
-                  newScore = r.score - 1;
-                  newScore = Math.round(newScore * 2) / 2; // re-snap
-                }
-              }
-              if (newScore === r.score) continue; // no effective change after capping
-              const name = students.find(s => s.index === adj.studentIndex)?.name || `Student ${adj.studentIndex}`;
-              console.log(`[${timestamp()}] [sse]   ✎ sweep: ${name}: ${r.score} → ${newScore}/${maxScore} (${adj.reason || 'consistency'})`);
-              r.score = newScore;
-              r.sweepAdjusted = true;
-              sweepCount++;
-            }
-          }
-
-          if (sweepCount > 0) {
+          // Emit sweep adjustments as a review event for client accept/revert — do not auto-apply
+          if (sweepAdjustments.length > 0) {
             await stream.writeSSE({
-              event: 'sweep',
-              data: JSON.stringify({ adjustments: sweepAdjustments, count: sweepCount }),
+              event: 'review',
+              data: JSON.stringify({
+                source: 'sweep',
+                adjustments: sweepAdjustments.map(a => {
+                  const orig = results.find(r => r.studentIndex === a.studentIndex);
+                  const student = students.find(s => s.index === a.studentIndex);
+                  return {
+                    studentIndex: a.studentIndex,
+                    name: student?.name,
+                    band: a.band,
+                    originalScore: orig?.score,
+                    suggestedScore: a.suggestedScore,
+                    originalFeedback: orig?.feedback,
+                    suggestedFeedback: a.suggestedFeedback,
+                    reason: a.reason,
+                  };
+                }),
+              }),
               id: String(sseId++),
             });
           }
-          console.log(`[${timestamp()}] [sse] Sweep complete: ${sweepCount} score(s) adjusted`);
+          console.log(`[${timestamp()}] [sse] Sweep complete: ${sweepAdjustments.length} adjustment(s) pending client review`);
 
         } catch (sweepErr) {
           console.warn(`[${timestamp()}] [sse] Consistency sweep failed: ${sweepErr.message}, continuing with original scores`);
         }
       }
 
-      // Step 4: Detect outliers (on sweep-adjusted results)
+      // Step 4: Done
       const outlierAnalysis = detectOutliers(results);
-
-      // Step 5: Outlier review (if any)
-      let adjustedCount = 0;
-      if (outlierAnalysis.outliers.length > 0) {
-        console.log(`[${timestamp()}] [sse] ${outlierAnalysis.outliers.length} outlier(s) detected`);
-        for (const o of outlierAnalysis.outliers) {
-          const name = students.find(s => s.index === o.studentIndex)?.name || `Student ${o.studentIndex}`;
-          console.log(`[${timestamp()}] [sse]   ⚠ ${name}: ${o.score}/${maxScore} (${o.deviation.toFixed(1)}σ)`);
-        }
-
-        await stream.writeSSE({
-          event: 'progress',
-          data: JSON.stringify({
-            phase: 'outlier-review',
-            outlierCount: outlierAnalysis.outliers.length,
-          }),
-          id: String(sseId++),
-        });
-
-        // Build outlier review data
-        const outlierStudents = outlierAnalysis.outliers.map(o => {
-          const student = students.find(s => s.index === o.studentIndex);
-          const result = results.find(r => r.studentIndex === o.studentIndex);
-          return {
-            index: o.studentIndex,
-            name: student?.name || `Student ${o.studentIndex}`,
-            response: student?.response || '(No response submitted)',
-            prompt: student?.prompt || undefined,
-            originalScore: result?.score ?? o.score,
-            originalFeedback: result?.feedback || '',
-          };
-        });
-
-        const outlierPrompt = buildOutlierReviewPrompt(rubric, outlierStudents, anchors, {
-          mean: outlierAnalysis.mean,
-          stdDev: outlierAnalysis.stdDev,
-          totalStudents: students.length,
-        }, maxScore, results);
-
-        try {
-          const outlierText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: outlierPrompt }], timestamp(), fallbackOptions);
-          const outlierResults = parseBatchResponse(outlierText, outlierStudents, maxScore, categoryWeights, categoryMaxPtsOrNull);
-
-          const adjustedResults = [];
-          for (const or of outlierResults) {
-            const mainResult = results.find(r => r.studentIndex === or.studentIndex);
-            if (mainResult && or.score !== mainResult.score) {
-              const name = students.find(s => s.index === or.studentIndex)?.name || `Student ${or.studentIndex}`;
-              const deviation = outlierAnalysis.outliers.find(o => o.studentIndex === or.studentIndex)?.deviation;
-              const originalScore = mainResult.score;
-              // Guard: cap downward adjustments at 1 point to prevent regression-to-mean.
-              // Upward adjustments (catching under-scored students) are uncapped.
-              let newScore = or.score;
-              if (newScore < mainResult.score) {
-                const drop = mainResult.score - newScore;
-                if (drop > 1) {
-                  newScore = mainResult.score - 1;
-                  console.log(`[${timestamp()}] [sse]   ⚠ ${name}: outlier wanted ${or.score}, capped drop to ${newScore}/${maxScore}`);
-                }
-              }
-              if (newScore !== mainResult.score) {
-                console.log(`[${timestamp()}] [sse]   ✎ ${name}: ${mainResult.score} → ${newScore}/${maxScore}`);
-                mainResult.score = newScore;
-                mainResult.feedback = or.feedback || mainResult.feedback;
-                mainResult.adjusted = true;
-                adjustedCount++;
-                adjustedResults.push({
-                  studentIndex: or.studentIndex,
-                  name,
-                  originalScore,
-                  score: newScore,
-                  deviation,
-                  feedback: or.feedback,
-                });
-              }
-            }
-          }
-
-          if (adjustedResults.length > 0) {
-            await stream.writeSSE({
-              event: 'outlier',
-              data: JSON.stringify({ adjustedResults }),
-              id: String(sseId++),
-            });
-          }
-
-          console.log(`[${timestamp()}] [sse] Outlier review: ${adjustedCount} adjusted`);
-        } catch (outlierError) {
-          console.warn(`[${timestamp()}] [sse] Outlier review failed: ${outlierError.message}, keeping original scores`);
-        }
-      }
-
-      // Step 6: Done
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       console.log(`[${timestamp()}] [sse] ✓ Done: ${students.length} students in ${elapsed}s`);
 
@@ -2089,7 +1994,7 @@ app.post('/api/grade', async (c) => {
             mean: outlierAnalysis.mean,
             stdDev: outlierAnalysis.stdDev,
             outliers: outlierAnalysis.outliers.length,
-            adjusted: adjustedCount,
+            adjusted: 0,
           },
           anchors: {
             excellent: anchors.excellent.score,

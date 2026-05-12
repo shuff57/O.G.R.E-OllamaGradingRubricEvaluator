@@ -12,13 +12,14 @@
     extractRubric,
     isRubricSufficient,
   } from '../../../lib/batch-grader';
-  import type { BatchProgress as BatchProgressType, Rubric, SiteProfile, VersionGroup } from '../../../lib/batch-grader';
+  import type { BatchProgress as BatchProgressType, Rubric, SiteProfile } from '../../../lib/batch-grader';
   import type { BatchLogEntry } from '../../../lib/batch-grader';
   import { startBatchGrading, generateAnchors } from '../../../lib/grading-api';
   import type {
     BatchGradingHandle,
     BatchChunkEvent,
     BatchOutlierEvent,
+    BatchReviewEvent,
     BatchProgressEvent,
     BatchDoneEvent,
     BatchErrorEvent,
@@ -77,10 +78,6 @@
   let isAutoStopped = false;
   let extractionCancelled = $state(false);
   let batchActive = false; // Suppresses URL auto-reset during batch operations
-
-  // ── Version Grouping ───────────────────────────────────────────────────
-  let currentVersionIndex = $state(0);
-  let versionCount = $state(1);
 
   // ── Review Gate ────────────────────────────────────────────────────────
   type ReviewData = {
@@ -245,8 +242,6 @@
         isBatchPaused = reset.isBatchPaused;
         currentStudentName = reset.currentStudentName;
         resumeAfter = '';
-        currentVersionIndex = 0;
-        versionCount = 1;
         stopTimer();
       }
     });
@@ -470,21 +465,9 @@
         await batchGrader.applyZeroToNoResponseStudents();
       }
 
-      versionCount = batchGrader.versionCount;
-      currentVersionIndex = 0;
-
       const rubric = batchGrader.rubric;
 
-      if (versionCount > 1) {
-        const v1Rubric = batchGrader.getRubricForVersion(0);
-        if (v1Rubric) {
-          extractedRubric = v1Rubric;
-          setExtractedRubricText(formatRubricForDisplay(v1Rubric, batchGrader.versionGroups));
-          rubricMaxScore = v1Rubric.maxScore || '10';
-          essayPrompt = v1Rubric.essayPrompt || '';
-          if (sourceRubricId !== null) { sourceRubricId = null; }
-        }
-      } else if (rubric) {
+      if (rubric) {
         extractedRubric = rubric;
         setExtractedRubricText(formatRubricForDisplay(rubric));
         rubricMaxScore = rubric.maxScore || '10';
@@ -502,9 +485,6 @@
 
       if (batchGrader.studentsToGrade.length === 0) {
         phaseMessage = 'All students already graded or skipped';
-      } else if (versionCount > 1) {
-        const v1Students = batchGrader.getStudentsForVersion(0);
-        phaseMessage = `Found ${batchGrader.studentsToGrade.length} students across ${versionCount} versions (v1: ${v1Students.length} students)`;
       } else {
         phaseMessage = `Found ${batchGrader.studentsToGrade.length} students to grade (${batchGrader.students.length} total)`;
       }
@@ -544,40 +524,15 @@
         return;
       }
       studentsToGrade = [match];
-
-      // On multi-version pages, point currentVersionIndex at the version that
-      // contains this student so the right essayPrompt/modelText is used.
-      if (versionCount > 1) {
-        const targetVersion = grader.versionGroups.findIndex(g =>
-          g.students.some(s => s.index === match.index)
-        );
-        if (targetVersion >= 0 && targetVersion !== currentVersionIndex) {
-          currentVersionIndex = targetVersion;
-          updateVersionDisplay();
-        }
-      }
     } else {
       // When forceRegrade is checked, use all students (except no-response)
       // regardless of whether they were filtered during extraction
-      const baseStudents = forceRegrade
+      studentsToGrade = forceRegrade
         ? grader.students.filter(s => !grader.noResponseStudents.includes(s))
         : grader.studentsToGrade;
-      studentsToGrade = versionCount > 1
-        ? baseStudents.filter(s => {
-            const versionStudents = grader.getStudentsForVersion(currentVersionIndex);
-            return versionStudents.some(vs => vs.index === s.index);
-          })
-        : baseStudents;
     }
 
     if (studentsToGrade.length === 0) {
-      if (versionCount > 1 && batchGrader.advanceVersion()) {
-        currentVersionIndex = batchGrader.currentVersionIndex;
-        updateVersionDisplay();
-        await applyLeniencyRewrite();
-        handleContinueGrading();
-        return;
-      }
       phaseMessage = 'No students to grade';
       batchPhase = 'done';
       batchGrader.stop();
@@ -591,34 +546,19 @@
       return;
     }
 
-    // Update extractedRubric so version logic and other consumers stay in sync
+    // Update extractedRubric so consumers stay in sync
     if (extractedRubric) {
       if (currentRubric.checklistItems.length) extractedRubric.checklistItems = currentRubric.checklistItems;
       if (currentRubric.rubricItems.length) extractedRubric.rubricItems = currentRubric.rubricItems;
     }
 
-    let rubric: Rubric | null;
-    if (versionCount > 1) {
-      rubric = batchGrader.getRubricForVersion(currentVersionIndex);
-      if (rubric) {
-        rubric.checklistItems = currentRubric.checklistItems;
-        rubric.rubricItems = currentRubric.rubricItems;
-      }
-    } else {
-      rubric = {
-        essayPrompt: currentRubric.essayPrompt,
-        checklistItems: currentRubric.checklistItems,
-        rubricItems: currentRubric.rubricItems,
-        modelText: currentRubric.modelText,
-        maxScore: rubricMaxScore,
-      };
-    }
-    if (!rubric) {
-      batchError = 'No rubric available. Check that you are on a grading page.';
-      return;
-    }
-
-    rubric.maxScore = rubricMaxScore;
+    const rubric: Rubric = {
+      essayPrompt: currentRubric.essayPrompt,
+      checklistItems: currentRubric.checklistItems,
+      rubricItems: currentRubric.rubricItems,
+      modelText: currentRubric.modelText,
+      maxScore: rubricMaxScore,
+    };
 
     startTimer();
 
@@ -627,11 +567,7 @@
     isBatchPaused = false;
     isLogExpanded = true;
 
-    if (versionCount > 1) {
-      phaseMessage = `Version ${currentVersionIndex + 1}/${versionCount}: Sending ${studentsToGrade.length} students to AI...`;
-    } else {
-      phaseMessage = `Sending ${studentsToGrade.length} students to AI...`;
-    }
+    phaseMessage = `Sending ${studentsToGrade.length} students to AI...`;
 
     const instructionsParts: string[] = [];
     if (anchorText.trim()) instructionsParts.push(`SCORING CALIBRATION:\n${anchorText.trim()}`);
@@ -684,6 +620,7 @@
           onProgress: handleSSEProgress,
           onChunk: handleSSEChunk,
           onOutlier: handleSSEOutlier,
+          onReview: handleSSEReview,
           onDone: handleSSEDone,
           onError: handleSSEError,
           onHeartbeat: (data) => {
@@ -698,19 +635,6 @@
       batchPhase = 'review';
       updateBatchState();
     }
-  }
-
-  function updateVersionDisplay() {
-    if (!batchGrader) return;
-    const rubric = batchGrader.getRubricForVersion(currentVersionIndex);
-    if (rubric) {
-      extractedRubric = rubric;
-      setExtractedRubricText(formatRubricForDisplay(rubric, batchGrader.versionGroups));
-      rubricMaxScore = rubric.maxScore || '10';
-      essayPrompt = rubric.essayPrompt || '';
-    }
-    const vStudents = batchGrader.getStudentsForVersion(currentVersionIndex);
-    phaseMessage = `Version ${currentVersionIndex + 1} of ${versionCount}: ${vStudents.length} students`;
   }
 
   // ── Apply result ───────────────────────────────────────────────────────
@@ -813,12 +737,48 @@
     }
   }
 
+  function handleSSEReview(data: BatchReviewEvent) {
+    if (isAutoStopped) return;
+    // Convert band-sweep adjustments into the BatchStudentResult shape expected
+    // by OutlierReport. "suggested" values are what the AI proposes; the
+    // teacher will Accept (write suggested) or Revert (write original).
+    const entries: BatchStudentResult[] = data.adjustments.map(adj => ({
+      studentIndex: adj.studentIndex,
+      name: adj.name,
+      score: adj.suggestedScore,
+      feedback: adj.suggestedFeedback,
+      originalScore: adj.originalScore,
+      originalFeedback: adj.originalFeedback,
+      band: adj.band,
+      reason: adj.reason,
+    }));
+    outlierReport = [...outlierReport, ...entries];
+  }
+
+  /**
+   * Accept a review entry: write the suggested score+feedback to the page.
+   * Called by the OutlierReport "Accept" path via the onAccept prop.
+   */
+  export async function acceptReviewEntry(entry: BatchStudentResult): Promise<void> {
+    if (!batchGrader) throw new Error('Grading session is no longer active');
+    await batchGrader.applyGrade(entry.studentIndex, entry.score, entry.feedback);
+    try { await batchGrader.save(); } catch { /* non-fatal */ }
+    if (currentPageUrl && entry.name) {
+      try { await saveBatchSession(currentPageUrl, entry.name); } catch { /* non-fatal */ }
+    }
+    updateBatchState();
+  }
+
+  /**
+   * Revert a review entry: write the ORIGINAL score+feedback to the page.
+   * The suggested score was never auto-applied, so this restores the original.
+   */
   export async function revertOutlier(entry: BatchStudentResult): Promise<void> {
     if (!batchGrader) throw new Error('Grading session is no longer active');
-    if (entry.originalScore == null) throw new Error('Original score was not captured for this outlier');
+    if (entry.originalScore == null) throw new Error('Original score was not captured for this entry');
     const origFeedback = entry.originalFeedback ?? '';
     await batchGrader.applyGrade(entry.studentIndex, entry.originalScore, origFeedback);
-    try { await batchGrader.save(); } catch { /* non-fatal: MOM autosave may not be wired */ }
+    try { await batchGrader.save(); } catch { /* non-fatal */ }
     if (currentPageUrl && entry.name) {
       try { await saveBatchSession(currentPageUrl, entry.name); } catch { /* non-fatal */ }
     }
@@ -836,71 +796,6 @@
       try { await batchGrader.save(); } catch { /* non-fatal */ }
     }
 
-    // Chain to next version if there are more — but only in true batch mode.
-    // Single-student mode grades one student and is done, regardless of how
-    // many versions the page contains.
-    if (!singleStudentName.trim() && versionCount > 1 && batchGrader?.advanceVersion()) {
-      currentVersionIndex = batchGrader.currentVersionIndex;
-      const vStudents = batchGrader.getStudentsForVersion(currentVersionIndex);
-      phaseMessage = `Version ${currentVersionIndex} of ${versionCount} complete. Starting version ${currentVersionIndex + 1} (${vStudents.length} students)...`;
-      updateVersionDisplay();
-
-      // Apply leniency rewrite to new version's rubric before generating anchors
-      await applyLeniencyRewrite();
-
-      // Regenerate AI anchors for the new version's rubric
-      anchorGenerating = true;
-      try {
-        const currentProvider = untrack(() => provider);
-        const currentModel = untrack(() => model);
-        const versionRubric = batchGrader.getRubricForVersion(currentVersionIndex);
-
-        if (currentProvider && currentModel && versionRubric) {
-          // Use rewritten rubricText criteria for anchors, not raw extraction
-          const currentRubricForAnchors = buildRubricFromText();
-          const anchorResponses = await generateAnchors({
-            provider: currentProvider,
-            model: currentModel,
-            rubric: {
-              essayPrompt: currentRubricForAnchors.essayPrompt || versionRubric.essayPrompt,
-              checklistItems: currentRubricForAnchors.checklistItems,
-              rubricItems: currentRubricForAnchors.rubricItems,
-              modelText: currentRubricForAnchors.modelText ?? versionRubric.modelText,
-              maxScore: '10',
-            },
-          });
-
-          if (anchorResponses && anchorResponses.length > 0) {
-            anchorText = anchorResponses
-              .map(a => {
-                const rMax = parseFloat(rubricMaxScore) || 10;
-                const displayScore = Math.round(a.score * rMax / 10 * 10) / 10;
-                return `${a.label} (${displayScore}/${rMax}): ${a.response}`;
-              })
-              .join('\n\n');
-          }
-        } else {
-          const anchors = untrack(() => scoringAnchors);
-          anchorText = anchors
-            .map(a => `${a.label} (${a.score}/${parseFloat(rubricMaxScore) || 10}): ${a.description}`)
-            .join('\n');
-        }
-      } catch (err) {
-        const anchors = untrack(() => scoringAnchors);
-        anchorText = anchors
-          .map(a => `${a.label} (${a.score}/${parseFloat(rubricMaxScore) || 10}): ${a.description}`)
-          .join('\n');
-      } finally {
-        anchorGenerating = false;
-      }
-
-      batchHandle = null;
-      await new Promise(r => setTimeout(r, 500));
-      handleContinueGrading();
-      return;
-    }
-
-    // All versions done (or single version)
     phaseMessage = `Complete — ${batchGrader?.studentsToGrade.length ?? data.metadata.totalStudents} students in ${data.metadata.elapsedSeconds}s`;
     if (batchGrader) batchGrader.stop();
     if (currentPageUrl) {
@@ -980,8 +875,6 @@
     pausedResultBuffer = [];
     batchError = '';
     extractionCancelled = true;
-    currentVersionIndex = 0;
-    versionCount = 1;
     if (batchPhase === 'grading') {
       batchPhase = 'review';
     } else {
@@ -1004,8 +897,6 @@
     batchGrader = null;
     pendingReview = null;
     reviewResolve = null;
-    currentVersionIndex = 0;
-    versionCount = 1;
     batchGraderHasStudents = false;
     outlierReport = [];
   }
@@ -1111,11 +1002,6 @@
     {#if phaseMessage}
       <div class="phase-message">
         <small class="text-muted">{phaseMessage}</small>
-      </div>
-    {/if}
-    {#if versionCount > 1}
-      <div class="version-indicator">
-        <small class="version-badge">Version {currentVersionIndex + 1} of {versionCount}</small>
       </div>
     {/if}
     {#if currentStudentName}
@@ -1260,16 +1146,6 @@
   .value.complete { color: var(--color-success); font-weight: 600; }
 
   .phase-message { margin-top: var(--spacing-1); font-size: 0.8rem; }
-  .version-indicator { margin-top: var(--spacing-1); }
-  .version-badge {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 4px;
-    background: var(--color-primary, #4a90d9);
-    color: #fff;
-    font-size: 0.75rem;
-    font-weight: 600;
-  }
   .current-student { margin-top: var(--spacing-1); font-style: italic; }
 
   .batch-error {

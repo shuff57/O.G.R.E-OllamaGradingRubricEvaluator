@@ -2,7 +2,7 @@
  * Shared formatting utilities for batch grading sub-components.
  * Pure functions extracted from the original BatchPanel.
  */
-import type { Rubric, RubricItem, VersionGroup } from '../../../lib/batch-grader';
+import type { Rubric, RubricItem } from '../../../lib/batch-grader';
 import type { RubricCriterion } from '../../../lib/rubric-api';
 import { criteriaToText } from '../../../lib/rubric-utils';
 
@@ -58,7 +58,7 @@ function rubricItemsToCriteria(
  *
  * Falls back to all rubricItems (deduped) if no short-label rows exist, then to checklistItems.
  */
-export function formatRubricForDisplay(rubric: Rubric, _allVersions?: VersionGroup[]): string {
+export function formatRubricForDisplay(rubric: Rubric): string {
   let sourceItems = rubric.checklistItems;
   let rowType: RubricCriterion['rowType'] = 'checklist';
 

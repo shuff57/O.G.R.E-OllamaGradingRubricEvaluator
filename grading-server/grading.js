@@ -858,6 +858,76 @@ export function chunkStudents(students, chunkSize = 20) {
 }
 
 /**
+ * Build the structural group key for a student's prompt.
+ *
+ * Strips numeric values so MOM-style jittered prompts (same question template
+ * with different per-student numbers via MathJax rendering) collapse into a
+ * single group. Structurally-different versions (different prose, not just
+ * numbers) still produce distinct keys and stay in separate groups.
+ *
+ * Without this normalisation, MOM batches would land one student per group
+ * → empty per-group bridge pools → no cross-student calibration.
+ *
+ * @param {Object} s - Student object (may have a .prompt field)
+ * @param {String} fallback - Used when student has no prompt
+ * @returns {String} normalised key suitable for Map grouping
+ */
+function _promptGroupKey(s, fallback) {
+  const raw = (s && s.prompt && String(s.prompt).trim()) || fallback || '';
+  return raw
+    .replace(/-?\d+(?:\.\d+)?/g, 'N')
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .trim();
+}
+
+/**
+ * Split students into chunks grouped by their essay prompt value.
+ * Within-chunk prompt uniformity means the LLM only ever sees students who saw
+ * the same question, preventing cross-student value bleed without needing
+ * chunkSize=1 forcing. Students sharing a prompt are batched together; students
+ * with unique prompts naturally end up in 1-student chunks.
+ *
+ * Each chunk carries a `promptKey` so the caller can bucket bridge calibration
+ * by group (preventing version A bridges from leaking into version B grading).
+ *
+ * @param {Array} students - Array of student objects
+ * @param {Number} chunkSize - Max students per chunk (default 30)
+ * @param {String} fallbackPrompt - Prompt to use when student has no prompt field
+ * @returns {Array} - Array of chunk objects { students, needsAnchors, chunkIndex, promptKey }
+ */
+export function chunkStudentsByPrompt(students, chunkSize = 30, fallbackPrompt = '') {
+  if (!students || students.length === 0) {
+    return [];
+  }
+
+  // Group students by their normalised prompt key, preserving insertion order
+  const groups = new Map();
+  for (const s of students) {
+    const key = _promptGroupKey(s, fallbackPrompt);
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key).push(s);
+  }
+
+  const chunks = [];
+  for (const [promptKey, groupStudents] of groups) {
+    for (let i = 0; i < groupStudents.length; i += chunkSize) {
+      const slice = groupStudents.slice(i, i + chunkSize);
+      chunks.push({
+        students: slice,
+        needsAnchors: chunks.length > 0, // First chunk overall doesn't need anchors
+        chunkIndex: chunks.length,
+        promptKey,
+      });
+    }
+  }
+
+  return chunks;
+}
+
+/**
  * Grade a single chunk of students (placeholder for integration with providers)
  * This will be called by server.js with the actual AI provider integration
  * @param {Object} chunk - Chunk object from chunkStudents()
@@ -935,6 +1005,7 @@ Return a JSON array of adjustments. Only include students that need a score chan
     "studentIndex": <number>,
     "currentScore": <number>,
     "suggestedScore": <number, half-points allowed e.g. 7.5>,
+    "suggestedFeedback": "<HTML feedback in the same format as initial grading: <strong>/<blockquote>/<p>/<em> tags. Required when suggestedScore differs from currentScore.>",
     "reason": "<brief explanation of why this score should change>"
   }
 ]
@@ -1227,13 +1298,9 @@ export function buildPairwiseSweepPrompts(results, students, anchors, chunkMap, 
     const bandResults = results.filter(r => r.score >= band.min && r.score <= band.max);
     if (bandResults.length < 2) continue;
 
-    // Check if this band has students from multiple chunks
-    const chunkIds = new Set(bandResults.map(r => chunkMap[r.studentIndex]));
-    if (chunkIds.size < 2) continue; // All from same chunk — no cross-chunk comparison needed
-
     let prompt = `PAIRWISE CONSISTENCY CHECK — ${band.label} Score Band (${band.min}–${band.max}/${maxScore})
 
-These students all scored in the ${band.label.toLowerCase()} range but were graded in DIFFERENT batches. Review their full responses and determine if the scores are internally consistent.
+These students all scored in the ${band.label.toLowerCase()} range. Review their full responses and determine if the scores are internally consistent.
 
 SCORING ANCHORS:
 - Excellent (${anchors.excellent.score}/${maxScore}): ${anchors.excellent.description}
@@ -1247,13 +1314,12 @@ STUDENTS IN THIS BAND:
     for (const r of bandResults) {
       const student = students.find(s => s.index === r.studentIndex);
       const name = student?.name || `Student ${r.studentIndex}`;
-      const chunk = chunkMap[r.studentIndex] ?? '?';
-      prompt += `\n--- [#${r.studentIndex}] ${name} | Score: ${r.score}/${maxScore} | Chunk: ${chunk + 1} ---\n`;
+      prompt += `\n--- [#${r.studentIndex}] ${name} | Score: ${r.score}/${maxScore} ---\n`;
       prompt += `${student?.response || '(No response submitted)'}\n`;
     }
 
     prompt += `
-TASK: Are these scores consistent with each other? If two students gave responses of similar quality but got different scores (because they were in different batches), flag them for adjustment.
+TASK: Are these scores consistent with each other? If students gave responses of similar quality but received different scores, flag them for adjustment.
 
 RESPONSE FORMAT:
 Return a JSON array of adjustments. Only include students that need a score change. Return [] if all scores look consistent within this band.
@@ -1263,11 +1329,12 @@ Return a JSON array of adjustments. Only include students that need a score chan
     "studentIndex": <number>,
     "currentScore": <number>,
     "suggestedScore": <number, half-points allowed e.g. 7.5>,
+    "suggestedFeedback": "<HTML feedback in the same format as initial grading: <strong>/<blockquote>/<p>/<em> tags. Required if suggestedScore differs from currentScore.>",
     "reason": "<brief explanation>"
   }
 ]
 
-Be conservative — only adjust genuine cross-chunk inconsistencies.`;
+Be conservative — only adjust genuine inconsistencies.`;
 
     prompts.push({
       band: band.key,

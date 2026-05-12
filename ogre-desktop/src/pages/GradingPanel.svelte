@@ -482,6 +482,7 @@
           entries={outlierReport}
           maxScore={parseFloat(rubricMaxScore) || 10}
           onDismiss={() => { outlierReport = []; }}
+          onAccept={(entry) => batchPanelRef?.acceptReviewEntry(entry)}
           onRevert={(entry) => batchPanelRef?.revertOutlier(entry)}
         />
       {/if}
