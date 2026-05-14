@@ -29,15 +29,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: ogre-desktop/package-lock.json
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
 
       - name: Install desktop app dependencies
-        run: npm ci
+        run: bun install --frozen-lockfile
         working-directory: ogre-desktop
 
       - name: Build Electron app
-        run: npx vite build && npx electron-builder --win --publish never
+        run: bunx vite build && bunx electron-builder --win --publish never
         working-directory: ogre-desktop
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
