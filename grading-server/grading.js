@@ -360,6 +360,32 @@ FORMAT REMINDER: each "feedback" string MUST be HTML with <strong>/<blockquote>/
 }
 
 /**
+ * Extract the student's first name from a "Last, First" or "First Last" string.
+ * Used by the feedback greeting normalizer and the blank-response builder to
+ * ensure greetings address the student by first name only.
+ */
+export function extractFirstName(name) {
+  const raw = (name || '').trim();
+  if (!raw) return '';
+  return raw.includes(',')
+    ? raw.split(',').slice(1).join(',').trim().split(/\s+/)[0]
+    : raw.split(/\s+/)[0];
+}
+
+/**
+ * Replace the leading "Hi <whatever>," greeting paragraph in feedback HTML with
+ * "Hi <firstName>,". Models routinely echo back the student's full "Last, First"
+ * name in the greeting because that's what they see in the student header; this
+ * normalizes them to first-name-only without touching the rest of the feedback.
+ */
+function normalizeGreeting(html, name) {
+  if (!html || typeof html !== 'string') return html;
+  const firstName = extractFirstName(name);
+  if (!firstName) return html;
+  return html.replace(/<p>\s*(?:Hi|Hello)\s+[^<]*?<\/p>/i, `<p>Hi ${firstName},</p>`);
+}
+
+/**
  * If the AI returned markdown-formatted feedback instead of the expected
  * HTML (DeepSeek and other models occasionally drop the HTML format under
  * long-context drift), convert markdown markers to the expected tags so
@@ -573,7 +599,9 @@ function validateBatchResults(parsed, students, maxScore, categoryWeights = null
     score = snapScore(score, maxScore);
     console.log('[grade] batch ai_raw=' + item.score + ' factor=' + _parseFactor.toFixed(2) + ' final=' + score + ' (max=' + maxScore + ')');
     const rawFeedback = Array.isArray(item.feedback) ? item.feedback.join('\n') : (item.feedback || '');
-    const feedback = normalizeFeedbackHtml(String(rawFeedback).trim()) || 'Graded by AI.';
+    const normalized = normalizeFeedbackHtml(String(rawFeedback).trim()) || 'Graded by AI.';
+    const studentForName = idx < students.length ? students[idx] : null;
+    const feedback = normalizeGreeting(normalized, studentForName?.name);
 
     // Use the actual student index from the chunk, not the AI's studentIndex
     const studentIndex = idx < students.length
@@ -1255,7 +1283,7 @@ FORMAT REMINDER: the "feedback" string MUST be HTML with <strong>/<blockquote>/<
  * @param {number} maxScore - Maximum possible score
  * @returns {{ score: number, feedback: string }}
  */
-export function parseSingleGradeResponse(aiText, maxScore, categoryWeights = null, categoryMaxPoints = null) {
+export function parseSingleGradeResponse(aiText, maxScore, categoryWeights = null, categoryMaxPoints = null, studentName = null) {
   let text = aiText.trim();
 
   // Strip <think>...</think> reasoning blocks
@@ -1268,17 +1296,22 @@ export function parseSingleGradeResponse(aiText, maxScore, categoryWeights = nul
     text = fenceMatch[1].trim();
   }
 
+  const finalize = (result) => {
+    if (studentName) result.feedback = normalizeGreeting(result.feedback, studentName);
+    return result;
+  };
+
   // Attempt 1: Direct JSON parse
   try {
     const parsed = JSON.parse(text);
-    return clampSingleResult(parsed, maxScore, categoryWeights, categoryMaxPoints);
+    return finalize(clampSingleResult(parsed, maxScore, categoryWeights, categoryMaxPoints));
   } catch { /* continue */ }
 
   // Attempt 2: Fix LaTeX backslashes then parse
   try {
     const fixed = text.replace(/\\(?!["\\/bfnrtu])/g, '\\\\');
     const parsed = JSON.parse(fixed);
-    return clampSingleResult(parsed, maxScore, categoryWeights, categoryMaxPoints);
+    return finalize(clampSingleResult(parsed, maxScore, categoryWeights, categoryMaxPoints));
   } catch { /* continue */ }
 
   // Attempt 3: Extract JSON object from surrounding text
@@ -1286,19 +1319,19 @@ export function parseSingleGradeResponse(aiText, maxScore, categoryWeights = nul
   if (objMatch) {
     try {
       const parsed = JSON.parse(objMatch[0]);
-      return clampSingleResult(parsed, maxScore, categoryWeights, categoryMaxPoints);
+      return finalize(clampSingleResult(parsed, maxScore, categoryWeights, categoryMaxPoints));
     } catch { /* continue */ }
     try {
       const fixed = objMatch[0].replace(/\\(?!["\\/bfnrtu])/g, '\\\\');
       const parsed = JSON.parse(fixed);
-      return clampSingleResult(parsed, maxScore, categoryWeights, categoryMaxPoints);
+      return finalize(clampSingleResult(parsed, maxScore, categoryWeights, categoryMaxPoints));
     } catch { /* continue */ }
   }
 
   // Attempt 4: Regex extraction
   const regexMatch = text.match(/"score"\s*:\s*(\d+\.?\d*)\s*,\s*"feedback"\s*:\s*"([^"]*)"/);
   if (regexMatch) {
-    return clampSingleResult({ score: parseFloat(regexMatch[1]), feedback: regexMatch[2] }, maxScore, categoryWeights, categoryMaxPoints);
+    return finalize(clampSingleResult({ score: parseFloat(regexMatch[1]), feedback: regexMatch[2] }, maxScore, categoryWeights, categoryMaxPoints));
   }
 
   return { score: 0, feedback: 'Error parsing AI response. Please try again.' };

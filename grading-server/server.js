@@ -43,6 +43,7 @@ import {
   chunkStudents,
   chunkStudentsByPrompt,
   mergeResults,
+  extractFirstName,
 } from './grading.js';
 import {
   buildOllamaRequest,
@@ -251,6 +252,62 @@ async function runConsistencySweep(ctx) {
       console.log(`[${timestamp()}] [sse] Pairwise sweep: ${sweepAdjustments.length} total adjustment(s)`);
     }
 
+    // Two-step regrade: route flagged students back through the main batch
+    // grader so suggestedFeedback has the full per-requirement breadth the
+    // original grading loop produces. The sweep prompt's own suggestedFeedback
+    // routinely comes back abbreviated (e.g. "Correct." with no quote framing,
+    // explanation, or To-improve line) because the surrounding prompt frames
+    // the task as score-consistency, not full grading. Regrading is
+    // authoritative — its score and feedback replace the sweep's outputs.
+    if (sweepAdjustments.length > 0) {
+      const flaggedStudents = sweepAdjustments
+        .map(a => students.find(s => s.index === a.studentIndex))
+        .filter(Boolean);
+
+      if (flaggedStudents.length > 0) {
+        const categoryWeights = (rubric.categoryWeights && typeof rubric.categoryWeights === 'object'
+          && Object.keys(rubric.categoryWeights).length > 0) ? rubric.categoryWeights : null;
+        const categoryMaxPoints = {};
+        if (rubric.checklistItems && Array.isArray(rubric.checklistItems)) {
+          for (const item of rubric.checklistItems) {
+            if (item.category && item.points != null) {
+              const cleanName = item.category.replace(/\s*\(\d+\s*pts?\)/i, '').trim();
+              categoryMaxPoints[cleanName] = parseFloat(item.points) || 10;
+            }
+          }
+        }
+        const categoryMaxPtsOrNull = Object.keys(categoryMaxPoints).length > 0 ? categoryMaxPoints : null;
+
+        await stream.writeSSE({
+          event: 'progress',
+          data: JSON.stringify({ phase: 'sweep-regrade', count: flaggedStudents.length }),
+          id: getNextSseId(),
+        });
+        console.log(`[${timestamp()}] [sse] Sweep regrade: re-grading ${flaggedStudents.length} flagged student(s) for full feedback`);
+
+        try {
+          const regradePrompt = buildBatchPrompt(rubric, flaggedStudents, anchors);
+          const regradeText = await callProviderDirect(provider, providerConfig, [{ role: 'user', content: regradePrompt }], timestamp(), fallbackOptions);
+          const regraded = parseBatchResponse(regradeText, flaggedStudents, maxScore, categoryWeights, categoryMaxPtsOrNull);
+          const regradeMap = new Map(regraded.map(r => [r.studentIndex, r]));
+
+          sweepAdjustments = sweepAdjustments
+            .map(a => {
+              const r = regradeMap.get(a.studentIndex);
+              if (!r || !r.feedback || r.feedback === 'Error parsing AI response. Please try again.') return a;
+              return { ...a, suggestedScore: r.score, suggestedFeedback: r.feedback };
+            })
+            .filter(a => {
+              const orig = results.find(r => r.studentIndex === a.studentIndex);
+              return !orig || a.suggestedScore !== orig.score;
+            });
+          console.log(`[${timestamp()}] [sse] After regrade: ${sweepAdjustments.length} adjustment(s) remain`);
+        } catch (regradeErr) {
+          console.warn(`[${timestamp()}] [sse] Sweep regrade failed: ${regradeErr.message}, falling back to sweep's suggestedFeedback`);
+        }
+      }
+    }
+
     if (sweepAdjustments.length > 0) {
       await stream.writeSSE({
         event: 'review',
@@ -386,10 +443,7 @@ async function callProviderDirect(provider, config, messages, timestamp, options
  * Score is 0; feedback is "You did not address this" per requirement.
  */
 function buildBlankResponseFeedback(rubric, student) {
-  const rawName = (student?.name || '').trim();
-  const firstName = rawName.includes(',')
-    ? rawName.split(',').slice(1).join(',').trim().split(/\s+/)[0]
-    : rawName.split(/\s+/)[0];
+  const firstName = extractFirstName(student?.name);
   const greeting = firstName ? `Hi ${firstName},` : 'Hello,';
   let html = `<p>${greeting}</p>`;
   if (rubric?.checklistItems && Array.isArray(rubric.checklistItems)) {
