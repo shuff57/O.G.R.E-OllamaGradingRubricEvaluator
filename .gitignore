@@ -35,6 +35,7 @@ tests/
 
 # Per-session scratch
 ogre-desktop/.sisyphus/
+.tmp/
 
 # Tauri build artifacts
 ogre-desktop/src-tauri/target/
