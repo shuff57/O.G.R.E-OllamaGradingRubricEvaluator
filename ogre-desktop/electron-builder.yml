@@ -9,7 +9,8 @@ npmRebuild: true
 
 files:
   - dist/**
-  - dist-electron/**
+  - dist-electron/main.js
+  - dist-electron/preload.cjs
   - node_modules/**
   - package.json
 
