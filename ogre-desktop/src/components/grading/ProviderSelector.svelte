@@ -63,6 +63,7 @@
     'ollama': 'Ollama (Local)',
     'ollama-local': 'Ollama (Local)',
     'ollama-cloud': 'Ollama (Cloud)',
+    'ogre-cloud': 'OGRE Cloud',
     'openai': 'OpenAI',
     'anthropic': 'Anthropic',
     'google-gemini': 'Google Gemini',

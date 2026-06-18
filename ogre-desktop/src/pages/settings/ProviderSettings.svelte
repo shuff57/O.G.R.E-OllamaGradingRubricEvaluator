@@ -16,6 +16,7 @@
     fetchAvailableModels 
   } from '../../lib/oauth';
   import type { DeviceFlowResult } from '../../lib/oauth';
+  import { startOgreCloudLogin, OGRE_CLOUD_URL } from '../../lib/cloud-auth';
   import { pushProvidersToServer } from '../../lib/provider-sync';
 
   let providers: ProviderConfig[] = [];
@@ -52,6 +53,7 @@
     { id: 'anthropic', name: 'Anthropic (Claude)', requiresUrl: false, requiresKey: true, defaultUrl: '', canSignIn: true },
     { id: 'google-gemini', name: 'Google Gemini', requiresUrl: false, requiresKey: true, defaultUrl: '', canSignIn: true },
     { id: 'github-models', name: 'GitHub Models', requiresUrl: false, requiresKey: true, defaultUrl: '', canSignIn: true },
+    { id: 'ogre-cloud', name: 'OGRE Cloud', requiresUrl: false, requiresKey: true, defaultUrl: OGRE_CLOUD_URL, canSignIn: true },
   ];
 
   onMount(async () => {
@@ -63,12 +65,13 @@
     providers = await getProviderConfigs();
   }
 
-  function getProviderKey(id: string): "github" | "openai" | "anthropic" | "google" | "ollama" | null {
+  function getProviderKey(id: string): "github" | "openai" | "anthropic" | "google" | "ollama" | "ogre-cloud" | null {
     if (id === 'github-models') return 'github';
     if (id === 'openai') return 'openai';
     if (id === 'anthropic') return 'anthropic';
     if (id === 'google-gemini') return 'google';
     if (id === 'ollama' || id === 'ollama-cloud') return 'ollama';
+    if (id === 'ogre-cloud') return 'ogre-cloud';
     return null;
   }
 
@@ -109,6 +112,9 @@
         handleDeviceFlow(providerId, flow);
       } else if (providerId === 'anthropic') {
         const flow = await startClaudeOAuthFlow();
+        handleDeviceFlow(providerId, flow);
+      } else if (providerId === 'ogre-cloud') {
+        const flow = await startOgreCloudLogin();
         handleDeviceFlow(providerId, flow);
       }
     } catch (error) {
@@ -184,8 +190,8 @@
   }
 
   async function fetchModels(providerId: string) {
-    // Skip model discovery for ollama-cloud (model is fixed)
-    if (providerId === 'ollama-cloud') {
+    // Skip model discovery for ollama-cloud + ogre-cloud (model typed manually).
+    if (providerId === 'ollama-cloud' || providerId === 'ogre-cloud') {
       return;
     }
     
@@ -195,8 +201,8 @@
     modelFetchErrors = { ...modelFetchErrors }; // Trigger reactivity
     try {
       const providerKey = getProviderKey(providerId);
-      if (!providerKey) throw new Error('Invalid provider for model fetching');
-      
+      if (!providerKey || providerKey === 'ogre-cloud') throw new Error('Invalid provider for model fetching');
+
       const models = await fetchAvailableModels(providerKey);
       fetchedModels[providerId] = models;
       fetchedModels = { ...fetchedModels }; // Trigger reactivity

@@ -198,7 +198,11 @@ export default {
     if (req.method === 'GET' && pathname === '/health') return json({ ok: true })
     if (req.method === 'POST' && pathname === '/auth/google') return handleAuthGoogle(req, env)
     if (req.method === 'GET' && pathname === '/me') return handleMe(req, env)
-    if (req.method === 'POST' && pathname === '/grade') return handleGrade(req, env, ctx)
+    // /api/chat is the Ollama-wire alias so the desktop's buildOllamaRequest
+    // (which posts to `${base}/api/chat`) reaches us unchanged.
+    if (req.method === 'POST' && (pathname === '/grade' || pathname === '/api/chat')) {
+      return handleGrade(req, env, ctx)
+    }
     return json({ error: 'not_found' }, 404)
   },
 }

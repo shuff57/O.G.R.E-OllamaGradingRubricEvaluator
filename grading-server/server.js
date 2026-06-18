@@ -351,7 +351,7 @@ async function callProviderDirect(provider, config, messages, timestamp, options
 
   let requestObj;
   switch (provider.toLowerCase()) {
-    case 'ollama': case 'ollama-local': requestObj = buildOllamaRequest(config, messages); break;
+    case 'ollama': case 'ollama-local': case 'ogre-cloud': requestObj = buildOllamaRequest(config, messages); break;
     case 'ollama-cloud': requestObj = buildRunPodRequest(config, messages); break;
     case 'openai': requestObj = buildOpenAIRequest(config, messages); break;
     case 'anthropic': requestObj = buildAnthropicRequest(config, messages); break;
@@ -365,7 +365,7 @@ async function callProviderDirect(provider, config, messages, timestamp, options
   
   // Timeout: 600s for local Ollama (large batches can take minutes), 480s for cloud (thinking models need extra time), 30s for others
   const providerLc = provider.toLowerCase();
-  const timeoutMs = providerLc === 'ollama-cloud' ? 480000 : providerLc === 'ollama' || providerLc === 'ollama-local' ? 600000 : 30000;
+  const timeoutMs = providerLc === 'ollama-cloud' || providerLc === 'ogre-cloud' ? 480000 : providerLc === 'ollama' || providerLc === 'ollama-local' ? 600000 : 30000;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   
@@ -426,7 +426,7 @@ async function callProviderDirect(provider, config, messages, timestamp, options
 
   // Extract text based on provider format
   switch (provider.toLowerCase()) {
-    case 'ollama': case 'ollama-local': return parseOllamaResponse(data);
+    case 'ollama': case 'ollama-local': case 'ogre-cloud': return parseOllamaResponse(data);
     case 'ollama-cloud': return parseRunPodResponse(data);
     case 'openai': return parseOpenAIResponse(data);
     case 'anthropic': return parseAnthropicResponse(data);
