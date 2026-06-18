@@ -1,0 +1,3 @@
+# Copy to .dev.vars (gitignored) for `wrangler dev`.
+AUTH_TOKEN=dev-test-token-change-me
+OLLAMA_CLOUD_KEY=your-ollama-cloud-key

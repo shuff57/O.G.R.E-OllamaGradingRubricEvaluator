@@ -1,0 +1,15 @@
+{
+  "name": "ogre-cloud",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:init": "wrangler d1 execute ogre-cloud --remote --file=schema.sql",
+    "db:init:local": "wrangler d1 execute ogre-cloud --local --file=schema.sql",
+    "test": "node test.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}

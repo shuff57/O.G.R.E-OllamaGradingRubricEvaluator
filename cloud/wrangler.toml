@@ -1,0 +1,18 @@
+name = "ogre-cloud"
+main = "src/index.js"
+compatibility_date = "2026-06-01"
+
+# Set the real id after `wrangler d1 create ogre-cloud`.
+[[d1_databases]]
+binding = "DB"
+database_name = "ogre-cloud"
+database_id = "REPLACE_AFTER_D1_CREATE"
+
+[vars]
+FREE_MONTHLY_LIMIT = "1000"
+OLLAMA_BASE_URL = "https://ollama.com"
+
+# Secrets (NOT here) — set with `wrangler secret put`:
+#   OLLAMA_CLOUD_KEY   your Ollama Cloud API key
+#   AUTH_TOKEN         Phase-1 static test token
+# Phase 2 adds: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SESSION_SIGNING_KEY
