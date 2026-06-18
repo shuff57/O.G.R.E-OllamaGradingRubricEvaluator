@@ -199,17 +199,35 @@ Laguna-xs.2 (33B/3B-active MoE, 23 GB) scored Quiroz 2.00 (vs baseline 0.75) and
 ### 17. Always use the OGRE pipeline
 Stat-Grader went from 0.65 → 0.26 error with the pipeline. The prompt matters more than the model for mid-tier models.
 
+### 18. Minimax-M3 is the new best cloud model (June 2026)
+Minimax-M3 (0.28 error, +0.19 bias) is the most accurate cloud model tested to date — edging past DeepSeek-V4 Flash (0.34) and within 0.02 of Stat-Grader 9B (0.26), the best local model. It caught Quiroz exactly (0.75) and Lakhanpal close (0.50), and posted the lowest bias of any cloud model. This is a dramatic generational leap over Minimax-M2.7 (0.62 → 0.28). At ~38s/student it's slower than other cloud models but accuracy justifies it. Requires `think:false`.
+
+### 19. GLM-5.2 is a major jump over the 5.x line
+GLM-5.2 (0.37 error, +0.37 bias) substantially improves on GLM-5.1 (0.49) and GLM-5 (0.44), moving from "good alternative" into the top tier of cloud models. It caught Lakhanpal exactly (0.75) and scored Quiroz at 1.25. Unlike GLM-5.1's regression, 5.2 is a clear forward step — now the best GLM variant for grading.
+
+### 20. Kimi-K2.7-code regresses slightly but is the fastest cloud model
+Kimi-K2.7-code (0.51 error, +0.51 bias) is a small step back from Kimi-K2.6 (0.37) — expected, since this is a code-tuned variant, not a general checkpoint. It caught Lakhanpal exactly (0.75) but inflates more broadly. Its standout trait is speed: ~6s/student (101s for all 17), the fastest cloud run recorded. Usable when throughput matters more than the last 0.1 of accuracy. Requires `think:false`.
+
+### 21. Qwen3-coder-next is mid-tier — coder tuning shows
+Qwen3-coder-next (0.63 error, +0.49 bias) lands in the same band as Opus-Distilled and Minimax-M2.7. It caught Lakhanpal (0.75) but inflated Matthews (2.75 vs 1.25) and Rosales (2.50 vs 1.25). Like other coding-tuned models (Laguna), it's not calibrated for structured rubric judgment. Acceptable but not preferred.
+
+### 22. Gemma4 12B local inflates heavily — the small-variant pattern again
+Gemma4 12B local (1.06 error, +1.06 bias) is far worse than Gemma4 31B cloud (0.35) and even Gemma4 26B local (0.68). It missed both litmus students (Quiroz 1.50, Lakhanpal 1.50) and gave six students a 4/4. This confirms the recurring pattern: smaller local variants of a strong cloud model lose the calibration that makes the full-size version usable. Use the cloud variant; avoid the 12B for grading.
+
+### 23. LFM2.5 is unusable for grading
+LFM2.5 (1.45 error, 16/17 graded) emitted out-of-range scores (virtual 24/10, 13/10, 12/10 against a 10-point scale) and one parse failure, scattering students between 0.00 and 4.00 with no discrimination. Its near-zero bias (+0.11) is an artifact of averaging extreme highs and lows, not calibration. Same family as the earlier LFM2/LFM2.5-thinking failures — the LFM line cannot handle the structured grading task. Avoid.
+
 ## Recommendations
 
 1. **Default grading model:** Sonnet (with OGRE prompt) — the optimization target and most consistent
 2. **Best local model:** Stat-Grader 9B + OGRE pipeline (0.26 error) — near-Sonnet accuracy at 6 GB
 3. **Best Ollama cloud:** Minimax-M3 (0.28 error, +0.19 bias) — new leader as of June 2026, beats DeepSeek-V4 Flash (0.34), caught both litmus, lowest cloud bias. Runner-up: DeepSeek-V4 Flash (0.34, no `think:false` needed)
-4. **Strong cloud alternatives:** Gemma4 31B (0.35), Kimi-K2.6 (0.37, requires `think:false`), DeepSeek-V4 Pro (0.40, requires `think:false` and is flaky), Nemotron-3-super (0.41)
-5. **Good cloud alternatives:** GLM-5 (0.44), GLM-5.1 (0.49)
-6. **Mid-tier cloud:** Minimax-M2.7 (0.62) — usable but watch for outlier inflation
+4. **Strong cloud alternatives:** GLM-5.2 (0.37, requires `think:false`), Gemma4 31B (0.35), Kimi-K2.6 (0.37, requires `think:false`), DeepSeek-V4 Pro (0.40, requires `think:false` and is flaky), Nemotron-3-super (0.41)
+5. **Good cloud alternatives:** GLM-5 (0.44), GLM-5.1 (0.49) — both now superseded by GLM-5.2 (0.37). Kimi-K2.7-code (0.51, fastest at ~6s/student) if throughput matters
+6. **Mid-tier cloud:** Minimax-M2.7 (0.62), Qwen3-coder-next (0.63, coder-tuned) — usable but watch for outlier inflation
 7. **Best local alternative to Stat-Grader:** Opus-Distilled 9B (0.63 error, 5.6 GB) — catches errors, personalized feedback. Cascade-2 (0.66, 17 GB local MoE, requires `think:false`) is also a strong contender with the lowest local-model bias.
-8. **Avoid for grading:** LFM2, LFM 2.5-thinking, Nemotron-nano 30B, Nemotron-3-nano 4B, **Granite 4.1 8B**, **Laguna-xs.2** (agentic-coding-tuned), **Gemma4 26B local** (use cloud variant instead) — all inflate or miscalibrate
-9. **Always pass `think:false` for thinking-capable models** when grading — thinking budget exhausts inside reasoning trace and prevents JSON emission. Confirmed for: Kimi-K2.6, Gemma4 26B local, Laguna-xs.2, Nemotron-Cascade-2, DeepSeek-V4 Pro.
+8. **Avoid for grading:** LFM2, LFM 2.5-thinking, **LFM2.5** (out-of-range scores, unusable), Nemotron-nano 30B, Nemotron-3-nano 4B, **Granite 4.1 8B**, **Laguna-xs.2** (agentic-coding-tuned), **Gemma4 26B local** and **Gemma4 12B local** (use cloud variant instead) — all inflate or miscalibrate
+9. **Always pass `think:false` for thinking-capable models** when grading — thinking budget exhausts inside reasoning trace and prevents JSON emission. Confirmed for: Kimi-K2.6, Kimi-K2.7-code, Minimax-M3, GLM-5.2, Qwen3-coder-next, Gemma4 26B/12B local, Laguna-xs.2, Nemotron-Cascade-2, DeepSeek-V4 Pro.
 10. **VRAM hygiene for sequential local benchmarks:** Use `ollama stop <model>` between models when total combined VRAM exceeds GPU. Without explicit unloads, Ollama's auto-unload may not happen before the next model load, causing "model failed to load" errors (observed with cascade-2 after gemma4:26b/laguna).
 11. **Run-to-run mitigation:** For models with variance (GLM-5), use the consistency sweep with fixed 2σ threshold and 1-pt drop cap
 
