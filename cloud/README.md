@@ -3,52 +3,66 @@
 Inference turnstile in front of Ollama Cloud. Desktop app → this Worker (login +
 quota) → Ollama Cloud. Stores only accounts + a usage counter — never student work.
 
-## Phase 1 — proxy + quota (static token)
-
-### Setup
-```bash
-cd cloud
-npm install                       # wrangler
-
-wrangler d1 create ogre-cloud     # paste the printed database_id into wrangler.toml
-npm run db:init                   # create tables (remote); db:init:local for dev
-
-wrangler secret put OLLAMA_CLOUD_KEY   # your Ollama Cloud key
-wrangler secret put AUTH_TOKEN         # any static test token for now
+```
+Desktop ──Bearer session JWT──> Worker ──your Ollama key──> Ollama Cloud
+                                  └─ D1: accounts + usage (no student data)
 ```
 
-### Run / test locally
+## API
+| Method | Path | Does |
+|--------|------|------|
+| GET  | `/health` | liveness |
+| POST | `/auth/google` | `{google_access_token}` → verify via Google tokeninfo (audience-checked) → upsert account → return `{session_jwt, email}` |
+| GET  | `/me` | session JWT → `{email, used, limit, remaining}` |
+| POST | `/grade` | session JWT → quota → stream-proxy to Ollama Cloud |
+
+Login is Google **device flow** on the desktop (`ogre-desktop/src/lib/cloud-auth.ts`):
+show a code → user authorizes in their browser → desktop gets a Google access
+token → `/auth/google` exchanges it for an OGRE session JWT, stored via the app's
+`saveOAuthToken` under provider `ogre-cloud`.
+
+## Setup
 ```bash
-cp .dev.vars.example .dev.vars    # fill in the two values
+cd cloud
+npm install
+
+wrangler d1 create ogre-cloud        # paste the database_id into wrangler.toml
+npm run db:init                      # tables (remote); db:init:local for dev
+
+# Google Cloud Console → Credentials → OAuth client ID,
+# type "TVs and Limited Input Devices", scopes: openid email profile.
+# Put the client id in wrangler.toml [vars] GOOGLE_CLIENT_ID
+# and in ogre-desktop/src/lib/cloud-auth.ts GOOGLE_CLIENT_ID + OGRE_CLOUD_URL.
+
+wrangler secret put OLLAMA_CLOUD_KEY
+wrangler secret put SESSION_SIGNING_KEY   # any long random string
+```
+
+## Run / test locally
+```bash
+cp .dev.vars.example .dev.vars       # fill OLLAMA_CLOUD_KEY + SESSION_SIGNING_KEY
 npm run db:init:local
 npm run dev
 
 curl localhost:8787/health
+
+# /grade needs a session JWT. Mint a dev one (skips Google) and call /grade:
+TOKEN=$(node mint.mjs)
 curl -X POST localhost:8787/grade \
-  -H "Authorization: Bearer dev-test-token-change-me" \
-  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"model":"qwen3.5:9b-cloud","messages":[{"role":"user","content":"hi"}],"stream":false}'
 ```
 
-The `/grade` body is forwarded verbatim to `${OLLAMA_BASE_URL}/api/chat` — it's the
-same shape the desktop already builds for a local Ollama. Confirm a Workers-AI-free
-Ollama Cloud model matches your local benchmark (`ogre-desktop/_pipeline-bench-*.mjs`)
-before wiring the app to it.
+The `/grade` body is forwarded verbatim to `${OLLAMA_BASE_URL}/api/chat` — the same
+shape the desktop already builds for a local Ollama. **Before wiring the app to a
+model, confirm an Ollama Cloud model matches your local benchmark**
+(`ogre-desktop/_pipeline-bench-*.mjs`).
 
-Unit-check the auth/quota logic anytime: `npm test`.
+Unit-check the auth/quota/JWT logic anytime: `npm test`.
 
-## API
-| Method | Path | Phase | Does |
-|--------|------|-------|------|
-| GET | `/health` | 1 | liveness |
-| POST | `/grade` | 1 | auth → quota → stream-proxy to Ollama Cloud |
-| POST | `/auth/google` | 2 | exchange Google code → session JWT |
-| GET | `/me` | 2 | email + remaining quota |
-
-## Phase 2 — Google login (TODO)
-- Google Cloud Console: OAuth 2.0 Client ID (Desktop app), scopes `openid email profile`.
-- Secrets: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `SESSION_SIGNING_KEY`.
-- Add `/auth/google` (code+PKCE exchange → verify ID token → upsert `accounts` → sign session JWT)
-  and `/me`; swap `authenticate()` from static-token to JWT-verify.
-- Desktop: reuse `ogre-desktop/electron-main/oauth-server.ts` loopback; store the
-  session JWT via Electron `safeStorage`.
+## Next (Phase 3)
+- `POST /auth/refresh` (rotate session JWT before 30-day expiry).
+- Rate-limit `/grade` + `/auth/google` (KV/D1 counter).
+- Desktop: "Sign in to OGRE Cloud" UI + an "OGRE Cloud" grading provider that
+  POSTs to `${OGRE_CLOUD_URL}/grade` with `getOgreCloudToken()`; quota display via `/me`.
+- Privacy disclosure on the cloud toggle; keep local as the default.

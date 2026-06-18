@@ -11,8 +11,10 @@ database_id = "REPLACE_AFTER_D1_CREATE"
 [vars]
 FREE_MONTHLY_LIMIT = "1000"
 OLLAMA_BASE_URL = "https://ollama.com"
+# OGRE Cloud's Google OAuth client id (not secret). Replace after registering
+# a "TVs and Limited Input Devices" client in Google Cloud Console.
+GOOGLE_CLIENT_ID = "REPLACE_WITH_GOOGLE_CLIENT_ID"
 
 # Secrets (NOT here) — set with `wrangler secret put`:
-#   OLLAMA_CLOUD_KEY   your Ollama Cloud API key
-#   AUTH_TOKEN         Phase-1 static test token
-# Phase 2 adds: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SESSION_SIGNING_KEY
+#   OLLAMA_CLOUD_KEY      your Ollama Cloud API key
+#   SESSION_SIGNING_KEY   long random string; signs OGRE session JWTs
