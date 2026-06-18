@@ -5,7 +5,7 @@
  * Mirrors the config.js pattern (atomic writes, file watch).
  */
 
-import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync, watchFile, unwatchFile } from 'node:fs';
+import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { getConfigDir } from './config.js';
@@ -118,36 +118,4 @@ export function deleteRubric(id) {
 
   saveRubrics(filtered);
   return true;
-}
-
-/**
- * Watch the rubrics file for external changes.
- * Returns a stop function.
- */
-export function watchRubrics(callback) {
-  const filePath = getRubricsPath();
-
-  // Create file if it doesn't exist so watchFile has something to watch
-  if (!existsSync(filePath)) {
-    saveRubrics([]);
-  }
-
-  let debounceTimer = null;
-
-  watchFile(filePath, { interval: 1000 }, () => {
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {
-      try {
-        const rubrics = loadRubrics();
-        callback(rubrics);
-      } catch (err) {
-        console.error(`[rubric-store] Watch reload failed: ${err.message}`);
-      }
-    }, 500);
-  });
-
-  return () => {
-    if (debounceTimer) clearTimeout(debounceTimer);
-    unwatchFile(filePath);
-  };
 }

@@ -72,16 +72,6 @@ function getElectronUpdaterAPI(): ElectronUpdaterAPI {
   return api
 }
 
-export function listenForUpdateStatus(callback: UpdateStatusCallback): UnlistenFn {
-  const api = getElectronUpdaterAPI()
-  return api.on('update-status', (payload) => callback(payload as UpdateStatusPayload))
-}
-
-export async function downloadUpdate(): Promise<void> {
-  const api = getElectronUpdaterAPI()
-  await api.invoke('updater:download')
-}
-
 export async function checkForUpdates(): Promise<UpdateCheckResult> {
   const api = getElectronUpdaterAPI()
   return new Promise<UpdateCheckResult>((resolve) => {

@@ -5,7 +5,6 @@
  * to the local grading server via the handshake → Bearer token flow.
  */
 
-;
 import { getProviderConfigs, getOAuthToken } from "./db";
 
 const SERVER_BASE = "http://localhost:3456";
