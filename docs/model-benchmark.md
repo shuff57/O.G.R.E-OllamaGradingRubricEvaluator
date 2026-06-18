@@ -95,37 +95,38 @@ All six graded with `think:false` via `_pipeline-bench-nothink.mjs`, same 17-stu
 | Sutton, Caidin | 3.50 | 3.50 | 3.50 | 3.50 | 3.25 | 4.00 | 3.50 |
 | Tuman, Charlie | 2.75 | 3.25 | 3.25 | 3.25 | 3.25 | 4.00 | 4.00 |
 
-| Model | Type | Avg Error | Bias | N | Quiroz | Lakhan | Overall rank | Verdict |
-|-------|------|-----------|------|---|--------|--------|--------------|---------|
-| **Minimax-M3** | Ollama cloud | **0.28** | +0.19 | 17 | 0.75 | 0.50 | #2 overall | New best cloud model — beats DSv4-Flash (0.34), nearly ties Stat9B (0.26). Caught both litmus, lowest cloud bias |
-| **GLM-5.2** | Ollama cloud | **0.37** | +0.37 | 17 | 1.25 | 0.75 | ~#4 overall | Major jump over GLM-5.1 (0.49) and GLM-5 (0.44). Caught Lakhanpal exactly |
-| **Kimi-K2.7-code** | Ollama cloud | **0.51** | +0.51 | 17 | 1.50 | 0.75 | ~#9 | Decent, slight regression from Kimi-K2.6 (0.37). Fastest run (~6s/student). Code-tuned variant |
-| **Qwen3-coder-next** | Ollama cloud | **0.63** | +0.49 | 17 | 1.25 | 0.75 | ~#10 | Mid-tier — caught Lakhanpal, but coder-tuned, inflates Matthews/Rosales |
-| **Gemma4 12B** | Ollama local (7.6 GB) | **1.06** | +1.06 | 17 | 1.50 | 1.50 | inflation tier | Heavy inflation — far worse than Gemma4 31B cloud (0.35). Missed both litmus. Small local variant miscalibrates |
-| **LFM2.5** | Ollama local (5.2 GB) | **1.45** | +0.11 | 16 | 2.50 | 0.00 | unusable | Erratic — emitted out-of-range scores (virtual 24/10), 1 parse failure, scattered 0.00/4.00. Not usable for grading |
+*These six are merged into the unified Model Rankings below (marked 🆕).*
 
 ## Model Rankings
+
+Models added June 2026 are marked **🆕**.
 
 | Rank | Model | Type | Size | Avg Error | Bias | N | Quiroz | Lakhan | Verdict |
 |------|-------|------|------|-----------|------|---|--------|--------|---------|
 | 1 | **Stat-Grader 9B** | Ollama local | 6 GB | **0.26** | +0.24 | 17 | 2.00 | 0.75 | Best local model — near-Sonnet accuracy |
-| 2 | **DeepSeek-V4 Flash** | Ollama cloud | Cloud | **0.34** | +0.31 | 17 | 1.50 | 0.75 | Best clean-run cloud — caught Costner & Lakhanpal exactly, low inflation, no flakiness |
-| 3 | **Gemma4 31B** | Ollama cloud | Cloud | **0.35** | +0.35 | 17 | 1.25 | 0.75 | Excellent — caught both litmus, low inflation |
-| 4 | **Kimi-K2.6** § | Ollama cloud | Cloud (1T MoE) | **0.37** | +0.28 | 17 | 1.25 | 0.75 | Strong — caught Lakhanpal exactly, fastest cloud (~16s/student). Requires `think:false` |
-| 5 | **DeepSeek-V4 Pro** ‡ § | Ollama cloud | Cloud | **0.40** | +0.34 | 17 | 0.75 | 0.75 | Caught BOTH litmus AND Sutton exactly — but Costner outlier 2.00 (vs 0.75) drags avg up. Flaky cloud, took 4 attempts to get clean run |
-| 6 | **Nemotron-3-super** | Ollama cloud | Cloud | **0.41** | +0.41 | 17 | 1.25 | 0.75 | Excellent — good discrimination |
-| 7 | **GLM-5** | Ollama cloud | Cloud | **0.44** | +0.44 | 17 | 1.25 | 0.75 | Good |
-| 8 | **GLM-5.1** | Ollama cloud | Cloud | **0.49** | +0.40 | 17 | 1.25 | 1.50 | Good — slight regression from GLM-5, missed Lakhanpal |
-| 9 | **Minimax-M2.7** | Ollama cloud | Cloud | **0.62** | +0.53 | 17 | 1.50 | 0.75 | Decent — caught Lakhanpal but inflates Matthews to 4/4 |
-| 10 | **Opus-Distilled 9B** | Ollama local | 5.6 GB | **0.63** | +0.51 | 17 | 0.75 | 0.75 | Good — caught both litmus students |
-| 11 | **Nemotron-Cascade-2** § | Ollama local | 17 GB (30B/3B-MoE) | **0.66** | +0.31 | 17 | 0.75 | 0.75 | Discriminative — lowest local-model bias, caught all three litmus exactly, but Disney 0.00 (over-strict) and Matthews 4.00 (over-inflated). Requires `think:false` |
-| 12 | **Gemma4 26B local** § | Ollama local | 17 GB | **0.68** | +0.68 | 17 | 1.50 | 1.25 | Mid-tier — moderate inflation, ~75s/student. Requires `think:false` |
-| 13 | **Laguna-xs.2** § | Ollama local | 23 GB (33B/3B-MoE) | **0.72** | +0.69 | 17 | 2.00 | 1.25 | Mid-tier inflator — designed for agentic coding, not grading. Requires `think:false` |
-| 14 | **Granite 4.1 8B** | Ollama local | 5.3 GB | **1.11** | +1.11 | 16 | — | 0.75 | Poor — heavy inflation, gave Franco/Goodwin/Humble/Tuman 4/4 |
-| 15 | **Nem4B** | Ollama local | 2.8 GB | **1.21** | +1.21 | 17 | 0.75 | 0.75 | Poor — heavy inflation despite catching errors |
-| 16 | **LFM 2.5-thinking** | Ollama local | 731 MB | **1.23** | +0.95 | 11 | N/A | N/A | Poor — batch failures, inflates with pipeline |
-| 17 | **Nemotron-nano 30B** | Ollama cloud | Cloud | **1.40** | +1.40 | 17 | 4.00 | 2.00 | Poor — gave Quiroz 4/4 (wrong answer) |
-| 18 | **LFM2** | Ollama local | 14 GB | **1.44** | +1.44 | 17 | 3.50 | 3.25 | Very poor — everything 3.50 |
+| 2 | **Minimax-M3** 🆕 § | Ollama cloud | Cloud | **0.28** | +0.19 | 17 | 0.75 | 0.50 | Best cloud model — beats DSv4-Flash, lowest cloud bias, caught both litmus. Requires `think:false` |
+| 3 | **DeepSeek-V4 Flash** | Ollama cloud | Cloud | **0.34** | +0.31 | 17 | 1.50 | 0.75 | Best clean-run cloud (no `think:false`) — caught Costner & Lakhanpal exactly, low inflation, no flakiness |
+| 4 | **Gemma4 31B** | Ollama cloud | Cloud | **0.35** | +0.35 | 17 | 1.25 | 0.75 | Excellent — caught both litmus, low inflation |
+| 5 | **Kimi-K2.6** § | Ollama cloud | Cloud (1T MoE) | **0.37** | +0.28 | 17 | 1.25 | 0.75 | Strong — caught Lakhanpal exactly, fastest cloud (~16s/student). Requires `think:false` |
+| 6 | **GLM-5.2** 🆕 § | Ollama cloud | Cloud | **0.37** | +0.37 | 17 | 1.25 | 0.75 | Major jump over GLM-5.1/GLM-5, best GLM variant. Caught Lakhanpal exactly. Requires `think:false` |
+| 7 | **DeepSeek-V4 Pro** ‡ § | Ollama cloud | Cloud | **0.40** | +0.34 | 17 | 0.75 | 0.75 | Caught BOTH litmus AND Sutton exactly — but Costner outlier 2.00 (vs 0.75) drags avg up. Flaky cloud, took 4 attempts to get clean run |
+| 8 | **Nemotron-3-super** | Ollama cloud | Cloud | **0.41** | +0.41 | 17 | 1.25 | 0.75 | Excellent — good discrimination |
+| 9 | **GLM-5** | Ollama cloud | Cloud | **0.44** | +0.44 | 17 | 1.25 | 0.75 | Good (superseded by GLM-5.2) |
+| 10 | **GLM-5.1** | Ollama cloud | Cloud | **0.49** | +0.40 | 17 | 1.25 | 1.50 | Good — slight regression from GLM-5, missed Lakhanpal (superseded by GLM-5.2) |
+| 11 | **Kimi-K2.7-code** 🆕 § | Ollama cloud | Cloud | **0.51** | +0.51 | 17 | 1.50 | 0.75 | Slight regression from K2.6, but fastest run (~6s/student). Code-tuned variant. Requires `think:false` |
+| 12 | **Minimax-M2.7** | Ollama cloud | Cloud | **0.62** | +0.53 | 17 | 1.50 | 0.75 | Decent — caught Lakhanpal but inflates Matthews to 4/4 (superseded by Minimax-M3) |
+| 13 | **Qwen3-coder-next** 🆕 § | Ollama cloud | Cloud | **0.63** | +0.49 | 17 | 1.25 | 0.75 | Mid-tier — caught Lakhanpal, but coder-tuned, inflates Matthews/Rosales. Requires `think:false` |
+| 14 | **Opus-Distilled 9B** | Ollama local | 5.6 GB | **0.63** | +0.51 | 17 | 0.75 | 0.75 | Good — caught both litmus students |
+| 15 | **Nemotron-Cascade-2** § | Ollama local | 17 GB (30B/3B-MoE) | **0.66** | +0.31 | 17 | 0.75 | 0.75 | Discriminative — lowest local-model bias, caught all three litmus exactly, but Disney 0.00 (over-strict) and Matthews 4.00 (over-inflated). Requires `think:false` |
+| 16 | **Gemma4 26B local** § | Ollama local | 17 GB | **0.68** | +0.68 | 17 | 1.50 | 1.25 | Mid-tier — moderate inflation, ~75s/student. Requires `think:false` |
+| 17 | **Laguna-xs.2** § | Ollama local | 23 GB (33B/3B-MoE) | **0.72** | +0.69 | 17 | 2.00 | 1.25 | Mid-tier inflator — designed for agentic coding, not grading. Requires `think:false` |
+| 18 | **Gemma4 12B** 🆕 § | Ollama local | 7.6 GB | **1.06** | +1.06 | 17 | 1.50 | 1.50 | Heavy inflation — far worse than Gemma4 31B cloud/26B local, missed both litmus, gave six students 4/4. Requires `think:false` |
+| 19 | **Granite 4.1 8B** | Ollama local | 5.3 GB | **1.11** | +1.11 | 16 | — | 0.75 | Poor — heavy inflation, gave Franco/Goodwin/Humble/Tuman 4/4 |
+| 20 | **Nem4B** | Ollama local | 2.8 GB | **1.21** | +1.21 | 17 | 0.75 | 0.75 | Poor — heavy inflation despite catching errors |
+| 21 | **LFM 2.5-thinking** | Ollama local | 731 MB | **1.23** | +0.95 | 11 | N/A | N/A | Poor — batch failures, inflates with pipeline |
+| 22 | **Nemotron-nano 30B** | Ollama cloud | Cloud | **1.40** | +1.40 | 17 | 4.00 | 2.00 | Poor — gave Quiroz 4/4 (wrong answer) |
+| 23 | **LFM2** | Ollama local | 14 GB | **1.44** | +1.44 | 17 | 3.50 | 3.25 | Very poor — everything 3.50 |
+| 24 | **LFM2.5** 🆕 § | Ollama local | 5.2 GB | **1.45** | +0.11 | 16 | 2.50 | 0.00 | Unusable — out-of-range scores (virtual 24/10), 1 parse failure, no discrimination. Requires `think:false` |
 
 **Metrics:**
 - **Avg Error** = mean |score - baseline| across graded students (lower = better)
