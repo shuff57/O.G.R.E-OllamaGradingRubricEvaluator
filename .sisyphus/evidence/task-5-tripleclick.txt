@@ -1,9 +1,0 @@
-Bug #8 fix: updated `ogre-desktop/src/lib/browser-actions.ts` so `tripleClickAction` dispatches native CDP mouse events for triple-click selection.
-
-Verification:
-- `npx vitest run src/lib/browser-actions.test.ts` ✅
-- `npx vitest run` ✅
-
-Notes:
-- Added a test asserting 3 `mousePressed` / `mouseReleased` pairs with `clickCount` values 1, 2, 3.
-- LSP diagnostics could not run here because `typescript-language-server` is not installed in the environment.

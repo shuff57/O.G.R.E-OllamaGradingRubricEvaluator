@@ -1,2 +1,0 @@
-FROM qwen3.5:9b
-PARAMETER think false

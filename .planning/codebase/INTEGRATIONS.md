@@ -47,7 +47,7 @@
 ### Ollama (Local)
 - **Type**: Local LLM inference
 - **Endpoint**: Configurable, typically `http://localhost:11434/api/chat`
-- **Models**: Custom fine-tuned models (`Modelfile-qwen314b-nothink`, `Modelfile-qwen35-nothink`)
+- **Models**: Custom fine-tuned models (created via Ollama Modelfiles)
 - **Key files**: `grading-server/providers.js` (`buildOllamaRequest`, `parseOllamaResponse`)
 - **Features**: Image support (base64), reasoning model fallback (thinking field), 60m keep_alive
 
