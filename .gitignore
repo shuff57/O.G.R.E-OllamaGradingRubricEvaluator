@@ -69,3 +69,4 @@ ogre-desktop/dist-electron/
 
 # Scratch benchmark scripts (leading underscore convention)
 ogre-desktop/_*.mjs
+graphify-out/
