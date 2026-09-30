@@ -347,8 +347,8 @@
                   <button type="button" class="preset-btn" onclick={() => provider.api_url = 'http://localhost:11434'}>
                     Local (localhost:11434)
                   </button>
-                  <button type="button" class="preset-btn" onclick={() => provider.api_url = 'https://ollama.com/api'}>
-                    Cloud (ollama.com/api)
+                  <button type="button" class="preset-btn" onclick={() => provider.api_url = 'https://ollama.com'}>
+                    Cloud (ollama.com)
                   </button>
                 </div>
               {/if}
@@ -561,8 +561,8 @@
                 <button type="button" class="preset-btn" onclick={() => newProviderUrl = 'http://localhost:11434'}>
                   Local (localhost:11434)
                 </button>
-                <button type="button" class="preset-btn" onclick={() => newProviderUrl = 'https://ollama.com/api'}>
-                  Cloud (ollama.com/api)
+                <button type="button" class="preset-btn" onclick={() => newProviderUrl = 'https://ollama.com'}>
+                  Cloud (ollama.com)
                 </button>
               </div>
             {/if}

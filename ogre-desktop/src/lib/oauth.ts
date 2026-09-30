@@ -546,7 +546,10 @@ export async function fetchAvailableModels(
     }
 
     try {
-      const res = await fetch(url, { headers });
+      // localhost Ollama works with a renderer fetch, but ollama.com's cloud
+      // API sends no CORS headers at all, so route through the main process
+      // (net.fetch) which isn't subject to browser CORS.
+      const res = await mainFetch(url, { method: 'GET', headers });
       if (!res.ok) throw new Error(`Ollama returned HTTP ${res.status}. Is Ollama running?`);
       const json = await res.json();
 
