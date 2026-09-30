@@ -25,7 +25,7 @@
     scheduleBoundsUpdateAfterAnimation,
     createDestroyGuard,
   } from '../lib/webview-lifecycle';
-  import { getSetting, setSetting, getSiteCredentials } from '../lib/db';
+  import { getSetting, setSetting, getSiteCredentials, getAutomationsBaseUrl } from '../lib/db';
   import { matchCredentialsToUrl } from '../lib/autofill';
   import { ICON_STRIP_WIDTH } from '../lib/constants';
   import GradingPanel from './GradingPanel.svelte';
@@ -43,6 +43,11 @@
   let savedUrls: { name: string; url: string }[] = [];
   let newSaveName = '';
   let showSaveForm = false;
+
+  // Where the automations server lives. Read from settings rather than hardcoded,
+  // because Settings -> Automations can change it and a second copy of the
+  // address would be a second thing to forget. Defaults inside getAutomationsBaseUrl.
+  let automationsUrl = '';
 
   // Event Listeners
   let unlistenUrl: (() => void) | undefined;
@@ -253,6 +258,9 @@
     if (saved) {
       try { savedUrls = JSON.parse(saved); } catch { savedUrls = []; }
     }
+
+    // Load the automations server address for the OGRE quick-launch tag
+    automationsUrl = await getAutomationsBaseUrl();
 
     // Load saved drawer state
     const savedDrawerState = await getSetting('ogreDrawerState');
@@ -470,6 +478,19 @@
               {preset.name}
             </button>
           {/each}
+          <!--
+            OGRE's own automations server, opened as a normal tab. This is the
+            page carrying the staged-grade count and the run trigger, so it is
+            the one place that answers "did it grade anything?" — as opposed to
+            n8n's own success flag, which is what made execution 376 look fine
+            while it staged nothing. Separate from GRADING_SITE_PRESETS because
+            those are third-party sites and this address is configurable.
+          -->
+          {#if automationsUrl}
+            <button class="tag" on:click={() => handleLoadUrl(automationsUrl + '/ogre')}>
+              OGRE Automations
+            </button>
+          {/if}
         </div>
       </div>
 

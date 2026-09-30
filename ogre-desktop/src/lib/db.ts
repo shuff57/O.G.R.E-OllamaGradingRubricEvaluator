@@ -592,3 +592,70 @@ export async function getSkillBySource(source: string, sourceId: string): Promis
   );
   return rows.length > 0 ? rows[0] : null;
 }
+
+// ---- n8n automation connection ----
+//
+// Stored here rather than proxied through the automations web server so the
+// desktop app keeps working as the main interface when that server is down,
+// and so n8n keeps exactly one owner of its API key per app instead of a third
+// copy in an env file. Same app_settings table the providers already use.
+export interface N8nSettings {
+  baseUrl: string;
+  apiKey: string;
+  workflowId: string;
+  webhookUrl: string;
+}
+
+// The FRQ workflow this ships pointed at. Kept as a default so a fresh install
+// has something sane to show, but it stays editable: a rebuilt n8n will hand out
+// a different id, and guessing wrong should be a form edit, not a code change.
+export const DEFAULT_N8N_WORKFLOW_ID = 'icYXVP5hj0YldI5S';
+
+// The automations server is a SEPARATE app on its own host, and it is the only
+// thing that can read the staged-grades file (it lives in that server's /data,
+// not in this app's SQLite). So the staged COUNT comes from there over HTTP
+// while the n8n connection is configured here. Two sources, deliberately: n8n
+// knows what ran, the automations server knows what it graded.
+//
+// Default is the Tailscale address, which is how the app reaches it on the
+// LAN. Editable because that address is not guaranteed to be the right one on
+// every machine, and a wrong guess should be a form edit, not a rebuild.
+export const DEFAULT_AUTOMATIONS_BASE_URL = 'http://100.70.161.80:8477';
+
+export async function getN8nSettings(): Promise<N8nSettings> {
+  const [baseUrl, apiKey, workflowId, webhookUrl] = await Promise.all([
+    getSetting('n8n_base_url'),
+    getSetting('n8n_api_key'),
+    getSetting('n8n_workflow_id'),
+    getSetting('n8n_webhook_url'),
+  ]);
+  return {
+    baseUrl: baseUrl ?? '',
+    apiKey: apiKey ?? '',
+    workflowId: workflowId || DEFAULT_N8N_WORKFLOW_ID,
+    webhookUrl: webhookUrl ?? '',
+  };
+}
+
+export async function saveN8nSettings(s: N8nSettings): Promise<void> {
+  // Empty string clears a key rather than storing '', so "unset" and "set to
+  // nothing" cannot be confused when deciding whether to show a stored secret.
+  await setSetting('n8n_base_url', s.baseUrl.trim());
+  await setSetting('n8n_api_key', s.apiKey.trim());
+  await setSetting('n8n_workflow_id', s.workflowId.trim() || DEFAULT_N8N_WORKFLOW_ID);
+  await setSetting('n8n_webhook_url', s.webhookUrl.trim());
+}
+
+export async function clearN8nSettings(): Promise<void> {
+  for (const k of ['n8n_base_url', 'n8n_api_key', 'n8n_workflow_id', 'n8n_webhook_url']) {
+    await setSetting(k, '');
+  }
+}
+
+export async function getAutomationsBaseUrl(): Promise<string> {
+  return (await getSetting('automations_base_url')) || DEFAULT_AUTOMATIONS_BASE_URL;
+}
+
+export async function setAutomationsBaseUrl(url: string): Promise<void> {
+  await setSetting('automations_base_url', url.trim());
+}

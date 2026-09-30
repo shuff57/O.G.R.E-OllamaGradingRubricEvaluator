@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import Dashboard from './pages/Dashboard.svelte';
   import History from './pages/History.svelte';
+  import Automations from './pages/Automations.svelte';
   import Logs from './pages/Logs.svelte';
   import Settings from './pages/settings/Settings.svelte';
   import Rubrics from './pages/Rubrics.svelte';
@@ -20,6 +21,7 @@
     ProfilesIcon,
     BrowserIcon,
     SettingsIcon,
+    AutomationsIcon,
   } from './components/icons/index';
   import { getSetting, insertGradingSession } from './lib/db';
   import { listenSessionComplete, listenProviderChanged, listenServerStatus } from './lib/server';
@@ -231,6 +233,10 @@
         <!-- System group -->
         <div class="nav-group">
           <span class="nav-group-label">System</span>
+          <button class:active={currentPage === 'automations'} onclick={() => navigate('automations')} title="Automations">
+            <span class="icon"><AutomationsIcon /></span>
+            <span class="label">Automations</span>
+          </button>
           <button class:active={currentPage === 'logs'} onclick={() => navigate('logs')} title="Activity Log">
             <span class="icon"><LogsIcon /></span>
             <span class="label">Activity Log</span>
@@ -256,6 +262,8 @@
         <Browser />
       {:else if currentPage === 'profiles'}
         <SiteProfiles />
+      {:else if currentPage === 'automations'}
+        <Automations />
       {:else if currentPage === 'settings'}
         <Settings />
       {/if}

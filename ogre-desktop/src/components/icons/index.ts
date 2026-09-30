@@ -7,3 +7,4 @@ export { default as ProfilesIcon } from './ProfilesIcon.svelte';
 export { default as BrowserIcon } from './BrowserIcon.svelte';
 export { default as SkillsIcon } from './SkillsIcon.svelte';
 export { default as SettingsIcon } from './SettingsIcon.svelte';
+export { default as AutomationsIcon } from './AutomationsIcon.svelte';

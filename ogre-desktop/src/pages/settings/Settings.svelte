@@ -4,6 +4,7 @@
   import CredentialSettings from './CredentialSettings.svelte';
   import EmbeddingSettings from './EmbeddingSettings.svelte';
   import ColumnSettings from './ColumnSettings.svelte';
+  import AutomationSettings from './AutomationSettings.svelte';
 
   // Injected by Vite define() (declared in src/types/globals.d.ts)
   const appVersion = __APP_VERSION__;
@@ -18,6 +19,7 @@
   <ThemeSettings />
   <ProviderSettings />
   <CredentialSettings />
+  <AutomationSettings />
   <EmbeddingSettings />
   <ColumnSettings />
 

@@ -1,0 +1,22 @@
+{
+  "staged": {
+    "count": 5,
+    "stagedAt": "2026-09-30T02:30:59.000Z",
+    "keys": [
+      "339304:23440096:354583760",
+      "339304:23440096:354583761",
+      "340140:23440121:354583999",
+      "339625:23440124:354584001",
+      "334243:23440106:354584002"
+    ]
+  },
+  "workflow": {
+    "id": "icYXVP5hj0YldI5S",
+    "configured": false,
+    "webhook": false,
+    "active": null,
+    "name": null,
+    "error": "N8N_BASE_URL / N8N_API_KEY not set"
+  },
+  "executions": []
+}
