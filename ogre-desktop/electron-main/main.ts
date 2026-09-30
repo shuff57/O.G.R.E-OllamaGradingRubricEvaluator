@@ -17,7 +17,7 @@ if (process.platform === 'linux') {
   app.commandLine.appendSwitch('disable-dev-shm-usage')
 
   if (process.env.XDG_SESSION_TYPE === 'wayland' || process.env.WAYLAND_DISPLAY) {
-    app.commandLine.appendSwitch('ozone-platform', 'wayland')
+    app.commandLine.appendSwitch('ozone-platform', 'x11')
   }
 }
 
