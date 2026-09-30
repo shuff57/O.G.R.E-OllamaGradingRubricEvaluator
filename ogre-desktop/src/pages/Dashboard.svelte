@@ -54,7 +54,7 @@
     let hasPushedOnStartup = false;
     const checkServerHealth = async () => {
       try {
-        const response = await fetch('http://localhost:3456/health');
+        const response = await fetch('http://localhost:3457/health');
         if (response.ok) {
           serverStatus = 'running';
           // Push provider config on first health success (covers case where

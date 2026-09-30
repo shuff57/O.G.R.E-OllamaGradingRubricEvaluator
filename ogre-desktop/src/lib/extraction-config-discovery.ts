@@ -211,7 +211,7 @@ export interface ExtractionConfigValidationResult {
 // Private Helpers (same logic as discover.ts — those are module-private there)
 // ============================================================================
 
-const SERVER_BASE = 'http://localhost:3456';
+const SERVER_BASE = 'http://localhost:3457';
 
 /**
  * Normalize provider IDs to the server's expected values.

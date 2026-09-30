@@ -78,7 +78,7 @@ import {
 } from './knowledge-profile.js';
 
 const app = new Hono();
-const PORT = 3456;
+const PORT = 3457;
 
 // ── Provider config state (loaded from config file, hot-reloaded on changes) ──
 const initialConfig = loadConfig();

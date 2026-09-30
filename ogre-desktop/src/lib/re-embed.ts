@@ -8,7 +8,7 @@
 import { getAllEmbeddingsUnfiltered, updateEmbedding } from './vector-store';
 import { getHandshakeToken } from './provider-sync';
 
-const SERVER_URL = 'http://localhost:3456';
+const SERVER_URL = 'http://localhost:3457';
 
 export interface ReEmbedResult {
   updated: number;

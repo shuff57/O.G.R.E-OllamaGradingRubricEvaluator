@@ -155,7 +155,7 @@
     if (useLocal === 'true') {
       localEmbedEnabled = true;
       try {
-        const res = await fetch('http://localhost:3456/api/embed-status');
+        const res = await fetch('http://localhost:3457/api/embed-status');
         if (res.ok) {
           const data = await res.json();
           localModelLoaded = data.modelLoaded;
@@ -166,7 +166,7 @@
 
       if (!localModelLoaded) {
         // Kick off background warm-up so the model loads while the user sets up grading
-        fetch('http://localhost:3456/api/warm-embed', { method: 'POST' }).catch(() => {});
+        fetch('http://localhost:3457/api/warm-embed', { method: 'POST' }).catch(() => {});
 
         embedStatusInterval = setInterval(async () => {
           embedPollAttempts++;
@@ -178,7 +178,7 @@
             return;
           }
           try {
-            const res = await fetch('http://localhost:3456/api/embed-status');
+            const res = await fetch('http://localhost:3457/api/embed-status');
             if (res.ok) {
               const data = await res.json();
               if (data.modelLoaded) {

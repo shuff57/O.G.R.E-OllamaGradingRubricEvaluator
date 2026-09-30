@@ -60,7 +60,7 @@ type TaskResult = 'stored' | 'skipped' | 'error';
  * @param params.students - Original student data (name + response)
  * @param params.results - Grading output (studentIndex, score, feedback)
  * @param params.providerConfig - AI provider config passed to /api/embed
- * @param params.serverUrl - Grading server base URL (default: http://localhost:3456)
+ * @param params.serverUrl - Grading server base URL (default: http://localhost:3457)
  * @returns Summary of how many responses were stored / skipped / errored
  */
 export async function storeGradingResults(params: {
@@ -71,7 +71,7 @@ export async function storeGradingResults(params: {
   providerConfig: { provider: string; model: string; apiUrl?: string; apiKey?: string };
   serverUrl?: string;
 }): Promise<StorageSummary> {
-  const { sessionId, rubric, students, results, providerConfig, serverUrl = 'http://localhost:3456' } = params;
+  const { sessionId, rubric, students, results, providerConfig, serverUrl = 'http://localhost:3457' } = params;
 
   const rubricHash = await computeRubricHash(rubric);
 

@@ -25,7 +25,7 @@
       const token = getHandshakeToken();
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch('http://localhost:3456/api/embed', {
+      const res = await fetch('http://localhost:3457/api/embed', {
         method: 'POST',
         headers,
         body: JSON.stringify({ provider: 'local', text: 'embedding test' }),

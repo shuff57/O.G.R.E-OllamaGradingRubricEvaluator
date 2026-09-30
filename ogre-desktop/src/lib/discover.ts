@@ -20,7 +20,7 @@ import type { DiscoveryHints } from "./discovery-intent";
 import { discoverExtractionConfig } from "./extraction-config-discovery";
 import type { ExtractionConfig } from "./site-profiles";
 
-const SERVER_BASE = "http://localhost:3456";
+const SERVER_BASE = "http://localhost:3457";
 
 // ── Discovery Request/Response Types ────────────────────────────────────────
 

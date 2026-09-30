@@ -19,13 +19,13 @@ export type { CalibrationExamples };
  *
  * @param rubric - Rubric definition used for hashing and embedding
  * @param providerConfig - AI provider config for /api/embed call
- * @param serverUrl - Grading server base URL (default: http://localhost:3456)
+ * @param serverUrl - Grading server base URL (default: http://localhost:3457)
  * @param embeddingModel - Filter retrieval to this model (optional)
  */
 export async function getHistoricalCalibration(
   rubric: Rubric,
   providerConfig: { provider: string; model: string; apiUrl?: string; apiKey?: string },
-  serverUrl = 'http://localhost:3456',
+  serverUrl = 'http://localhost:3457',
   embeddingModel?: string
 ): Promise<CalibrationExamples | null> {
   try {

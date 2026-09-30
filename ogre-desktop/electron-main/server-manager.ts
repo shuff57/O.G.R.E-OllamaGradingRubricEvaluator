@@ -10,7 +10,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 const MAX_RESTART_ATTEMPTS = 3
-const SERVER_PORT = 3456
+const SERVER_PORT = 3457
 
 let serverProcess: ChildProcess | null = null
 let restartCount = 0

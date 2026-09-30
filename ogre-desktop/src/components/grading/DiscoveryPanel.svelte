@@ -72,7 +72,7 @@
   import DiscoveryChat from './DiscoveryChat.svelte';
   import { highlightSelector, SELECTOR_LABELS } from '../../lib/discovery-ui';
 
-  const SERVER_BASE = 'http://localhost:3456';
+  const SERVER_BASE = 'http://localhost:3457';
 
   type TauriResponseWithData = { data: unknown; status?: number };
   function getResponseData(response: unknown): unknown {

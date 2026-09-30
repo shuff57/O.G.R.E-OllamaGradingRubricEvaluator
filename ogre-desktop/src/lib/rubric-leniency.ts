@@ -11,7 +11,7 @@
 
 import { ensureHandshakeToken } from './provider-sync';
 
-const SERVER_BASE = 'http://localhost:3456';
+const SERVER_BASE = 'http://localhost:3457';
 
 async function authHeaders(): Promise<Record<string, string>> {
   const token = await ensureHandshakeToken();

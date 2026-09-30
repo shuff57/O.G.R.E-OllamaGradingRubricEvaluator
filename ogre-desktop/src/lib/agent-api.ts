@@ -14,7 +14,7 @@ import type {
   AgentTextResponse,
 } from "./agent-types";
 
-const SERVER_BASE = "http://localhost:3456";
+const SERVER_BASE = "http://localhost:3457";
 
 // ── Auth Helpers ──────────────────────────────────────────────────────────
 

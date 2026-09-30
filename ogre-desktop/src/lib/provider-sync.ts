@@ -7,7 +7,7 @@
 
 import { getProviderConfigs, getOAuthToken } from "./db";
 
-const SERVER_BASE = "http://localhost:3456";
+const SERVER_BASE = "http://localhost:3457";
 
 // ── Module-level handshake token (reused across pushes / server restarts) ──
 let handshakeToken: string | null = null;

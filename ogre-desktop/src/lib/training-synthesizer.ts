@@ -17,7 +17,7 @@ import type { ChatMessage } from './discovery-intent';
 import type { LearnedCorrection } from './site-guide-types';
 import { getHandshakeToken } from './provider-sync';
 
-const SERVER_BASE = 'http://localhost:3456';
+const SERVER_BASE = 'http://localhost:3457';
 
 const SYNTHESIS_SYSTEM_PROMPT = `You are a data extraction assistant.
 Given a conversation between a user and an AI about how to interact with a grading webpage,

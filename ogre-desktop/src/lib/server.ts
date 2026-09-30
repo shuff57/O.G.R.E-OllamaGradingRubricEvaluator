@@ -65,7 +65,7 @@ export function listenProviderChanged(callback: (data: ProviderChangedPayload) =
 
 // ── Profile Sync (Desktop → Grading Server) ───────────────────────────
 
-const SERVER_BASE = 'http://localhost:3456';
+const SERVER_BASE = 'http://localhost:3457';
 
 /**
  * Sync a site profile to the grading server's in-memory cache.

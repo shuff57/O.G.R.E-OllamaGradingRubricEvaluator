@@ -18,7 +18,7 @@ import type {
   CancellationToken,
 } from "./sse-parser";
 
-const SERVER_BASE = "http://localhost:3456";
+const SERVER_BASE = "http://localhost:3457";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
