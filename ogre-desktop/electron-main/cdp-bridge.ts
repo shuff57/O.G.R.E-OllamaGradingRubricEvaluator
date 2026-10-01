@@ -179,7 +179,7 @@ export function registerCdpHandlers(): void {
       const MAIN_APP_PATTERNS = [
         /^devtools:\/\//,
         /^chrome-extension:\/\//,
-        /^http:\/\/localhost:(1420|5173)/,
+        /^http:\/\/localhost:(1420|5173|5174)/,
         /^file:\/\//,
       ]
       const target = targets.find(

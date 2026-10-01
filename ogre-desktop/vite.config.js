@@ -48,6 +48,9 @@ export default defineConfig(() => ({
     include: ['buffer'],
   },
   server: {
+    // 5173 is often taken by another vite dev server on this box.
+    port: 5174,
+    strictPort: true,
     watch: {
       usePolling: true,
       interval: 300,

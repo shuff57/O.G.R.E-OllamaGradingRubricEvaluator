@@ -18,7 +18,7 @@ type EventCallback = (params: Record<string, unknown>) => void;
 
 /** URL patterns that identify the main Electron app webview (not the embedded browser). */
 export const MAIN_APP_PATTERNS = [
-  /^http:\/\/localhost:(1420|5173)/, // Vite dev server
+  /^http:\/\/localhost:(1420|5173|5174)/, // Vite dev server
   /^file:\/\//, // Production — Electron loads dist/index.html
   /^devtools:\/\//,
   /^chrome-extension:\/\//,

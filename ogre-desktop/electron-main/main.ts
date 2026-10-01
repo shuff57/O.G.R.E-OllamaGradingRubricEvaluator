@@ -42,7 +42,7 @@ function createWindow(): BrowserWindow {
   if (process.env.VITE_DEV_SERVER_URL) {
     void win.loadURL(process.env.VITE_DEV_SERVER_URL)
   } else if (isDev) {
-    void win.loadURL('http://localhost:5173')
+    void win.loadURL('http://localhost:5174')
   } else {
     void win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
   }
