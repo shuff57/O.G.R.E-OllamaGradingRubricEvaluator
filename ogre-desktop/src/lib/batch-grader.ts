@@ -413,25 +413,30 @@ export async function extractRubric(selectors: SiteSelectors, studentIndex: numb
       var checkDiv = checkDetails ? checkDetails.querySelector('div') : null;
       if (checkDiv) {
         checklistItems = Array.from(checkDiv.querySelectorAll('tr')).map(function(tr) {
-          var bEl = tr.querySelector('b');
+          var catEl = tr.querySelector('td') || tr.querySelector('b');
           return {
-            category: bEl ? bEl.textContent.trim() : '',
+            category: catEl ? catEl.textContent.trim() : '',
             items: Array.from(tr.querySelectorAll('label')).map(function(l) { return l.textContent.trim(); })
           };
         }).filter(function(x) { return x.category || x.items.length; });
       }
 
-      // Fallback: find checklist by summary text if initial child-index path missed it
+      // Fallback: find the rubric/checklist details by summary text if the
+      // child-index path missed it. MyOpenMath titles these "Rubric" and
+      // "Rubric & Model Response" — never take the model response block, whose
+      // list items merge each criterion with its ideal answer.
       if (!checklistItems.length) {
         Array.from(region.querySelectorAll('details')).forEach(function(det) {
           var summary = det.querySelector('summary');
-          if (!summary || summary.textContent.indexOf('Checklist') === -1) return;
+          var s = summary ? summary.textContent : '';
+          if (s.indexOf('Model Response') !== -1) return;
+          if (s.indexOf('Checklist') === -1 && s.indexOf('Rubric') === -1) return;
           var div = det.querySelector('div');
           if (!div) return;
           var rows = Array.from(div.querySelectorAll('tr')).map(function(tr) {
-            var bEl = tr.querySelector('b');
+            var catEl = tr.querySelector('td') || tr.querySelector('b');
             return {
-              category: bEl ? bEl.textContent.trim() : '',
+              category: catEl ? catEl.textContent.trim() : '',
               items: Array.from(tr.querySelectorAll('label')).map(function(l) { return l.textContent.trim(); })
             };
           }).filter(function(x) { return x.category || x.items.length; });
@@ -442,17 +447,32 @@ export async function extractRubric(selectors: SiteSelectors, studentIndex: numb
       var part2Div = region.querySelectorAll(':scope > div')[1]; // Second direct div = Part 2/rubric
       var rubDetails = part2Div ? part2Div.querySelector('details') : null;
       var rubDiv = rubDetails ? rubDetails.querySelector('div') : null;
+      // MyOpenMath merges rubric targets and the model response into one <details>
+      // ("Rubric & Model Response"). Each list item reads "<criterion>. Ideal: "<answer>"",
+      // so the ideal answers are model response, not criteria — split them out instead
+      // of grading student work against the answer key.
+      var idealEls = rubDiv ? rubDiv.querySelectorAll('.ideal-ans') : [];
       if (rubDiv) {
         rubricItems = Array.from(rubDiv.querySelectorAll('tr')).map(function(tr) {
-          var bEl = tr.querySelector('b');
+          var catEl = tr.querySelector('td') || tr.querySelector('b');
           return {
-            category: bEl ? bEl.textContent.trim() : '',
-            items: Array.from(tr.querySelectorAll('li')).map(function(l) { return l.textContent.trim(); })
+            category: catEl ? catEl.textContent.trim() : '',
+            items: Array.from(tr.querySelectorAll('li'))
+              .filter(function(li) { return !li.querySelector('.ideal-ans'); })
+              .map(function(l) { return l.textContent.trim(); })
           };
-        }).filter(function(x) { return x.category || x.items.length; });
-        var modelDiv = rubDiv.querySelector('div');
-        modelText = modelDiv ? (function() { try { return window.__turndownService.turndown(modelDiv.innerHTML); } catch(e) { return modelDiv.textContent.trim(); } })() : null;
-        if (modelText === '') modelText = null;
+        }).filter(function(x) { return x.items.length; });
+      }
+      if (idealEls.length) {
+        modelText = Array.prototype.map.call(idealEls, function(el) {
+          return el.textContent.trim();
+        }).join(' ');
+      } else {
+        var modelDiv = rubDiv ? rubDiv.querySelector('div') : null;
+        if (modelDiv) {
+          modelText = (function() { try { return window.__turndownService.turndown(modelDiv.innerHTML); } catch(e) { return modelDiv.textContent.trim(); } })();
+          if (modelText === '') modelText = null;
+        }
       }
 
       // Replace MathJax-rendered math with aria-label text so the equation

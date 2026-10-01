@@ -275,6 +275,17 @@ function parseCheckboxFormat(text: string): RubricCriterion[] {
 }
 
 export function textToCriteria(text: string): RubricCriterion[] {
+  // A trailing "--- Model Response ---" section is appended to the rubric text for display
+  // (see rubricToText in components/grading/batch/format.ts). It holds the model/ideal
+  // answer, not criteria, so drop it before parsing — otherwise the ideal answer is read
+  // back out as criteria. Truncating here covers both parse paths below.
+  const modelMarker = text.indexOf('--- Model Response ---');
+  if (modelMarker !== -1) text = text.slice(0, modelMarker);
+
+  // Auto-detect checkbox format and delegate to the specialized parser
+  if (isCheckboxFormat(text)) {
+    return parseCheckboxFormat(text);
+  }
   // Auto-detect checkbox format and delegate to the specialized parser
   if (isCheckboxFormat(text)) {
     return parseCheckboxFormat(text);

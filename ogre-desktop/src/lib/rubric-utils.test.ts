@@ -1117,3 +1117,82 @@ describe("allocation row detection", () => {
     expect(catWeights.get("CatB")!).toBeGreaterThan(catWeights.get("CatC")!);
     expect(catWeights.get("CatC")!).toBeGreaterThan(catWeights.get("CatD")!);
   });
+
+// ---------------------------------------------------------------------------
+// textToCriteria — model-response marker truncation (regression)
+// ---------------------------------------------------------------------------
+// rubricToText (components/grading/batch/format.ts) appends the model/ideal
+// answer after a literal '--- Model Response ---' marker. That section holds
+// the answer key, not criteria — textToCriteria must never parse it back out.
+
+describe("textToCriteria — model response marker truncation", () => {
+	it("truncates at the marker before parsing (generic pts format)", () => {
+		const text = [
+			"Left Skew (5pts): Identifies the distribution shape",
+			"Center (5pts): Reports an appropriate measure of center",
+			"",
+			"--- Model Response ---",
+			"Ideal: \"The distribution is left-skewed (negatively skewed).\"",
+			"Report the median and explain your choice.",
+		].join("\n");
+		const result = textToCriteria(text);
+		expect(result).toEqual([
+			{ criteria: "Left Skew", description: "Identifies the distribution shape", points: 5 },
+			{ criteria: "Center", description: "Reports an appropriate measure of center", points: 5 },
+		]);
+		for (const c of result) {
+			expect(c.criteria).not.toContain("Ideal:");
+			expect(c.criteria).not.toContain("left-skewed");
+		}
+	});
+
+	it("truncates at the marker before parsing (checkbox format)", () => {
+		// Regression that bit in production: MyOpenMath rubrics use checkbox format,
+		// and Ideal lines were parsed back out as grading criteria (the app graded
+		// against the answer key). Tab + ☐ routes to parseCheckboxFormat.
+		const text = [
+			"Procedural: Report the mean value.\t☐ 1",
+			"☐ Report the mean value",
+			"Procedural: Describe the distribution.\t☐ 1",
+			"--- Model Response ---",
+			"Ideal: \"The distribution is left-skewed (negatively skewed).\"",
+			"The center should be described by the median.",
+		].join("\n");
+		const result = textToCriteria(text);
+		expect(result).toEqual([
+			{ criteria: "1", description: "", points: 0, category: "Procedural: Report the mean value." },
+			{ criteria: "Report the mean value", description: "", points: 0, category: "Procedural: Report the mean value." },
+			{ criteria: "1", description: "", points: 0, category: "Procedural: Describe the distribution." },
+		]);
+		for (const c of result) {
+			expect(c.criteria).not.toContain("Ideal:");
+		}
+	});
+
+	it("round-trips plain criteria text with no marker (no regression)", () => {
+		const criteria: RubricCriterion[] = [
+			{ criteria: "Shape", description: "Identifies the distribution shape", points: 5 },
+			{ criteria: "Center", description: "Reports an appropriate measure of center", points: 5 },
+		];
+		const parsed = textToCriteria(criteriaToText(criteria));
+		expect(parsed).toEqual(criteria);
+	});
+
+	it("round-trips equalized category weights so validateWeights stays valid", () => {
+		// Equal + Category column previously looked broken because empty categories
+		// produced no '## Cat [N%]' headers at all. With real categories the header
+		// round-trips through criteriaToText/textToCriteria — pin that down.
+		const criteria: RubricCriterion[] = [
+			{ criteria: "Left Skew", description: "Identifies the shape", points: 5, category: "Shape" },
+			{ criteria: "Median", description: "Reports the center", points: 5, category: "Center" },
+		];
+		const equalized = equalizeWeights(criteria, "category");
+		const parsed = textToCriteria(criteriaToText(equalized));
+		expect(validateWeights(parsed, "category").valid).toBe(true);
+		// Category headers with weights survived the round-trip
+		expect(parsed[0].category).toBe("Shape");
+		expect(parsed[1].category).toBe("Center");
+		expect(parsed[0].categoryWeight).toBe(50);
+		expect(parsed[1].categoryWeight).toBe(50);
+	});
+});
