@@ -42,6 +42,9 @@ extraResources:
 linux:
   target:
     - AppImage
+  icon: build/icon.png
+  category: Education
+  artifactName: OGRE-${version}.${ext}
 
 win:
   target:
