@@ -22,7 +22,7 @@ icon="$HOME/.local/share/icons/ogre.png"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [[ -f "$here/../build/icon.png" ]] && cp "$here/../build/icon.png" "$icon"
 
-cat > "$HOME/.local/share/applications/ogre.desktop" <<DESK
+cat > "$HOME/.local/share/applications/ogre-desktop.desktop" <<DESK
 [Desktop Entry]
 Type=Application
 Name=OGRE
@@ -31,6 +31,7 @@ Exec=$APPIMAGE --no-sandbox %U
 Icon=$icon
 Categories=Education;
 Terminal=false
+StartupWMClass=ogre-desktop
 DESK
 update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
 echo "Installed to $APPIMAGE. Launch OGRE from your app menu; it checks for updates on start."

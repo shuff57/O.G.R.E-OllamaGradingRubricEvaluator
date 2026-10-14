@@ -15,6 +15,8 @@ files:
   - package.json
 
 extraResources:
+  - from: build/icon.png
+    to: icon.png
   - from: ../grading-server
     to: server-bundle
     filter:
@@ -31,7 +33,6 @@ extraResources:
       - '!node_modules/@babel/**'
       - '!node_modules/@esbuild/**'
       - '!node_modules/onnxruntime-node/bin/napi-v6/darwin/**'
-      - '!node_modules/onnxruntime-node/bin/napi-v6/linux/**'
       - '!node_modules/onnxruntime-node/bin/napi-v6/win32/arm64/**'
       - '!**/*.md'
       - '!**/*.map'

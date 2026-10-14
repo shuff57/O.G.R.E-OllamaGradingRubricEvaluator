@@ -31,6 +31,9 @@ function createWindow(): BrowserWindow {
     width: 1280,
     height: 900,
     title: 'O.G.R.E - Grading Server Manager',
+    icon: app.isPackaged
+      ? path.join(process.resourcesPath, 'icon.png')
+      : path.join(__dirname, '../build/icon.png'),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
