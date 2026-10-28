@@ -337,6 +337,8 @@ ${_corItems.length > 0 ? `GRADING PROCESS:\nFor each student: (1) score each cat
 
 FEEDBACK FORMAT RULE: The feedback string must contain one section for EACH numbered requirement from GRADING REQUIREMENTS. Do NOT group by category. Use HTML tags: <strong> for the requirement header, <blockquote> for the student's words (or "You did not address this."), <p> for your evaluation, <em> for the "To improve" line. Wrap all math expressions in backticks, e.g. \`x^2 + 3x\` or \`p < 0.05\`. For ANY requirement that is not at full credit, you MUST include both (a) a specific reason citing the student's words or omission, and (b) a "To improve" line with an actionable next step. Critiques and "To improve" suggestions MUST cite a specific rubric requirement that was not met. Do NOT invent additional standards (e.g., showing intermediate work, extra clarity, formatting polish) that the rubric does not explicitly require. If the response satisfies what the rubric asks, mark it correct — even if a more detailed answer is conceivable. criterion_scores uses categories for scoring, but feedback MUST be per-requirement.
 
+${SCORE_FEEDBACK_CONSISTENCY_RULE}
+
 [
   {
     "studentIndex": ${firstIdx},
@@ -537,6 +539,53 @@ function getScaleInfo(maxScore) {
   return { virtualMax: 10, factor: 10 / max };
 }
 
+// ── Score/feedback consistency ──────────────────────────────────────────────
+// A score below full credit must be justified in the feedback: the specific
+// requirement that was missed and what was explicitly incorrect. The model
+// sometimes returns a holistic sub-max score while marking every requirement
+// "Correct" with "To improve: N/A" — an unexplained deduction. When that
+// happens, benefit-of-the-doubt applies and the score becomes full credit
+// (AGENTS.md: grade generously; never penalize without naming the gap).
+const NEGATIVE_VERDICT_RE =
+  /\b(incorrect|partial(?:ly)?|incomplete|not correct|not fully|missing|did not|didn't|does not|doesn't|wrong|error|rather than|instead of)\b/i;
+
+const NON_ACTIONABLE_IMPROVEMENT_RE =
+  /^(?:n\/?a|none|nothing|no (?:specific )?improvements?(?: needed)?|keep (?:up|it up))[.!]?$/i;
+
+/** True when the feedback names at least one concrete deficiency. */
+export function feedbackNamesSpecificDeficiency(feedback) {
+  const html = String(feedback || '');
+  const re = /<em>\s*To improve:\s*([\s\S]*?)<\/em>/gi;
+  let match;
+  while ((match = re.exec(html)) !== null) {
+    const text = match[1].replace(/<[^>]+>/g, '').trim();
+    if (text && !NON_ACTIONABLE_IMPROVEMENT_RE.test(text)) return true;
+  }
+  return NEGATIVE_VERDICT_RE.test(html.replace(/<[^>]+>/g, ' '));
+}
+
+/**
+ * If a sub-max score carries per-requirement feedback that flags no deficiency,
+ * the deduction is unexplained: award full credit instead. Empty submissions and
+ * bare fallback feedback ("No response submitted.", "Graded by AI.") are left
+ * alone because they are legitimately below full credit.
+ */
+export function reconcileScoreWithFeedback(score, feedback, maxScore) {
+  const max = parseFloat(maxScore) || 10;
+  if (!(score < max)) return score;
+  const html = String(feedback || '');
+  if (/no response submitted/i.test(html)) return score;
+  if (!/<strong\b/i.test(html)) return score;
+  if (feedbackNamesSpecificDeficiency(html)) return score;
+  console.warn(`[grade] ${score}/${max} with no deficiency in feedback — awarding full credit`);
+  return max;
+}
+
+// Injected into every grading prompt. Without this, models award a holistic
+// sub-max score while marking every requirement Correct ("To improve: N/A").
+const SCORE_FEEDBACK_CONSISTENCY_RULE =
+  'SCORE/FEEDBACK CONSISTENCY RULE: Your score and your feedback must agree. If every requirement is marked Correct, the score MUST be full credit (10). Never deduct points you cannot justify: if the score is below 10, at least one requirement section MUST name what was explicitly incorrect or missing and include its own specific "To improve" line. "To improve: N/A" is only allowed when the student earned full credit. Do not repeat the same "To improve" sentence under multiple requirements.';
+
 // Build scoring scale string from shared constant
 function getScoringScaleString(customDescriptors = null) {
   const descriptors = customDescriptors ?? SCORING_SCALE_DESCRIPTORS;
@@ -602,6 +651,7 @@ function validateBatchResults(parsed, students, maxScore, categoryWeights = null
     const normalized = normalizeFeedbackHtml(String(rawFeedback).trim()) || 'Graded by AI.';
     const studentForName = idx < students.length ? students[idx] : null;
     const feedback = normalizeGreeting(normalized, studentForName?.name);
+    score = reconcileScoreWithFeedback(score, feedback, maxScore);
 
     // Use the actual student index from the chunk, not the AI's studentIndex
     const studentIndex = idx < students.length
@@ -1048,7 +1098,7 @@ function buildSweepFeedbackGuidance(rubric) {
     }
   }
 
-  const formatRule = `FEEDBACK FORMAT RULE: suggestedFeedback must contain one section for EACH numbered requirement above. Do NOT group by category. Use HTML tags: <strong> for the requirement header, <blockquote> for the student's words (or "You did not address this."), <p> for your evaluation, <em> for the "To improve" line. Wrap math expressions in backticks, e.g. \`x^2 + 3x\` or \`p < 0.05\`. For ANY requirement that is not at full credit, include both (a) a specific reason citing the student's words or omission, and (b) a "To improve" line with an actionable next step. Cite a specific rubric requirement that was not met. Do NOT invent additional standards not in the rubric. Do NOT use markdown (no **bold**, no "> quote", no *italic*).`;
+  const formatRule = `FEEDBACK FORMAT RULE: suggestedFeedback must contain one section for EACH numbered requirement above. Do NOT group by category. Use HTML tags: <strong> for the requirement header, <blockquote> for the student's words (or "You did not address this."), <p> for your evaluation, <em> for the "To improve" line. Wrap math expressions in backticks, e.g. \`x^2 + 3x\` or \`p < 0.05\`. For ANY requirement that is not at full credit, include both (a) a specific reason citing the student's words or omission, and (b) a "To improve" line with an actionable next step. Cite a specific rubric requirement that was not met. Do NOT invent additional standards not in the rubric. Do NOT use markdown (no **bold**, no "> quote", no *italic*). ${SCORE_FEEDBACK_CONSISTENCY_RULE}`;
 
   return { requirementsList, feedbackTemplate, formatRule };
 }
@@ -1263,6 +1313,8 @@ CONCEPTUAL THOROUGHNESS RULE: When a student demonstrates genuine understanding 
 ${_sCorNames.length > 0 ? 'GRADING PROCESS: Score each category independently using the PARTIAL CREDIT RULE, then sum for the final score.\n' : ''}
 FEEDBACK FORMAT RULE: The feedback string must contain one section for EACH numbered requirement from GRADING REQUIREMENTS. Do NOT group by category. Use HTML tags: <strong> for the requirement header, <blockquote> for the student's words (or "You did not address this."), <p> for your evaluation, <em> for the "To improve" line. Wrap all math expressions in backticks, e.g. \`x^2 + 3x\` or \`p < 0.05\`. For ANY requirement that is not at full credit, you MUST include both (a) a specific reason citing the student's words or omission, and (b) a "To improve" line with an actionable next step. Critiques and "To improve" suggestions MUST cite a specific rubric requirement that was not met. Do NOT invent additional standards (e.g., showing intermediate work, extra clarity, formatting polish) that the rubric does not explicitly require. If the response satisfies what the rubric asks, mark it correct — even if a more detailed answer is conceivable. criterion_scores uses categories for scoring, but feedback MUST be per-requirement.
 
+${SCORE_FEEDBACK_CONSISTENCY_RULE}
+
 RESPONSE FORMAT:
 Return ONLY valid JSON. No markdown code fences. No explanation text.
 
@@ -1382,6 +1434,7 @@ function clampSingleResult(parsed, maxScore, categoryWeights = null, categoryMax
   score = snapScore(score, maxScore);
   console.log('[grade] single ai_raw=' + parsed.score + ' factor=' + _cf.toFixed(2) + ' final=' + score + ' (max=' + maxScore + ')');
   const feedback = normalizeFeedbackHtml((parsed.feedback || '').trim()) || 'Graded by AI.';
+  score = reconcileScoreWithFeedback(score, feedback, maxScore);
   return { score, feedback };
 }
 

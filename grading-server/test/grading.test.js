@@ -3,6 +3,8 @@ import {
   generateScoringAnchors,
   buildBatchPrompt,
   parseBatchResponse,
+  feedbackNamesSpecificDeficiency,
+  reconcileScoreWithFeedback,
   detectOutliers,
   chunkStudents,
   gradeChunk,
@@ -179,11 +181,54 @@ describe('parseBatchResponse', () => {
   it('should fallback gracefully on malformed JSON', () => {
     const malformed = 'This is not JSON at all';
     const students = testStudents.slice(0, 3);
-    
+
     const results = parseBatchResponse(malformed, students, 10);
-    
+
     // Should still return results array, even if parsing fails
     expect(Array.isArray(results)).toBe(true);
+  });
+});
+
+describe('score/feedback consistency', () => {
+  const allCorrectFeedback =
+    '<p>Hi Test,</p>' +
+    '<p><strong>Explains light absorption</strong></p><blockquote>You said: "chlorophyll absorbs light"</blockquote><p>Correct.</p><p><em>To improve: N/A</em></p>' +
+    '<p><strong>Mentions chlorophyll</strong></p><blockquote>You said: "chlorophyll"</blockquote><p>Correct.</p><p><em>To improve: N/A</em></p>';
+
+  const partialFeedback =
+    '<p>Hi Test,</p>' +
+    '<p><strong>Explains light absorption</strong></p><blockquote>You said: "light"</blockquote><p>Correct.</p><p><em>To improve: N/A</em></p>' +
+    '<p><strong>Mentions chlorophyll</strong></p><blockquote>You did not address this.</blockquote><p>Partial. You never named chlorophyll.</p><p><em>To improve: Name chlorophyll as the pigment that absorbs light.</em></p>';
+
+  it('flags N/A-only feedback as naming no deficiency', () => {
+    expect(feedbackNamesSpecificDeficiency(allCorrectFeedback)).toBe(false);
+  });
+
+  it('detects a concrete To improve line and negative verdicts', () => {
+    expect(feedbackNamesSpecificDeficiency(partialFeedback)).toBe(true);
+    expect(feedbackNamesSpecificDeficiency('<p>Partial. Wrong denominator.</p>')).toBe(true);
+  });
+
+  it('awards full credit when every requirement is correct but the raw score is lower', () => {
+    expect(reconcileScoreWithFeedback(12.5, allCorrectFeedback, 14)).toBe(14);
+  });
+
+  it('keeps a sub-max score when the feedback names the deficiency', () => {
+    expect(reconcileScoreWithFeedback(12.5, partialFeedback, 14)).toBe(12.5);
+  });
+
+  it('leaves empty submissions and bare fallbacks below full credit', () => {
+    expect(reconcileScoreWithFeedback(0, '<p>No response submitted.</p>', 14)).toBe(0);
+    expect(reconcileScoreWithFeedback(12.5, 'Graded by AI.', 14)).toBe(12.5);
+  });
+
+  it('applies the invariant through parseBatchResponse', () => {
+    const students = testStudents.slice(0, 1);
+    const make = (feedback) => JSON.stringify([{ studentIndex: 0, score: 9, feedback }]);
+
+    expect(parseBatchResponse(make(allCorrectFeedback), students, 14)[0].score).toBe(14);
+    expect(parseBatchResponse(make(partialFeedback), students, 14)[0].score).toBe(12.5);
+    expect(parseBatchResponse(make('Graded by AI.'), students, 14)[0].score).toBe(12.5);
   });
 });
 

@@ -155,6 +155,14 @@ student's words (or "You did not address this."), <p> for your evaluation,
 `x^2 + 3x` or `p < 0.05`. For ANY requirement that is not at full credit, you
 MUST include both (a) a specific reason citing the student's words or
 omission, and (b) a "To improve" line with an actionable next step.
+
+SCORE/FEEDBACK CONSISTENCY RULE: Your score and your feedback must agree. If
+every requirement is marked Correct, the score MUST be full credit (10). Never
+deduct points you cannot justify: if the score is below 10, at least one
+requirement section MUST name what was explicitly incorrect or missing and
+include its own specific "To improve" line. "To improve: N/A" is only allowed
+when the student earned full credit. Do not repeat the same "To improve"
+sentence under multiple requirements.
 ```
 
 MOM's feedback box does not render Markdown — it stores HTML and renders math
