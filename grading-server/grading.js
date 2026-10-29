@@ -561,7 +561,12 @@ export function feedbackNamesSpecificDeficiency(feedback) {
     const text = match[1].replace(/<[^>]+>/g, '').trim();
     if (text && !NON_ACTIONABLE_IMPROVEMENT_RE.test(text)) return true;
   }
-  return NEGATIVE_VERDICT_RE.test(html.replace(/<[^>]+>/g, ' '));
+  // Scan only the grader's verdicts, not the student's quoted words: a quote
+  // containing "instead of" or "not" is not a deficiency finding.
+  const verdictText = html
+    .replace(/<blockquote[\s\S]*?<\/blockquote>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ');
+  return NEGATIVE_VERDICT_RE.test(verdictText);
 }
 
 /**
@@ -584,7 +589,7 @@ export function reconcileScoreWithFeedback(score, feedback, maxScore) {
 // Injected into every grading prompt. Without this, models award a holistic
 // sub-max score while marking every requirement Correct ("To improve: N/A").
 const SCORE_FEEDBACK_CONSISTENCY_RULE =
-  'SCORE/FEEDBACK CONSISTENCY RULE: Your score and your feedback must agree. If every requirement is marked Correct, the score MUST be full credit (10). Never deduct points you cannot justify: if the score is below 10, at least one requirement section MUST name what was explicitly incorrect or missing and include its own specific "To improve" line. "To improve: N/A" is only allowed when the student earned full credit. Do not repeat the same "To improve" sentence under multiple requirements.';
+  'SCORE/FEEDBACK CONSISTENCY RULE: Your score and your feedback must agree. If every requirement is marked Correct, the score MUST be full credit (10). Never deduct points you cannot justify: if the score is below 10, at least one requirement section MUST name what was explicitly incorrect or missing and include its own specific "To improve" line. "To improve: N/A" is only allowed when the student earned full credit. Do not repeat the same "To improve" sentence under multiple requirements. Never write a verdict that starts with Correct and then says the work is incorrect, wrong, or missing — if any part of that requirement is wrong, mark it Partial or Incorrect. Every point below full credit must map to a named requirement and a non-N/A "To improve" line; a passing mention of an error inside a Correct verdict does not count as an explanation.';
 
 // Build scoring scale string from shared constant
 function getScoringScaleString(customDescriptors = null) {

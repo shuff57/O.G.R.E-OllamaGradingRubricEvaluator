@@ -209,6 +209,26 @@ describe('score/feedback consistency', () => {
     expect(feedbackNamesSpecificDeficiency('<p>Partial. Wrong denominator.</p>')).toBe(true);
   });
 
+  it('ignores negative words inside the student quote', () => {
+    const quoted = '<p><strong>Explain the swap</strong></p><blockquote>You said: "use the tip total instead of the lunch total"</blockquote><p>Correct. You explained the swap.</p><p><em>To improve: N/A</em></p>';
+    expect(feedbackNamesSpecificDeficiency(quoted)).toBe(false);
+  });
+
+  it('awards full credit when every verdict is Correct even with no To improve lines', () => {
+    const laura = '<p>Hi Laura,</p>' +
+      '<p><strong>Right counts</strong></p><blockquote>You said: "48/120"</blockquote><p>Correct. You used the correct counts.</p>' +
+      '<p><strong>Denominator group</strong></p><blockquote>You said: "lunch category"</blockquote><p>Correct. You identified the lunch group.</p>' +
+      '<p><strong>Swap</strong></p><blockquote>You said: "use the tip total instead of the lunch total"</blockquote><p>Correct. You explained why swapping changes the result.</p>';
+    expect(feedbackNamesSpecificDeficiency(laura)).toBe(false);
+    expect(reconcileScoreWithFeedback(12.5, laura, 14)).toBe(14);
+  });
+
+  it('recognizes a Correct verdict that admits an error as a named deficiency', () => {
+    const contradictory = '<p><strong>Swap</strong></p><blockquote>You said: "120/48"</blockquote><p>Correct. Although the fraction is mathematically incorrect for the swap, you conceptually demonstrated the idea.</p>';
+    expect(feedbackNamesSpecificDeficiency(contradictory)).toBe(true);
+    expect(reconcileScoreWithFeedback(12.5, contradictory, 14)).toBe(12.5);
+  });
+
   it('awards full credit when every requirement is correct but the raw score is lower', () => {
     expect(reconcileScoreWithFeedback(12.5, allCorrectFeedback, 14)).toBe(14);
   });

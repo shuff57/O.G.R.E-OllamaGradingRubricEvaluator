@@ -162,7 +162,12 @@ deduct points you cannot justify: if the score is below 10, at least one
 requirement section MUST name what was explicitly incorrect or missing and
 include its own specific "To improve" line. "To improve: N/A" is only allowed
 when the student earned full credit. Do not repeat the same "To improve"
-sentence under multiple requirements.
+sentence under multiple requirements. Never write a verdict that starts with
+Correct and then says the work is incorrect, wrong, or missing — if any part of
+that requirement is wrong, mark it Partial or Incorrect. Every point below full
+credit must map to a named requirement and a non-N/A "To improve" line; a
+passing mention of an error inside a Correct verdict does not count as an
+explanation.
 ```
 
 MOM's feedback box does not render Markdown — it stores HTML and renders math
