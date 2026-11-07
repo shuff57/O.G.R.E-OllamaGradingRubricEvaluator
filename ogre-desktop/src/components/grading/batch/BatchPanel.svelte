@@ -67,6 +67,7 @@
 
   // Instructions
   let forceRegrade = $state(false);
+  let zerosOnly = $state(false);
   let zeroNoResponse = $state(true);
   let isReviewMode = $state(false);
 
@@ -128,6 +129,7 @@
   <BatchInstructions
     {isBatchRunning}
     bind:forceRegrade
+    bind:zerosOnly
     bind:zeroNoResponse
     bind:isReviewMode
   />
@@ -138,6 +140,7 @@
     {model}
     {activeProfile}
     {forceRegrade}
+    {zerosOnly}
     {zeroNoResponse}
     {isReviewMode}
     {resumeAfter}

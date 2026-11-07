@@ -39,6 +39,7 @@
     model = '',
     activeProfile = null as SiteProfile | null,
     forceRegrade = false,
+    zerosOnly = false,
     zeroNoResponse = false,
     isReviewMode = false,
     resumeAfter = '',
@@ -495,7 +496,7 @@
 
     try {
       batchGrader = new BatchGrader();
-      await batchGrader.start(activeProfile!, resumeAfter || null, forceRegrade);
+      await batchGrader.start(activeProfile!, resumeAfter || null, forceRegrade, zerosOnly);
       if (extractionCancelled) {
         batchActive = false;
         batchGrader.stop();

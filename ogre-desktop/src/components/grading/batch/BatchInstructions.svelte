@@ -8,6 +8,7 @@
     isBatchRunning = false,
     // Bindable — exposed to shell
     forceRegrade = $bindable(false),
+    zerosOnly = $bindable(false),
     zeroNoResponse = $bindable(true),
     isReviewMode = $bindable(false),
   } = $props();
@@ -24,6 +25,13 @@
       <span class="toggle-switch-label">Regrade All</span>
       <span class="toggle-switch" class:on={forceRegrade}>
         <input type="checkbox" bind:checked={forceRegrade} disabled={isBatchRunning} />
+        <span class="toggle-thumb"></span>
+      </span>
+    </label>
+    <label class="toggle-switch-row" class:disabled={isBatchRunning || forceRegrade} title="Grade only students currently at 0 who now have a response. Students with a score are left alone.">
+      <span class="toggle-switch-label">Late Submissions Only (0s)</span>
+      <span class="toggle-switch" class:on={zerosOnly && !forceRegrade}>
+        <input type="checkbox" bind:checked={zerosOnly} disabled={isBatchRunning || forceRegrade} />
         <span class="toggle-thumb"></span>
       </span>
     </label>

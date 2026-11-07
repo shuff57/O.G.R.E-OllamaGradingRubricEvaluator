@@ -1388,8 +1388,17 @@ export class BatchGrader {
    *
    * @param profile - Site profile describing the grading page
    * @param resumeAfter - Student name to resume after (skip up to and including)
+   * @param forceRegrade - Regrade everyone with a response, even if already graded
+   * @param zerosOnly - Late-submission mode: grade only students whose score is 0 or blank
+   *   and who now have a response, even if the 0 came with feedback. Anyone with a
+   *   score above 0 is left alone. Ignored when forceRegrade is set.
    */
-  async start(profile: SiteProfile, resumeAfter?: string | null, forceRegrade = false): Promise<void> {
+  async start(
+    profile: SiteProfile,
+    resumeAfter?: string | null,
+    forceRegrade = false,
+    zerosOnly = false,
+  ): Promise<void> {
     this._profile = profile;
     this._isRunning = true;
     this._paused = false;
@@ -1444,6 +1453,21 @@ export class BatchGrader {
           timestamp: new Date().toISOString(),
           status: 'skipped',
         });
+      } else if (zerosOnly && !forceRegrade) {
+        const existing = parseFloat(student.currentScore);
+        if (!isNaN(existing) && existing > 0) {
+          this._skipped.push(student.name);
+          this._log.push({
+            studentName: student.name,
+            studentIndex: student.index,
+            score: existing,
+            feedback: 'Already has score',
+            timestamp: new Date().toISOString(),
+            status: 'skipped',
+          });
+        } else {
+          this._toGrade.push(student);
+        }
       } else if (!forceRegrade && student.hasFeedback) {
         this._skipped.push(student.name);
         this._log.push({

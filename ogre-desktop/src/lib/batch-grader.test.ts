@@ -404,4 +404,28 @@ describe('BatchGrader - Filter Logic', () => {
 
     expect(grader.studentsToGrade.length).toBe(2);
   });
+  it('zerosOnly grades 0/blank students with a response, even with feedback, and skips scored ones', async () => {
+    const { evalScriptJSON } = await import('./browser');
+    const students = [
+      { index: 0, name: 'Zero With Feedback', currentScore: '0', hasFeedback: true, response: 'late answer' },
+      { index: 1, name: 'Zero No Feedback', currentScore: '0', hasFeedback: false, response: 'late answer' },
+      { index: 2, name: 'Blank Score', currentScore: '', hasFeedback: false, response: 'answer' },
+      { index: 3, name: 'Already Scored', currentScore: '8', hasFeedback: true, response: 'answer' },
+      { index: 4, name: 'Still Missing', currentScore: '0', hasFeedback: true, response: '' },
+    ];
+    vi.mocked(evalScriptJSON).mockImplementation((script: string) => {
+      if (script.endsWith('.length')) return Promise.resolve(students.length);
+      if (script.includes('scrollIntoView')) {
+        const match = script.match(/\)\[(\d+)\]/);
+        const idx = match ? parseInt(match[1]) : 0;
+        return Promise.resolve(students[idx] ?? null);
+      }
+      return Promise.resolve(null);
+    });
+
+    await grader.start(mockProfile, null, false, true);
+
+    expect(grader.studentsToGrade.map(s => s.name)).toEqual(['Zero With Feedback', 'Zero No Feedback', 'Blank Score']);
+    expect(grader.noResponseStudents.map(s => s.name)).toEqual(['Still Missing']);
+  });
 });
