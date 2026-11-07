@@ -300,9 +300,19 @@ export async function extractStudents(selectors: SiteSelectors): Promise<Student
       s.scrollIntoView({ block: 'start' });
       var region = sel.questionRegion ? s.querySelector(sel.questionRegion) : null;
       var part1Div = getPartContent(region, 0);
-      var responseDiv = (part1Div && part1Div.querySelectorAll(':scope > div').length > 1)
-        ? part1Div.querySelectorAll(':scope > div')[1]
-        : null;
+      // Prefer the essay response container (div.introtext) when it sits outside the
+      // prompt and any rubric <details>. Some questions put a rubric block (div.frq2)
+      // between the prompt and the response, so the second direct div is the rubric.
+      var responseDiv = null;
+      if (part1Div) {
+        var introCandidates = Array.from(part1Div.querySelectorAll('div.introtext')).filter(function(el) {
+          return !el.closest('details') && !(part1Div.children[0] && part1Div.children[0].contains(el));
+        });
+        responseDiv = introCandidates[0] || null;
+      }
+      if (!responseDiv && part1Div && part1Div.querySelectorAll(':scope > div').length > 1) {
+        responseDiv = part1Div.querySelectorAll(':scope > div')[1];
+      }
       // Fallback: MOM essay responses often live in div.introtext as a sibling of the question div
       if (!responseDiv && region) {
         responseDiv = region.querySelector(':scope > div.introtext');

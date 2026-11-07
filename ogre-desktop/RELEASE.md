@@ -48,6 +48,19 @@ To add secrets to GitHub:
 
 ---
 
+## Linux Install and In-App Updates
+
+Install with `bash scripts/install-linux.sh` (optionally pass a local `.AppImage`). The app
+installs to `~/.local/share/ogre/OGRE.AppImage` and checks for updates on every launch. When a
+newer release exists, an **Update Available** dialog offers **Update Now** (download, replace the
+AppImage, relaunch) or **Later**.
+
+### Limits
+- There is no manual "Check for updates" button. The only trigger is app launch, so to re-check you have to restart the app.
+- Nothing will appear until a Linux release exists. Until a tagged release publishes `latest-linux.yml`, the check errors with a 404 on that file.
+
+---
+
 ## Release Process
 
 ### 1. Update Version Number
