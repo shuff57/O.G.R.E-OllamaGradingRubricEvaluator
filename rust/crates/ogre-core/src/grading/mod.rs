@@ -10,7 +10,7 @@
 mod batch;
 mod constants;
 mod feedback;
-mod js;
+pub(crate) mod js;
 mod parse;
 mod prompts;
 mod types;

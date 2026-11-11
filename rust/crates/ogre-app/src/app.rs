@@ -95,6 +95,7 @@ enum Action {
     DeleteProfile(String),
     StartAgent,
     AnswerAgent(AgentAnswer),
+    SetLeniency(u8),
 }
 
 /// The one step the teacher would take next. Its button is the primary one.
@@ -253,6 +254,7 @@ impl OgreApp {
                     students: session.to_grade(),
                     provider: self.settings.provider.clone(),
                     api_key: self.key(),
+                    leniency: self.settings.leniency,
                     cancel: CancelFlag::new(),
                 };
                 self.send(Command::Grade(Box::new(request)), "Grading…");
@@ -314,6 +316,7 @@ impl OgreApp {
                 }
             }
             Action::DiscardMapping => self.mapping = None,
+            Action::SetLeniency(leniency) => self.settings.leniency = leniency,
             Action::StartAgent => {
                 let request = AgentRequest {
                     task: self.agent.task.trim().to_owned(),
@@ -495,6 +498,23 @@ impl OgreApp {
                 &mut session.include_graded,
                 "Include students who are already graded",
             );
+        });
+        ui.horizontal_wrapped(|ui| {
+            let label = kit::section_label(ui, "Leniency");
+            let mut leniency = self.settings.leniency;
+            let slider = ui
+                .add_enabled(idle, egui::Slider::new(&mut leniency, 0..=100))
+                .labelled_by(label.id);
+            if slider.changed() {
+                actions.push(Action::SetLeniency(leniency));
+            }
+            ui.label(theme::muted(match leniency {
+                50 => "The rubric is used as written.",
+                0..50 => {
+                    "More lenient: the AI rewords the rubric to be easier to meet before grading."
+                }
+                _ => "More strict: the AI rewords the rubric to be harder to meet before grading.",
+            }));
         });
         if let Some(problem) = provider_problem {
             kit::icon_line(ui, icon::WARNING, problem, pal().warn);

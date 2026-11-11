@@ -6,12 +6,26 @@ use serde::{Deserialize, Serialize};
 /// The key under which [`Settings`] is stored.
 pub const STORAGE_KEY: &str = "settings";
 
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
     pub provider: ProviderSettings,
     /// Use the dark palette.
     pub dark: bool,
+    /// How the rubric is read when grading: 0 is most lenient, 50 is as
+    /// written, 100 is most strict. Away from 50 the AI rewords the rubric
+    /// before grading.
+    pub leniency: u8,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            provider: ProviderSettings::default(),
+            dark: false,
+            leniency: ogre_core::NEUTRAL_LENIENCY,
+        }
+    }
 }
 
 /// Which AI service grades, and with which model. The API key is not part of
@@ -171,6 +185,7 @@ mod tests {
                 model: "gemini-test".into(),
             },
             dark: true,
+            leniency: 20,
         };
         let json = serde_json::to_string(&settings).unwrap();
         assert_eq!(serde_json::from_str::<Settings>(&json).unwrap(), settings);
@@ -178,5 +193,11 @@ mod tests {
             serde_json::from_str::<Settings>("{}").unwrap(),
             Settings::default()
         );
+    }
+
+    #[test]
+    fn the_rubric_is_used_as_written_unless_the_teacher_moves_leniency() {
+        assert_eq!(Settings::default().leniency, 50);
+        assert_eq!(serde_json::from_str::<Settings>("{}").unwrap().leniency, 50);
     }
 }

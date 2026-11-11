@@ -16,7 +16,19 @@
 //!                         app is set up with (its `ogre-server.json`), which
 //!                         sends student names and answers to that service
 //!   OGRE_COMPARE_LIMIT    grade at most this many students per page
+//!   OGRE_COMPARE_LENIENCY 0 most lenient, 50 as written (default), 100 most strict
 //!   OGRE_COMPARE_READ_ONLY=1  read and describe the page, do not grade
+//!   OGRE_COMPARE_ANCHORS=1  first have the AI write example answers at each
+//!                         score level and grade with them as calibration,
+//!                         as the Electron app's "Generate Anchors" does
+//!   OGRE_COMPARE_PROMPTS_FROM=<file>  use each student's question text as the
+//!                         Electron app read it (a file written by its
+//!                         extraction code), to test whether a difference in
+//!                         that text explains a difference in scores
+//!   OGRE_COMPARE_DUMP=<file>  also write what was read (students and the
+//!                         scraped rubric) to this file, for comparing with
+//!                         another reader; it holds student work, so keep it
+//!                         private and delete it afterwards
 //!
 //! Student names and answers are never printed; students are numbered.
 
@@ -25,7 +37,10 @@ use std::time::Instant;
 
 use async_trait::async_trait;
 use ogre_core::{StudentWork, Submission};
-use ogre_grader::{CancelFlag, GradeEvent, GradeOptions, GradeStatus, grade_batch};
+use ogre_grader::{
+    CancelFlag, GradeEvent, GradeOptions, GradeStatus, calibration_instructions,
+    generate_anchor_examples, grade_batch, prepare_rubric,
+};
 use ogre_harness::sites::SiteAdapter;
 use ogre_harness::sites::imathas::IMathAs;
 use ogre_harness::{Error, PageDriver, Result};
@@ -131,6 +146,10 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         .ok()
         .and_then(|n| n.parse().ok())
         .unwrap_or(usize::MAX);
+    let leniency: u8 = std::env::var("OGRE_COMPARE_LENIENCY")
+        .ok()
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(50);
     let read_only = std::env::var_os("OGRE_COMPARE_READ_ONLY").is_some();
     let page = CliPage { session };
     let (config, model) = if std::env::var_os("OGRE_COMPARE_CLOUD").is_some() {
@@ -157,7 +176,23 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             .await?;
 
         let read = IMathAs.read_page(&page).await?;
-        let rubric = IMathAs.read_rubric(&page).await?;
+        let scraped = IMathAs.read_rubric(&page).await?;
+        if let Some(path) = std::env::var_os("OGRE_COMPARE_DUMP") {
+            let dump = serde_json::json!({ "page": read, "rubric": scraped });
+            std::fs::write(&path, serde_json::to_vec(&dump)?)?;
+        }
+        // The same preparation the app does before grading.
+        let prepared = prepare_rubric(&provider, &scraped, leniency).await;
+        if let Some(problem) = &prepared.rewrite_problem {
+            println!("  warning: leniency rewrite skipped: {problem}");
+        }
+        let mut rubric = prepared.rubric;
+        if std::env::var_os("OGRE_COMPARE_ANCHORS").is_some() {
+            let examples =
+                generate_anchor_examples(&provider, &rubric, Some(f64::from(leniency))).await?;
+            println!("calibration: {} example answers generated", examples.len());
+            rubric.custom_instructions = calibration_instructions(&examples);
+        }
         let written: Vec<&Submission> = read
             .submissions
             .iter()
@@ -205,11 +240,26 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             continue;
         }
 
-        let students: Vec<StudentWork> = written
+        let mut students: Vec<StudentWork> = written
             .iter()
             .take(limit)
             .map(|s| StudentWork::from(*s))
             .collect();
+        if let Some(path) = std::env::var_os("OGRE_COMPARE_PROMPTS_FROM") {
+            let other: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)?;
+            let mut replaced = 0;
+            for student in &mut students {
+                let theirs = other["students"]
+                    .as_array()
+                    .and_then(|all| all.iter().find(|s| s["index"] == student.index))
+                    .and_then(|s| s["prompt"].as_str());
+                if let Some(prompt) = theirs {
+                    student.prompt = Some(prompt.to_owned());
+                    replaced += 1;
+                }
+            }
+            println!("question text taken from the other reader for {replaced} students");
+        }
         let sent = students.len();
         let started = Instant::now();
         let mut done = 0;

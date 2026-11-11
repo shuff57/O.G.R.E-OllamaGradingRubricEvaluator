@@ -17,6 +17,7 @@ mod error;
 mod options;
 mod outcome;
 mod outlier;
+mod rubric;
 mod session;
 mod single;
 mod sweep;
@@ -37,5 +38,6 @@ pub use outcome::{
     BatchOutcome, Grade, GradeEvent, GradeSource, GradeStatus, NotGradedReason, PriorGrade,
     StudentOutcome, Summary, SweepAdjustment, SweepOutcome, SweepReport,
 };
+pub use rubric::{PreparedRubric, prepare_rubric, rewrites_rubric};
 pub use single::grade_single;
 pub use sweep::{parse_sweep_adjustments, sweep_grades};

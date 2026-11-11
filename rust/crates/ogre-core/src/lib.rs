@@ -3,6 +3,7 @@
 //! This crate does no I/O and must keep compiling for `wasm32-unknown-unknown`.
 
 pub mod grading;
+pub mod rubric;
 mod submission;
 mod write;
 
@@ -18,6 +19,16 @@ pub use grading::{
     extract_first_name, feedback_names_specific_deficiency, generate_scoring_anchors,
     merge_results, parse_batch_response, parse_batch_response_checked, parse_single_grade_response,
     reconcile_score_with_feedback,
+};
+pub use rubric::{
+    DEFAULT_WEIGHT_MODE, RowType, RubricCriterion, WeightValidation, auto_fill_weights,
+    criteria_to_text, equalize_weights, extract_model_text, full_credit_points,
+    has_unsaved_changes, is_allocation_criterion, prepare_for_grading, rubric_from_text,
+    rubric_text, text_to_criteria, validate_weights, with_default_weights,
+};
+pub use rubric::{
+    NEUTRAL_LENIENCY, RewriteError, accept_rewrite, leniency_rewrite_prompt,
+    restore_category_weights,
 };
 pub use submission::{FeedbackField, FeedbackKind, GradingPage, Position, ScoreField, Submission};
 pub use write::{

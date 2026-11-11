@@ -2,7 +2,9 @@
 //! the review table shows.
 
 use ogre_core::format_score;
-use ogre_grader::{BatchOutcome, CancelFlag, GradeEvent, GradeOptions, GradeStatus, grade_batch};
+use ogre_grader::{
+    BatchOutcome, CancelFlag, GradeEvent, GradeOptions, GradeStatus, grade_batch, prepare_rubric,
+};
 use ogre_llm::HttpProvider;
 
 use crate::settings::ProviderSettings;
@@ -66,9 +68,16 @@ pub async fn grade(
             progress(done);
         }
     };
+    // What the page gave is first shaped the way the teacher's settings ask:
+    // reworded for leniency, with category weights filled in. The teacher's
+    // own instructions ride along unchanged.
+    let prepared = prepare_rubric(&provider, &request.rubric, request.leniency).await;
+    let mut rubric = prepared.rubric;
+    rubric.custom_instructions = request.rubric.custom_instructions.clone();
+
     let outcome = grade_batch(
         &provider,
-        &request.rubric,
+        &rubric,
         request.students,
         &GradeOptions::default(),
         cancel,
@@ -76,7 +85,19 @@ pub async fn grade(
     )
     .await;
     match outcome {
-        Ok(outcome) => report(outcome),
+        Ok(outcome) => {
+            let mut report = report(outcome);
+            if let Some(problem) = prepared.rewrite_problem {
+                report.warnings.insert(
+                    0,
+                    format!(
+                        "The rubric could not be reworded for your leniency setting, \
+                         so it was used as written: {problem}"
+                    ),
+                );
+            }
+            report
+        }
         Err(error) => nobody_graded(format!("Grading could not start: {error}")),
     }
 }

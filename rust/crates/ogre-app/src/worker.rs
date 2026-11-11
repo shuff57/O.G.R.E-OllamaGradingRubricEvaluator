@@ -61,6 +61,8 @@ pub struct GradeRequest {
     pub students: Vec<StudentWork>,
     pub provider: ProviderSettings,
     pub api_key: Option<String>,
+    /// 0 most lenient, 50 the rubric as written, 100 most strict.
+    pub leniency: u8,
     /// Stops the run after the AI call in flight.
     pub cancel: CancelFlag,
 }
