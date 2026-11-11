@@ -1,0 +1,44 @@
+name: ci
+
+# Build check for pushes and PRs to desktop. It replaces the PR/push half of
+# desktop-build.yml, removed in 73f8787. Releases stay in desktop-release.yml
+# (tags only), so this workflow never packages or publishes anything.
+on:
+  push:
+    branches: [desktop]
+    paths-ignore: ['docs/**', '**/*.md']
+  pull_request:
+    branches: [desktop]
+    paths-ignore: ['docs/**', '**/*.md']
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # PRs cancel their stale run; every push to desktop still runs to completion
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            ogre-desktop/package-lock.json
+            grading-server/package-lock.json
+      - name: Install grading-server
+        run: npm ci --no-audit --no-fund
+        working-directory: grading-server
+      - name: Install ogre-desktop
+        run: npm ci --no-audit --no-fund
+        working-directory: ogre-desktop
+      - name: Build
+        run: npm run build
+        working-directory: ogre-desktop
