@@ -12,14 +12,17 @@ jobs:
           - { os: ubuntu-latest, flag: --linux }
           - { os: windows-latest, flag: --win }
     runs-on: ${{ matrix.os }}
+    # Normal runs take ~1.5-2 min per leg; cap hung runs instead of the 360 min default.
+    timeout-minutes: 20
     defaults: { run: { working-directory: ogre-desktop } }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
-      - run: npm install
+      # --no-audit/--no-fund skip npm's advisory and funding network calls; the installed tree is unchanged.
+      - run: npm install --no-audit --no-fund
         working-directory: grading-server
-      - run: npm ci
+      - run: npm ci --no-audit --no-fund
       - run: npm run build
       - run: npx electron-builder ${{ matrix.flag }} --publish always
         env:
