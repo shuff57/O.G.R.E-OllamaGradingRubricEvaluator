@@ -159,10 +159,15 @@ pub mod icon {
 }
 
 const SERIF: &str = "ogre-serif";
-const SERIF_ITALIC: &str = "ogre-serif-italic";
 const BOLD: &str = "ogre-sans-bold";
 const SEMIBOLD: &str = "ogre-sans-semibold";
 const ICONS: &str = "ogre-icons";
+
+const SANS_FACE: &str = "OgreSans-Regular";
+const SEMIBOLD_FACE: &str = "OgreSans-Semibold";
+const BOLD_FACE: &str = "OgreSans-Bold";
+const SERIF_FACE: &str = "OgreSerif-Regular";
+const ICON_FACE: &str = "OgreIcons";
 
 pub fn serif_family() -> FontFamily {
     FontFamily::Name(SERIF.into())
@@ -181,47 +186,33 @@ pub fn icon_font(size: f32) -> FontId {
 }
 
 fn fonts() -> FontDefinitions {
+    // Subsets of Source Sans 3, Source Serif 4 and Phosphor, built by
+    // assets/fonts/subset.py. Characters they lack come from egui's fonts.
     let mut defs = FontDefinitions::default();
-    let faces: [(&str, &'static [u8]); 8] = [
+    let faces: [(&str, &'static [u8]); 5] = [
         (
-            "SourceSans3-Regular",
-            include_bytes!("../assets/fonts/SourceSans3-Regular.ttf"),
+            SANS_FACE,
+            include_bytes!("../assets/fonts/OgreSans-Regular.ttf"),
         ),
         (
-            "SourceSans3-It",
-            include_bytes!("../assets/fonts/SourceSans3-It.ttf"),
+            SEMIBOLD_FACE,
+            include_bytes!("../assets/fonts/OgreSans-Semibold.ttf"),
         ),
         (
-            "SourceSans3-Semibold",
-            include_bytes!("../assets/fonts/SourceSans3-Semibold.ttf"),
+            BOLD_FACE,
+            include_bytes!("../assets/fonts/OgreSans-Bold.ttf"),
         ),
         (
-            "SourceSans3-Bold",
-            include_bytes!("../assets/fonts/SourceSans3-Bold.ttf"),
+            SERIF_FACE,
+            include_bytes!("../assets/fonts/OgreSerif-Regular.ttf"),
         ),
-        (
-            "SourceSerif4-Regular",
-            include_bytes!("../assets/fonts/SourceSerif4-Regular.ttf"),
-        ),
-        (
-            "SourceSerif4-Semibold",
-            include_bytes!("../assets/fonts/SourceSerif4-Semibold.ttf"),
-        ),
-        (
-            "SourceSerif4-It",
-            include_bytes!("../assets/fonts/SourceSerif4-It.ttf"),
-        ),
-        (
-            "Phosphor",
-            include_bytes!("../assets/fonts/Phosphor-Regular.ttf"),
-        ),
+        (ICON_FACE, include_bytes!("../assets/fonts/OgreIcons.ttf")),
     ];
     for (name, bytes) in faces {
         defs.font_data
             .insert(name.to_owned(), Arc::new(FontData::from_static(bytes)));
     }
 
-    // egui's own faces stay behind ours, for symbols the Source fonts lack.
     let fallback = defs
         .families
         .get(&FontFamily::Proportional)
@@ -231,29 +222,17 @@ fn fonts() -> FontDefinitions {
         first
             .iter()
             .map(|name| (*name).to_owned())
-            .chain(std::iter::once("Phosphor".to_owned()))
+            .chain(std::iter::once(ICON_FACE.to_owned()))
             .chain(fallback.iter().cloned())
             .collect()
     };
-    defs.families.insert(
-        FontFamily::Proportional,
-        family(&["SourceSans3-Regular", "SourceSans3-It"]),
-    );
+    defs.families
+        .insert(FontFamily::Proportional, family(&[SANS_FACE]));
     for (name, faces) in [
-        (BOLD, &["SourceSans3-Bold", "SourceSans3-Regular"][..]),
-        (
-            SEMIBOLD,
-            &["SourceSans3-Semibold", "SourceSans3-Regular"][..],
-        ),
-        (
-            SERIF,
-            &["SourceSerif4-Regular", "SourceSerif4-Semibold"][..],
-        ),
-        (
-            SERIF_ITALIC,
-            &["SourceSerif4-It", "SourceSerif4-Regular"][..],
-        ),
-        (ICONS, &["Phosphor"][..]),
+        (BOLD, &[BOLD_FACE, SANS_FACE][..]),
+        (SEMIBOLD, &[SEMIBOLD_FACE, SANS_FACE][..]),
+        (SERIF, &[SERIF_FACE, SANS_FACE][..]),
+        (ICONS, &[][..]),
     ] {
         defs.families
             .insert(FontFamily::Name(name.into()), family(faces));
@@ -447,7 +426,7 @@ mod tests {
             defs.families[&FontFamily::Proportional]
                 .first()
                 .map(String::as_str),
-            Some("SourceSans3-Regular")
+            Some(SANS_FACE)
         );
     }
 }

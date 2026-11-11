@@ -23,6 +23,7 @@ keyring.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
+winit.workspace = true
 
 [dev-dependencies]
 async-trait.workspace = true

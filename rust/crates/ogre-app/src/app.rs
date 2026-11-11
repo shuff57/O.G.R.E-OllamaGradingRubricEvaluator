@@ -503,7 +503,17 @@ impl OgreApp {
             let label = kit::section_label(ui, "Leniency");
             let mut leniency = self.settings.leniency;
             let slider = ui
-                .add_enabled(idle, egui::Slider::new(&mut leniency, 0..=100))
+                .scope(|ui| {
+                    // The rail is drawn in the widget fill, which on a card is
+                    // the card's own colour. Give it one that shows.
+                    ui.spacing_mut().slider_width = 180.0;
+                    ui.visuals_mut().widgets.inactive.bg_fill = pal().border;
+                    ui.add_enabled(
+                        idle,
+                        egui::Slider::new(&mut leniency, 0..=100).trailing_fill(true),
+                    )
+                })
+                .inner
                 .labelled_by(label.id);
             if slider.changed() {
                 actions.push(Action::SetLeniency(leniency));

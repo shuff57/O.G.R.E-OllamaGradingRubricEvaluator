@@ -17,7 +17,19 @@ ogre-llm = { path = "crates/ogre-llm" }
 ammonia = "4"
 async-trait = "0.1"
 chromiumoxide = { version = "0.9", default-features = false }
-eframe = { version = "0.37", features = ["persistence"] }
+# No default features: the OpenGL renderer instead of wgpu (the app draws
+# plain UI, and wgpu with its shader compiler is several megabytes), and no
+# system font lookup (the app ships its own fonts).
+eframe = { version = "0.37", default-features = false, features = [
+    "accesskit",
+    "clipboard",
+    "default_fonts",
+    "glow",
+    "links",
+    "persistence",
+    "wayland",
+    "x11",
+] }
 egui_commonmark = { version = "0.26", default-features = false, features = ["pulldown_cmark"] }
 egui_extras = "0.37"
 futures = "0.3"
@@ -25,6 +37,12 @@ htmd = "0.5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
+# Only for its features: without these a window on GNOME (Wayland) gets no
+# title bar, and the Wayland library is linked instead of loaded when present.
+winit = { version = "0.30", default-features = false, features = [
+    "wayland-csd-adwaita",
+    "wayland-dlopen",
+] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 egui_kittest = { version = "0.37", features = ["eframe", "wgpu"] }
 keyring = "4"
