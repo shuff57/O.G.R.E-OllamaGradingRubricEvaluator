@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Simple Batch Grading Page</title>
+  <style>
+    body { font-family: sans-serif; margin: 20px; }
+    .student-row { border: 1px solid #ccc; margin: 10px 0; padding: 10px; }
+    .score-input { width: 60px; }
+  </style>
+</head>
+<body>
+  <h1>Gradeallq2 - Question 2</h1>
+  <p>Grading page for assignment: Homework 5</p>
+
+  <!-- Student 1 -->
+  <div class="student-row" data-lastchange="1706745600">
+    <span class="student-name">Alice Johnson</span>
+    <div class="question-region">
+      <p>Student response: x^2 + 2x + 1</p>
+      <div class="response-body">The answer is x^2 + 2x + 1 by expanding (x+1)^2.</div>
+    </div>
+    <div class="grading-controls">
+      <label>Score: <input type="number" class="score-input" name="score_1" value="" min="0" max="10" /></label>
+      <span class="max-score">/ 10</span>
+      <textarea class="feedback-input" name="feedback_1" placeholder="Feedback..."></textarea>
+    </div>
+  </div>
+
+  <!-- Student 2 -->
+  <div class="student-row" data-lastchange="1706745700">
+    <span class="student-name">Bob Smith</span>
+    <div class="question-region">
+      <p>Student response: (x+1)^2</p>
+      <div class="response-body">I factored the expression to get (x+1)^2.</div>
+    </div>
+    <div class="grading-controls">
+      <label>Score: <input type="number" class="score-input" name="score_2" value="" min="0" max="10" /></label>
+      <span class="max-score">/ 10</span>
+      <textarea class="feedback-input" name="feedback_2" placeholder="Feedback..."></textarea>
+    </div>
+  </div>
+
+  <!-- Student 3 -->
+  <div class="student-row" data-lastchange="1706745800">
+    <span class="student-name">Carol Davis</span>
+    <div class="question-region">
+      <p>Student response: x^2 + 1</p>
+      <div class="response-body">I think it equals x^2 + 1.</div>
+    </div>
+    <div class="grading-controls">
+      <label>Score: <input type="number" class="score-input" name="score_3" value="" min="0" max="10" /></label>
+      <span class="max-score">/ 10</span>
+      <textarea class="feedback-input" name="feedback_3" placeholder="Feedback..."></textarea>
+    </div>
+  </div>
+
+  <div class="save-section">
+    <button type="button" id="save-all" class="save-btn">Save All Grades</button>
+    <!-- Added for the Rust tests: where the stand-in below reports a save. -->
+    <span id="save-status" role="status"></span>
+  </div>
+<script>
+// Added for the Rust tests; not part of the desktop app's fixture. Stands in
+// for a site's own save: records what would be posted in window.__saved and
+// reports in #save-status. Set window.__failSave to a message to make the
+// save fail.
+(() => {
+  window.__saved = [];
+  document.getElementById('save-all').addEventListener('click', () => {
+    const status = document.getElementById('save-status');
+    status.textContent = 'Saving...';
+    setTimeout(() => {
+      if (window.__failSave) {
+        status.textContent = window.__failSave;
+        return;
+      }
+      const form = {};
+      document.querySelectorAll('input[name], textarea[name]').forEach((el) => {
+        form[el.name] = el.value;
+      });
+      window.__saved.push(form);
+      status.textContent = 'Saved';
+    }, 80);
+  });
+})();
+</script>
+</body>
+</html>

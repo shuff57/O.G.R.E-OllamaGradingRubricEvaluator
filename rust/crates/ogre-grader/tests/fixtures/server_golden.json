@@ -1,0 +1,1590 @@
+{
+ "bridges": [
+  {
+   "name": "full spread",
+   "maxScore": 10,
+   "anchors": {
+    "excellent": {
+     "score": 10,
+     "description": "Demonstrates clear understanding with most key concepts addressed."
+    },
+    "adequate": {
+     "score": 8,
+     "description": "Addresses the topic and shows awareness of key concepts, even with gaps or imprecision."
+    },
+    "belowAverage": {
+     "score": 7,
+     "description": "Makes a genuine attempt that engages with the prompt, showing limited but real understanding."
+    },
+    "minimal": {
+     "score": 5,
+     "description": "Shows some effort and awareness related to the topic, even if mostly incomplete."
+    }
+   },
+   "results": [
+    {
+     "studentIndex": 0,
+     "score": 9.5,
+     "feedback": "fb 0"
+    },
+    {
+     "studentIndex": 1,
+     "score": 8,
+     "feedback": "fb 1"
+    },
+    {
+     "studentIndex": 2,
+     "score": 7,
+     "feedback": "fb 2"
+    },
+    {
+     "studentIndex": 3,
+     "score": 6,
+     "feedback": "fb 3"
+    },
+    {
+     "studentIndex": 4,
+     "score": 5,
+     "feedback": "fb 4"
+    },
+    {
+     "studentIndex": 5,
+     "score": 4.5,
+     "feedback": "fb 5"
+    },
+    {
+     "studentIndex": 6,
+     "score": 3,
+     "feedback": "fb 6"
+    },
+    {
+     "studentIndex": 7,
+     "score": 1,
+     "feedback": "fb 7"
+    },
+    {
+     "studentIndex": 8,
+     "score": 10,
+     "feedback": "fb 8"
+    },
+    {
+     "studentIndex": 9,
+     "score": 6.5,
+     "feedback": "fb 9"
+    }
+   ],
+   "students": [
+    {
+     "index": 0,
+     "name": "Ada",
+     "response": "answer 0"
+    },
+    {
+     "index": 1,
+     "name": "Ben",
+     "response": "answer 1"
+    },
+    {
+     "index": 2,
+     "name": "Cy",
+     "response": "answer 2"
+    },
+    {
+     "index": 3,
+     "name": "Di",
+     "response": "answer 3"
+    },
+    {
+     "index": 4,
+     "name": "Eve",
+     "response": "answer 4"
+    },
+    {
+     "index": 5,
+     "name": "",
+     "response": "answer 5"
+    },
+    {
+     "index": 6,
+     "name": "Gus",
+     "response": "answer 6"
+    },
+    {
+     "index": 8,
+     "name": "Ida",
+     "response": "answer 8"
+    },
+    {
+     "index": 9,
+     "name": "Jo",
+     "response": "answer 9"
+    }
+   ],
+   "expected": [
+    {
+     "studentIndex": 0,
+     "score": 9.5,
+     "feedback": "fb 0",
+     "name": "Ada",
+     "tier": "excellent"
+    },
+    {
+     "studentIndex": 8,
+     "score": 10,
+     "feedback": "fb 8",
+     "name": "Ida",
+     "tier": "excellent"
+    },
+    {
+     "studentIndex": 1,
+     "score": 8,
+     "feedback": "fb 1",
+     "name": "Ben",
+     "tier": "adequate"
+    },
+    {
+     "studentIndex": 3,
+     "score": 6,
+     "feedback": "fb 3",
+     "name": "Di",
+     "tier": "belowAverage"
+    },
+    {
+     "studentIndex": 2,
+     "score": 7,
+     "feedback": "fb 2",
+     "name": "Cy",
+     "tier": "belowAverage"
+    },
+    {
+     "studentIndex": 7,
+     "score": 1,
+     "feedback": "fb 7",
+     "name": "Student 7",
+     "tier": "minimal"
+    },
+    {
+     "studentIndex": 4,
+     "score": 5,
+     "feedback": "fb 4",
+     "name": "Eve",
+     "tier": "minimal"
+    }
+   ]
+  },
+  {
+   "name": "overlapping tiers",
+   "maxScore": 10,
+   "anchors": {
+    "excellent": {
+     "score": 10,
+     "description": "Demonstrates clear understanding with most key concepts addressed."
+    },
+    "adequate": {
+     "score": 8,
+     "description": "Addresses the topic and shows awareness of key concepts, even with gaps or imprecision."
+    },
+    "belowAverage": {
+     "score": 7,
+     "description": "Makes a genuine attempt that engages with the prompt, showing limited but real understanding."
+    },
+    "minimal": {
+     "score": 5,
+     "description": "Shows some effort and awareness related to the topic, even if mostly incomplete."
+    }
+   },
+   "results": [
+    {
+     "studentIndex": 3,
+     "score": 8,
+     "feedback": "fb 3"
+    },
+    {
+     "studentIndex": 4,
+     "score": 8,
+     "feedback": "fb 4"
+    },
+    {
+     "studentIndex": 5,
+     "score": 6,
+     "feedback": "fb 5"
+    },
+    {
+     "studentIndex": 6,
+     "score": 2,
+     "feedback": "fb 6"
+    }
+   ],
+   "students": [
+    {
+     "index": 3,
+     "name": "Di",
+     "response": "answer 3"
+    },
+    {
+     "index": 4,
+     "name": "Eve",
+     "response": "answer 4"
+    },
+    {
+     "index": 5,
+     "name": "Fay",
+     "response": "answer 5"
+    },
+    {
+     "index": 6,
+     "name": "Gus",
+     "response": "answer 6"
+    }
+   ],
+   "expected": [
+    {
+     "studentIndex": 3,
+     "score": 8,
+     "feedback": "fb 3",
+     "name": "Di",
+     "tier": "adequate"
+    },
+    {
+     "studentIndex": 4,
+     "score": 8,
+     "feedback": "fb 4",
+     "name": "Eve",
+     "tier": "adequate"
+    },
+    {
+     "studentIndex": 5,
+     "score": 6,
+     "feedback": "fb 5",
+     "name": "Fay",
+     "tier": "belowAverage"
+    },
+    {
+     "studentIndex": 6,
+     "score": 2,
+     "feedback": "fb 6",
+     "name": "Gus",
+     "tier": "minimal"
+    }
+   ]
+  },
+  {
+   "name": "sparse falls back to spread",
+   "maxScore": 10,
+   "anchors": {
+    "excellent": {
+     "score": 10,
+     "description": "Demonstrates clear understanding with most key concepts addressed."
+    },
+    "adequate": {
+     "score": 8,
+     "description": "Addresses the topic and shows awareness of key concepts, even with gaps or imprecision."
+    },
+    "belowAverage": {
+     "score": 7,
+     "description": "Makes a genuine attempt that engages with the prompt, showing limited but real understanding."
+    },
+    "minimal": {
+     "score": 5,
+     "description": "Shows some effort and awareness related to the topic, even if mostly incomplete."
+    }
+   },
+   "results": [
+    {
+     "studentIndex": 2,
+     "score": 9,
+     "feedback": "fb 2"
+    },
+    {
+     "studentIndex": 0,
+     "score": 9.5,
+     "feedback": "fb 0"
+    },
+    {
+     "studentIndex": 1,
+     "score": 9,
+     "feedback": "fb 1"
+    }
+   ],
+   "students": [
+    {
+     "index": 0,
+     "name": "Ada",
+     "response": "answer 0"
+    },
+    {
+     "index": 1,
+     "name": "Ben",
+     "response": "answer 1"
+    },
+    {
+     "index": 2,
+     "name": "Cy",
+     "response": "answer 2"
+    }
+   ],
+   "expected": [
+    {
+     "studentIndex": 2,
+     "score": 9,
+     "feedback": "fb 2",
+     "name": "Cy",
+     "tier": "adequate"
+    },
+    {
+     "studentIndex": 0,
+     "score": 9.5,
+     "feedback": "fb 0",
+     "name": "Ada",
+     "tier": "excellent"
+    },
+    {
+     "studentIndex": 1,
+     "score": 9,
+     "feedback": "fb 1",
+     "name": "Ben",
+     "tier": "adequate"
+    }
+   ]
+  },
+  {
+   "name": "single result",
+   "maxScore": 10,
+   "anchors": {
+    "excellent": {
+     "score": 10,
+     "description": "Demonstrates clear understanding with most key concepts addressed."
+    },
+    "adequate": {
+     "score": 8,
+     "description": "Addresses the topic and shows awareness of key concepts, even with gaps or imprecision."
+    },
+    "belowAverage": {
+     "score": 7,
+     "description": "Makes a genuine attempt that engages with the prompt, showing limited but real understanding."
+    },
+    "minimal": {
+     "score": 5,
+     "description": "Shows some effort and awareness related to the topic, even if mostly incomplete."
+    }
+   },
+   "results": [
+    {
+     "studentIndex": 7,
+     "score": 7,
+     "feedback": "fb 7"
+    }
+   ],
+   "students": [
+    {
+     "index": 7,
+     "name": "Hal",
+     "response": "answer 7"
+    }
+   ],
+   "expected": [
+    {
+     "studentIndex": 7,
+     "score": 7,
+     "feedback": "fb 7",
+     "name": "Hal",
+     "tier": "spread"
+    }
+   ]
+  },
+  {
+   "name": "two results",
+   "maxScore": 10,
+   "anchors": {
+    "excellent": {
+     "score": 10,
+     "description": "Demonstrates clear understanding with most key concepts addressed."
+    },
+    "adequate": {
+     "score": 8,
+     "description": "Addresses the topic and shows awareness of key concepts, even with gaps or imprecision."
+    },
+    "belowAverage": {
+     "score": 7,
+     "description": "Makes a genuine attempt that engages with the prompt, showing limited but real understanding."
+    },
+    "minimal": {
+     "score": 5,
+     "description": "Shows some effort and awareness related to the topic, even if mostly incomplete."
+    }
+   },
+   "results": [
+    {
+     "studentIndex": 1,
+     "score": 2,
+     "feedback": "fb 1"
+    },
+    {
+     "studentIndex": 0,
+     "score": 9,
+     "feedback": "fb 0"
+    }
+   ],
+   "students": [],
+   "expected": [
+    {
+     "studentIndex": 0,
+     "score": 9,
+     "feedback": "fb 0",
+     "name": "Student 0",
+     "tier": "adequate"
+    },
+    {
+     "studentIndex": 1,
+     "score": 2,
+     "feedback": "fb 1",
+     "name": "Student 1",
+     "tier": "minimal"
+    }
+   ]
+  },
+  {
+   "name": "small maximum",
+   "maxScore": 4,
+   "anchors": {
+    "excellent": {
+     "score": 3.8,
+     "description": "Demonstrates clear understanding with most key concepts addressed."
+    },
+    "adequate": {
+     "score": 3.2,
+     "description": "Addresses the topic and shows awareness of key concepts, even with gaps or imprecision."
+    },
+    "belowAverage": {
+     "score": 2.6,
+     "description": "Makes a genuine attempt that engages with the prompt, showing limited but real understanding."
+    },
+    "minimal": {
+     "score": 1.8,
+     "description": "Shows some effort and awareness related to the topic, even if mostly incomplete."
+    }
+   },
+   "results": [
+    {
+     "studentIndex": 0,
+     "score": 4,
+     "feedback": "fb 0"
+    },
+    {
+     "studentIndex": 1,
+     "score": 3.5,
+     "feedback": "fb 1"
+    },
+    {
+     "studentIndex": 2,
+     "score": 2.75,
+     "feedback": "fb 2"
+    },
+    {
+     "studentIndex": 3,
+     "score": 2,
+     "feedback": "fb 3"
+    },
+    {
+     "studentIndex": 4,
+     "score": 1.25,
+     "feedback": "fb 4"
+    },
+    {
+     "studentIndex": 5,
+     "score": 0,
+     "feedback": "fb 5"
+    }
+   ],
+   "students": [
+    {
+     "index": 0,
+     "name": "Ada",
+     "response": "answer 0"
+    },
+    {
+     "index": 1,
+     "name": "Ben",
+     "response": "answer 1"
+    },
+    {
+     "index": 2,
+     "name": "Cy",
+     "response": "answer 2"
+    },
+    {
+     "index": 3,
+     "name": "Di",
+     "response": "answer 3"
+    },
+    {
+     "index": 4,
+     "name": "Eve",
+     "response": "answer 4"
+    },
+    {
+     "index": 5,
+     "name": "Fay",
+     "response": "answer 5"
+    }
+   ],
+   "expected": [
+    {
+     "studentIndex": 1,
+     "score": 3.5,
+     "feedback": "fb 1",
+     "name": "Ben",
+     "tier": "excellent"
+    },
+    {
+     "studentIndex": 0,
+     "score": 4,
+     "feedback": "fb 0",
+     "name": "Ada",
+     "tier": "excellent"
+    },
+    {
+     "studentIndex": 5,
+     "score": 0,
+     "feedback": "fb 5",
+     "name": "Fay",
+     "tier": "minimal"
+    },
+    {
+     "studentIndex": 2,
+     "score": 2.75,
+     "feedback": "fb 2",
+     "name": "Cy",
+     "tier": "minimal"
+    }
+   ]
+  },
+  {
+   "name": "ties keep input order",
+   "maxScore": 10,
+   "anchors": {
+    "excellent": {
+     "score": 10,
+     "description": "Demonstrates clear understanding with most key concepts addressed."
+    },
+    "adequate": {
+     "score": 8,
+     "description": "Addresses the topic and shows awareness of key concepts, even with gaps or imprecision."
+    },
+    "belowAverage": {
+     "score": 7,
+     "description": "Makes a genuine attempt that engages with the prompt, showing limited but real understanding."
+    },
+    "minimal": {
+     "score": 5,
+     "description": "Shows some effort and awareness related to the topic, even if mostly incomplete."
+    }
+   },
+   "results": [
+    {
+     "studentIndex": 5,
+     "score": 7,
+     "feedback": "fb 5"
+    },
+    {
+     "studentIndex": 1,
+     "score": 7,
+     "feedback": "fb 1"
+    },
+    {
+     "studentIndex": 3,
+     "score": 7,
+     "feedback": "fb 3"
+    },
+    {
+     "studentIndex": 2,
+     "score": 9,
+     "feedback": "fb 2"
+    },
+    {
+     "studentIndex": 0,
+     "score": 9,
+     "feedback": "fb 0"
+    },
+    {
+     "studentIndex": 4,
+     "score": 3,
+     "feedback": "fb 4"
+    }
+   ],
+   "students": [],
+   "expected": [
+    {
+     "studentIndex": 2,
+     "score": 9,
+     "feedback": "fb 2",
+     "name": "Student 2",
+     "tier": "adequate"
+    },
+    {
+     "studentIndex": 0,
+     "score": 9,
+     "feedback": "fb 0",
+     "name": "Student 0",
+     "tier": "adequate"
+    },
+    {
+     "studentIndex": 5,
+     "score": 7,
+     "feedback": "fb 5",
+     "name": "Student 5",
+     "tier": "belowAverage"
+    },
+    {
+     "studentIndex": 3,
+     "score": 7,
+     "feedback": "fb 3",
+     "name": "Student 3",
+     "tier": "belowAverage"
+    },
+    {
+     "studentIndex": 4,
+     "score": 3,
+     "feedback": "fb 4",
+     "name": "Student 4",
+     "tier": "minimal"
+    }
+   ]
+  }
+ ],
+ "sweepAdjustments": [
+  {
+   "text": "[]",
+   "expected": []
+  },
+  {
+   "text": "[{\"studentIndex\": 2, \"currentScore\": 6, \"suggestedScore\": 7.5, \"suggestedFeedback\": \"<p>Hi</p>\", \"reason\": \"matches peers\"}]",
+   "expected": [
+    {
+     "studentIndex": 2,
+     "currentScore": 6,
+     "suggestedScore": 7.5,
+     "suggestedFeedback": "<p>Hi</p>",
+     "reason": "matches peers"
+    }
+   ]
+  },
+  {
+   "text": "```json\n[{\"studentIndex\": 1, \"currentScore\": 5, \"suggestedScore\": 6}]\n```",
+   "expected": [
+    {
+     "studentIndex": 1,
+     "currentScore": 5,
+     "suggestedScore": 6
+    }
+   ]
+  },
+  {
+   "text": "```\n[{\"studentIndex\": 1, \"suggestedScore\": 6}]\n```  ",
+   "expected": [
+    {
+     "studentIndex": 1,
+     "suggestedScore": 6
+    }
+   ]
+  },
+  {
+   "text": "Here are the changes:\n[{\"studentIndex\": 4, \"currentScore\": 8, \"suggestedScore\": 8}]\nLet me know.",
+   "expected": [
+    {
+     "studentIndex": 4,
+     "currentScore": 8,
+     "suggestedScore": 8
+    }
+   ]
+  },
+  {
+   "text": "No changes needed.",
+   "expected": null
+  },
+  {
+   "text": "",
+   "expected": null
+  },
+  {
+   "text": "[{\"studentIndex\": 1, \"suggestedScore\": 6},]",
+   "expected": null
+  },
+  {
+   "text": "<think>scores [8, 9] look close</think>[]",
+   "expected": null
+  },
+  {
+   "text": "{\"adjustments\": [{\"studentIndex\": 3, \"currentScore\": 2, \"suggestedScore\": 4}]}",
+   "expected": [
+    {
+     "studentIndex": 3,
+     "currentScore": 2,
+     "suggestedScore": 4
+    }
+   ]
+  },
+  {
+   "text": "[1, \"two\", {\"studentIndex\": \"3\", \"currentScore\": 2, \"suggestedScore\": \"4\"}]",
+   "expected": [
+    1,
+    "two",
+    {
+     "studentIndex": "3",
+     "currentScore": 2,
+     "suggestedScore": "4"
+    }
+   ]
+  },
+  {
+   "text": "  [ ]  ",
+   "expected": []
+  },
+  {
+   "text": "] [",
+   "expected": null
+  }
+ ],
+ "blankFeedback": [
+  {
+   "rubric": {
+    "essayPrompt": "Explain why the sample mean is approximately normal for large n.",
+    "maxScore": "10",
+    "checklistItems": [
+     {
+      "category": "Understanding (6 pts)",
+      "points": 6,
+      "items": [
+       "States the Central Limit Theorem",
+       "Mentions sample size"
+      ]
+     },
+     {
+      "category": "Communication (4 pts)",
+      "points": 4,
+      "items": [
+       "Uses complete sentences"
+      ]
+     }
+    ],
+    "rubricItems": [
+     {
+      "category": "Key ideas",
+      "items": [
+       "sampling distribution",
+       "standard error"
+      ]
+     }
+    ],
+    "modelText": "By the CLT the sampling distribution of the mean approaches normal as n grows."
+   },
+   "student": {
+    "index": 0,
+    "name": "Avery, Sam"
+   },
+   "expected": "<p>Hi Sam,</p><p><strong>States the Central Limit Theorem</strong></p><blockquote>You did not address this.</blockquote><p>No response was submitted, so this requirement was not evaluated.</p><p><strong>Mentions sample size</strong></p><blockquote>You did not address this.</blockquote><p>No response was submitted, so this requirement was not evaluated.</p><p><strong>Uses complete sentences</strong></p><blockquote>You did not address this.</blockquote><p>No response was submitted, so this requirement was not evaluated.</p>"
+  },
+  {
+   "rubric": {
+    "essayPrompt": "Explain why the sample mean is approximately normal for large n.",
+    "maxScore": "10",
+    "checklistItems": [
+     {
+      "category": "Understanding (6 pts)",
+      "points": 6,
+      "items": [
+       "States the Central Limit Theorem",
+       "Mentions sample size"
+      ]
+     },
+     {
+      "category": "Communication (4 pts)",
+      "points": 4,
+      "items": [
+       "Uses complete sentences"
+      ]
+     }
+    ],
+    "rubricItems": [
+     {
+      "category": "Key ideas",
+      "items": [
+       "sampling distribution",
+       "standard error"
+      ]
+     }
+    ],
+    "modelText": "By the CLT the sampling distribution of the mean approaches normal as n grows."
+   },
+   "student": {
+    "index": 1,
+    "name": ""
+   },
+   "expected": "<p>Hello,</p><p><strong>States the Central Limit Theorem</strong></p><blockquote>You did not address this.</blockquote><p>No response was submitted, so this requirement was not evaluated.</p><p><strong>Mentions sample size</strong></p><blockquote>You did not address this.</blockquote><p>No response was submitted, so this requirement was not evaluated.</p><p><strong>Uses complete sentences</strong></p><blockquote>You did not address this.</blockquote><p>No response was submitted, so this requirement was not evaluated.</p>"
+  },
+  {
+   "rubric": {
+    "maxScore": 4
+   },
+   "student": {
+    "index": 2,
+    "name": "Jordan Lee"
+   },
+   "expected": "<p>Hi Jordan,</p><p>No response was submitted, so this question was not evaluated.</p>"
+  },
+  {
+   "rubric": {
+    "maxScore": "5.5",
+    "essayPrompt": "",
+    "checklistItems": [
+     {
+      "category": "",
+      "items": [
+       "Shows the work"
+      ]
+     }
+    ],
+    "rubricItems": [
+     {
+      "items": [
+       "slope"
+      ]
+     }
+    ]
+   },
+   "student": {
+    "index": 3,
+    "name": "Kim"
+   },
+   "expected": "<p>Hi Kim,</p><p><strong>Shows the work</strong></p><blockquote>You did not address this.</blockquote><p>No response was submitted, so this requirement was not evaluated.</p>"
+  }
+ ],
+ "anchorPrompts": [
+  {
+   "rubric": {
+    "essayPrompt": "Explain why the sample mean is approximately normal for large n.",
+    "maxScore": "10",
+    "checklistItems": [
+     {
+      "category": "Understanding (6 pts)",
+      "points": 6,
+      "items": [
+       "States the Central Limit Theorem",
+       "Mentions sample size"
+      ]
+     },
+     {
+      "category": "Communication (4 pts)",
+      "points": 4,
+      "items": [
+       "Uses complete sentences"
+      ]
+     }
+    ],
+    "rubricItems": [
+     {
+      "category": "Key ideas",
+      "items": [
+       "sampling distribution",
+       "standard error"
+      ]
+     }
+    ],
+    "modelText": "By the CLT the sampling distribution of the mean approaches normal as n grows."
+   },
+   "leniency": null,
+   "expected": "You are a grading calibration assistant.\nFor the assignment below, write FOUR brief example student responses at different quality levels.\nThese examples will be shown to an AI grader so it understands what each score level looks like for THIS specific question.\n\nASSIGNMENT:\nExplain why the sample mean is approximately normal for large n.\n\nRUBRIC:\n[Understanding (6 pts)]\n  - States the Central Limit Theorem\n  - Mentions sample size\n[Communication (4 pts)]\n  - Uses complete sentences\n[Key ideas]\n  - sampling distribution\n  - standard error\n\nMODEL ANSWER:\nBy the CLT the sampling distribution of the mean approaches normal as n grows.\n\nMAX SCORE: 10\n\nWrite one realistic example student response per level. Match the length and style a student would actually write for this assignment.\n\nEXCELLENT (10/10):\n[write example]\n\nADEQUATE (8/10):\n[write example]\n\nBELOW AVERAGE (7/10):\n[write example]\n\nMINIMAL (5/10):\n[write example]"
+  },
+  {
+   "rubric": {
+    "essayPrompt": "Explain why the sample mean is approximately normal for large n.",
+    "maxScore": "10",
+    "checklistItems": [
+     {
+      "category": "Understanding (6 pts)",
+      "points": 6,
+      "items": [
+       "States the Central Limit Theorem",
+       "Mentions sample size"
+      ]
+     },
+     {
+      "category": "Communication (4 pts)",
+      "points": 4,
+      "items": [
+       "Uses complete sentences"
+      ]
+     }
+    ],
+    "rubricItems": [
+     {
+      "category": "Key ideas",
+      "items": [
+       "sampling distribution",
+       "standard error"
+      ]
+     }
+    ],
+    "modelText": "By the CLT the sampling distribution of the mean approaches normal as n grows."
+   },
+   "leniency": 50,
+   "expected": "You are a grading calibration assistant.\nFor the assignment below, write FOUR brief example student responses at different quality levels.\nThese examples will be shown to an AI grader so it understands what each score level looks like for THIS specific question.\n\nASSIGNMENT:\nExplain why the sample mean is approximately normal for large n.\n\nRUBRIC:\n[Understanding (6 pts)]\n  - States the Central Limit Theorem\n  - Mentions sample size\n[Communication (4 pts)]\n  - Uses complete sentences\n[Key ideas]\n  - sampling distribution\n  - standard error\n\nMODEL ANSWER:\nBy the CLT the sampling distribution of the mean approaches normal as n grows.\n\nMAX SCORE: 10\n\nWrite one realistic example student response per level. Match the length and style a student would actually write for this assignment.\n\nEXCELLENT (10/10):\n[write example]\n\nADEQUATE (8/10):\n[write example]\n\nBELOW AVERAGE (7/10):\n[write example]\n\nMINIMAL (5/10):\n[write example]"
+  },
+  {
+   "rubric": {
+    "essayPrompt": "Explain why the sample mean is approximately normal for large n.",
+    "maxScore": "10",
+    "checklistItems": [
+     {
+      "category": "Understanding (6 pts)",
+      "points": 6,
+      "items": [
+       "States the Central Limit Theorem",
+       "Mentions sample size"
+      ]
+     },
+     {
+      "category": "Communication (4 pts)",
+      "points": 4,
+      "items": [
+       "Uses complete sentences"
+      ]
+     }
+    ],
+    "rubricItems": [
+     {
+      "category": "Key ideas",
+      "items": [
+       "sampling distribution",
+       "standard error"
+      ]
+     }
+    ],
+    "modelText": "By the CLT the sampling distribution of the mean approaches normal as n grows."
+   },
+   "leniency": 20,
+   "expected": "You are a grading calibration assistant.\nFor the assignment below, write FOUR brief example student responses at different quality levels.\nThese examples will be shown to an AI grader so it understands what each score level looks like for THIS specific question.\n\nCRITICAL — LENIENT GRADING MODE (30% more lenient than standard):\nThe teacher has chosen lenient grading. Your example responses MUST reflect how a LENIENT teacher would grade. This means:\n\n- EXCELLENT: Complete and correct, but does NOT need to show every step or use formal notation. A clear, concise answer that covers all concepts counts as excellent.\n- ADEQUATE: Gets the main ideas right using everyday language. May skip steps, use informal phrasing like \"I subtracted them\" instead of writing formulas. This is STILL adequate under lenient grading.\n- BELOW AVERAGE: Shows they understood the general concept but is vague or incomplete. Does NOT write formulas or show calculations — just states results or describes the process in words. Example: \"The IQR is 16 and the max is way above the fence so it's an outlier.\"\n- MINIMAL: Barely engages. Might just state a conclusion without any reasoning. Example: \"80 is an outlier because it's really high.\"\n\nDO NOT write formula-heavy responses for Below Average or Minimal tiers. A lenient Below Average response should look like what a struggling student actually writes — short, imprecise, but showing they tried.\n\nASSIGNMENT:\nExplain why the sample mean is approximately normal for large n.\n\nRUBRIC:\n[Understanding (6 pts)]\n  - States the Central Limit Theorem\n  - Mentions sample size\n[Communication (4 pts)]\n  - Uses complete sentences\n[Key ideas]\n  - sampling distribution\n  - standard error\n\nMODEL ANSWER:\nBy the CLT the sampling distribution of the mean approaches normal as n grows.\n\nMAX SCORE: 10\n\nWrite one realistic example student response per level. Match the length and style a student would actually write for this assignment.\n\nEXCELLENT (10/10):\n[write example]\n\nADEQUATE (8/10):\n[write example]\n\nBELOW AVERAGE (7/10):\n[write example]\n\nMINIMAL (5/10):\n[write example]"
+  },
+  {
+   "rubric": {
+    "essayPrompt": "Explain why the sample mean is approximately normal for large n.",
+    "maxScore": "10",
+    "checklistItems": [
+     {
+      "category": "Understanding (6 pts)",
+      "points": 6,
+      "items": [
+       "States the Central Limit Theorem",
+       "Mentions sample size"
+      ]
+     },
+     {
+      "category": "Communication (4 pts)",
+      "points": 4,
+      "items": [
+       "Uses complete sentences"
+      ]
+     }
+    ],
+    "rubricItems": [
+     {
+      "category": "Key ideas",
+      "items": [
+       "sampling distribution",
+       "standard error"
+      ]
+     }
+    ],
+    "modelText": "By the CLT the sampling distribution of the mean approaches normal as n grows."
+   },
+   "leniency": 80,
+   "expected": "You are a grading calibration assistant.\nFor the assignment below, write FOUR brief example student responses at different quality levels.\nThese examples will be shown to an AI grader so it understands what each score level looks like for THIS specific question.\n\nCRITICAL — STRICT GRADING MODE (30% more strict than standard):\nThe teacher has chosen strict grading. Your example responses MUST reflect how a STRICT teacher would grade. This means:\n\n- EXCELLENT: Flawless — exact formulas with proper notation, every step shown, precise terminology, complete logical chain, thorough contextual analysis.\n- ADEQUATE: Complete and correct but may have minor presentation gaps. Still shows all formulas and key steps.\n- BELOW AVERAGE: Shows partial knowledge — gets some formulas right but misses key steps or makes errors. Under strict grading this is NOT adequate.\n- MINIMAL: Very incomplete — may state a result without showing work, or show only one part of a multi-step problem.\n\nASSIGNMENT:\nExplain why the sample mean is approximately normal for large n.\n\nRUBRIC:\n[Understanding (6 pts)]\n  - States the Central Limit Theorem\n  - Mentions sample size\n[Communication (4 pts)]\n  - Uses complete sentences\n[Key ideas]\n  - sampling distribution\n  - standard error\n\nMODEL ANSWER:\nBy the CLT the sampling distribution of the mean approaches normal as n grows.\n\nMAX SCORE: 10\n\nWrite one realistic example student response per level. Match the length and style a student would actually write for this assignment.\n\nEXCELLENT (10/10):\n[write example]\n\nADEQUATE (8/10):\n[write example]\n\nBELOW AVERAGE (7/10):\n[write example]\n\nMINIMAL (5/10):\n[write example]"
+  },
+  {
+   "rubric": {
+    "essayPrompt": "Explain why the sample mean is approximately normal for large n.",
+    "maxScore": "10",
+    "checklistItems": [
+     {
+      "category": "Understanding (6 pts)",
+      "points": 6,
+      "items": [
+       "States the Central Limit Theorem",
+       "Mentions sample size"
+      ]
+     },
+     {
+      "category": "Communication (4 pts)",
+      "points": 4,
+      "items": [
+       "Uses complete sentences"
+      ]
+     }
+    ],
+    "rubricItems": [
+     {
+      "category": "Key ideas",
+      "items": [
+       "sampling distribution",
+       "standard error"
+      ]
+     }
+    ],
+    "modelText": "By the CLT the sampling distribution of the mean approaches normal as n grows."
+   },
+   "leniency": 37.5,
+   "expected": "You are a grading calibration assistant.\nFor the assignment below, write FOUR brief example student responses at different quality levels.\nThese examples will be shown to an AI grader so it understands what each score level looks like for THIS specific question.\n\nCRITICAL — LENIENT GRADING MODE (12.5% more lenient than standard):\nThe teacher has chosen lenient grading. Your example responses MUST reflect how a LENIENT teacher would grade. This means:\n\n- EXCELLENT: Complete and correct, but does NOT need to show every step or use formal notation. A clear, concise answer that covers all concepts counts as excellent.\n- ADEQUATE: Gets the main ideas right using everyday language. May skip steps, use informal phrasing like \"I subtracted them\" instead of writing formulas. This is STILL adequate under lenient grading.\n- BELOW AVERAGE: Shows they understood the general concept but is vague or incomplete. Does NOT write formulas or show calculations — just states results or describes the process in words. Example: \"The IQR is 16 and the max is way above the fence so it's an outlier.\"\n- MINIMAL: Barely engages. Might just state a conclusion without any reasoning. Example: \"80 is an outlier because it's really high.\"\n\nDO NOT write formula-heavy responses for Below Average or Minimal tiers. A lenient Below Average response should look like what a struggling student actually writes — short, imprecise, but showing they tried.\n\nASSIGNMENT:\nExplain why the sample mean is approximately normal for large n.\n\nRUBRIC:\n[Understanding (6 pts)]\n  - States the Central Limit Theorem\n  - Mentions sample size\n[Communication (4 pts)]\n  - Uses complete sentences\n[Key ideas]\n  - sampling distribution\n  - standard error\n\nMODEL ANSWER:\nBy the CLT the sampling distribution of the mean approaches normal as n grows.\n\nMAX SCORE: 10\n\nWrite one realistic example student response per level. Match the length and style a student would actually write for this assignment.\n\nEXCELLENT (10/10):\n[write example]\n\nADEQUATE (8/10):\n[write example]\n\nBELOW AVERAGE (7/10):\n[write example]\n\nMINIMAL (5/10):\n[write example]"
+  },
+  {
+   "rubric": {
+    "essayPrompt": "Explain why the sample mean is approximately normal for large n.",
+    "maxScore": "10",
+    "checklistItems": [
+     {
+      "category": "Understanding (6 pts)",
+      "points": 6,
+      "items": [
+       "States the Central Limit Theorem",
+       "Mentions sample size"
+      ]
+     },
+     {
+      "category": "Communication (4 pts)",
+      "points": 4,
+      "items": [
+       "Uses complete sentences"
+      ]
+     }
+    ],
+    "rubricItems": [
+     {
+      "category": "Key ideas",
+      "items": [
+       "sampling distribution",
+       "standard error"
+      ]
+     }
+    ],
+    "modelText": "By the CLT the sampling distribution of the mean approaches normal as n grows."
+   },
+   "leniency": 0,
+   "expected": "You are a grading calibration assistant.\nFor the assignment below, write FOUR brief example student responses at different quality levels.\nThese examples will be shown to an AI grader so it understands what each score level looks like for THIS specific question.\n\nCRITICAL — LENIENT GRADING MODE (50% more lenient than standard):\nThe teacher has chosen lenient grading. Your example responses MUST reflect how a LENIENT teacher would grade. This means:\n\n- EXCELLENT: Complete and correct, but does NOT need to show every step or use formal notation. A clear, concise answer that covers all concepts counts as excellent.\n- ADEQUATE: Gets the main ideas right using everyday language. May skip steps, use informal phrasing like \"I subtracted them\" instead of writing formulas. This is STILL adequate under lenient grading.\n- BELOW AVERAGE: Shows they understood the general concept but is vague or incomplete. Does NOT write formulas or show calculations — just states results or describes the process in words. Example: \"The IQR is 16 and the max is way above the fence so it's an outlier.\"\n- MINIMAL: Barely engages. Might just state a conclusion without any reasoning. Example: \"80 is an outlier because it's really high.\"\n\nDO NOT write formula-heavy responses for Below Average or Minimal tiers. A lenient Below Average response should look like what a struggling student actually writes — short, imprecise, but showing they tried.\n\nASSIGNMENT:\nExplain why the sample mean is approximately normal for large n.\n\nRUBRIC:\n[Understanding (6 pts)]\n  - States the Central Limit Theorem\n  - Mentions sample size\n[Communication (4 pts)]\n  - Uses complete sentences\n[Key ideas]\n  - sampling distribution\n  - standard error\n\nMODEL ANSWER:\nBy the CLT the sampling distribution of the mean approaches normal as n grows.\n\nMAX SCORE: 10\n\nWrite one realistic example student response per level. Match the length and style a student would actually write for this assignment.\n\nEXCELLENT (10/10):\n[write example]\n\nADEQUATE (8/10):\n[write example]\n\nBELOW AVERAGE (7/10):\n[write example]\n\nMINIMAL (5/10):\n[write example]"
+  },
+  {
+   "rubric": {
+    "maxScore": 4
+   },
+   "leniency": null,
+   "expected": "You are a grading calibration assistant.\nFor the assignment below, write FOUR brief example student responses at different quality levels.\nThese examples will be shown to an AI grader so it understands what each score level looks like for THIS specific question.\n\nMAX SCORE: 4\n\nWrite one realistic example student response per level. Match the length and style a student would actually write for this assignment.\n\nEXCELLENT (3.8/4):\n[write example]\n\nADEQUATE (3.2/4):\n[write example]\n\nBELOW AVERAGE (2.6/4):\n[write example]\n\nMINIMAL (1.8/4):\n[write example]"
+  },
+  {
+   "rubric": {
+    "maxScore": "5.5",
+    "essayPrompt": "",
+    "checklistItems": [
+     {
+      "category": "",
+      "items": [
+       "Shows the work"
+      ]
+     }
+    ],
+    "rubricItems": [
+     {
+      "items": [
+       "slope"
+      ]
+     }
+    ]
+   },
+   "leniency": 100,
+   "expected": "You are a grading calibration assistant.\nFor the assignment below, write FOUR brief example student responses at different quality levels.\nThese examples will be shown to an AI grader so it understands what each score level looks like for THIS specific question.\n\nCRITICAL — STRICT GRADING MODE (50% more strict than standard):\nThe teacher has chosen strict grading. Your example responses MUST reflect how a STRICT teacher would grade. This means:\n\n- EXCELLENT: Flawless — exact formulas with proper notation, every step shown, precise terminology, complete logical chain, thorough contextual analysis.\n- ADEQUATE: Complete and correct but may have minor presentation gaps. Still shows all formulas and key steps.\n- BELOW AVERAGE: Shows partial knowledge — gets some formulas right but misses key steps or makes errors. Under strict grading this is NOT adequate.\n- MINIMAL: Very incomplete — may state a result without showing work, or show only one part of a multi-step problem.\n\nRUBRIC:\n  - Shows the work\n  - slope\n\nMAX SCORE: 5.5\n\nWrite one realistic example student response per level. Match the length and style a student would actually write for this assignment.\n\nEXCELLENT (5.2/5.5):\n[write example]\n\nADEQUATE (4.4/5.5):\n[write example]\n\nBELOW AVERAGE (3.6/5.5):\n[write example]\n\nMINIMAL (2.5/5.5):\n[write example]"
+  }
+ ],
+ "anchorResponses": [
+  {
+   "rubric": {
+    "essayPrompt": "Explain why the sample mean is approximately normal for large n.",
+    "maxScore": "10",
+    "checklistItems": [
+     {
+      "category": "Understanding (6 pts)",
+      "points": 6,
+      "items": [
+       "States the Central Limit Theorem",
+       "Mentions sample size"
+      ]
+     },
+     {
+      "category": "Communication (4 pts)",
+      "points": 4,
+      "items": [
+       "Uses complete sentences"
+      ]
+     }
+    ],
+    "rubricItems": [
+     {
+      "category": "Key ideas",
+      "items": [
+       "sampling distribution",
+       "standard error"
+      ]
+     }
+    ],
+    "modelText": "By the CLT the sampling distribution of the mean approaches normal as n grows."
+   },
+   "text": "EXCELLENT (10/10):\nThe CLT says means are normal.\n\nADEQUATE (8/10):\nMeans get normal.\n\nBELOW AVERAGE (7/10):\nIt is normal.\n\nMINIMAL (5/10):\nidk",
+   "expected": [
+    {
+     "label": "Excellent",
+     "score": 10,
+     "maxScore": 10,
+     "response": "The CLT says means are normal."
+    },
+    {
+     "label": "Adequate",
+     "score": 8,
+     "maxScore": 10,
+     "response": "Means get normal."
+    },
+    {
+     "label": "Below Average",
+     "score": 7,
+     "maxScore": 10,
+     "response": "It is normal."
+    },
+    {
+     "label": "Minimal",
+     "score": 5,
+     "maxScore": 10,
+     "response": "idk"
+    }
+   ]
+  },
+  {
+   "rubric": {
+    "essayPrompt": "Explain why the sample mean is approximately normal for large n.",
+    "maxScore": "10",
+    "checklistItems": [
+     {
+      "category": "Understanding (6 pts)",
+      "points": 6,
+      "items": [
+       "States the Central Limit Theorem",
+       "Mentions sample size"
+      ]
+     },
+     {
+      "category": "Communication (4 pts)",
+      "points": 4,
+      "items": [
+       "Uses complete sentences"
+      ]
+     }
+    ],
+    "rubricItems": [
+     {
+      "category": "Key ideas",
+      "items": [
+       "sampling distribution",
+       "standard error"
+      ]
+     }
+    ],
+    "modelText": "By the CLT the sampling distribution of the mean approaches normal as n grows."
+   },
+   "text": "**Excellent (10/10)**\nGreat answer here.\n\n**Adequate (8/10)** : fine answer\n\nbelow   average (7/10) weak answer\n\nMinimal (5/10):",
+   "expected": [
+    {
+     "label": "Excellent",
+     "score": 10,
+     "maxScore": 10,
+     "response": "**\nGreat answer here.\n\n**"
+    },
+    {
+     "label": "Adequate",
+     "score": 8,
+     "maxScore": 10,
+     "response": "** : fine answer"
+    },
+    {
+     "label": "Below Average",
+     "score": 7,
+     "maxScore": 10,
+     "response": "weak answer"
+    },
+    {
+     "label": "Minimal",
+     "score": 5,
+     "maxScore": 10,
+     "response": ""
+    }
+   ]
+  },
+  {
+   "rubric": {
+    "essayPrompt": "Explain why the sample mean is approximately normal for large n.",
+    "maxScore": "10",
+    "checklistItems": [
+     {
+      "category": "Understanding (6 pts)",
+      "points": 6,
+      "items": [
+       "States the Central Limit Theorem",
+       "Mentions sample size"
+      ]
+     },
+     {
+      "category": "Communication (4 pts)",
+      "points": 4,
+      "items": [
+       "Uses complete sentences"
+      ]
+     }
+    ],
+    "rubricItems": [
+     {
+      "category": "Key ideas",
+      "items": [
+       "sampling distribution",
+       "standard error"
+      ]
+     }
+    ],
+    "modelText": "By the CLT the sampling distribution of the mean approaches normal as n grows."
+   },
+   "text": "Excellent (10/10): only this tier",
+   "expected": [
+    {
+     "label": "Excellent",
+     "score": 10,
+     "maxScore": 10,
+     "response": "only this tier"
+    },
+    {
+     "label": "Adequate",
+     "score": 8,
+     "maxScore": 10,
+     "response": ""
+    },
+    {
+     "label": "Below Average",
+     "score": 7,
+     "maxScore": 10,
+     "response": ""
+    },
+    {
+     "label": "Minimal",
+     "score": 5,
+     "maxScore": 10,
+     "response": ""
+    }
+   ]
+  },
+  {
+   "rubric": {
+    "essayPrompt": "Explain why the sample mean is approximately normal for large n.",
+    "maxScore": "10",
+    "checklistItems": [
+     {
+      "category": "Understanding (6 pts)",
+      "points": 6,
+      "items": [
+       "States the Central Limit Theorem",
+       "Mentions sample size"
+      ]
+     },
+     {
+      "category": "Communication (4 pts)",
+      "points": 4,
+      "items": [
+       "Uses complete sentences"
+      ]
+     }
+    ],
+    "rubricItems": [
+     {
+      "category": "Key ideas",
+      "items": [
+       "sampling distribution",
+       "standard error"
+      ]
+     }
+    ],
+    "modelText": "By the CLT the sampling distribution of the mean approaches normal as n grows."
+   },
+   "text": "Nothing useful.",
+   "expected": [
+    {
+     "label": "Excellent",
+     "score": 10,
+     "maxScore": 10,
+     "response": ""
+    },
+    {
+     "label": "Adequate",
+     "score": 8,
+     "maxScore": 10,
+     "response": ""
+    },
+    {
+     "label": "Below Average",
+     "score": 7,
+     "maxScore": 10,
+     "response": ""
+    },
+    {
+     "label": "Minimal",
+     "score": 5,
+     "maxScore": 10,
+     "response": ""
+    }
+   ]
+  },
+  {
+   "rubric": {
+    "essayPrompt": "Explain why the sample mean is approximately normal for large n.",
+    "maxScore": "10",
+    "checklistItems": [
+     {
+      "category": "Understanding (6 pts)",
+      "points": 6,
+      "items": [
+       "States the Central Limit Theorem",
+       "Mentions sample size"
+      ]
+     },
+     {
+      "category": "Communication (4 pts)",
+      "points": 4,
+      "items": [
+       "Uses complete sentences"
+      ]
+     }
+    ],
+    "rubricItems": [
+     {
+      "category": "Key ideas",
+      "items": [
+       "sampling distribution",
+       "standard error"
+      ]
+     }
+    ],
+    "modelText": "By the CLT the sampling distribution of the mean approaches normal as n grows."
+   },
+   "text": "Minimal (5/10): last first\nExcellent (10/10): then best\nAdequate (8/10): then ok",
+   "expected": [
+    {
+     "label": "Excellent",
+     "score": 10,
+     "maxScore": 10,
+     "response": "then best"
+    },
+    {
+     "label": "Adequate",
+     "score": 8,
+     "maxScore": 10,
+     "response": "then ok"
+    },
+    {
+     "label": "Below Average",
+     "score": 7,
+     "maxScore": 10,
+     "response": ""
+    },
+    {
+     "label": "Minimal",
+     "score": 5,
+     "maxScore": 10,
+     "response": "last first\nExcellent (10/10): then best\nAdequate (8/10): then ok"
+    }
+   ]
+  },
+  {
+   "rubric": {
+    "essayPrompt": "Explain why the sample mean is approximately normal for large n.",
+    "maxScore": "10",
+    "checklistItems": [
+     {
+      "category": "Understanding (6 pts)",
+      "points": 6,
+      "items": [
+       "States the Central Limit Theorem",
+       "Mentions sample size"
+      ]
+     },
+     {
+      "category": "Communication (4 pts)",
+      "points": 4,
+      "items": [
+       "Uses complete sentences"
+      ]
+     }
+    ],
+    "rubricItems": [
+     {
+      "category": "Key ideas",
+      "items": [
+       "sampling distribution",
+       "standard error"
+      ]
+     }
+    ],
+    "modelText": "By the CLT the sampling distribution of the mean approaches normal as n grows."
+   },
+   "text": "EXCELLENT (9/10): wrong score in header\nADEQUATE (8/10): right one\nBelow Average(7/10):no spaces\nMINIMAL  (5/10)  :  spaced",
+   "expected": [
+    {
+     "label": "Excellent",
+     "score": 10,
+     "maxScore": 10,
+     "response": ""
+    },
+    {
+     "label": "Adequate",
+     "score": 8,
+     "maxScore": 10,
+     "response": "right one"
+    },
+    {
+     "label": "Below Average",
+     "score": 7,
+     "maxScore": 10,
+     "response": "no spaces"
+    },
+    {
+     "label": "Minimal",
+     "score": 5,
+     "maxScore": 10,
+     "response": "spaced"
+    }
+   ]
+  },
+  {
+   "rubric": {
+    "maxScore": 4
+   },
+   "text": "EXCELLENT (3.8/4):\nA\nADEQUATE (3.2/4):\nB\nBELOW AVERAGE (2.6/4):\nC\nMINIMAL (1.8/4):\nD",
+   "expected": [
+    {
+     "label": "Excellent",
+     "score": 3.8,
+     "maxScore": 4,
+     "response": "A"
+    },
+    {
+     "label": "Adequate",
+     "score": 3.2,
+     "maxScore": 4,
+     "response": "B"
+    },
+    {
+     "label": "Below Average",
+     "score": 2.6,
+     "maxScore": 4,
+     "response": "C"
+    },
+    {
+     "label": "Minimal",
+     "score": 1.8,
+     "maxScore": 4,
+     "response": "D"
+    }
+   ]
+  },
+  {
+   "rubric": {
+    "maxScore": 4
+   },
+   "text": "EXCELLENT (3x8/4): dot matches any character\nADEQUATE (3.2/4): é ünïcödé ✓\n",
+   "expected": [
+    {
+     "label": "Excellent",
+     "score": 3.8,
+     "maxScore": 4,
+     "response": "dot matches any character"
+    },
+    {
+     "label": "Adequate",
+     "score": 3.2,
+     "maxScore": 4,
+     "response": "é ünïcödé ✓"
+    },
+    {
+     "label": "Below Average",
+     "score": 2.6,
+     "maxScore": 4,
+     "response": ""
+    },
+    {
+     "label": "Minimal",
+     "score": 1.8,
+     "maxScore": 4,
+     "response": ""
+    }
+   ]
+  },
+  {
+   "rubric": {
+    "essayPrompt": "Explain why the sample mean is approximately normal for large n.",
+    "maxScore": "10",
+    "checklistItems": [
+     {
+      "category": "Understanding (6 pts)",
+      "points": 6,
+      "items": [
+       "States the Central Limit Theorem",
+       "Mentions sample size"
+      ]
+     },
+     {
+      "category": "Communication (4 pts)",
+      "points": 4,
+      "items": [
+       "Uses complete sentences"
+      ]
+     }
+    ],
+    "rubricItems": [
+     {
+      "category": "Key ideas",
+      "items": [
+       "sampling distribution",
+       "standard error"
+      ]
+     }
+    ],
+    "modelText": "By the CLT the sampling distribution of the mean approaches normal as n grows."
+   },
+   "text": "Excellent (10/10): first\nExcellent (10/10): repeated header\nAdequate (8/10): ok\nAdequate (8/10): again",
+   "expected": [
+    {
+     "label": "Excellent",
+     "score": 10,
+     "maxScore": 10,
+     "response": "first\nExcellent (10/10): repeated header"
+    },
+    {
+     "label": "Adequate",
+     "score": 8,
+     "maxScore": 10,
+     "response": "ok\nAdequate (8/10): again"
+    },
+    {
+     "label": "Below Average",
+     "score": 7,
+     "maxScore": 10,
+     "response": ""
+    },
+    {
+     "label": "Minimal",
+     "score": 5,
+     "maxScore": 10,
+     "response": ""
+    }
+   ]
+  }
+ ]
+}

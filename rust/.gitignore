@@ -1,0 +1,5 @@
+target/
+
+# The repository root ignores every folder named tests/ (old test output).
+# The Rust tests live in folders of that name and must be tracked.
+!tests/

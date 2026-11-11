@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Grade all questions - fixture</title>
+<!--
+  Synthetic page mirroring the markup that IMathAS (MyOpenMath) emits from
+  course/gradeallq2.php, plus the question region its client-side renderer
+  builds inside div.question. All names and responses are invented.
+
+  Cases covered:
+    student 0  single score, graded, rich feedback already present
+    student 1  single score, ungraded (0), no feedback, rubric block between prompt and response
+    student 2  two score parts ("Score for part N"), one N/A
+    student 3  blank score, response containing rendered math
+    student 4  auto-graded math answer: no essay, so no response or prompt is read
+-->
+</head>
+<body>
+<div id="headergradeallq2" class="pagetitle"><h1>Grading a Question in Unit 4 FRQ</h1></div>
+<p>Jump to <select id="stusel" aria-label="Jump to student">
+  <option value="0">Avery, Sam</option>
+  <option value="1" selected="selected">Brook, Kai</option>
+</select> Grading 2 of 2</p>
+
+<form id="mainform" method="post" action="gradeallq2.php?stu=0&amp;cid=1&amp;aid=2&amp;qid=3">
+<button type="button" id="quicksavebtn">Quick Save</button><br/>
+<span class="noticetext" id="quicksavenotice">&nbsp;</span>
+
+<!-- student 0 -->
+<div class="qfilter-100 qfilter-fb qfilter-nowork bigquestionwrap" data-lastchange="1731300000">
+  <div class="headerpane"><b>Avery, Sam</b></div>
+  <div class="scrollpane">
+    <div class="questionwrap questionpane">
+      <div class="question" id="questionwrap0">
+        <div role="region" aria-label="Question 1">
+          <div>
+            <div>
+              <p>A sample of 40 students has a mean of 72. Explain how sample size affects the margin of error.</p>
+              <details><summary>Grading checklist</summary><div><table><tr><td><b>Concept</b></td><td><label>Mentions standard error</label></td></tr></table></div></details>
+            </div>
+            <div class="introtext" id="qnwrap0"><p>Larger samples shrink the <strong>standard error</strong>, so the margin of error gets smaller.</p></div>
+            <span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="scoredetails">
+    <span class="person">Avery, Sam: </span>
+    <input type="text" size="4" id="scorebox0" name="ud-1001-0-2-0" value="10" pattern="N\/A|\d*\.?\d*" aria-label="Score">
+    <input type="hidden" name="os-1001-0-2-0" value="10">/10
+    <br/>Quick grade: <a href="#" class="fullcredlink">Full credit</a> <span class="quickfb"></span>
+    <br/>Question Feedback:
+    <div class="fbbox skipmathrender" id="fb-0-2-1001" role="textbox" aria-label="Feedback"><p>Nice work, Sam.</p></div>
+    <br/>Question #3, version 1.
+  </div>
+</div>
+
+<!-- student 1 -->
+<div class="qfilter-zero qfilter-nowork bigquestionwrap" data-lastchange="1731300100">
+  <div class="headerpane"><b>Brook, Kai</b></div>
+  <div class="scrollpane">
+    <div class="questionwrap questionpane">
+      <div class="question" id="questionwrap1">
+        <div role="region" aria-label="Question 1">
+          <div>
+            <div>
+              <p>A sample of 55 students has a mean of 68. Explain how sample size affects the margin of error.</p>
+            </div>
+            <div class="frq2"><details><summary>Rubric</summary><div><table><tr><td><b>Reasoning</b></td><td><ul><li>Links n to SE</li></ul></td></tr></table></div></details></div>
+            <div class="introtext" id="qnwrap1"><p>If you ask more people the answer is closer to the real one.</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="scoredetails">
+    <span class="person">Brook, Kai: </span>
+    <input type="text" size="4" id="scorebox1" name="ud-1002-0-2-0" value="0" pattern="N\/A|\d*\.?\d*" aria-label="Score">
+    <input type="hidden" name="os-1002-0-2-0" value="0">/10
+    <br/>Quick grade: <a href="#" class="fullcredlink">Full credit</a> <span class="quickfb"></span>
+    <br/>Question Feedback:
+    <div class="fbbox skipmathrender" id="fb-0-2-1002" role="textbox" aria-label="Feedback"></div>
+    <br/>Question #3, version 1.
+  </div>
+</div>
+
+<!-- student 2 -->
+<div class="qfilter-nowork bigquestionwrap" data-lastchange="1731300200">
+  <div class="headerpane"><b>Cruz, Jo</b></div>
+  <div class="scrollpane">
+    <div class="questionwrap questionpane">
+      <div class="question" id="questionwrap2">
+        <div role="region" aria-label="Question 1">
+          <div class="seqsepwrap">
+            <div class="seqscoreresult" style="display:none">hidden score result</div>
+            <p class="seqsep" role="heading">Part 1 of 2</p>
+            <div>
+              <div>
+                <p>State the Central Limit Theorem in your own words.</p>
+                <details><summary>Grading checklist</summary><div><table>
+                  <tr><td><b>Concept</b></td><td><label>Says sample means are approximately normal</label><label>Mentions a large enough n</label></td></tr>
+                  <tr><td><b>Communication</b></td><td><label>Uses course vocabulary</label></td></tr>
+                </table></div></details>
+              </div>
+              <div class="introtext" id="qnwrap2"><p>Sample means look normal when n is big.</p></div>
+            </div>
+          </div>
+          <div class="seqsepwrap">
+            <div class="seqscoreresult" style="display:none">hidden score result</div>
+            <p class="seqsep" role="heading">Part 2 of 2</p>
+            <div><details><summary>Rubric targets and model response</summary><div>
+              <table>
+                <tr><td><b>Concept</b></td><td><ul><li>Sampling distribution of the mean</li><li>Normal shape for large n</li></ul></td></tr>
+                <tr><td><b>Communication</b></td><td><ul><li>Complete sentences</li></ul></td></tr>
+              </table>
+              <div><p>For large samples, the distribution of sample means is approximately normal.</p></div>
+            </div></details></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="scoredetails">
+    <span class="person">Cruz, Jo: </span>
+    <input type="text" size="4" id="scorebox2-0" name="ud-1003-0-2-0" value="3.5" pattern="N\/A|\d*\.?\d*" aria-label="Score for part 1">
+    <input type="hidden" name="os-1003-0-2-0" value="3.5"><a href="#" class="rubriclink">Rubric</a>/5
+    <input type="text" size="4" id="scorebox2-1" name="ud-1003-0-2-1" value="N/A" pattern="N\/A|\d*\.?\d*" aria-label="Score for part 2">
+    <input type="hidden" name="os-1003-0-2-1" value="N/A">/5
+    <br/>Quick grade: <a href="#" class="fullcredlink">Full credit all parts</a>
+    <br/>Question Feedback:
+    <div class="fbbox skipmathrender" id="fb-0-2-1003" role="textbox" aria-label="Feedback"></div>
+    <br/>Question #3, version 1.
+  </div>
+</div>
+
+<!-- student 3 -->
+<div class="qfilter-nowork bigquestionwrap" data-lastchange="">
+  <div class="headerpane"><b>Diaz, Remy</b></div>
+  <div class="scrollpane">
+    <div class="questionwrap questionpane">
+      <div class="question" id="questionwrap3">
+        <div role="region" aria-label="Question 1">
+          <div>
+            <div>
+              <p>The regression line is <mjx-container aria-label="y hat equals 30 plus 9 x, math"><svg></svg></mjx-container>. Interpret the slope.</p>
+            </div>
+            <div class="introtext" id="qnwrap3"><p>The slope is <mjx-container aria-label="9, math"><svg></svg></mjx-container>, so each unit of x adds nine to the prediction.</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="scoredetails">
+    <span class="person">Diaz, Remy: </span>
+    <input type="text" size="4" id="scorebox3" name="ud-1004-0-2-0" value="" pattern="N\/A|\d*\.?\d*" aria-label="Score">
+    <input type="hidden" name="os-1004-0-2-0" value="">/10
+    <br/>Quick grade: <a href="#" class="fullcredlink">Full credit</a>
+    <br/>Question Feedback:
+    <div class="fbbox skipmathrender" id="fb-0-2-1004" role="textbox" aria-label="Feedback"></div>
+    <br/>Question #3, version 1.
+  </div>
+</div>
+
+<!-- student 4 -->
+<div class="qfilter-nowork bigquestionwrap" data-lastchange="1731300400">
+  <div class="headerpane"><b>Evans, Lee</b></div>
+  <div class="scrollpane">
+    <div class="questionwrap questionpane">
+      <div class="question" id="questionwrap4">
+        <div class="question qscope502" role="region" aria-label="Question 1">
+          Solve for x.
+          <br><br>
+          <input class="text ansgrn" aria-label="Question 1" type="hidden" name="qn4" id="qn4" value="x=3">
+          <span class="mathquill-math-field ansgrn" id="mqinput-qn4"><span class="mq-textarea"><textarea></textarea></span><span class="mq-root-block">x=3</span></span>
+          <span class="scoremarker sr-only">Correct</span>
+          <div class="autoshowans"><div><div>first</div></div><div><div>second</div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="scoredetails">
+    <span class="person">Evans, Lee: </span>
+    <input type="text" size="4" id="scorebox4" name="ud-1005-0-2-0" value="1" pattern="N\/A|\d*\.?\d*" aria-label="Score">
+    <input type="hidden" name="os-1005-0-2-0" value="1">/1
+    <br/>Question Feedback:
+    <div class="fbbox skipmathrender" id="fb-0-2-1005" role="textbox" aria-label="Feedback"></div>
+  </div>
+</div>
+
+<button type="submit">Save Changes</button>
+</form>
+
+<script>
+// Stand-ins for the parts of the real page that OGRE touches when it writes:
+// one inline rich text editor per feedback box (each with the hidden field
+// the form posts), and quicksave(), which posts the form and reports in
+// #quicksavenotice. Set window.__failSave to a message to make the save fail.
+(function () {
+  const editors = {};
+  document.querySelectorAll('div.fbbox').forEach((div) => {
+    div.contentEditable = 'true';
+    const hidden = document.createElement('input');
+    hidden.type = 'hidden';
+    hidden.name = div.id;
+    hidden.value = div.innerHTML;
+    div.after(hidden);
+    editors[div.id] = {
+      inline: true,
+      setContent(html) { div.innerHTML = html; },
+      getContent() { return div.innerHTML; },
+      save() { hidden.value = div.innerHTML; },
+      setDirty() {},
+    };
+  });
+  window.tinymce = {
+    get: (id) => (id === undefined ? Object.values(editors) : editors[id] || null),
+    triggerSave() { Object.values(editors).forEach((e) => e.save()); },
+  };
+  window.__posted = [];
+  window.quicksave = function () {
+    const notice = document.getElementById('quicksavenotice');
+    notice.textContent = 'Saving...';
+    window.tinymce.triggerSave();
+    const form = Object.fromEntries(new FormData(document.getElementById('mainform')));
+    setTimeout(() => {
+      if (window.__failSave) {
+        notice.textContent = window.__failSave;
+        return;
+      }
+      window.__posted.push(form);
+      notice.textContent = 'Saved';
+      setTimeout(() => { notice.innerHTML = '&nbsp;'; }, 400);
+    }, 150);
+  };
+  document.getElementById('quicksavebtn').addEventListener('click', window.quicksave);
+})();
+</script>
+</body>
+</html>

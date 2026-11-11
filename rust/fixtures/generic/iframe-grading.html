@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Iframe Grading Page</title>
+</head>
+<body>
+  <h1>Grading with Embedded iFrames</h1>
+  <p>Each student response is rendered inside an iframe.</p>
+
+  <!-- Student 1 -->
+  <div class="student-block" data-lastchange="1001">
+    <span class="student-name">Alice Johnson</span>
+    <iframe
+      id="response-frame-1"
+      src="about:blank"
+      title="Student 1 Response"
+      class="response-iframe"
+      width="600"
+      height="200"
+      sandbox="allow-scripts allow-same-origin"
+    ></iframe>
+    <div class="grade-row">
+      <input type="number" name="score_1" class="score-field" aria-label="Score out of 10" />
+      <span class="denominator">/ 10</span>
+    </div>
+  </div>
+
+  <!-- Student 2 -->
+  <div class="student-block" data-lastchange="1002">
+    <span class="student-name">Bob Smith</span>
+    <iframe
+      id="response-frame-2"
+      src="about:blank"
+      title="Student 2 Response"
+      class="response-iframe"
+      width="600"
+      height="200"
+      sandbox="allow-scripts allow-same-origin"
+    ></iframe>
+    <div class="grade-row">
+      <input type="number" name="score_2" class="score-field" aria-label="Score out of 10" />
+      <span class="denominator">/ 10</span>
+    </div>
+  </div>
+
+  <button id="submit-grades">Submit All</button>
+</body>
+</html>

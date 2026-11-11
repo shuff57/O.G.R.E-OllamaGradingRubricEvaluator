@@ -1,0 +1,31 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace.dependencies]
+ogre-agent = { path = "crates/ogre-agent" }
+ogre-core = { path = "crates/ogre-core" }
+ogre-grader = { path = "crates/ogre-grader" }
+ogre-harness = { path = "crates/ogre-harness" }
+ogre-llm = { path = "crates/ogre-llm" }
+
+ammonia = "4"
+async-trait = "0.1"
+chromiumoxide = { version = "0.9", default-features = false }
+eframe = { version = "0.37", features = ["persistence"] }
+egui_commonmark = { version = "0.26", default-features = false, features = ["pulldown_cmark"] }
+egui_extras = "0.37"
+futures = "0.3"
+htmd = "0.5"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+egui_kittest = { version = "0.37", features = ["eframe", "wgpu"] }
+keyring = "4"
+image = { version = "0.25", default-features = false, features = ["png"] }

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Messy Wrapper Nesting</title>
+</head>
+<body>
+  <!-- Deeply nested, lots of wrapper divs — stress test for DOM cleanup -->
+  <div>
+    <div>
+      <div>
+        <div class="outer-wrapper">
+          <div class="middle-wrapper">
+            <div class="inner-wrapper">
+
+              <!-- Student 1 with excessive wrapping -->
+              <div>
+                <div>
+                  <div data-lastchange="111" class="row">
+                    <div><div><span class="name">Alice Johnson</span></div></div>
+                    <div>
+                      <div>
+                        <div class="response-container">
+                          <div><div><p>Student wrote: 42</p></div></div>
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <div>
+                        <label>Grade: <input type="number" name="g1" /></label>
+                        <span>/ 5</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Student 2 with excessive wrapping -->
+              <div>
+                <div>
+                  <div data-lastchange="222" class="row">
+                    <div><div><span class="name">Bob Smith</span></div></div>
+                    <div>
+                      <div>
+                        <div class="response-container">
+                          <div><div><p>Student wrote: 7</p></div></div>
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <div>
+                        <label>Grade: <input type="number" name="g2" /></label>
+                        <span>/ 5</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Decorative clutter -->
+  <div class="decorative">
+    <svg><path d="M0 0 L100 100" /></svg>
+  </div>
+  <script>window.__analytics = true;</script>
+</body>
+</html>

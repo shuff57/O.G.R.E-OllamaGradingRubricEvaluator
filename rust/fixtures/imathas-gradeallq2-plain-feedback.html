@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Grade all questions - plain feedback fixture</title>
+<!--
+  Synthetic IMathAS (MyOpenMath) grading page for a teacher who has the rich
+  text editor turned off: feedback is a <textarea class="fbbox"> instead of an
+  editable div. Also uses the older layout where the name is a direct <b>
+  child of the student section. All names and responses are invented.
+-->
+</head>
+<body>
+<form id="mainform" method="post" action="gradeallq2.php?stu=0&amp;cid=1&amp;aid=2&amp;qid=3">
+<button type="button" id="quicksavebtn">Quick Save</button>
+<span class="noticetext" id="quicksavenotice">&nbsp;</span>
+
+<div class="bigquestionwrap" data-lastchange="1731300300">
+  <b>Ellis, Pat</b>
+  <div role="region" aria-label="Question 1">
+    <div>
+      <div><p>Explain why the mean is sensitive to outliers.</p></div>
+      <div class="introtext"><p>One huge value drags the mean toward it.</p></div>
+    </div>
+  </div>
+  <div class="scoredetails">
+    <input type="text" size="4" id="scorebox0" name="ud-2001-0-0-0" value="4" aria-label="Score">
+    <input type="hidden" name="os-2001-0-0-0" value="4">/5
+    <br/>Question Feedback:
+    <br/><textarea cols="60" rows="2" class="fbbox" id="fb-0-0-2001" name="fb-0-2001" aria-label="Feedback">Good idea, say why.</textarea>
+  </div>
+</div>
+
+<button type="submit">Save Changes</button>
+</form>
+
+<script>
+// Stand-in for the site's quicksave(): posts the form, reports in #quicksavenotice.
+window.__posted = [];
+document.getElementById('quicksavebtn').addEventListener('click', function () {
+  const notice = document.getElementById('quicksavenotice');
+  notice.textContent = 'Saving...';
+  const form = Object.fromEntries(new FormData(document.getElementById('mainform')));
+  setTimeout(() => {
+    window.__posted.push(form);
+    notice.textContent = 'Saved';
+    setTimeout(() => { notice.innerHTML = '&nbsp;'; }, 400);
+  }, 150);
+});
+</script>
+</body>
+</html>

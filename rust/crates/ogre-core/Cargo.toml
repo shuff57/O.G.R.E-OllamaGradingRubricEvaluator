@@ -1,0 +1,15 @@
+[package]
+name = "ogre-core"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+regex = "1"
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+# Without float_roundtrip serde_json can read a decimal one bit off, which the
+# comparison against JavaScript's results would report as a difference.
+serde_json = { workspace = true, features = ["float_roundtrip"] }

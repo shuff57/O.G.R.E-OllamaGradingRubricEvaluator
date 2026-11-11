@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Rich feedback - fixture</title>
+<!--
+  Written for the Rust tests of the generic site adapter; there is no
+  counterpart in the desktop app. A list of students, each with a rich text
+  feedback box and the hidden field the form posts in its place. All names
+  and answers are invented.
+
+  Cases covered:
+    student 501  ungraded, no feedback
+    student 502  already has points and feedback
+    student 503  ungraded, answer containing markup
+-->
+<style>
+  .fb { border: 1px solid #999; min-height: 2em; padding: 4px; }
+</style>
+</head>
+<body>
+<h1>Essay 2: Trade policy</h1>
+<form id="grades">
+<ul id="students">
+  <li class="student" data-student-id="501">
+    <a class="who" href="#">Dana Ortiz</a>
+    <div class="essay"><p>Tariffs raise prices for consumers.</p></div>
+    <label>Points <input type="text" name="pts[501]" value="0"></label> <span class="of">out of 8</span>
+    <div class="fb" id="fb501" contenteditable="true" role="textbox" aria-label="Feedback"></div>
+    <input type="hidden" name="fb[501]" value="">
+  </li>
+  <li class="student" data-student-id="502">
+    <a class="who" href="#">Eli Park</a>
+    <div class="essay"><p>Quotas limit supply, which protects local producers.</p></div>
+    <label>Points <input type="text" name="pts[502]" value="6"></label> <span class="of">out of 8</span>
+    <div class="fb" id="fb502" contenteditable="true" role="textbox" aria-label="Feedback"><p>See me.</p></div>
+    <input type="hidden" name="fb[502]" value="&lt;p&gt;See me.&lt;/p&gt;">
+  </li>
+  <li class="student" data-student-id="503">
+    <a class="who" href="#">Fay Quinn</a>
+    <div class="essay"><p>Free trade lets each country do what it does <em>best</em>.</p></div>
+    <label>Points <input type="text" name="pts[503]" value=""></label> <span class="of">out of 8</span>
+    <div class="fb" id="fb503" contenteditable="true" role="textbox" aria-label="Feedback"></div>
+    <input type="hidden" name="fb[503]" value="">
+  </li>
+</ul>
+</form>
+</body>
+</html>

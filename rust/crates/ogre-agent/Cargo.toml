@@ -1,0 +1,25 @@
+[package]
+name = "ogre-agent"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Only the driver traits and the chat types are needed here; the browser and
+# the HTTP client are for the tests.
+ogre-harness = { path = "../ogre-harness", default-features = false }
+ogre-llm = { path = "../ogre-llm", default-features = false }
+
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+
+base64 = "0.22"
+regex = "1"
+url = "2"
+
+[dev-dependencies]
+ogre-harness = { path = "../ogre-harness" }
+ogre-llm = { path = "../ogre-llm" }
+tokio = { workspace = true, features = ["test-util"] }

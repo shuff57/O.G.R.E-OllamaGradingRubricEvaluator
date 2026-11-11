@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sign in - agent fixture</title>
+<!--
+  Synthetic page for ogre-agent's tests. Nothing here is a real account.
+
+  Cases covered:
+    #password   a password field that already holds a value
+    #revealed   a password shown as text (a "show password" toggle), known only by its autocomplete
+    #pin        a passcode known only by its name
+    #trap       a text field that hands the keyboard focus to #password when focused
+    #covered    a harmless link lying under #overlay, a button that deletes
+    #embedded   a frame holding a delete button, which the page outside cannot see
+-->
+<style>
+  body { font-family: sans-serif; margin: 24px; }
+  label { display: block; margin: 10px 0; }
+  .stack { position: relative; width: 220px; height: 30px; margin-top: 20px; }
+  .stack > * { position: absolute; left: 0; top: 0; width: 220px; height: 30px; }
+</style>
+</head>
+<body>
+<h1>Sign in</h1>
+<form id="login" action="#" onsubmit="window.__submitted = (window.__submitted || 0) + 1; return false;">
+  <label>Username <input type="text" id="username" name="username" autocomplete="username"></label>
+  <label>Password <input type="password" id="password" name="password" value="s3cret-Fixture" autocomplete="current-password"></label>
+  <label>Confirm <input type="text" id="revealed" name="confirm" value="s3cret-Fixture" autocomplete="new-password"></label>
+  <label>Code <input type="text" id="pin" name="passcode" value="4821"></label>
+  <label>Search <input type="text" id="trap" name="q" onfocus="document.getElementById('password').focus()"></label>
+  <button type="submit" id="signin">Sign in</button>
+</form>
+<div class="stack">
+  <a id="covered" href="#docs">Docs</a>
+  <button type="button" id="overlay" onclick="window.__deleted = true">Delete account</button>
+</div>
+<iframe id="embedded" title="Embedded tool" width="220" height="60"
+  srcdoc="&lt;button onclick=&quot;parent.__frameDeleted = true&quot; style=&quot;position:fixed;inset:0;width:100%;height:100%&quot;&gt;Delete&lt;/button&gt;"></iframe>
+</body>
+</html>
