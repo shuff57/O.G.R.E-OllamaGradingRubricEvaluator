@@ -27,7 +27,7 @@ pub struct Session {
     /// One per student, in page order.
     pub rows: Vec<Row>,
     pub policy: WritePolicy,
-    /// Also grade students who already have points.
+    /// Also grade students who already have points or feedback.
     pub include_graded: bool,
     pub warnings: Vec<String>,
     /// Grades are in the page's form but the site has not stored them yet.
@@ -101,6 +101,8 @@ pub enum Note {
 pub enum Status {
     NoResponse,
     HasPoints,
+    /// No points, but feedback is there: graded, at zero.
+    HasFeedback,
     Ungraded,
     Ready,
     Held,
@@ -113,6 +115,7 @@ impl Status {
         match self {
             Self::NoResponse => "No response".into(),
             Self::HasPoints => "Has points".into(),
+            Self::HasFeedback => "Has feedback".into(),
             Self::Ungraded => "Ungraded".into(),
             Self::Ready => "Ready to write".into(),
             Self::Held => "Held back".into(),
@@ -169,9 +172,14 @@ impl Session {
         rubric
     }
 
+    /// A zero with feedback is a grade someone gave, not a blank.
+    fn already_graded(submission: &Submission) -> bool {
+        submission.has_nonzero_score() || submission.has_feedback()
+    }
+
     fn gradable(&self, submission: &Submission) -> bool {
         !submission.response.trim().is_empty()
-            && (self.include_graded || !submission.has_nonzero_score())
+            && (self.include_graded || !Self::already_graded(submission))
     }
 
     /// The students a grading run would send to the AI.
@@ -197,6 +205,7 @@ impl Session {
                 Err(reason) => Status::Skipped(reason),
             },
             None if submission.has_nonzero_score() => Status::HasPoints,
+            None if submission.has_feedback() => Status::HasFeedback,
             None if submission.response.trim().is_empty() => Status::NoResponse,
             None => Status::Ungraded,
         }
@@ -463,6 +472,25 @@ mod tests {
         s.include_graded = true;
         let names: Vec<_> = s.to_grade().into_iter().map(|w| w.name).collect();
         assert_eq!(names, ["Avery, Sam", "Brook, Kai", "Diaz, Remy"]);
+    }
+
+    #[test]
+    fn a_zero_with_feedback_counts_as_graded() {
+        let mut graded_zero = page();
+        graded_zero.submissions[1].feedback.as_mut().unwrap().text = "Off topic.".into();
+        let mut s = Session::new(ReadReport {
+            page: graded_zero,
+            rubric: Ok(Rubric::default()),
+            site: "MyOpenMath",
+            saves_on_write: false,
+            manual_save: false,
+        });
+        let names: Vec<_> = s.to_grade().into_iter().map(|w| w.name).collect();
+        assert_eq!(names, ["Diaz, Remy"], "Kai was given a zero on purpose");
+        assert_eq!(s.status(1), Status::HasFeedback);
+
+        s.include_graded = true;
+        assert_eq!(s.to_grade().len(), 3);
     }
 
     #[test]

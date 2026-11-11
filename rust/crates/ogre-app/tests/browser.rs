@@ -4,6 +4,8 @@
 //! Needs Chrome or Edge installed, so this is skipped by default:
 //!     cargo test -p ogre-app --test browser -- --ignored
 
+mod common;
+
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
@@ -11,18 +13,15 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use async_trait::async_trait;
+use common::{fixture, saved_page_sites};
 use ogre_app::{
     AgentAnswer, AgentRequest, Command, Event, GradeRequest, LineKind, ProviderSettings, Service,
     Worker,
 };
-use ogre_core::{GradeWrite, GradingPage, Rubric};
 use ogre_core::{StudentWork, WritePolicy, plan_write};
 use ogre_grader::CancelFlag;
 use ogre_harness::cdp::LaunchOptions;
-use ogre_harness::sites::imathas::IMathAs;
-use ogre_harness::sites::{SiteAdapter, Sites, WriteReceipt};
-use ogre_harness::{PageDriver, Result as PageResult};
+use ogre_harness::sites::Sites;
 use serde_json::{Value, json};
 
 /// Sends one command and waits for the event that ends it. Progress events
@@ -89,52 +88,6 @@ fn fake_ollama(
         }
     });
     (address, seen)
-}
-
-/// MyOpenMath's adapter, also answering for the saved copy of its page that
-/// these tests open from disk.
-struct SavedMyOpenMath;
-
-#[async_trait]
-impl SiteAdapter for SavedMyOpenMath {
-    fn name(&self) -> &'static str {
-        IMathAs.name()
-    }
-    fn matches(&self, url: &str) -> bool {
-        url.ends_with("/imathas-gradeallq2.html")
-    }
-    async fn read_page(&self, page: &dyn PageDriver) -> PageResult<GradingPage> {
-        IMathAs.read_page(page).await
-    }
-    async fn read_rubric(&self, page: &dyn PageDriver) -> PageResult<Rubric> {
-        IMathAs.read_rubric(page).await
-    }
-    async fn write_grade(
-        &self,
-        page: &dyn PageDriver,
-        write: &GradeWrite,
-    ) -> PageResult<WriteReceipt> {
-        IMathAs.write_grade(page, write).await
-    }
-    fn saves_on_write(&self) -> bool {
-        IMathAs.saves_on_write()
-    }
-    async fn save(&self, page: &dyn PageDriver) -> PageResult<()> {
-        IMathAs.save(page).await
-    }
-}
-
-fn saved_page_sites() -> Sites {
-    Sites::built_in().with(Arc::new(SavedMyOpenMath))
-}
-
-fn fixture(name: &str) -> String {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../fixtures")
-        .join(name)
-        .canonicalize()
-        .unwrap();
-    format!("file://{}", path.display())
 }
 
 fn audit_events(data_dir: &Path) -> Vec<Value> {

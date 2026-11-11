@@ -493,7 +493,7 @@ impl OgreApp {
             }
             ui.checkbox(
                 &mut session.include_graded,
-                "Include students who already have points",
+                "Include students who are already graded",
             );
         });
         if let Some(problem) = provider_problem {
