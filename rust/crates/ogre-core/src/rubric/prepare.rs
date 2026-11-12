@@ -12,9 +12,9 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use super::criteria::{
-    MODEL_RESPONSE_MARKER, RowType, RubricCriterion, auto_fill_weights, criteria_to_text,
-    equalize_weights, is_line_layout, is_rubric_line, pattern, plain_lines, pointed_lines,
-    reweighted_headings, text_to_criteria, unweighted_headings,
+    MODEL_RESPONSE_MARKER, RowType, RubricCriterion, WEIGHT_TOLERANCE, auto_fill_weights,
+    criteria_to_text, equalize_weights, is_line_layout, is_rubric_line, pattern, plain_lines,
+    pointed_lines, reweighted_headings, text_to_criteria, unweighted_headings,
 };
 use crate::grading::js::{self, WS};
 use crate::grading::{
@@ -430,50 +430,43 @@ pub struct CategoryShare {
     pub weight: f64,
 }
 
-/// The largest distance from 100 at which weights still count as adding up.
-const WEIGHT_TOLERANCE: f64 = 0.5;
-
 /// The named categories of edited rubric text, in order, each with the
 /// weight grading will use for it. Empty for text without headings and for
 /// text that is not laid out one requirement per line.
 pub fn category_shares(edited: &str) -> Vec<CategoryShare> {
+    shares(&weighted_rows(edited))
+}
+
+/// The rows of edited rubric text, with the weights grading will use where
+/// the text names none. Empty for text that is not laid out one requirement
+/// per line.
+fn weighted_rows(edited: &str) -> Vec<RubricCriterion> {
     let text = grading_text(edited);
     if !is_line_layout(&text) {
         return Vec::new();
     }
-    shares(&text_to_criteria(&with_default_weights(
-        &text,
-        DEFAULT_WEIGHT_MODE,
-    )))
+    text_to_criteria(&with_default_weights(&text, DEFAULT_WEIGHT_MODE))
 }
 
 /// Each named category once, with the first weight given for it.
 fn shares(rows: &[RubricCriterion]) -> Vec<CategoryShare> {
-    let mut shares: Vec<(CategoryShare, bool)> = Vec::new();
+    let mut found: Vec<(&str, Option<f64>)> = Vec::new();
     for row in rows {
         let Some(category) = row.category.as_deref() else {
             continue;
         };
-        match shares
-            .iter_mut()
-            .find(|(share, _)| share.category == category)
-        {
-            Some((share, weighted)) => {
-                if let Some(weight) = row.category_weight.filter(|_| !*weighted) {
-                    share.weight = weight;
-                    *weighted = true;
-                }
-            }
-            None => shares.push((
-                CategoryShare {
-                    category: category.to_owned(),
-                    weight: row.category_weight.unwrap_or(0.0),
-                },
-                row.category_weight.is_some(),
-            )),
+        match found.iter_mut().find(|(name, _)| *name == category) {
+            Some((_, weight)) => *weight = weight.or(row.category_weight),
+            None => found.push((category, row.category_weight)),
         }
     }
-    shares.into_iter().map(|(share, _)| share).collect()
+    found
+        .into_iter()
+        .map(|(category, weight)| CategoryShare {
+            category: category.to_owned(),
+            weight: weight.unwrap_or(0.0),
+        })
+        .collect()
 }
 
 /// True when edited rubric text itself says how much a category counts, as
@@ -528,11 +521,7 @@ pub fn with_equal_category_weights(edited: &str) -> String {
 /// would: a class graded against weights that do not add up to 100 has
 /// every score scaled by what they do add up to.
 pub fn category_weight_problem(edited: &str) -> Option<String> {
-    let text = grading_text(edited);
-    if !is_line_layout(&text) {
-        return None;
-    }
-    let rows = text_to_criteria(&with_default_weights(&text, DEFAULT_WEIGHT_MODE));
+    let rows = weighted_rows(edited);
     let shares = shares(&rows);
     if shares.is_empty() {
         return None;

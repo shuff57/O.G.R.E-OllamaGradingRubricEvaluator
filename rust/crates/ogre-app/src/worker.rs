@@ -46,7 +46,8 @@ pub enum Command {
     },
     /// Shut Chrome down. With a window of its own the teacher closes that.
     StopChrome,
-    /// Open this address in a new tab.
+    /// Open this address: in the tab on show where the page is shown inside
+    /// the window, otherwise in a new tab.
     Open(String),
     ReadStudents,
     /// Take the grading tab to another question's page and read it.
@@ -383,12 +384,12 @@ impl Worker {
         let _ = self.answers.send(answer);
     }
 
-    /// Events that have arrived since the last call.
     /// The page shown inside the window, where Chrome runs without one.
     pub fn view(&self) -> &ViewLink {
         &self.view
     }
 
+    /// Events that have arrived since the last call.
     pub fn poll(&self) -> impl Iterator<Item = Event> + '_ {
         self.events.try_iter()
     }
@@ -592,7 +593,7 @@ impl Task {
             Command::Open(address) => {
                 // Shown inside the window there is one tab the teacher looks
                 // at, and that is the one to send somewhere.
-                let page = match tab_view::shown_tab(&self.shown).filter(|_| self.inside) {
+                let page = match self.shown_tab() {
                     Some(page) => {
                         page.navigate(&address).await?;
                         page
@@ -853,18 +854,24 @@ impl Task {
         ))
     }
 
-    /// The tab a new mapping is worked out on: the one OGRE opened last, or
-    /// failing that the first tab showing a web page.
+    /// The tab shown inside the window, where the page is shown there. The
+    /// tab is forgotten a moment after the switch is turned off, so the
+    /// switch is asked too.
+    fn shown_tab(&self) -> Option<CdpPage> {
+        tab_view::shown_tab(&self.shown).filter(|_| self.inside)
+    }
+
+    /// The tab the teacher means by "the page": the one shown inside the
+    /// window, else the one OGRE opened last, or failing that the first tab
+    /// showing a web page.
     async fn current_tab(&self) -> Result<CdpPage> {
-        if let Some(page) = tab_view::shown_tab(&self.shown).filter(|_| self.inside)
-            && page.url().await.is_ok()
+        for page in [self.shown_tab(), self.opened.clone()]
+            .into_iter()
+            .flatten()
         {
-            return Ok(page);
-        }
-        if let Some(page) = &self.opened
-            && page.url().await.is_ok()
-        {
-            return Ok(page.clone());
+            if page.url().await.is_ok() {
+                return Ok(page);
+            }
         }
         for page in self.chrome()?.pages().await? {
             let url = page.url().await?;

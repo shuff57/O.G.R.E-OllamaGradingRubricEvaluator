@@ -254,17 +254,22 @@ pub fn bundled_site_profiles() -> Vec<Skill> {
     .collect()
 }
 
-fn patterns(skill: &Skill) -> impl Iterator<Item = &str> {
-    skill
-        .url_patterns
-        .iter()
-        .flat_map(|pattern| pattern.split(','))
-        .map(str::trim)
-        .filter(|pattern| !pattern.is_empty())
+impl Skill {
+    /// The parts of addresses this skill is for. A pattern may hold several,
+    /// with commas between.
+    pub fn sites(&self) -> impl Iterator<Item = &str> {
+        self.url_patterns
+            .iter()
+            .flat_map(|pattern| pattern.split(','))
+            .map(str::trim)
+            .filter(|pattern| !pattern.is_empty())
+    }
 }
 
 fn matches_url(skill: &Skill, lower_url: &str) -> bool {
-    patterns(skill).any(|pattern| lower_url.contains(&pattern.to_lowercase()))
+    skill
+        .sites()
+        .any(|pattern| lower_url.contains(&pattern.to_lowercase()))
 }
 
 /// The skills whose URL patterns occur in `url`, ignoring case.
@@ -359,7 +364,7 @@ pub fn skill_context_for(url: &str, skills: &[Skill]) -> SkillContext {
     let mut active: Vec<&Skill> = skills
         .iter()
         .filter(|skill| skill.active)
-        .filter(|skill| patterns(skill).next().is_none() || matches_url(skill, &lower_url))
+        .filter(|skill| skill.sites().next().is_none() || matches_url(skill, &lower_url))
         .collect();
     active.sort_by(|a, b| a.name.cmp(&b.name));
 

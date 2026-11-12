@@ -12,6 +12,7 @@
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
+use eframe::egui::ColorImage;
 use ogre_harness::cdp::{CdpPage, Held, MouseAction, PageDialog, TabView, ViewEvent, ViewSize};
 use ogre_harness::{InputDriver, PageDriver};
 use tokio::sync::mpsc;
@@ -49,22 +50,16 @@ pub enum ViewInput {
     Cut,
 }
 
-/// A decoded picture of the tab.
-#[derive(Clone, PartialEq, Eq)]
-pub struct Picture {
-    /// Width and height in picture pixels.
-    pub size: [usize; 2],
-    /// Four bytes a pixel: red, green, blue, opacity.
-    pub rgba: Vec<u8>,
-}
-
 /// What the worker tells the window about the tab on show.
 #[derive(Default)]
 pub struct ViewState {
     /// True while a tab is being shown.
     pub showing: bool,
+    /// True while the window is drawing the tab's pictures. A picture that
+    /// arrives while it is not waits here without waking the window.
+    pub watched: bool,
     /// The newest picture the window has not drawn yet.
-    pub picture: Option<Picture>,
+    pub picture: Option<ColorImage>,
     /// Where the tab is.
     pub address: String,
     /// What the page is asking, until it is answered.
@@ -151,8 +146,8 @@ pub(crate) async fn run(
                 Some(Control::Hide) => switch_to = Some(None),
                 None => break,
             },
-            Some(input) = inputs.recv() => match (input, &view) {
-                (ViewInput::Size(new), _) => {
+            Some(input) = inputs.recv() => match (input, view.as_mut()) {
+                (ViewInput::Size(new), mut view) => {
                     // Only the last of a run of sizes matters.
                     let mut new = new;
                     let mut after = None;
@@ -167,11 +162,11 @@ pub(crate) async fn run(
                     }
                     if new != size {
                         size = new;
-                        if let Some(view) = &view {
+                        if let Some(view) = view.as_deref_mut() {
                             let _ = view.resize(size).await;
                         }
                     }
-                    if let (Some(after), Some(view)) = (after, &view) {
+                    if let (Some(after), Some(view)) = (after, view) {
                         let _ = to_page.send((view.page().clone(), after));
                     }
                 }
@@ -190,8 +185,14 @@ pub(crate) async fn run(
             event = next_event(&mut view) => match event {
                 Some(ViewEvent::Picture(jpeg)) => {
                     if let Some(picture) = decode(&jpeg) {
-                        link.state().picture = Some(picture);
-                        wake();
+                        let watched = {
+                            let mut state = link.state();
+                            state.picture = Some(picture);
+                            state.watched
+                        };
+                        if watched {
+                            wake();
+                        }
                     }
                 }
                 Some(ViewEvent::Asks(dialog)) => {
@@ -205,18 +206,14 @@ pub(crate) async fn run(
                 Some(ViewEvent::Moved(address)) => {
                     link.state().address = address;
                     wake();
-                    // Chrome draws the new page in a process of its own and
-                    // can go on sending pictures of the old one, which never
-                    // changes again. Asking afresh gets the new page.
                     if let Some(view) = &view {
-                        let _ = view.resize(size).await;
+                        let _ = view.restart_pictures().await;
                     }
                 }
                 // The tab was closed: show another if there is one.
                 None => {
-                    let closed = view.take().map(|view| view.page().clone());
-                    let others = match &closed {
-                        Some(closed) => closed.browser_tabs().await.unwrap_or_default(),
+                    let others = match view.take() {
+                        Some(closed) => closed.page().browser_tabs().await.unwrap_or_default(),
                         None => Vec::new(),
                     };
                     switch_to = Some(others.into_iter().next_back());
@@ -347,11 +344,10 @@ fn is_plain_move(input: &ViewInput) -> bool {
     )
 }
 
-fn decode(jpeg: &[u8]) -> Option<Picture> {
+/// A picture as the window draws it. Done here, off the window's thread.
+fn decode(jpeg: &[u8]) -> Option<ColorImage> {
     let image = image::load_from_memory_with_format(jpeg, image::ImageFormat::Jpeg).ok()?;
-    let image = image.into_rgba8();
-    Some(Picture {
-        size: [image.width() as usize, image.height() as usize],
-        rgba: image.into_raw(),
-    })
+    let image = image.into_rgb8();
+    let size = [image.width() as usize, image.height() as usize];
+    Some(ColorImage::from_rgb(size, image.as_raw()))
 }

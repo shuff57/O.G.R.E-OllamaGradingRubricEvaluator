@@ -288,8 +288,7 @@ impl Session {
         if !same_page {
             return;
         }
-        self.rubric_text.clone_from(&earlier.rubric_text);
-        self.rubric_text_changed();
+        self.set_rubric_text(earlier.rubric_text.clone());
         self.instructions.clone_from(&earlier.instructions);
         self.examples.clone_from(&earlier.examples);
         self.examples_basis.clone_from(&earlier.examples_basis);
@@ -319,10 +318,14 @@ impl Session {
         self.outline = RubricOutline::of(&self.rubric, &self.rubric_text);
     }
 
+    fn set_rubric_text(&mut self, text: String) {
+        self.rubric_text = text;
+        self.rubric_text_changed();
+    }
+
     /// Puts the rubric text back to what the page gave.
     pub fn restore_rubric_text(&mut self) {
-        self.rubric_text.clone_from(&self.rubric_text_as_read);
-        self.rubric_text_changed();
+        self.set_rubric_text(self.rubric_text_as_read.clone());
     }
 
     /// What the grader will find in the rubric text.
@@ -333,8 +336,7 @@ impl Session {
     /// Puts a saved rubric in place of the one in hand. Its instructions and
     /// scoring examples come with it where it has any.
     pub fn use_saved(&mut self, saved: &SavedRubric) {
-        self.rubric_text.clone_from(&saved.text);
-        self.rubric_text_changed();
+        self.set_rubric_text(saved.text.clone());
         if !saved.instructions.trim().is_empty() {
             self.instructions.clone_from(&saved.instructions);
         }
@@ -374,27 +376,23 @@ impl Session {
     /// Replaces the requirements with ones that came from elsewhere, such
     /// as a picture of the page. The exemplar answer stays.
     pub fn set_requirements(&mut self, requirements: &str) {
-        self.rubric_text = with_requirements(&self.rubric_text, requirements);
-        self.rubric_text_changed();
+        self.set_rubric_text(with_requirements(&self.rubric_text, requirements));
     }
 
     /// Makes `category` count for `weight` percent of the grade. Every
     /// category's weight is then written in the rubric text.
     pub fn set_category_weight(&mut self, category: &str, weight: f64) {
-        self.rubric_text = with_category_weight(&self.rubric_text, category, weight);
-        self.rubric_text_changed();
+        self.set_rubric_text(with_category_weight(&self.rubric_text, category, weight));
     }
 
     /// Writes the same weight for every category into the rubric text.
     pub fn share_weights_equally(&mut self) {
-        self.rubric_text = with_equal_category_weights(&self.rubric_text);
-        self.rubric_text_changed();
+        self.set_rubric_text(with_equal_category_weights(&self.rubric_text));
     }
 
     /// Takes the weights out of the rubric text.
     pub fn remove_weights(&mut self) {
-        self.rubric_text = without_category_weights(&self.rubric_text);
-        self.rubric_text_changed();
+        self.set_rubric_text(without_category_weights(&self.rubric_text));
     }
 
     /// Call when the AI is asked to write scoring examples, with the

@@ -3,7 +3,7 @@ use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use egui_extras::{Column, TableBuilder};
 use ogre_core::format_score;
 use ogre_grader::CancelFlag;
-use ogre_harness::cdp::{DialogKind, Held, MouseAction, MouseButton, ViewSize};
+use ogre_harness::cdp::DialogKind;
 
 use crate::agent_run::{
     AgentAnswer, AgentLine, AgentQuestion, AgentRequest, AgentSummary, LineKind, SkillSummary,
@@ -13,15 +13,24 @@ use crate::history::{self, PastProposal, PastSession, SessionEnd};
 use crate::keys::KeyStore;
 use crate::kit;
 use crate::profiles::ProfileSummary;
-use crate::rubrics::SavedRubric;
-use crate::session::{Note, RubricOutline, Session, Status, count, score_text};
+use crate::session::{Note, Session, Status, count, score_text};
 use crate::settings::{
     AS_WRITTEN_LENIENCY, DEFAULT_LENIENCY, STORAGE_KEY, Service, Settings, engine_leniency,
     old_app_provider,
 };
 use crate::tab_view::ViewInput;
 use crate::theme::{self, icon, pal, ty};
-use crate::worker::{Command, Event, ExamplesRequest, GradeRequest, MapReport, Worker};
+use crate::worker::{
+    Command, Event, ExamplesRequest, GradeRequest, MapReport, OutsideRubric, Worker,
+};
+
+mod browser;
+mod rubric_card;
+mod skills;
+
+use self::browser::BrowserView;
+use self::rubric_card::RubricShelf;
+use self::skills::SkillEdit;
 
 pub struct OgreApp {
     worker: Worker,
@@ -49,16 +58,7 @@ pub struct OgreApp {
     /// Good news from the last step, such as a confirmed save.
     notice: Option<String>,
     markdown: CommonMarkCache,
-    /// The teacher's saved rubrics.
-    saved_rubrics: Vec<SavedRubric>,
-    /// The saved rubric chosen in the rubric card, by name.
-    rubric_pick: Option<String>,
-    /// The name the rubric in hand would be saved under.
-    rubric_name: String,
-    /// The chosen saved rubric is about to be deleted, once confirmed.
-    deleting_rubric: bool,
-    /// The name of the rubric being saved right now.
-    saving_rubric: Option<String>,
+    shelf: RubricShelf,
     /// The teacher's saved site mappings.
     profiles: Vec<ProfileSummary>,
     /// A mapping that was just worked out and is waiting to be saved.
@@ -70,68 +70,6 @@ pub struct OgreApp {
     agent: AgentView,
     browser: BrowserView,
 }
-
-/// The Browser screen's state: the page as last drawn, and where the mouse
-/// stands with it.
-#[derive(Default)]
-struct BrowserView {
-    /// The newest picture of the page.
-    picture: Option<egui::TextureHandle>,
-    /// The size the page was last asked to be drawn at.
-    size: Option<ViewSize>,
-    /// The address the page was last known to be at, to notice it moving.
-    address: String,
-    /// The mouse button that went down on the page and is still down, with
-    /// its place in a run of clicks.
-    down: Option<(MouseButton, u32)>,
-    /// When and where the last press was, to tell a double click.
-    last_press: Option<(f64, egui::Pos2, u32)>,
-}
-
-/// The form a skill is written in.
-#[derive(Default)]
-struct SkillEdit {
-    /// The skill being changed. `None` for a new one.
-    id: Option<String>,
-    name: String,
-    description: String,
-    /// The sites it guides the agent on, separated by commas.
-    sites: String,
-    body: String,
-}
-
-impl SkillEdit {
-    fn of(skill: &SkillSummary) -> Option<Self> {
-        let draft = skill.draft.as_ref()?;
-        Some(Self {
-            id: Some(skill.id.clone()),
-            name: draft.name.clone(),
-            description: draft.description.clone(),
-            sites: draft.sites.join(", "),
-            body: draft.body.clone(),
-        })
-    }
-
-    fn draft(&self) -> ogre_agent::SkillDraft {
-        ogre_agent::SkillDraft {
-            name: self.name.trim().to_owned(),
-            description: self.description.trim().to_owned(),
-            sites: self
-                .sites
-                .split(',')
-                .map(|site| site.trim().to_owned())
-                .filter(|site| !site.is_empty())
-                .collect(),
-            body: self.body.trim().to_owned(),
-        }
-    }
-}
-
-/// Two presses this close in time and place are a double click.
-const DOUBLE_CLICK_SECONDS: f64 = 0.4;
-const DOUBLE_CLICK_DISTANCE: f32 = 5.0;
-/// How far one notch of a mouse wheel scrolls, in the page's own pixels.
-const WHEEL_LINE: f32 = 40.0;
 
 /// The Agent screen's state.
 #[derive(Default)]
@@ -179,9 +117,6 @@ struct Busy {
     /// When the window first drew this work, in the window's own seconds.
     started: Option<f64>,
 }
-
-/// How much of the window's height an open rubric may take before it scrolls.
-const RUBRIC_SHARE_OF_WINDOW: f32 = 0.42;
 
 /// Work shorter than this shows no clock.
 const CLOCK_AFTER_SECONDS: f64 = 5.0;
@@ -284,11 +219,7 @@ impl OgreApp {
             error: None,
             notice: None,
             markdown: CommonMarkCache::default(),
-            saved_rubrics: Vec::new(),
-            rubric_pick: None,
-            rubric_name: String::new(),
-            deleting_rubric: false,
-            saving_rubric: None,
+            shelf: RubricShelf::default(),
             profiles: Vec::new(),
             history: Vec::new(),
             history_open: None,
@@ -368,7 +299,8 @@ impl OgreApp {
                 Event::Read(mut read) => {
                     self.selected = None;
                     self.leaving = None;
-                    self.set_saved_rubrics(std::mem::take(&mut read.saved_rubrics));
+                    self.shelf
+                        .set_saved(std::mem::take(&mut read.saved_rubrics));
                     let mut session = Session::new(read);
                     if let Some(earlier) = &self.session {
                         session.keep_setup_from(earlier);
@@ -401,40 +333,26 @@ impl OgreApp {
                     }
                 }
                 Event::Examples(Err(problem)) => self.error = Some(problem),
-                Event::RubricRead(Ok(read)) => {
-                    if let Some(session) = &mut self.session {
-                        session.set_requirements(&read.requirements);
-                        if self.rubric_name.trim().is_empty() {
-                            self.rubric_name = read.name;
-                        }
-                        self.notice = Some(format!(
-                            "Read a rubric of {} from the picture of the page. Check it \
-                             against the page before grading.",
-                            count(read.parts, "part")
-                        ));
-                    }
-                }
+                Event::RubricRead(Ok(read)) => self.take_outside_rubric(read, |parts| {
+                    format!(
+                        "Read a rubric of {parts} from the picture of the page. Check it \
+                         against the page before grading."
+                    )
+                }),
                 Event::RubricRead(Err(problem)) | Event::RubricDrafted(Err(problem)) => {
                     self.error = Some(problem);
                 }
-                Event::RubricDrafted(Ok(draft)) => {
-                    if let Some(session) = &mut self.session {
-                        session.set_requirements(&draft.requirements);
-                        if self.rubric_name.trim().is_empty() {
-                            self.rubric_name = draft.name;
-                        }
-                        self.notice = Some(format!(
-                            "The AI drafted a rubric of {} from the question. It is a starting \
-                             point: read it and change it before grading.",
-                            count(draft.parts, "part")
-                        ));
-                    }
-                }
+                Event::RubricDrafted(Ok(draft)) => self.take_outside_rubric(draft, |parts| {
+                    format!(
+                        "The AI drafted a rubric of {parts} from the question. It is a \
+                         starting point: read it and change it before grading."
+                    )
+                }),
                 Event::Rubrics(rubrics) => {
-                    self.set_saved_rubrics(rubrics);
-                    if let Some(name) = self.saving_rubric.take() {
+                    self.shelf.set_saved(rubrics);
+                    if let Some(name) = self.shelf.saving.take() {
                         self.notice = Some(format!("Saved the rubric as \u{201c}{name}\u{201d}."));
-                        self.rubric_pick = Some(name);
+                        self.shelf.pick = Some(name);
                     }
                 }
                 Event::Written(report) => {
@@ -494,7 +412,7 @@ impl OgreApp {
                     self.agent.skills_folder = folder;
                 }
                 Event::Failed(message) => {
-                    self.saving_rubric = None;
+                    self.shelf.saving = None;
                     self.agent.saving_skill = None;
                     self.agent.running = false;
                     self.agent.question = None;
@@ -578,12 +496,12 @@ impl OgreApp {
             }
             Action::SaveRubric => {
                 let Some(session) = &self.session else { return };
-                let rubric = session.as_saved(&self.rubric_name);
-                self.saving_rubric = Some(rubric.name.clone());
+                let rubric = session.as_saved(&self.shelf.name);
+                self.shelf.saving = Some(rubric.name.clone());
                 self.send(Command::SaveRubric(Box::new(rubric)), "Saving the rubric…");
             }
             Action::DeleteRubric(name) => {
-                self.deleting_rubric = false;
+                self.shelf.deleting = false;
                 self.send(Command::DeleteRubric(name), "Deleting the saved rubric…");
             }
             Action::StopGrading => self.worker.cancel(),
@@ -622,14 +540,18 @@ impl OgreApp {
             }
             Action::Show(screen) => {
                 self.screen = screen;
-                if screen == Screen::Sites && self.busy.is_none() {
-                    self.send(Command::ListProfiles, "Loading your sites…");
-                }
-                if screen == Screen::History && self.busy.is_none() {
-                    self.send(Command::ListHistory, "Loading your history…");
-                }
-                if screen == Screen::Agent && self.busy.is_none() {
-                    self.send(Command::ListSkills, "Looking at what the agent knows…");
+                let listing = match screen {
+                    Screen::Sites => Some((Command::ListProfiles, "Loading your sites…")),
+                    Screen::History => Some((Command::ListHistory, "Loading your history…")),
+                    Screen::Agent => {
+                        Some((Command::ListSkills, "Looking at what the agent knows…"))
+                    }
+                    Screen::Grade | Screen::Browser | Screen::Settings => None,
+                };
+                if let Some((command, label)) = listing
+                    && self.busy.is_none()
+                {
+                    self.send(command, label);
                 }
             }
             Action::ListSkills => {
@@ -708,14 +630,22 @@ impl OgreApp {
         }
     }
 
-    /// Takes the saved rubrics as the worker now has them.
-    fn set_saved_rubrics(&mut self, rubrics: Vec<SavedRubric>) {
-        self.saved_rubrics = rubrics;
-        let still_there = |name: &String| self.saved_rubrics.iter().any(|r| r.name == *name);
-        if !self.rubric_pick.as_ref().is_some_and(still_there) {
-            self.rubric_pick = None;
-            self.deleting_rubric = false;
+    /// Puts a rubric that did not come from the page's own into the editor,
+    /// and says so with `notice`, which is given how many parts it has.
+    fn take_outside_rubric(&mut self, rubric: OutsideRubric, notice: impl FnOnce(&str) -> String) {
+        let Some(session) = &mut self.session else {
+            return;
+        };
+        session.set_requirements(&rubric.requirements);
+        if self.shelf.name.trim().is_empty() {
+            self.shelf.name = rubric.name;
         }
+        self.notice = Some(notice(&count(rubric.parts, "part")));
+    }
+
+    /// Why the AI service cannot be asked anything yet, if it cannot.
+    fn provider_problem(&self) -> Option<&'static str> {
+        self.settings.provider.problem(self.key().is_some())
     }
 
     fn key(&self) -> Option<String> {
@@ -849,301 +779,14 @@ impl OgreApp {
                 Some("Cancel"),
             ),
         };
-        kit::icon_line(ui, icon::WARNING, &question, pal().warn);
-        ui.horizontal(|ui| {
-            if kit::ghost(ui, yes, true).clicked() {
-                view.send(ViewInput::Answer(true));
-            }
-            if let Some(no) = no
-                && kit::ghost(ui, no, true).clicked()
-            {
-                view.send(ViewInput::Answer(false));
-            }
-        });
-    }
-
-    fn browser_screen(&mut self, ui: &mut egui::Ui, actions: &mut Vec<Action>) {
-        let idle = self.busy.is_none();
-        egui::CentralPanel::default()
-            .frame(Frame::new().inner_margin(CONTENT_MARGIN))
-            .show(ui, |ui| {
-                if !self.chrome_running {
-                    kit::page_header(
-                        ui,
-                        "OGRE  /  Browser",
-                        "Browser",
-                        Some(
-                            "The page Chrome is on, shown here instead of in a window of its own.",
-                        ),
-                    );
-                    self.browser_card(ui, actions);
-                    return;
-                }
-                // The address box follows the page, except while it is typed in.
-                let at = self.worker.view().state().address.clone();
-                if at != self.browser.address {
-                    self.browser.address.clone_from(&at);
-                    self.address = at;
-                }
-                kit::card().show(ui, |ui| {
-                    ui.set_width(ui.available_width());
-                    ui.horizontal(|ui| {
-                        let view = self.worker.view();
-                        if kit::icon_button(ui, icon::BACK, "Back", true).clicked() {
-                            view.send(ViewInput::Back);
-                        }
-                        if kit::icon_button(ui, icon::FORWARD, "Forward", true).clicked() {
-                            view.send(ViewInput::Forward);
-                        }
-                        if kit::icon_button(ui, icon::RELOAD, "Reload the page", true).clicked() {
-                            view.send(ViewInput::Reload);
-                        }
-                        let stop = ui
-                            .with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                let stop = kit::ghost(ui, "Stop Chrome", idle);
-                                let go = kit::ghost(ui, "Go", idle);
-                                let address = ui.add(
-                                    egui::TextEdit::singleline(&mut self.address)
-                                        .hint_text("Address")
-                                        .desired_width(f32::INFINITY),
-                                );
-                                let entered = address.lost_focus()
-                                    && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                                let address = self.address.trim();
-                                if idle && !address.is_empty() && (go.clicked() || entered) {
-                                    actions.push(Action::Open(address.to_owned()));
-                                }
-                                stop.clicked()
-                            })
-                            .inner;
-                        if stop {
-                            actions.push(Action::StopChrome);
-                        }
-                    });
-                    self.messages(ui, actions);
-                });
-                ui.add_space(4.0);
-                self.page(ui);
-            });
-    }
-
-    /// The page itself: its picture, and the teacher's mouse and keyboard
-    /// passed on to it.
-    fn page(&mut self, ui: &mut egui::Ui) {
-        let view = self.worker.view().clone();
-        let rect = ui.available_rect_before_wrap();
-        let response = ui.allocate_rect(rect, egui::Sense::click_and_drag());
-        response.widget_info(|| {
-            egui::WidgetInfo::labeled(egui::Role::Canvas, true, "The page in Chrome")
-        });
-        ui.painter().rect_filled(rect, 0, pal().card);
-
-        let size = ViewSize {
-            width: rect.width().round().max(1.0) as u32,
-            height: rect.height().round().max(1.0) as u32,
-            scale: f64::from(ui.ctx().pixels_per_point()),
-        };
-        if self.browser.size != Some(size) {
-            self.browser.size = Some(size);
-            view.send(ViewInput::Size(size));
-        }
-
-        let (picture, showing, copied) = {
-            let mut state = view.state();
-            (state.picture.take(), state.showing, state.copied.take())
-        };
-        if let Some(copied) = copied {
-            ui.ctx().copy_text(copied);
-        }
-        if let Some(picture) = picture {
-            let image = egui::ColorImage::from_rgba_unmultiplied(picture.size, &picture.rgba);
-            let options = egui::TextureOptions::LINEAR;
-            match &mut self.browser.picture {
-                Some(texture) => texture.set(image, options),
-                None => {
-                    self.browser.picture = Some(ui.ctx().load_texture("page", image, options));
-                }
-            }
-        }
-        if !showing {
-            self.browser.picture = None;
-        }
-        match &self.browser.picture {
-            Some(texture) => {
-                let whole = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
-                ui.painter()
-                    .image(texture.id(), rect, whole, egui::Color32::WHITE);
-            }
-            None => {
-                ui.painter().text(
-                    rect.center(),
-                    egui::Align2::CENTER_CENTER,
-                    "Waiting for Chrome to draw the page\u{2026}",
-                    egui::FontId::proportional(ty::BODY),
-                    pal().muted,
-                );
-            }
-        }
-        ui.painter().rect_stroke(
-            rect,
-            0,
-            egui::Stroke::new(1.0, pal().border),
-            egui::StrokeKind::Inside,
-        );
-        if response.has_focus() {
-            // Tab, the arrows and Escape belong to the page while it is typed in.
-            let keys = egui::EventFilter {
-                tab: true,
-                horizontal_arrows: true,
-                vertical_arrows: true,
-                escape: true,
-            };
-            ui.memory_mut(|memory| memory.set_focus_lock_filter(response.id, keys));
-        }
-
-        let (events, now, pointer) =
-            ui.input(|i| (i.events.clone(), i.time, i.pointer.latest_pos()));
-        let on_page =
-            |pos: egui::Pos2| (f64::from(pos.x - rect.min.x), f64::from(pos.y - rect.min.y));
-        let held = |m: egui::Modifiers| Held {
-            alt: m.alt,
-            ctrl: m.ctrl,
-            meta: m.mac_cmd,
-            shift: m.shift,
-        };
-        for event in events {
-            match event {
-                egui::Event::PointerMoved(pos)
-                    if self.browser.down.is_some() || response.contains_pointer() =>
-                {
-                    let (x, y) = on_page(pos);
-                    let action = MouseAction::Move {
-                        held: matches!(self.browser.down, Some((MouseButton::Left, _))),
-                    };
-                    view.send(ViewInput::Mouse {
-                        action,
-                        x,
-                        y,
-                        held: Held::default(),
-                    });
-                }
-                egui::Event::PointerButton {
-                    pos,
-                    button,
-                    pressed,
-                    modifiers,
-                } => {
-                    let button = match button {
-                        egui::PointerButton::Primary => MouseButton::Left,
-                        egui::PointerButton::Secondary => MouseButton::Right,
-                        egui::PointerButton::Middle => MouseButton::Middle,
-                        _ => continue,
-                    };
-                    let (x, y) = on_page(pos);
-                    let action = if pressed {
-                        if !response.contains_pointer() {
-                            continue;
-                        }
-                        let clicks = match self.browser.last_press {
-                            Some((when, at, clicks))
-                                if now - when <= DOUBLE_CLICK_SECONDS
-                                    && at.distance(pos) <= DOUBLE_CLICK_DISTANCE =>
-                            {
-                                clicks + 1
-                            }
-                            _ => 1,
-                        };
-                        self.browser.last_press = Some((now, pos, clicks));
-                        self.browser.down = Some((button, clicks));
-                        response.request_focus();
-                        MouseAction::Press { button, clicks }
-                    } else {
-                        // Only a button that went down on the page comes up on it.
-                        let Some((down, clicks)) = self.browser.down.take() else {
-                            continue;
-                        };
-                        if down != button {
-                            self.browser.down = Some((down, clicks));
-                            continue;
-                        }
-                        MouseAction::Release { button, clicks }
-                    };
-                    view.send(ViewInput::Mouse {
-                        action,
-                        x,
-                        y,
-                        held: held(modifiers),
-                    });
-                }
-                egui::Event::MouseWheel {
-                    unit,
-                    delta,
-                    modifiers,
-                    ..
-                } if response.contains_pointer() => {
-                    let step = match unit {
-                        egui::MouseWheelUnit::Point => 1.0,
-                        egui::MouseWheelUnit::Line => WHEEL_LINE,
-                        egui::MouseWheelUnit::Page => rect.height(),
-                    };
-                    let (x, y) = on_page(pointer.unwrap_or(rect.center()));
-                    view.send(ViewInput::Mouse {
-                        // The wheel says which way the content moves; the page
-                        // is told which way to scroll.
-                        action: MouseAction::Wheel {
-                            dx: f64::from(-delta.x * step),
-                            dy: f64::from(-delta.y * step),
-                        },
-                        x,
-                        y,
-                        held: held(modifiers),
-                    });
-                }
-                _ if !response.has_focus() => {}
-                egui::Event::Text(text) => {
-                    let mut characters = text.chars();
-                    match (characters.next(), characters.next()) {
-                        // One character is a key, so that the page sees it
-                        // being pressed, as pages that watch the keyboard need.
-                        (Some(_), None) => {
-                            for pressed in [true, false] {
-                                view.send(ViewInput::Key {
-                                    name: text.clone(),
-                                    pressed,
-                                    held: Held::default(),
-                                });
-                            }
-                        }
-                        (None, _) => {}
-                        _ => view.send(ViewInput::Text(text)),
-                    }
-                }
-                egui::Event::Key {
-                    key,
-                    pressed,
-                    modifiers,
-                    ..
-                } => {
-                    if let Some(name) = key_name(key, modifiers) {
-                        view.send(ViewInput::Key {
-                            name,
-                            pressed,
-                            held: held(modifiers),
-                        });
-                    }
-                }
-                egui::Event::Copy => view.send(ViewInput::Copy),
-                egui::Event::Cut => view.send(ViewInput::Cut),
-                egui::Event::Paste(text) => view.send(ViewInput::Text(text)),
-                _ => {}
-            }
+        if let Some(accept) = kit::confirm(ui, &question, yes, true, no) {
+            view.send(ViewInput::Answer(accept));
         }
     }
 
     fn browser_card(&mut self, ui: &mut egui::Ui, actions: &mut Vec<Action>) {
         let idle = self.busy.is_none();
-        kit::card().show(ui, |ui| {
-            ui.set_width(ui.available_width());
+        kit::wide_card(ui, |ui| {
             if !self.chrome_running {
                 ui.horizontal_wrapped(|ui| {
                     if self.step_button(ui, Step::StartChrome, "Start Chrome", idle) {
@@ -1186,8 +829,7 @@ impl OgreApp {
         let idle = self.busy.is_none();
         let to_grade = session.grade_count();
         let to_write = session.write_count();
-        let has_key = !self.api_key.trim().is_empty();
-        let provider_problem = self.settings.provider.problem(has_key);
+        let provider_problem = self.provider_problem();
         let weight_problem = session.rubric_outline().weight_problem.clone();
 
         ui.horizontal_wrapped(|ui| {
@@ -1224,14 +866,9 @@ impl OgreApp {
             ui.label(theme::muted(leniency_note(leniency)));
         });
         if let Some(problem) = provider_problem {
-            kit::icon_line(ui, icon::WARNING, problem, pal().warn);
+            kit::warning(ui, problem);
         } else if let Some(problem) = &weight_problem {
-            kit::icon_line(
-                ui,
-                icon::WARNING,
-                &format!("{problem} Open the rubric to put it right."),
-                pal().warn,
-            );
+            kit::warning(ui, &format!("{problem} Open the rubric to put it right."));
         } else if to_grade == 0 && session.rows.iter().all(|row| row.proposal.is_none()) {
             ui.label(theme::muted(
                 "There are no ungraded written answers on this page.",
@@ -1280,15 +917,13 @@ impl OgreApp {
         }
 
         if session.unsaved && session.manual_save {
-            kit::icon_line(
+            kit::warning(
                 ui,
-                icon::WARNING,
                 &format!(
                     "Grades are filled in but not saved. OGRE cannot confirm a save on {}: \
                      save in the browser, then read the students again.",
                     session.site
                 ),
-                pal().warn,
             );
         } else if session.unsaved {
             ui.horizontal_wrapped(|ui| {
@@ -1302,7 +937,7 @@ impl OgreApp {
             });
         }
         for warning in &session.warnings {
-            kit::icon_line(ui, icon::WARNING, warning, pal().warn);
+            kit::warning(ui, warning);
         }
     }
 
@@ -1337,343 +972,19 @@ impl OgreApp {
         if let Some(address) = &self.leaving
             && let Some(at_stake) = session.at_stake()
         {
-            kit::icon_line(ui, icon::WARNING, &at_stake, pal().warn);
-            ui.horizontal(|ui| {
-                if kit::ghost(ui, "Leave this question", idle).clicked() {
-                    actions.push(Action::GoTo(address.clone()));
-                }
-                if kit::ghost(ui, "Stay here", true).clicked() {
-                    actions.push(Action::Stay);
-                }
-            });
+            match kit::confirm(
+                ui,
+                &at_stake,
+                "Leave this question",
+                idle,
+                Some("Stay here"),
+            ) {
+                Some(true) => actions.push(Action::GoTo(address.clone())),
+                Some(false) => actions.push(Action::Stay),
+                None => {}
+            }
         }
         ui.add_space(4.0);
-    }
-
-    /// How much each category counts, for the teacher to set. Nothing is
-    /// drawn for a rubric with fewer than two categories.
-    fn weights(ui: &mut egui::Ui, session: &mut Session) {
-        let outline = session.rubric_outline();
-        if outline.shares.len() < 2 && !outline.weights_written {
-            return;
-        }
-        kit::section_label(ui, "Category weights");
-        if !outline.weights_written {
-            let mut set = false;
-            ui.horizontal_wrapped(|ui| {
-                ui.label(theme::muted("None are set, so the categories count alike."));
-                set = kit::ghost(ui, "Set category weights", true).clicked();
-            });
-            if let Some(problem) = &outline.weight_problem {
-                kit::icon_line(ui, icon::WARNING, problem, pal().warn);
-            }
-            if set {
-                session.share_weights_equally();
-            }
-            return;
-        }
-
-        let shares = outline.shares.clone();
-        let problem = outline.weight_problem.clone();
-        let mut change = None;
-        egui::Grid::new("category-weights")
-            .num_columns(2)
-            .spacing([22.0, 6.0])
-            .show(ui, |ui| {
-                for share in &shares {
-                    let name = ui.label(theme::body(&share.category));
-                    let mut weight = share.weight;
-                    let field = ui
-                        .add(
-                            egui::DragValue::new(&mut weight)
-                                .range(0.0..=100.0)
-                                .speed(0.5)
-                                .max_decimals(1)
-                                // "50%", not "50.0%".
-                                .custom_formatter(|weight, _| format_score(weight))
-                                .suffix("%"),
-                        )
-                        .labelled_by(name.id);
-                    if field.changed() {
-                        change = Some((share.category.clone(), weight));
-                    }
-                    ui.end_row();
-                }
-            });
-        match &problem {
-            Some(problem) => kit::icon_line(ui, icon::WARNING, problem, pal().warn),
-            None => {
-                ui.label(theme::muted(
-                    "They add up to 100%. Each category counts for its share of the student\u{2019}s score.",
-                ));
-            }
-        }
-        let (mut equal, mut remove) = (false, false);
-        ui.horizontal_wrapped(|ui| {
-            equal = kit::ghost(ui, "Share equally", true).clicked();
-            remove = kit::ghost(ui, "Remove the weights", true).clicked();
-        });
-        if let Some((category, weight)) = change {
-            session.set_category_weight(&category, weight);
-        }
-        if equal {
-            session.share_weights_equally();
-        }
-        if remove {
-            session.remove_weights();
-        }
-    }
-
-    /// Example answers at four levels that the grader is shown: written by
-    /// the AI when the teacher asks, and theirs to edit.
-    fn examples(&self, ui: &mut egui::Ui, session: &mut Session, actions: &mut Vec<Action>) {
-        let has_key = !self.api_key.trim().is_empty();
-        let can_ask = self.busy.is_none()
-            && self.settings.provider.problem(has_key).is_none()
-            && session.rubric_outline().requirements > 0;
-        let label = kit::section_label(ui, "Scoring examples");
-        if session.examples.trim().is_empty() {
-            ui.label(theme::muted(
-                "Optional. The AI writes a short example answer at four levels for this \
-                 question, and the grader is shown them so it knows what each level looks \
-                 like. You can edit them before grading.",
-            ));
-            if kit::ghost(ui, "Write scoring examples", can_ask).clicked() {
-                actions.push(Action::WriteExamples);
-            }
-            return;
-        }
-        ui.add(
-            egui::TextEdit::multiline(&mut session.examples)
-                .desired_rows(6)
-                .desired_width(f32::INFINITY),
-        )
-        .labelled_by(label.id);
-        if session.examples_out_of_date(self.settings.leniency) {
-            kit::icon_line(
-                ui,
-                icon::WARNING,
-                "The rubric or the leniency has changed since these were written.",
-                pal().warn,
-            );
-        }
-        let mut remove = false;
-        ui.horizontal_wrapped(|ui| {
-            if kit::ghost(ui, "Write them again", can_ask).clicked() {
-                actions.push(Action::WriteExamples);
-            }
-            remove = kit::ghost(ui, "Remove the examples", true).clicked();
-        });
-        if remove {
-            session.remove_examples();
-        }
-    }
-
-    /// Rubrics that do not come from the page's own rubric: the teacher's
-    /// saved ones, and one read from a picture of the page.
-    fn other_rubrics(
-        &mut self,
-        ui: &mut egui::Ui,
-        session: &mut Session,
-        actions: &mut Vec<Action>,
-    ) {
-        let idle = self.busy.is_none();
-        let section = kit::section_label(ui, "Saved rubrics");
-        let mut use_it = false;
-        ui.horizontal_wrapped(|ui| {
-            if self.saved_rubrics.is_empty() {
-                ui.label(theme::muted(
-                    "None yet. Save this one under a name to use it on another page.",
-                ));
-                return;
-            }
-            let shown = self.rubric_pick.as_deref().unwrap_or("Choose one");
-            let mut pick = None;
-            egui::ComboBox::from_id_salt("saved-rubrics")
-                .selected_text(theme::body(shown))
-                .width(240.0)
-                .show_ui(ui, |ui| {
-                    for saved in &self.saved_rubrics {
-                        let chosen = self.rubric_pick.as_deref() == Some(saved.name.as_str());
-                        if ui.selectable_label(chosen, &saved.name).clicked() {
-                            pick = Some(saved.name.clone());
-                        }
-                    }
-                })
-                .response
-                .labelled_by(section.id);
-            if let Some(pick) = pick {
-                self.rubric_pick = Some(pick);
-                self.deleting_rubric = false;
-            }
-            let picked = self.rubric_pick.is_some();
-            use_it = kit::ghost(ui, "Use it", picked).clicked();
-            if kit::ghost(ui, "Delete it", picked && idle).clicked() {
-                self.deleting_rubric = true;
-            }
-        });
-        let picked = self
-            .rubric_pick
-            .as_ref()
-            .and_then(|name| self.saved_rubrics.iter().find(|saved| saved.name == *name));
-        if use_it && let Some(saved) = picked {
-            session.use_saved(saved);
-        }
-        if self.deleting_rubric
-            && let Some(name) = self.rubric_pick.clone()
-        {
-            kit::icon_line(
-                ui,
-                icon::WARNING,
-                &format!(
-                    "Delete the saved rubric \u{201c}{name}\u{201d}? It cannot be brought back."
-                ),
-                pal().warn,
-            );
-            ui.horizontal(|ui| {
-                if kit::ghost(ui, "Delete the saved rubric", idle).clicked() {
-                    actions.push(Action::DeleteRubric(name));
-                }
-                if kit::ghost(ui, "Keep it", true).clicked() {
-                    self.deleting_rubric = false;
-                }
-            });
-        }
-
-        ui.horizontal_wrapped(|ui| {
-            let label = ui.label(theme::muted("Save this rubric as"));
-            ui.add(
-                egui::TextEdit::singleline(&mut self.rubric_name)
-                    .hint_text("A name, such as the assignment\u{2019}s")
-                    .desired_width(240.0),
-            )
-            .labelled_by(label.id);
-            let name = self.rubric_name.trim();
-            let replaces = self.saved_rubrics.iter().any(|saved| saved.name == name);
-            let label = if replaces {
-                "Replace the saved rubric"
-            } else {
-                "Save the rubric"
-            };
-            let worth_saving = session.rubric_outline().requirements > 0;
-            if kit::ghost(ui, label, idle && !name.is_empty() && worth_saving).clicked() {
-                actions.push(Action::SaveRubric);
-            }
-        });
-
-        kit::section_label(ui, "When the page gives no rubric");
-        let has_key = !self.api_key.trim().is_empty();
-        let service = self.settings.provider.service;
-        let can_ask =
-            idle && self.chrome_running && self.settings.provider.problem(has_key).is_none();
-        ui.horizontal_wrapped(|ui| {
-            if kit::ghost(ui, "Read the rubric from a picture of the page", can_ask).clicked() {
-                actions.push(Action::RubricFromPicture);
-            }
-            ui.label(theme::muted(if service.is_remote() {
-                format!(
-                    "For a rubric OGRE could not read. Scroll it into view in Chrome first. \
-                     A picture of what the tab shows goes to {}, with any student work in view.",
-                    service.label()
-                )
-            } else {
-                "For a rubric OGRE could not read. Scroll it into view in Chrome first. \
-                 The model has to be one that can look at pictures."
-                    .to_owned()
-            }));
-        });
-        let question = session.question_text().is_some();
-        let can_draft = idle && question && self.settings.provider.problem(has_key).is_none();
-        ui.horizontal_wrapped(|ui| {
-            if kit::ghost(ui, "Draft a rubric from the question", can_draft).clicked() {
-                actions.push(Action::DraftRubric);
-            }
-            ui.label(theme::muted(if question {
-                "For a question that has none. The AI writes one worth the question\u{2019}s \
-                 points. It is a starting point: read it and change it before grading."
-            } else {
-                "OGRE read no question on this page to draft a rubric from."
-            }));
-        });
-    }
-
-    fn rubric(&mut self, ui: &mut egui::Ui, session: &mut Session, actions: &mut Vec<Action>) {
-        let heading = theme::strong("Rubric").size(ty::BODY);
-        // An open rubric is as tall as the window allows and scrolls beyond
-        // that, so the steps below it never leave the screen.
-        let room = (ui.ctx().content_rect().height() * RUBRIC_SHARE_OF_WINDOW).max(160.0);
-        egui::CollapsingHeader::new(heading)
-            .id_salt("rubric")
-            .show(ui, |ui| {
-                egui::ScrollArea::vertical()
-                    .id_salt("rubric-body")
-                    .max_height(room)
-                    .auto_shrink([false, true])
-                    .show(ui, |ui| {
-                        if let Some(problem) = &session.rubric_problem {
-                            kit::icon_line(
-                                ui,
-                                icon::WARNING,
-                                &format!("The rubric could not be read from the page: {problem}"),
-                                pal().warn,
-                            );
-                        }
-                        ui.label(theme::meta(format!(
-                            "Out of {}",
-                            format_score(session.rubric.max_score_value())
-                        )));
-                        if let Some(prompt) = session
-                            .rubric
-                            .essay_prompt
-                            .as_deref()
-                            .filter(|p| !p.is_empty())
-                        {
-                            kit::section_label(ui, "Question");
-                            ui.label(theme::body(prompt));
-                        }
-
-                        let label = kit::section_label(ui, "Requirements and model response");
-                        let editor = ui
-                            .add(
-                                egui::TextEdit::multiline(&mut session.rubric_text)
-                                    .hint_text(RUBRIC_HINT)
-                                    .desired_rows(6)
-                                    .desired_width(f32::INFINITY),
-                            )
-                            .labelled_by(label.id);
-                        if editor.changed() {
-                            session.rubric_text_changed();
-                        }
-                        let mut restore = false;
-                        ui.horizontal_wrapped(|ui| {
-                            if session.rubric_edited() {
-                                kit::marker_pill(ui, "Edited");
-                            }
-                            ui.label(theme::muted(rubric_summary(session.rubric_outline())));
-                            if session.rubric_edited() {
-                                restore =
-                                    kit::ghost(ui, "Use the page\u{2019}s rubric", true).clicked();
-                            }
-                        });
-                        if restore {
-                            session.restore_rubric_text();
-                        }
-                        if let Some(warning) = unread_warning(&session.rubric_outline().unread) {
-                            kit::icon_line(ui, icon::WARNING, &warning, pal().warn);
-                        }
-                        Self::weights(ui, session);
-                        self.other_rubrics(ui, session, actions);
-                        let label = kit::section_label(ui, "Your instructions to the grader");
-                        ui.add(
-                            egui::TextEdit::multiline(&mut session.instructions)
-                                .hint_text("Optional. For example: accept answers given in words.")
-                                .desired_rows(2)
-                                .desired_width(f32::INFINITY),
-                        )
-                        .labelled_by(label.id);
-                        self.examples(ui, session, actions);
-                    });
-            });
     }
 
     fn status_cell(ui: &mut egui::Ui, status: &Status) {
@@ -1739,13 +1050,12 @@ impl OgreApp {
                     ui.checkbox(&mut proposal.accepted, "Write this one");
                 });
                 if let Some(flag) = &proposal.flag {
-                    kit::icon_line(ui, icon::WARNING, flag, pal().warn);
+                    kit::warning(ui, flag);
                 }
                 if let Some(suggestion) = &proposal.suggestion {
                     let text = suggestion_text(proposal.score, suggestion);
                     let (mut take, mut keep) = (false, false);
-                    kit::card().show(ui, |ui| {
-                        ui.set_width(ui.available_width());
+                    kit::wide_card(ui, |ui| {
                         ui.horizontal(|ui| {
                             kit::marker_pill(ui, "Suggestion");
                             ui.label(theme::meta("from the consistency check"));
@@ -1912,16 +1222,14 @@ impl OgreApp {
                     return;
                 };
                 ui.add_space(4.0);
-                kit::card().show(ui, |ui| {
-                    ui.set_width(ui.available_width());
+                kit::wide_card(ui, |ui| {
                     self.question_bar(ui, session, actions);
                     self.rubric(ui, session, actions);
                     ui.add_space(2.0);
                     self.stages(ui, session, actions);
                 });
                 ui.add_space(4.0);
-                kit::card().show(ui, |ui| {
-                    ui.set_width(ui.available_width());
+                kit::wide_card(ui, |ui| {
                     Self::table(ui, session, &mut self.selected);
                 });
             });
@@ -1931,10 +1239,7 @@ impl OgreApp {
 
     fn agent_screen(&mut self, ui: &mut egui::Ui, actions: &mut Vec<Action>) {
         let idle = self.busy.is_none();
-        let provider_problem = self
-            .settings
-            .provider
-            .problem(!self.api_key.trim().is_empty());
+        let provider_problem = self.provider_problem();
         egui::CentralPanel::default()
             .frame(Frame::new().inner_margin(CONTENT_MARGIN))
             .show(ui, |ui| {
@@ -1950,15 +1255,14 @@ impl OgreApp {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     // A question waiting for an answer comes first.
                     if let Some(question) = &self.agent.question {
-                        kit::card().show(ui, |ui| {
-                            ui.set_width(ui.available_width());
+                        kit::wide_card(ui, |ui| {
                             ui.horizontal(|ui| {
                                 kit::panel_title(ui, &format!("Step {}", question.step));
                                 kit::marker_pill(ui, "Needs your OK");
                             });
                             ui.label(theme::strong(&question.description).size(ty::BODY));
                             for reason in &question.reasons {
-                                kit::icon_line(ui, icon::WARNING, reason, pal().warn);
+                                kit::warning(ui, reason);
                             }
                             if !question.reasoning.trim().is_empty() {
                                 kit::section_label(ui, "The AI's reason");
@@ -1991,8 +1295,7 @@ impl OgreApp {
                         ui.add_space(4.0);
                     }
 
-                    kit::card().show(ui, |ui| {
-                        ui.set_width(ui.available_width());
+                    kit::wide_card(ui, |ui| {
                         let label = kit::section_label(ui, "Task");
                         ui.add_enabled(
                             !self.agent.running,
@@ -2039,7 +1342,7 @@ impl OgreApp {
                         if !self.chrome_running {
                             ui.label(theme::muted("Start Chrome on the Grade screen first."));
                         } else if let Some(problem) = provider_problem {
-                            kit::icon_line(ui, icon::WARNING, problem, pal().warn);
+                            kit::warning(ui, problem);
                         } else if self.settings.provider.service.is_remote() {
                             ui.label(theme::muted(format!(
                                 "What is on the page, including student names and scores, is sent to {}.",
@@ -2050,22 +1353,19 @@ impl OgreApp {
                     });
 
                     ui.add_space(4.0);
-                    kit::card().show(ui, |ui| {
-                        ui.set_width(ui.available_width());
+                    kit::wide_card(ui, |ui| {
                         self.skills_card(ui, actions);
                     });
                     if self.agent.editing.is_some() {
                         ui.add_space(4.0);
-                        kit::card().show(ui, |ui| {
-                            ui.set_width(ui.available_width());
+                        kit::wide_card(ui, |ui| {
                             self.skill_editor(ui, actions);
                         });
                     }
 
                     if let Some(result) = &self.agent.result {
                         ui.add_space(4.0);
-                        kit::card().show(ui, |ui| {
-                            ui.set_width(ui.available_width());
+                        kit::wide_card(ui, |ui| {
                             kit::panel_title(
                                 ui,
                                 if result.finished {
@@ -2079,8 +1379,7 @@ impl OgreApp {
                     }
                     if !self.agent.log.is_empty() {
                         ui.add_space(4.0);
-                        kit::card().show(ui, |ui| {
-                            ui.set_width(ui.available_width());
+                        kit::wide_card(ui, |ui| {
                             kit::section_label(ui, "What it did");
                             for (number, line) in self.agent.log.iter().enumerate() {
                                 let text = format!("{}. {}", number + 1, line.text);
@@ -2098,164 +1397,6 @@ impl OgreApp {
             });
     }
 
-    /// What the agent is given beside the task: OGRE's guides to the sites
-    /// it knows, and the teacher's own skill files with a switch each.
-    fn skills_card(&mut self, ui: &mut egui::Ui, actions: &mut Vec<Action>) {
-        let idle = self.busy.is_none();
-        kit::section_label(ui, "What the agent knows");
-        let (mut change, mut delete, mut keep) = (None, None, false);
-        for skill in &self.agent.skills {
-            ui.horizontal_wrapped(|ui| {
-                if skill.sites.is_empty() {
-                    let mut on = self
-                        .settings
-                        .skills
-                        .get(&skill.id)
-                        .copied()
-                        .unwrap_or(skill.on_in_file);
-                    let switch = ui.add_enabled(
-                        !self.agent.running,
-                        egui::Checkbox::new(&mut on, theme::strong(&skill.name).size(ty::BODY)),
-                    );
-                    if switch.changed() {
-                        self.settings.skills.insert(skill.id.clone(), on);
-                    }
-                } else {
-                    ui.label(theme::strong(&skill.name).size(ty::BODY));
-                    kit::calm_pill(ui, &format!("Guide to {}", skill.sites.join(", ")));
-                }
-                if skill.built_in {
-                    ui.label(theme::meta("Built in"));
-                }
-                // A skill of the teacher's own is theirs to change.
-                if skill.draft.is_some() {
-                    let free = idle && !self.agent.running;
-                    if kit::ghost(ui, "Change", free).clicked() {
-                        change = SkillEdit::of(skill);
-                    }
-                    if kit::ghost(ui, "Delete", free).clicked() {
-                        delete = Some(skill.id.clone());
-                    }
-                }
-            });
-            if !skill.description.is_empty() {
-                ui.label(theme::muted(&skill.description));
-            }
-            if self.agent.deleting_skill.as_deref() == Some(skill.id.as_str()) {
-                kit::icon_line(
-                    ui,
-                    icon::WARNING,
-                    &format!(
-                        "Delete the skill \u{201c}{}\u{201d}? Its file is removed and cannot \
-                         be brought back.",
-                        skill.name
-                    ),
-                    pal().warn,
-                );
-                ui.horizontal(|ui| {
-                    if kit::ghost(ui, "Delete the skill", idle).clicked() {
-                        actions.push(Action::DeleteSkill(skill.id.clone()));
-                    }
-                    if kit::ghost(ui, "Keep it", true).clicked() {
-                        keep = true;
-                    }
-                });
-            }
-        }
-        if let Some(edit) = change {
-            self.agent.editing = Some(edit);
-        }
-        if let Some(id) = delete {
-            self.agent.deleting_skill = Some(id);
-        }
-        if keep {
-            self.agent.deleting_skill = None;
-        }
-        if self.agent.skills.is_empty() && idle {
-            ui.label(theme::muted("Nothing yet."));
-        }
-        ui.add_space(4.0);
-        ui.label(theme::muted(
-            "A guide is used whenever the agent is on its site. A skill of your own is a \
-             Markdown file in your skills folder, used on every task while it is ticked.",
-        ));
-        ui.horizontal_wrapped(|ui| {
-            let free = idle && !self.agent.running && self.agent.editing.is_none();
-            if kit::ghost(ui, "Write a skill", free).clicked() {
-                self.agent.editing = Some(SkillEdit::default());
-            }
-            if kit::ghost(ui, "Open the skills folder", idle).clicked() {
-                actions.push(Action::OpenSkillsFolder);
-            }
-            if kit::ghost(ui, "Look again", idle).clicked() {
-                actions.push(Action::ListSkills);
-            }
-            if !self.agent.skills_folder.is_empty() {
-                ui.label(theme::muted(&self.agent.skills_folder));
-            }
-        });
-    }
-
-    /// The form a skill of the teacher's is written or changed in.
-    fn skill_editor(&mut self, ui: &mut egui::Ui, actions: &mut Vec<Action>) {
-        let idle = self.busy.is_none();
-        let Some(edit) = &mut self.agent.editing else {
-            return;
-        };
-        kit::panel_title(
-            ui,
-            if edit.id.is_some() {
-                "Change the skill"
-            } else {
-                "A new skill"
-            },
-        );
-        let line = |ui: &mut egui::Ui, label: &str, hint: &str, text: &mut String| {
-            let label = kit::section_label(ui, label);
-            ui.add(
-                egui::TextEdit::singleline(text)
-                    .hint_text(hint)
-                    .desired_width(f32::INFINITY),
-            )
-            .labelled_by(label.id);
-        };
-        line(ui, "Name", "For example: Late work", &mut edit.name);
-        line(
-            ui,
-            "What it is for",
-            "One line, for you to tell your skills apart",
-            &mut edit.description,
-        );
-        line(
-            ui,
-            "Sites it is a guide to",
-            "Leave empty for a skill used on every task. Otherwise: schoology.com, another.org",
-            &mut edit.sites,
-        );
-        let label = kit::section_label(ui, "What the agent should know");
-        ui.add(
-            egui::TextEdit::multiline(&mut edit.body)
-                .hint_text(
-                    "In your own words, or Markdown. For example: work handed in late \
-                     loses one point for each day, down to half credit.",
-                )
-                .desired_rows(8)
-                .desired_width(f32::INFINITY),
-        )
-        .labelled_by(label.id);
-        let complete = !edit.name.trim().is_empty() && !edit.body.trim().is_empty();
-        let mut cancel = false;
-        ui.horizontal(|ui| {
-            if kit::primary(ui, "Save the skill", idle && complete).clicked() {
-                actions.push(Action::SaveSkill);
-            }
-            cancel = kit::ghost(ui, "Cancel", true).clicked();
-        });
-        if cancel {
-            self.agent.editing = None;
-        }
-    }
-
     fn history_screen(&mut self, ui: &mut egui::Ui, actions: &mut Vec<Action>) {
         let can_open = self.busy.is_none() && self.chrome_running;
         egui::CentralPanel::default()
@@ -2270,8 +1411,7 @@ impl OgreApp {
                 self.messages(ui, actions);
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     if self.history.is_empty() && self.busy.is_none() {
-                        kit::card().show(ui, |ui| {
-                            ui.set_width(ui.available_width());
+                        kit::wide_card(ui, |ui| {
                             ui.label(theme::muted(
                                 "Nothing has been graded yet. A page appears here once \
                                  grades have been proposed for it.",
@@ -2281,8 +1421,7 @@ impl OgreApp {
                     let mut toggled = None;
                     for session in &self.history {
                         let open = self.history_open == Some(session.at);
-                        kit::card().show(ui, |ui| {
-                            ui.set_width(ui.available_width());
+                        kit::wide_card(ui, |ui| {
                             if Self::past_session(ui, session, open) {
                                 toggled = Some(session.at);
                             }
@@ -2355,7 +1494,7 @@ impl OgreApp {
     ) {
         ui.add_space(4.0);
         for problem in &session.problems {
-            kit::icon_line(ui, icon::WARNING, problem, pal().warn);
+            kit::warning(ui, problem);
         }
         egui::Grid::new(("past-students", session.at))
             .num_columns(4)
@@ -2423,8 +1562,7 @@ impl OgreApp {
                     // A mapping waiting for a decision comes first: its Save button
                     // must not sit below the fold.
                     if let Some(report) = &mut self.mapping {
-                        kit::card().show(ui, |ui| {
-                            ui.set_width(ui.available_width());
+                        kit::wide_card(ui, |ui| {
                             ui.horizontal(|ui| {
                                 kit::panel_title(ui, "What OGRE found");
                                 kit::marker_pill(ui, "Not saved yet");
@@ -2466,7 +1604,7 @@ impl OgreApp {
                                     }
                                 });
                             for warning in &report.warnings {
-                                kit::icon_line(ui, icon::WARNING, warning, pal().warn);
+                                kit::warning(ui, warning);
                             }
                             ui.add_space(4.0);
                             ui.horizontal(|ui| {
@@ -2489,8 +1627,7 @@ impl OgreApp {
                         });
                         ui.add_space(4.0);
                     }
-                    kit::card().show(ui, |ui| {
-                        ui.set_width(ui.available_width());
+                    kit::wide_card(ui, |ui| {
                         kit::panel_title(ui, "Ready to use");
                         ui.horizontal(|ui| {
                             kit::calm_pill(ui, "MyOpenMath");
@@ -2513,8 +1650,7 @@ impl OgreApp {
                         }
                     });
                     ui.add_space(4.0);
-                    kit::card().show(ui, |ui| {
-                        ui.set_width(ui.available_width());
+                    kit::wide_card(ui, |ui| {
                         kit::panel_title(ui, "Map a new site");
                         ui.label(theme::body(
                             "Open one of the site's grading pages in the OGRE Chrome window. \
@@ -2522,10 +1658,7 @@ impl OgreApp {
                              and checks its reading on the page before you save it.",
                         ));
                         let can_map = idle && self.chrome_running;
-                        let provider_problem = self
-                            .settings
-                            .provider
-                            .problem(!self.api_key.trim().is_empty());
+                        let provider_problem = self.provider_problem();
                         ui.horizontal_wrapped(|ui| {
                             let map = if self.mapping.is_none() {
                                 kit::primary(ui, "Map the open page", can_map)
@@ -2675,7 +1808,7 @@ impl OgreApp {
                     };
                     ui.label(theme::muted(where_it_runs));
                     if let Some(note) = &self.settings_note {
-                        kit::icon_line(ui, icon::WARNING, note, pal().warn);
+                        kit::warning(ui, note);
                     }
                     self.messages(ui, actions);
                 });
@@ -2749,6 +1882,10 @@ impl eframe::App for OgreApp {
             Screen::History => self.history_screen(ui, &mut actions),
             Screen::Settings => self.settings_screen(ui, &mut actions),
         }
+        if !(self.screen == Screen::Browser && self.chrome_running) {
+            // The page is not on show, so its pictures need not wake the window.
+            self.worker.view().state().watched = false;
+        }
 
         let ctx = ui.ctx().clone();
         for action in actions {
@@ -2762,41 +1899,6 @@ impl eframe::App for OgreApp {
 }
 
 /// The host of an address, for telling sites apart: "www.myopenmath.com".
-/// The DOM name of a key the page is to be told about as a key: one that
-/// types nothing, or any key pressed as a shortcut. A key that types comes
-/// as text instead, already what the keyboard layout makes of it.
-fn key_name(key: egui::Key, modifiers: egui::Modifiers) -> Option<String> {
-    use egui::Key;
-    let named = match key {
-        Key::ArrowDown => "ArrowDown",
-        Key::ArrowLeft => "ArrowLeft",
-        Key::ArrowRight => "ArrowRight",
-        Key::ArrowUp => "ArrowUp",
-        Key::Escape => "Escape",
-        Key::Tab => "Tab",
-        Key::Backspace => "Backspace",
-        Key::Enter => "Enter",
-        Key::Insert => "Insert",
-        Key::Delete => "Delete",
-        Key::Home => "Home",
-        Key::End => "End",
-        Key::PageUp => "PageUp",
-        Key::PageDown => "PageDown",
-        _ => "",
-    };
-    if !named.is_empty() {
-        return Some(named.to_owned());
-    }
-    let name = key.name();
-    if name.len() > 1 && name.starts_with('F') && name[1..].parse::<u8>().is_ok() {
-        return Some(name.to_owned());
-    }
-    // Copy, cut and paste arrive as events of their own.
-    let shortcut = (modifiers.ctrl || modifiers.mac_cmd) && !modifiers.alt;
-    let clipboard = matches!(key, Key::C | Key::X | Key::V);
-    (shortcut && !clipboard && name.len() == 1).then(|| name.to_lowercase())
-}
-
 fn host(url: &str) -> &str {
     let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
     rest.split(['/', '?', '#']).next().unwrap_or(rest)
@@ -2848,51 +1950,6 @@ fn leniency_note(setting: u8) -> &'static str {
         }
         _ => "Strict: the AI rewords the rubric to be harder to meet before grading.",
     }
-}
-
-/// Shown in the empty rubric editor.
-const RUBRIC_HINT: &str = "One requirement per line. A line that starts with ## \
-is a heading for the requirements under it:\n\
-## Method\n\
-Sets up the equation with the rate given in the question";
-
-/// One line saying what the grader will find in the rubric text.
-fn rubric_summary(outline: &RubricOutline) -> String {
-    let exemplar = if outline.exemplar {
-        "a model response"
-    } else {
-        "no model response"
-    };
-    if outline.requirements == 0 {
-        return format!(
-            "No requirements, {exemplar}. The AI grades against the question and your instructions."
-        );
-    }
-    format!(
-        "{} in {}, {exemplar}.",
-        count(outline.requirements, "requirement"),
-        count_of(outline.categories, "category", "categories"),
-    )
-}
-
-fn count_of(n: usize, one: &str, many: &str) -> String {
-    format!("{n} {}", if n == 1 { one } else { many })
-}
-
-/// Tells the teacher which lines of their rubric will be left out, if any.
-fn unread_warning(unread: &[String]) -> Option<String> {
-    let first: String = unread.first()?.chars().take(60).collect();
-    let ellipsis = if unread[0].chars().count() > 60 {
-        "…"
-    } else {
-        ""
-    };
-    Some(match unread.len() {
-        1 => format!("This line will not be used for grading: “{first}{ellipsis}”."),
-        n => {
-            format!("{n} lines will not be used for grading, the first being “{first}{ellipsis}”.")
-        }
-    })
 }
 
 fn summary(session: &Session) -> String {

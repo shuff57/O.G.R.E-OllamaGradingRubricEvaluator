@@ -7,7 +7,7 @@ use eframe::egui::{
     StrokeKind, Ui, Vec2, WidgetInfo,
 };
 
-use crate::theme::{self, R_CARD, R_FIELD, pal, ty};
+use crate::theme::{self, R_CARD, R_FIELD, icon, pal, ty};
 
 const BUTTON_HEIGHT: f32 = 36.0;
 
@@ -159,6 +159,14 @@ pub fn card() -> Frame {
         .inner_margin(Margin::same(16))
 }
 
+/// A card as wide as the space it is in.
+pub fn wide_card<R>(ui: &mut Ui, contents: impl FnOnce(&mut Ui) -> R) -> egui::InnerResponse<R> {
+    card().show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        contents(ui)
+    })
+}
+
 /// How a screen starts: a small breadcrumb, a serif title, an optional
 /// subtitle. There is no top bar.
 pub fn page_header(ui: &mut Ui, crumbs: &str, title: &str, subtitle: Option<&str>) {
@@ -241,6 +249,36 @@ pub fn icon_line(ui: &mut Ui, icon: &str, text: &str, colour: Color32) {
         );
         ui.label(RichText::new(text).size(ty::BODY).color(colour));
     });
+}
+
+/// Something the teacher should know before going on.
+pub fn warning(ui: &mut Ui, text: &str) {
+    icon_line(ui, icon::WARNING, text, pal().warn);
+}
+
+/// A warning that asks, with a button to go ahead and, where there is a
+/// choice, one to back out. `Some(true)` when the teacher goes ahead,
+/// `Some(false)` when they back out.
+pub fn confirm(
+    ui: &mut Ui,
+    question: &str,
+    yes: &str,
+    yes_enabled: bool,
+    no: Option<&str>,
+) -> Option<bool> {
+    warning(ui, question);
+    let mut answer = None;
+    ui.horizontal(|ui| {
+        if ghost(ui, yes, yes_enabled).clicked() {
+            answer = Some(true);
+        }
+        if let Some(no) = no
+            && ghost(ui, no, true).clicked()
+        {
+            answer = Some(false);
+        }
+    });
+    answer
 }
 
 /// Width of the dock itself.

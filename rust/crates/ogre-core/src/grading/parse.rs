@@ -139,13 +139,12 @@ fn parse_batch(
             .collect());
     };
     let results = validate_batch_results(&items, students, max_score, weighting, rules)?;
-    let whole = matches!(rules, Rules::Corrected);
     Ok(results
         .into_iter()
         .zip(&items)
         .map(|(result, item)| CheckedResult {
             result,
-            score_given: has_score(item, weighting, max_score, whole),
+            score_given: has_score(item, weighting, max_score, rules),
         })
         .collect())
 }
@@ -182,10 +181,10 @@ fn has_score(
     item: &Json,
     weighting: Option<&CategoryWeighting>,
     max_score: f64,
-    whole: bool,
+    rules: Rules,
 ) -> bool {
     let weighted =
-        weighting.and_then(|w| weighted_score(item.get("criterion_scores"), w, max_score, whole));
+        weighting.and_then(|w| weighted_score(item.get("criterion_scores"), w, max_score, rules));
     let plain = item.get("score").parse_float();
     weighted.is_some() || (!plain.is_nan() && plain >= 0.0)
 }
@@ -329,8 +328,7 @@ fn validate_batch_results(
         .iter()
         .zip(students)
         .map(|(item, student)| {
-            let whole = matches!(rules, Rules::Corrected);
-            let score = final_score(item, max_score, weighting, whole);
+            let score = final_score(item, max_score, weighting, rules);
             let raw_feedback = match item.get("feedback") {
                 Json::Array(parts) => Json::join(parts, "\n"),
                 other if other.is_truthy() => other.to_js_string(),
@@ -362,7 +360,7 @@ fn clamp_single_result(
     if matches!(parsed, Json::Null) {
         return None;
     }
-    let score = final_score(parsed, max_score, weighting, false);
+    let score = final_score(parsed, max_score, weighting, Rules::Original);
     let raw_feedback = match parsed.get("feedback") {
         Json::String(text) => js::trim(text),
         other if other.is_truthy() => return None,
@@ -385,10 +383,10 @@ fn final_score(
     item: &Json,
     max_score: f64,
     weighting: Option<&CategoryWeighting>,
-    whole: bool,
+    rules: Rules,
 ) -> f64 {
     let weighted =
-        weighting.and_then(|w| weighted_score(item.get("criterion_scores"), w, max_score, whole));
+        weighting.and_then(|w| weighted_score(item.get("criterion_scores"), w, max_score, rules));
     let score = weighted.unwrap_or_else(|| {
         let out_of_ten = item.get("score").parse_float();
         let out_of_ten = if out_of_ten.is_nan() || out_of_ten < 0.0 {
@@ -409,7 +407,7 @@ const WHOLE_WEIGHT_TOLERANCE: f64 = 0.5;
 /// `sum(score / category max * weight% / 100) * max_score`. `None` if no
 /// category has both a usable score and a weight.
 ///
-/// With `whole`, also `None` unless the weights of the categories that were
+/// Under the corrected rules, also `None` unless the weights of the categories that were
 /// scored add up to 100. The original adds up whichever categories it can
 /// match, so a reply that names only one of five scores the student out of a
 /// fifth of the points.
@@ -417,7 +415,7 @@ fn weighted_score(
     criterion_scores: &Json,
     weighting: &CategoryWeighting,
     max_score: f64,
-    whole: bool,
+    rules: Rules,
 ) -> Option<f64> {
     let mut fraction = 0.0;
     let mut counted = false;
@@ -439,7 +437,7 @@ fn weighted_score(
         counted = true;
         weight_used += weight_percent;
     }
-    if whole && (weight_used - 100.0).abs() > WHOLE_WEIGHT_TOLERANCE {
+    if matches!(rules, Rules::Corrected) && (weight_used - 100.0).abs() > WHOLE_WEIGHT_TOLERANCE {
         return None;
     }
     counted.then_some(fraction * max_score)

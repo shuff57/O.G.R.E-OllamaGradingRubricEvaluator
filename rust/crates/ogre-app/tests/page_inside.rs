@@ -56,8 +56,8 @@ fn middle_of_next_picture(view: &ViewLink) -> [u8; 3] {
     wait_for(view, "a picture", |state| {
         let picture = state.picture.take()?;
         let [width, height] = picture.size;
-        let at = ((height / 2) * width + width / 2) * 4;
-        Some([picture.rgba[at], picture.rgba[at + 1], picture.rgba[at + 2]])
+        let middle = picture.pixels[(height / 2) * width + width / 2];
+        Some([middle.r(), middle.g(), middle.b()])
     })
 }
 
@@ -157,8 +157,8 @@ fn a_page_is_shown_used_and_answered_without_a_chrome_window() {
     wait_for(&view, "the page to turn green", |state| {
         let picture = state.picture.take()?;
         let [width, height] = picture.size;
-        let at = ((height / 2) * width + width / 2) * 4;
-        (picture.rgba[at] < 100 && picture.rgba[at + 1] > 80).then_some(())
+        let middle = picture.pixels[(height / 2) * width + width / 2];
+        (middle.r() < 100 && middle.g() > 80).then_some(())
     });
 
     // Typing into the box and pressing Enter sends the form.
@@ -237,7 +237,7 @@ fn a_real_page_is_drawn_for_someone_to_look_at() {
     let picture = wait_for(&view, "a picture", |state| state.picture.take());
     std::fs::create_dir_all(&shots).unwrap();
     let [width, height] = picture.size;
-    image::RgbaImage::from_raw(width as u32, height as u32, picture.rgba)
+    image::RgbaImage::from_raw(width as u32, height as u32, picture.as_raw().to_vec())
         .expect("the picture has the size it says")
         .save(shots.join("page-inside-real.png"))
         .unwrap();

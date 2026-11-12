@@ -12,8 +12,8 @@ use ogre_agent::SkillDraft;
 use ogre_app::{
     AgentAnswer, AgentLine, AgentQuestion, AgentSummary, Command, Event, Grade, GradeReport,
     GradedRow, LineKind, MapReport, MemoryKeys, OgreApp, OutsideRubric, PastProposal, PastSession,
-    PastStudent, Picture, ProfileSummary, ProviderSettings, ReadReport, SavedRubric, Service,
-    SessionEnd, Settings, SkillSummary, StandIn, Suggestion, ViewInput, Worker, WriteReport,
+    PastStudent, ProfileSummary, ProviderSettings, ReadReport, SavedRubric, Service, SessionEnd,
+    Settings, SkillSummary, StandIn, Suggestion, ViewInput, Worker, WriteReport,
 };
 use ogre_core::{
     FeedbackField, FeedbackKind, GradingPage, Position, QuestionLink, Rubric, ScoreField,
@@ -384,13 +384,7 @@ fn grades_fills_and_saves_one_explicit_step_at_a_time() {
 #[test]
 fn the_rubric_can_be_edited_before_grading() {
     const EDITOR: &str = "Requirements and model response";
-    let (mut harness, mut stand_in) = window(local_model());
-    stand_in.events.send(Event::ChromeStarted).unwrap();
-    stand_in.events.send(read()).unwrap();
-    frames(&mut harness);
-
-    harness.get_by_label("Rubric").click();
-    frames(&mut harness);
+    let (mut harness, mut stand_in) = rubric_open(read());
     harness.get_by_label("3 requirements in 2 categories, no model response.");
     assert!(harness.query_by_label("Edited").is_none());
 
@@ -1287,9 +1281,21 @@ fn the_old_apps_service_and_key_can_be_copied_in_settings() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// Clicks something in the rubric, which scrolls: it is brought into view
-/// first, as the teacher would.
-fn press_in_rubric(harness: &mut Harness<'_, OgreApp>, label: &str) {
+/// A window with the students of `read` on the Grade screen and the rubric
+/// card open.
+fn rubric_open(read: Event) -> (Harness<'static, OgreApp>, StandIn) {
+    let (mut harness, stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    stand_in.events.send(read).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Rubric").click();
+    frames(&mut harness);
+    (harness, stand_in)
+}
+
+/// Clicks something that may be out of sight in a part that scrolls: it is
+/// brought into view first, as the teacher would.
+fn scroll_to_and_press(harness: &mut Harness<'_, OgreApp>, label: &str) {
     harness.get_by_label(label).scroll_to_me();
     frames(harness);
     harness.get_by_label(label).click();
@@ -1321,17 +1327,11 @@ fn read_with_a_loose_requirement() -> Event {
 
 #[test]
 fn category_weights_are_set_in_the_rubric_and_sent_with_it() {
-    let (mut harness, mut stand_in) = window(local_model());
-    stand_in.events.send(Event::ChromeStarted).unwrap();
-    stand_in.events.send(read()).unwrap();
-    frames(&mut harness);
-
-    harness.get_by_label("Rubric").click();
-    frames(&mut harness);
+    let (mut harness, mut stand_in) = rubric_open(read());
     harness.get_by_label("None are set, so the categories count alike.");
     assert!(harness.query_by_label_contains("They add up to").is_none());
 
-    press_in_rubric(&mut harness, "Set category weights");
+    scroll_to_and_press(&mut harness, "Set category weights");
     harness.get_by_label("Edited");
     harness.get_by_label_contains("They add up to 100%.");
     shot(&mut harness, "17-category-weights");
@@ -1350,7 +1350,7 @@ fn category_weights_are_set_in_the_rubric_and_sent_with_it() {
     frames(&mut harness);
 
     // Without the weights the rubric is the page's own again.
-    press_in_rubric(&mut harness, "Remove the weights");
+    scroll_to_and_press(&mut harness, "Remove the weights");
     assert!(harness.query_by_label("Edited").is_none());
     harness.get_by_label("None are set, so the categories count alike.");
 }
@@ -1379,14 +1379,9 @@ fn grading_waits_while_the_weights_would_give_wrong_scores() {
 #[test]
 fn scoring_examples_are_written_when_asked_and_shown_to_the_grader() {
     const EXAMPLES: &str = "Excellent: The margin of error shrinks as n grows, because the standard error is s over root n.\n\nMinimal: It gets smaller.";
-    let (mut harness, mut stand_in) = window(local_model());
-    stand_in.events.send(Event::ChromeStarted).unwrap();
-    stand_in.events.send(read()).unwrap();
-    frames(&mut harness);
-    harness.get_by_label("Rubric").click();
-    frames(&mut harness);
+    let (mut harness, mut stand_in) = rubric_open(read());
 
-    press_in_rubric(&mut harness, "Write scoring examples");
+    scroll_to_and_press(&mut harness, "Write scoring examples");
     let Command::WriteExamples(request) = sent(&mut stand_in) else {
         panic!("expected a request for scoring examples");
     };
@@ -1420,7 +1415,7 @@ fn scoring_examples_are_written_when_asked_and_shown_to_the_grader() {
     frames(&mut harness);
 
     // A second try that fails says so and leaves the examples in hand alone.
-    press_in_rubric(&mut harness, "Write them again");
+    scroll_to_and_press(&mut harness, "Write them again");
     assert!(matches!(sent(&mut stand_in), Command::WriteExamples(_)));
     stand_in
         .events
@@ -1433,7 +1428,7 @@ fn scoring_examples_are_written_when_asked_and_shown_to_the_grader() {
     harness.get_by_label("Write them again");
 
     // Removed, they are not sent.
-    press_in_rubric(&mut harness, "Remove the examples");
+    scroll_to_and_press(&mut harness, "Remove the examples");
     harness.get_by_label("Write scoring examples");
     harness
         .get_by_label("Include students who are already graded")
@@ -1449,13 +1444,8 @@ fn scoring_examples_are_written_when_asked_and_shown_to_the_grader() {
 
 #[test]
 fn reading_the_page_again_keeps_the_rubric_the_teacher_set_up() {
-    let (mut harness, stand_in) = window(local_model());
-    stand_in.events.send(Event::ChromeStarted).unwrap();
-    stand_in.events.send(read()).unwrap();
-    frames(&mut harness);
-    harness.get_by_label("Rubric").click();
-    frames(&mut harness);
-    press_in_rubric(&mut harness, "Set category weights");
+    let (mut harness, stand_in) = rubric_open(read());
+    scroll_to_and_press(&mut harness, "Set category weights");
     stand_in
         .events
         .send(Event::Examples(Ok("Excellent: all of it.".into())))
@@ -1508,12 +1498,7 @@ fn read_without_a_rubric(saved_rubrics: Vec<SavedRubric>) -> Event {
 #[test]
 fn a_rubric_is_saved_under_a_name_and_used_on_another_page() {
     const NAME_BOX: &str = "Save this rubric as";
-    let (mut harness, mut stand_in) = window(local_model());
-    stand_in.events.send(Event::ChromeStarted).unwrap();
-    stand_in.events.send(read()).unwrap();
-    frames(&mut harness);
-    harness.get_by_label("Rubric").click();
-    frames(&mut harness);
+    let (mut harness, mut stand_in) = rubric_open(read());
     harness.get_by_label_contains("None yet.");
 
     harness.get_by_label(NAME_BOX).scroll_to_me();
@@ -1522,7 +1507,7 @@ fn a_rubric_is_saved_under_a_name_and_used_on_another_page() {
     frames(&mut harness);
     harness.get_by_label(NAME_BOX).type_text("Margin of error");
     frames(&mut harness);
-    press_in_rubric(&mut harness, "Save the rubric");
+    scroll_to_and_press(&mut harness, "Save the rubric");
     let Command::SaveRubric(rubric) = sent(&mut stand_in) else {
         panic!("expected a rubric to save");
     };
@@ -1560,7 +1545,7 @@ fn a_rubric_is_saved_under_a_name_and_used_on_another_page() {
     frames(&mut harness);
     harness.get_by_label("Essay 2").click();
     frames(&mut harness);
-    press_in_rubric(&mut harness, "Use it");
+    scroll_to_and_press(&mut harness, "Use it");
     harness.get_by_label("2 requirements in 2 categories, no model response.");
     harness.get_by_label_contains("They add up to 100%.");
     shot(&mut harness, "21-saved-rubric-in-use");
@@ -1578,17 +1563,17 @@ fn a_rubric_is_saved_under_a_name_and_used_on_another_page() {
     frames(&mut harness);
 
     // Deleting asks first, and only then goes.
-    press_in_rubric(&mut harness, "Delete it");
+    scroll_to_and_press(&mut harness, "Delete it");
     assert!(stand_in.commands.try_recv().is_err());
     harness.get_by_label_contains("Delete the saved rubric \u{201c}Essay 2\u{201d}?");
-    press_in_rubric(&mut harness, "Keep it");
+    scroll_to_and_press(&mut harness, "Keep it");
     assert!(
         harness
             .query_by_label_contains("cannot be brought back")
             .is_none()
     );
-    press_in_rubric(&mut harness, "Delete it");
-    press_in_rubric(&mut harness, "Delete the saved rubric");
+    scroll_to_and_press(&mut harness, "Delete it");
+    scroll_to_and_press(&mut harness, "Delete the saved rubric");
     let Command::DeleteRubric(name) = sent(&mut stand_in) else {
         panic!("expected a rubric to delete");
     };
@@ -1613,7 +1598,7 @@ fn a_rubric_is_read_from_a_picture_of_the_page_when_asked() {
     harness.get_by_label("Rubric").click();
     frames(&mut harness);
 
-    press_in_rubric(&mut harness, BUTTON);
+    scroll_to_and_press(&mut harness, BUTTON);
     assert!(matches!(
         sent(&mut stand_in),
         Command::RubricFromPicture { .. }
@@ -1628,7 +1613,7 @@ fn a_rubric_is_read_from_a_picture_of_the_page_when_asked() {
     harness.get_by_label_contains("found no rubric in the picture");
     assert!(harness.query_by_label("Edited").is_none());
 
-    press_in_rubric(&mut harness, BUTTON);
+    scroll_to_and_press(&mut harness, BUTTON);
     assert!(matches!(
         sent(&mut stand_in),
         Command::RubricFromPicture { .. }
@@ -1680,7 +1665,7 @@ fn a_rubric_is_drafted_from_the_question_when_asked() {
     harness.get_by_label("Rubric").click();
     frames(&mut harness);
 
-    press_in_rubric(&mut harness, BUTTON);
+    scroll_to_and_press(&mut harness, BUTTON);
     let Command::DraftRubric {
         question,
         max_score,
@@ -1720,7 +1705,7 @@ fn the_question_a_student_was_asked_will_do_where_the_rubric_names_none() {
     frames(&mut harness);
     harness.get_by_label("Rubric").click();
     frames(&mut harness);
-    press_in_rubric(&mut harness, "Draft a rubric from the question");
+    scroll_to_and_press(&mut harness, "Draft a rubric from the question");
     let Command::DraftRubric {
         question,
         max_score,
@@ -1751,7 +1736,7 @@ fn a_page_without_a_question_has_nothing_to_draft_a_rubric_from() {
     frames(&mut harness);
     harness.get_by_label("Rubric").click();
     frames(&mut harness);
-    press_in_rubric(&mut harness, "Draft a rubric from the question");
+    scroll_to_and_press(&mut harness, "Draft a rubric from the question");
     assert!(stand_in.commands.try_recv().is_err());
     harness.get_by_label("OGRE read no question on this page to draft a rubric from.");
 }
@@ -1814,11 +1799,8 @@ fn the_page_is_drawn_in_the_window_and_takes_the_mouse_and_keyboard() {
         state.showing = true;
         state.address = "https://www.myopenmath.com/".into();
         // A small picture of plain green stands for the page.
-        let pixel = [45, 106, 79, 255];
-        state.picture = Some(Picture {
-            size: [8, 6],
-            rgba: pixel.repeat(48),
-        });
+        let green = egui::Color32::from_rgb(45, 106, 79);
+        state.picture = Some(egui::ColorImage::filled([8, 6], green));
     }
     frames(&mut harness);
     assert!(
@@ -1942,7 +1924,7 @@ fn a_skill_is_written_changed_and_deleted_on_the_agent_screen() {
     frames(&mut harness);
 
     // A skill of the teacher's opens in the form with what its file holds.
-    press_in_rubric(&mut harness, "Change");
+    scroll_to_and_press(&mut harness, "Change");
     harness.get_by_label("Change the skill");
     assert!(harness.query_all_by_value("Late work").next().is_some());
     harness.get_by_label("What it is for").scroll_to_me();
@@ -1954,7 +1936,7 @@ fn a_skill_is_written_changed_and_deleted_on_the_agent_screen() {
         .type_text("schoology.com, ,canvas.example.edu ");
     frames(&mut harness);
     shot(&mut harness, "28-skill-editor");
-    press_in_rubric(&mut harness, "Save the skill");
+    scroll_to_and_press(&mut harness, "Save the skill");
     let Command::SaveSkill { id, draft } = sent(&mut stand_in) else {
         panic!("expected a skill to save");
     };
@@ -1968,9 +1950,9 @@ fn a_skill_is_written_changed_and_deleted_on_the_agent_screen() {
     assert!(harness.query_by_label("Change the skill").is_none());
 
     // A new one needs a name and something for the agent to know.
-    press_in_rubric(&mut harness, "Write a skill");
+    scroll_to_and_press(&mut harness, "Write a skill");
     harness.get_by_label("A new skill");
-    press_in_rubric(&mut harness, "Save the skill");
+    scroll_to_and_press(&mut harness, "Save the skill");
     assert!(stand_in.commands.try_recv().is_err());
     for (field, text) in [
         ("Name", "Rounding"),
@@ -1983,7 +1965,7 @@ fn a_skill_is_written_changed_and_deleted_on_the_agent_screen() {
         harness.get_by_label(field).type_text(text);
         frames(&mut harness);
     }
-    press_in_rubric(&mut harness, "Save the skill");
+    scroll_to_and_press(&mut harness, "Save the skill");
     let Command::SaveSkill { id, draft } = sent(&mut stand_in) else {
         panic!("expected a skill to save");
     };
@@ -2035,17 +2017,17 @@ fn a_skill_is_written_changed_and_deleted_on_the_agent_screen() {
     frames(&mut harness);
 
     // Deleting asks first.
-    press_in_rubric(&mut harness, "Delete");
+    scroll_to_and_press(&mut harness, "Delete");
     assert!(stand_in.commands.try_recv().is_err());
     harness.get_by_label_contains("Delete the skill \u{201c}Late work\u{201d}?");
-    press_in_rubric(&mut harness, "Keep it");
+    scroll_to_and_press(&mut harness, "Keep it");
     assert!(
         harness
             .query_by_label_contains("cannot be brought back")
             .is_none()
     );
-    press_in_rubric(&mut harness, "Delete");
-    press_in_rubric(&mut harness, "Delete the skill");
+    scroll_to_and_press(&mut harness, "Delete");
+    scroll_to_and_press(&mut harness, "Delete the skill");
     let Command::DeleteSkill(id) = sent(&mut stand_in) else {
         panic!("expected a skill to delete");
     };

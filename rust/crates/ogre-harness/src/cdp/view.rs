@@ -42,7 +42,10 @@ pub enum ViewEvent {
     Asks(PageDialog),
     /// The question was answered, by whoever.
     Answered,
-    /// The tab is at another address.
+    /// The tab is at another address. Chrome draws the new page in a
+    /// process of its own and can go on sending pictures of the old one,
+    /// which never changes again: [`TabView::restart_pictures`] gets the new
+    /// page.
     Moved(String),
 }
 
@@ -118,6 +121,7 @@ impl Held {
 pub struct TabView {
     page: CdpPage,
     events: mpsc::UnboundedReceiver<Event>,
+    size: ViewSize,
 }
 
 impl CdpPage {
@@ -127,8 +131,9 @@ impl CdpPage {
         let view = TabView {
             page: self.clone(),
             events: self.conn.listen(&self.session),
+            size,
         };
-        view.resize(size).await?;
+        view.restart_pictures().await?;
         Ok(view)
     }
 
@@ -295,8 +300,14 @@ impl TabView {
     }
 
     /// Draws the tab at another size. Chrome sends a picture at once.
-    pub async fn resize(&self, size: ViewSize) -> Result<()> {
-        let page = &self.page;
+    pub async fn resize(&mut self, size: ViewSize) -> Result<()> {
+        self.size = size;
+        self.restart_pictures().await
+    }
+
+    /// Has Chrome send pictures of the tab as it is now, starting at once.
+    pub async fn restart_pictures(&self) -> Result<()> {
+        let (page, size) = (&self.page, self.size);
         let metrics = json!({
             "width": size.width,
             "height": size.height,

@@ -462,13 +462,14 @@ pub fn has_unsaved_changes(text: &str, original: &[RubricCriterion]) -> bool {
     js::trim(text) != js::trim(&criteria_to_text(original))
 }
 
+/// The largest distance from 100 at which weights still count as adding up.
+pub(super) const WEIGHT_TOLERANCE: f64 = 0.5;
+
 /// Checks that the weights add up to 100%, give or take half a percent.
 ///
 /// By category, one weight is counted per category: its first criterion's.
 /// By criterion, every criterion's weight is counted, across all categories.
 pub fn validate_weights(criteria: &[RubricCriterion], mode: WeightMode) -> WeightValidation {
-    const TOLERANCE: f64 = 0.5;
-
     if criteria.is_empty() {
         return WeightValidation {
             valid: true,
@@ -498,7 +499,7 @@ pub fn validate_weights(criteria: &[RubricCriterion], mode: WeightMode) -> Weigh
     };
 
     let rounded = js::round_to(sum, 10.0);
-    let valid = (sum - 100.0).abs() <= TOLERANCE;
+    let valid = (sum - 100.0).abs() <= WEIGHT_TOLERANCE;
     WeightValidation {
         valid,
         sum: Some(rounded),

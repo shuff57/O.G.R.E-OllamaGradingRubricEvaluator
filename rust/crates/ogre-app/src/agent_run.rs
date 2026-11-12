@@ -75,13 +75,7 @@ pub(crate) fn list_skills(skills_dir: &Path) -> Vec<SkillSummary> {
                 .then(|| SkillDraft::from_markdown(&skill.content)),
             built_in: skill.source == SkillSource::SiteProfile,
             on_in_file: skill.active,
-            sites: skill
-                .url_patterns
-                .iter()
-                .flat_map(|pattern| pattern.split(','))
-                .map(|site| site.trim().to_owned())
-                .filter(|site| !site.is_empty())
-                .collect(),
+            sites: skill.sites().map(str::to_owned).collect(),
             id: skill.id,
             name: skill.name,
             description: skill.description,

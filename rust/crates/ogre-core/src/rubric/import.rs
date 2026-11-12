@@ -190,7 +190,6 @@ fn words(value: &Json) -> String {
 /// questions names the question in each category.
 pub fn imported_rubric_text(criteria: &[RubricCriterion]) -> String {
     let mut questions: Vec<f64> = criteria.iter().filter_map(|c| c.question).collect();
-    questions.dedup();
     questions.sort_by(f64::total_cmp);
     questions.dedup();
     let several_questions = questions.len() > 1;
