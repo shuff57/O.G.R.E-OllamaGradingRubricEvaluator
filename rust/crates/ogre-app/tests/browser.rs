@@ -108,6 +108,47 @@ fn audit_events(data_dir: &Path) -> Vec<Value> {
         .collect()
 }
 
+/// MyOpenMath shows its sign-in page for a few seconds after a page is
+/// opened and then brings up the page itself. A teacher who presses Read at
+/// once must get the students, not "No student work found".
+#[test]
+#[ignore = "needs Chrome installed"]
+fn a_read_straight_after_opening_waits_for_the_page_to_arrive() {
+    let data_dir = std::env::temp_dir().join(format!("ogre-test-settle-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data_dir);
+    let (wake, woken) = mpsc::channel();
+    let worker = Worker::spawn(
+        LaunchOptions {
+            profile_dir: data_dir.join("chrome-profile"),
+            headless: true,
+            executable: None,
+        },
+        saved_page_sites(),
+        data_dir.clone(),
+        move || {
+            let _ = wake.send(());
+        },
+    );
+    let (event, _) = ask(&worker, &woken, Command::StartChrome);
+    assert!(matches!(event, Event::ChromeStarted), "{event:?}");
+
+    let (event, _) = ask(
+        &worker,
+        &woken,
+        Command::Open(fixture("late/imathas-gradeallq2.html")),
+    );
+    assert!(matches!(event, Event::Opened(_)), "{event:?}");
+    let (event, _) = ask(&worker, &woken, Command::ReadStudents);
+    let Event::Read(read) = event else {
+        panic!("expected students, got {event:?}");
+    };
+    assert_eq!(read.page.submissions.len(), 5);
+    assert!(read.page.url.ends_with("/fixtures/imathas-gradeallq2.html"));
+
+    drop(worker);
+    let _ = std::fs::remove_dir_all(&data_dir);
+}
+
 #[test]
 #[ignore = "needs Chrome installed"]
 fn reads_grades_fills_verifies_and_saves_a_page() {

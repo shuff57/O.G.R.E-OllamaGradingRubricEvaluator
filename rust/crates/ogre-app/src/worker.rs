@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::sync::mpsc as std_mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
 use ogre_core::{GradeWrite, GradingPage, Rubric, StudentWork};
 use ogre_grader::CancelFlag;
@@ -24,6 +25,12 @@ use crate::settings::ProviderSettings;
 
 /// Writes are checked against the page after this many students.
 const WRITE_BATCH: usize = 5;
+
+/// How long after a page is opened a read keeps trying before it reports
+/// that there is nothing to read. MyOpenMath takes about three seconds to get
+/// from its sign-in page to the page that was asked for.
+const SETTLE_TIME: Duration = Duration::from_secs(8);
+const SETTLE_STEP: Duration = Duration::from_millis(400);
 
 /// Something the window asks the worker to do.
 #[derive(Debug)]
@@ -306,6 +313,7 @@ fn run(
             answers,
             chrome: None,
             opened: None,
+            opened_at: None,
             target: None,
             audit: AuditLog::new(data_dir),
             report: Reporter {
@@ -365,6 +373,8 @@ struct Task {
     chrome: Option<Chrome>,
     /// The tab OGRE opened most recently.
     opened: Option<CdpPage>,
+    /// When the last page was opened from the app.
+    opened_at: Option<Instant>,
     target: Option<Target>,
     audit: AuditLog,
     report: Reporter,
@@ -407,6 +417,7 @@ impl Task {
                 let page = self.chrome()?.open(&address).await?;
                 let url = page.url().await?;
                 self.opened = Some(page);
+                self.opened_at = Some(Instant::now());
                 Ok(Event::Opened(url))
             }
             Command::ReadStudents => self.read().await,
@@ -467,12 +478,26 @@ impl Task {
     }
 
     async fn read(&mut self) -> Result<Event> {
+        // A grading page that was only just opened may not be there yet: a
+        // site can show its sign-in page at that address for a moment and
+        // then bring up what was asked for. Keep trying for a little while
+        // after an open. A page OGRE does not know at all fails at once.
+        let settled = self.opened_at.map(|at| at + SETTLE_TIME);
+        let (chosen, read) = loop {
+            let chosen = self.grading_page().await?;
+            match chosen.adapter.read_page(&chosen.page).await {
+                Ok(read) => break (chosen, read),
+                Err(error) if settled.is_none_or(|settled| Instant::now() >= settled) => {
+                    return Err(error);
+                }
+                Err(_) => tokio::time::sleep(SETTLE_STEP).await,
+            }
+        };
         let Chosen {
             page,
             adapter,
             manual_save,
-        } = self.grading_page().await?;
-        let read = adapter.read_page(&page).await?;
+        } = chosen;
         let rubric = adapter
             .read_rubric(&page)
             .await
