@@ -831,3 +831,62 @@ fn the_real_service_reads_a_rubric_from_a_picture_of_the_page() {
         );
     }
 }
+
+/// Has the real service draft a rubric for a question, through the app's own
+/// worker. No browser and no student's work.
+///
+///     cargo test -p ogre-app --test live drafts_a_rubric -- --ignored --nocapture
+#[test]
+#[ignore = "asks the Electron app's AI service to draft a rubric"]
+fn the_real_service_drafts_a_rubric_for_a_question() {
+    let (provider, key) = electron_app_provider();
+    println!("asking {}", provider.model);
+    let data_dir = std::env::temp_dir().join(format!("ogre-live-draft-{}", std::process::id()));
+    let worker = Worker::spawn(
+        LaunchOptions {
+            profile_dir: data_dir.join("chrome-profile"),
+            headless: true,
+            executable: None,
+        },
+        Sites::built_in(),
+        data_dir.clone(),
+        || {},
+    );
+    let started = Instant::now();
+    worker.send(Command::DraftRubric {
+        question: "A basketball player makes 70% of free throws. In 20 attempts, find the probability of at least 16 makes, and say whether that outcome would be unusual.".into(),
+        max_score: 14.0,
+        provider,
+        api_key: Some(key),
+    });
+    let draft = loop {
+        match worker.poll().next() {
+            Some(Event::RubricDrafted(result)) => break result,
+            Some(other) => panic!("unexpected news from the worker: {other:?}"),
+            None => {
+                assert!(
+                    started.elapsed() < Duration::from_secs(600),
+                    "no reply in ten minutes"
+                );
+                std::thread::sleep(Duration::from_millis(200));
+            }
+        }
+    };
+    drop(worker);
+    let _ = std::fs::remove_dir_all(&data_dir);
+
+    let draft = draft.expect("a rubric was drafted");
+    println!(
+        "took {:.0?}; {} parts, named {:?}\n{}",
+        started.elapsed(),
+        draft.parts,
+        draft.name,
+        draft.requirements
+    );
+    assert!(draft.parts >= 2);
+    assert_eq!(
+        ogre_core::category_weight_problem(&draft.requirements),
+        None,
+        "the drafted weights add up"
+    );
+}

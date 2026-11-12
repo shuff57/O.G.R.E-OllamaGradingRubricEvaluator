@@ -156,8 +156,9 @@ Decisions: desktop only for now (code kept web-compilable), Linux only for now, 
 - Saved rubrics: the rubric in the card (text, instructions, scoring examples) is kept under a name and used on any page, for sites whose pages show no rubric OGRE can read. One JSON file each under `rubrics/` in the app's data folder.
 - A rubric read from a picture of the page: OGRE screenshots the Chrome tab and a model that can look at pictures returns the criteria, each as a category weighted by its points. Checked with real Chrome and Ollama Cloud `gemma4:31b` on a made-up rubric table (`rust/fixtures/rubric/essay-rubric.html`).
 - Three deliberate departures from the Electron scoring: category scores are always read out of 10; a sub-maximum score is raised to full only when every verdict says "Correct"; category weights are used only when the weights of the categories the AI scored add up to 100 (before, a rubric with one category named differently from the rest scored a perfect answer 3 of 14).
+- A rubric drafted by the AI from the question, for a question that has none. Checked against Ollama Cloud `gemma4:31b`.
 - The Agent screen lists what the agent knows: the built-in site guides and the teacher's own skill files, each skill with a switch that is remembered.
-- 940 tests pass by default; 70 more need Chrome, a local model or the AI service.
+- 946 tests pass by default; 71 more need Chrome, a local model or the AI service.
 
 ## Checked on real MyOpenMath pages (read-only)
 
@@ -183,5 +184,17 @@ Four ungraded students on one MyOpenMath question, supervised step by step with 
 2. Choose the default way of scoring. The same student got 7, 7 and then 5.5 of 14 from the AI's own score in three runs; the Settings switch that works the score out from the feedback's verdicts removes that part of the variation.
 3. Weights that are only filled in do not count on a page whose categories name their points ("Interpret(4 pts)"), as in the Electron app: the score is the AI's own total. On a page with plain category names they do. Making them count everywhere was tried on question 360745106 and agreed less well with the grades on the page (average gap 1.72 against about 1.3), so it was left alone.
 4. Calibration from earlier sessions is in the engine with no control in the window. It needs graded answers to draw on, and the session records deliberately hold no student responses, so it starts with a decision about keeping them. Outlier review needs no control: the app already marks scores that stand apart.
-5. Not ported: drafting a rubric from the question text, writing or editing a skill inside the app (skills are Markdown files in a folder the Agent screen opens), an update prompt. The solver chat is not planned: the Electron app has the component and no screen that shows it. The Electron app's own rubric library is not imported; this teacher's had nothing in it.
+5. Not ported: writing or editing a skill inside the app (skills are Markdown files in a folder the Agent screen opens), an update prompt. The solver chat is not planned: the Electron app has the component and no screen that shows it. The Electron app's own rubric library is not imported; this teacher's had nothing in it.
 6. Windows support when wanted.
+
+## Embedded browser
+
+Not planned. The decision of 2026-11-11 was to drive the teacher's own Chrome, so the teacher works in two windows. Looked at on 2026-11-12, on this computer (Fedora, Wayland):
+
+| Way | What it takes | Catch |
+|---|---|---|
+| Show the Chrome tab inside OGRE (Chrome runs out of sight, its picture is drawn in a panel, clicks and keys are passed on) | No new dependency; the Chrome driver, sign-ins and site adapters stay as they are | Measured with a throwaway test: 24 pictures a second while a page moves, none while it is still, and 0.2 to 0.4 seconds from a click or a keystroke to the picture showing it. Good for watching and the odd click, slow to type in. File pickers, pop-up windows, the password manager and copy and paste each need work of their own |
+| Chromium inside the window (CEF, the `cef` crate) | A real browser in a panel, and the Chrome driver could still talk to it | Adds Chromium to the program, which is 17 MB today, and a much harder build and packaging |
+| The system web view (`wry`, WebKitGTK) | Small | Its child window works on X11 only, not Wayland; it is not Chrome, so sign-ins start over and the driver would be rewritten |
+
+If one is wanted, the first row is the one to try: it can be built behind a switch and dropped without touching the rest.

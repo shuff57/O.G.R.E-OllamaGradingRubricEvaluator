@@ -149,3 +149,39 @@ fn new_requirements_keep_the_exemplar_answer() {
     assert_eq!(with_requirements("Old requirement", "New"), "New");
     assert_eq!(with_requirements("", "New"), "New");
 }
+
+#[test]
+fn the_draft_prompt_carries_the_question_and_what_it_is_worth() {
+    let prompt = rubric_draft_prompt("  Explain the margin of error.\n", 14.0);
+    assert!(prompt.starts_with(
+        "You are a grading assistant. Create a JSON scoring rubric from the assignment text provided.\n\nOUTPUT FORMAT \u{2014} Your entire response must be a single valid JSON object. Begin with `{` and end with `}`."
+    ));
+    assert!(
+        prompt.contains("2. Criteria point values must sum to EXACTLY 14. Use whole numbers only.")
+    );
+    assert!(prompt.ends_with("Assignment (max 14 points):\nExplain the margin of error."));
+    assert!(!prompt.contains("${"));
+    // Half points print as JavaScript prints them.
+    assert!(rubric_draft_prompt("Q", 2.5).contains("EXACTLY 2.5."));
+}
+
+#[test]
+fn a_drafted_rubric_reads_like_one_from_a_picture() {
+    // The prompt's own example of a reply.
+    let reply = r#"{"suggestedName": "Essay Analysis", "rubric": [{"criteria": "Thesis Statement", "description": "Full: clear, arguable thesis stated | Partial: thesis present but vague or broad | None: no thesis or completely off-topic", "points": 4, "question": 1}, {"criteria": "Supporting Evidence", "description": "Full: 2+ specific examples with explanation | Partial: evidence cited but underdeveloped | None: no supporting evidence", "points": 6, "question": 1}]}"#;
+    let rubric = parse_rubric_extraction(reply).unwrap();
+    let text = imported_rubric_text(&rubric.criteria);
+    assert!(
+        text.starts_with(
+            "## Thesis Statement [40%]\nFull: clear, arguable thesis stated | Partial:"
+        )
+    );
+    assert!(text.contains("\n## Supporting Evidence [60%]\n"));
+    assert_eq!(category_weight_problem(&text), None);
+    assert_eq!(unread_rubric_lines(&text), Vec::<String>::new());
+    // A reply that says there is nothing to grade.
+    assert_eq!(
+        parse_rubric_extraction(r#"{"suggestedName": "", "rubric": []}"#),
+        Err(ExtractionError::NoCriteria)
+    );
+}

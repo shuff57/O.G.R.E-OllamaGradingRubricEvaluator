@@ -222,3 +222,19 @@ async fn a_picture_with_no_rubric_and_a_service_that_fails_are_told_apart() {
     let failed = ogre_grader::read_rubric_from_image(&provider, picture()).await;
     assert!(matches!(failed, Err(ogre_grader::GraderError::Provider(_))));
 }
+
+#[tokio::test]
+async fn a_rubric_is_drafted_from_the_question() {
+    let provider = ScriptedProvider::new().reply(
+        r#"{"suggestedName": "Margin of error", "rubric": [{"criteria": "Direction", "description": "Full: says it shrinks | Partial: vague | None: wrong", "points": 6, "question": 1}, {"criteria": "Reason", "description": "Full: names the standard error | Partial: hints | None: none", "points": 8, "question": 1}]}"#,
+    );
+    let rubric = ogre_grader::draft_rubric(&provider, "Explain the margin of error.", 14.0)
+        .await
+        .unwrap();
+    assert_eq!(rubric.criteria.len(), 2);
+    assert_eq!(rubric.criteria[1].points, 8.0);
+    assert!(
+        provider.prompts()[0]
+            .ends_with("Assignment (max 14 points):\nExplain the margin of error.")
+    );
+}

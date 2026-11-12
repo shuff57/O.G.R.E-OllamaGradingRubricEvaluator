@@ -39,7 +39,8 @@ pub use outcome::{
     StudentOutcome, Summary, SweepAdjustment, SweepOutcome, SweepReport,
 };
 pub use rubric::{
-    PreparedRubric, prepare_edited_rubric, prepare_rubric, read_rubric_from_image, rewrites_rubric,
+    PreparedRubric, draft_rubric, prepare_edited_rubric, prepare_rubric, read_rubric_from_image,
+    rewrites_rubric,
 };
 pub use single::grade_single;
 pub use sweep::{parse_sweep_adjustments, sweep_grades};

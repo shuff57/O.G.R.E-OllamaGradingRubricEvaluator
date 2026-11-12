@@ -5,8 +5,8 @@ use ogre_core::{
     DEFAULT_WEIGHT_MODE, ExtractedRubric, NEUTRAL_LENIENCY, RUBRIC_FROM_IMAGE_SYSTEM_PROMPT,
     RUBRIC_FROM_IMAGE_USER_PROMPT, Rubric, accept_rewrite, extract_model_text, grading_text,
     leniency_rewrite_prompt, names_category_weights, parse_rubric_extraction,
-    restore_category_weights, rubric_from_grading_text, rubric_from_text, rubric_text,
-    text_to_criteria, with_default_weights,
+    restore_category_weights, rubric_draft_prompt, rubric_from_grading_text, rubric_from_text,
+    rubric_text, text_to_criteria, with_default_weights,
 };
 use ogre_llm::{ChatProvider, ChatRequest, Image, Message};
 
@@ -115,6 +115,20 @@ pub async fn read_rubric_from_image(
         Message::user(RUBRIC_FROM_IMAGE_USER_PROMPT).with_image(picture),
     ])
     .with_json(true);
+    let reply = provider.chat(&request).await?;
+    Ok(parse_rubric_extraction(&reply)?)
+}
+
+/// Asks the AI to write a rubric for `question`, with points that add up to
+/// `max_score`. A starting point for the teacher, never a rubric to grade
+/// with unread.
+pub async fn draft_rubric(
+    provider: &dyn ChatProvider,
+    question: &str,
+    max_score: f64,
+) -> Result<ExtractedRubric, GraderError> {
+    let prompt = rubric_draft_prompt(question, max_score);
+    let request = ChatRequest::new([Message::user(prompt)]).with_json(true);
     let reply = provider.chat(&request).await?;
     Ok(parse_rubric_extraction(&reply)?)
 }

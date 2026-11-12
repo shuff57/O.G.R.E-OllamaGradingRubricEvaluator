@@ -3,16 +3,16 @@
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use ogre_core::{Rubric, imported_rubric_text};
+use ogre_core::{ExtractedRubric, Rubric, imported_rubric_text};
 use ogre_grader::{
     BatchOutcome, CancelFlag, GradeEvent, GradeOptions, GradeStatus, GraderError, PreparedRubric,
-    ScoreSource, generate_anchor_examples, grade_batch, prepare_edited_rubric, prepare_rubric,
-    read_rubric_from_image,
+    ScoreSource, draft_rubric as draft, generate_anchor_examples, grade_batch,
+    prepare_edited_rubric, prepare_rubric, read_rubric_from_image,
 };
 use ogre_llm::{HttpProvider, Image};
 
 use crate::settings::ProviderSettings;
-use crate::worker::{ExamplesRequest, GradeRequest, PictureRubric};
+use crate::worker::{ExamplesRequest, GradeRequest, OutsideRubric};
 
 /// The heading the grader's prompt knows scoring examples by.
 const EXAMPLES_HEADING: &str = "SCORING CALIBRATION:";
@@ -320,15 +320,11 @@ pub async fn rubric_from_picture(
     settings: &ProviderSettings,
     api_key: Option<&str>,
     png: &[u8],
-) -> Result<PictureRubric, String> {
+) -> Result<OutsideRubric, String> {
     let provider = provider(settings, api_key)?;
     let picture = Image::new("image/png", BASE64.encode(png));
     match read_rubric_from_image(&provider, picture).await {
-        Ok(rubric) => Ok(PictureRubric {
-            requirements: imported_rubric_text(&rubric.criteria),
-            parts: rubric.criteria.len(),
-            name: rubric.suggested_name,
-        }),
+        Ok(rubric) => Ok(outside(rubric)),
         Err(GraderError::NoRubricRead(_)) => Err(
             "The AI found no rubric in the picture of the page. Scroll the rubric into view \
              in Chrome and try again."
@@ -338,6 +334,34 @@ pub async fn rubric_from_picture(
             "The picture of the page could not be read: {error} The model has to be one \
              that can look at pictures."
         )),
+    }
+}
+
+/// Has the AI write a rubric for `question`, worth `max_score` points, as
+/// text for the rubric editor.
+pub async fn draft_rubric(
+    settings: &ProviderSettings,
+    api_key: Option<&str>,
+    question: &str,
+    max_score: f64,
+) -> Result<OutsideRubric, String> {
+    let provider = provider(settings, api_key)?;
+    match draft(&provider, question, max_score).await {
+        Ok(rubric) => Ok(outside(rubric)),
+        Err(GraderError::NoRubricRead(_)) => Err(
+            "The AI wrote no rubric for this question. Try again, or type the requirements \
+             yourself."
+                .to_owned(),
+        ),
+        Err(error) => Err(format!("The rubric could not be drafted: {error}")),
+    }
+}
+
+fn outside(rubric: ExtractedRubric) -> OutsideRubric {
+    OutsideRubric {
+        requirements: imported_rubric_text(&rubric.criteria),
+        parts: rubric.criteria.len(),
+        name: rubric.suggested_name,
     }
 }
 

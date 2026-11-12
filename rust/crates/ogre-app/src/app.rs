@@ -135,6 +135,8 @@ enum Action {
     WriteExamples,
     /// Have the AI read the rubric from a picture of the grading tab.
     RubricFromPicture,
+    /// Have the AI write a rubric for the question.
+    DraftRubric,
     /// Keep the rubric in hand under the name in the name box.
     SaveRubric,
     DeleteRubric(String),
@@ -323,7 +325,22 @@ impl OgreApp {
                         ));
                     }
                 }
-                Event::RubricRead(Err(problem)) => self.error = Some(problem),
+                Event::RubricRead(Err(problem)) | Event::RubricDrafted(Err(problem)) => {
+                    self.error = Some(problem);
+                }
+                Event::RubricDrafted(Ok(draft)) => {
+                    if let Some(session) = &mut self.session {
+                        session.set_requirements(&draft.requirements);
+                        if self.rubric_name.trim().is_empty() {
+                            self.rubric_name = draft.name;
+                        }
+                        self.notice = Some(format!(
+                            "The AI drafted a rubric of {} from the question. It is a starting \
+                             point: read it and change it before grading.",
+                            count(draft.parts, "part")
+                        ));
+                    }
+                }
                 Event::Rubrics(rubrics) => {
                     self.set_saved_rubrics(rubrics);
                     if let Some(name) = self.saving_rubric.take() {
@@ -438,6 +455,19 @@ impl OgreApp {
                     api_key: self.key(),
                 };
                 self.send(command, "Reading the rubric from a picture of the page…");
+            }
+            Action::DraftRubric => {
+                let Some(session) = &self.session else { return };
+                let Some(question) = session.question_text() else {
+                    return;
+                };
+                let command = Command::DraftRubric {
+                    question: question.to_owned(),
+                    max_score: session.rubric.max_score_value(),
+                    provider: self.settings.provider.clone(),
+                    api_key: self.key(),
+                };
+                self.send(command, "Drafting a rubric from the question…");
             }
             Action::SaveRubric => {
                 let Some(session) = &self.session else { return };
@@ -1082,7 +1112,7 @@ impl OgreApp {
             }
         });
 
-        kit::section_label(ui, "Rubric shown on the page");
+        kit::section_label(ui, "When the page gives no rubric");
         let has_key = !self.api_key.trim().is_empty();
         let service = self.settings.provider.service;
         let can_ask =
@@ -1101,6 +1131,19 @@ impl OgreApp {
                 "For a rubric OGRE could not read. Scroll it into view in Chrome first. \
                  The model has to be one that can look at pictures."
                     .to_owned()
+            }));
+        });
+        let question = session.question_text().is_some();
+        let can_draft = idle && question && self.settings.provider.problem(has_key).is_none();
+        ui.horizontal_wrapped(|ui| {
+            if kit::ghost(ui, "Draft a rubric from the question", can_draft).clicked() {
+                actions.push(Action::DraftRubric);
+            }
+            ui.label(theme::muted(if question {
+                "For a question that has none. The AI writes one worth the question\u{2019}s \
+                 points. It is a starting point: read it and change it before grading."
+            } else {
+                "OGRE read no question on this page to draft a rubric from."
             }));
         });
     }

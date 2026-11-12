@@ -345,6 +345,22 @@ impl Session {
         }
     }
 
+    /// The question the students answered, where the page gave one: the
+    /// rubric's, or failing that the first student's own.
+    pub fn question_text(&self) -> Option<&str> {
+        let filled = |text: &&str| !text.trim().is_empty();
+        self.rubric
+            .essay_prompt
+            .as_deref()
+            .filter(filled)
+            .or_else(|| {
+                self.page
+                    .submissions
+                    .iter()
+                    .find_map(|submission| submission.prompt.as_deref().filter(filled))
+            })
+    }
+
     /// The rubric in hand, to keep under `name`.
     pub fn as_saved(&self, name: &str) -> SavedRubric {
         SavedRubric {

@@ -57,6 +57,13 @@ pub enum Command {
         provider: ProviderSettings,
         api_key: Option<String>,
     },
+    /// Have the AI write a rubric for a question, worth `max_score` points.
+    DraftRubric {
+        question: String,
+        max_score: f64,
+        provider: ProviderSettings,
+        api_key: Option<String>,
+    },
     /// Keep a rubric for other pages, replacing the one of the same name.
     SaveRubric(Box<SavedRubric>),
     DeleteRubric(String),
@@ -135,7 +142,9 @@ pub enum Event {
     /// The scoring examples the AI wrote, or why there are none.
     Examples(std::result::Result<String, String>),
     /// The rubric the AI read from a picture of the page, or why none.
-    RubricRead(std::result::Result<PictureRubric, String>),
+    RubricRead(std::result::Result<OutsideRubric, String>),
+    /// The rubric the AI wrote for the question, or why none.
+    RubricDrafted(std::result::Result<OutsideRubric, String>),
     /// The teacher's saved rubrics, after a change to them.
     Rubrics(Vec<SavedRubric>),
     WriteProgress {
@@ -194,12 +203,13 @@ pub struct ReadReport {
     pub saved_rubrics: Vec<SavedRubric>,
 }
 
-/// A rubric read from a screenshot.
+/// A rubric that did not come from the page's own rubric: read from a
+/// screenshot, or written by the AI for the question.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PictureRubric {
+pub struct OutsideRubric {
     /// The requirements as text for the rubric editor.
     pub requirements: String,
-    /// How many criteria the picture showed.
+    /// How many criteria it has.
     pub parts: usize,
     /// The title the AI found for the rubric. May be empty.
     pub name: String,
@@ -542,6 +552,14 @@ impl Task {
                     grading::rubric_from_picture(&provider, api_key.as_deref(), &png).await,
                 ))
             }
+            Command::DraftRubric {
+                question,
+                max_score,
+                provider,
+                api_key,
+            } => Ok(Event::RubricDrafted(
+                grading::draft_rubric(&provider, api_key.as_deref(), &question, max_score).await,
+            )),
             Command::SaveRubric(rubric) => {
                 self.rubrics.save(*rubric).map_err(Error::Page)?;
                 Ok(Event::Rubrics(self.rubrics.all()))

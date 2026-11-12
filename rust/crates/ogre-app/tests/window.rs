@@ -10,8 +10,8 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use ogre_app::{
     AgentAnswer, AgentLine, AgentQuestion, AgentSummary, Command, Event, Grade, GradeReport,
-    GradedRow, LineKind, MapReport, MemoryKeys, OgreApp, PastProposal, PastSession, PastStudent,
-    PictureRubric, ProfileSummary, ProviderSettings, ReadReport, SavedRubric, Service, SessionEnd,
+    GradedRow, LineKind, MapReport, MemoryKeys, OgreApp, OutsideRubric, PastProposal, PastSession,
+    PastStudent, ProfileSummary, ProviderSettings, ReadReport, SavedRubric, Service, SessionEnd,
     Settings, SkillSummary, StandIn, Suggestion, Worker, WriteReport,
 };
 use ogre_core::{
@@ -1623,7 +1623,7 @@ fn a_rubric_is_read_from_a_picture_of_the_page_when_asked() {
     ));
     stand_in
         .events
-        .send(Event::RubricRead(Ok(PictureRubric {
+        .send(Event::RubricRead(Ok(OutsideRubric {
             requirements:
                 "## Thesis [40%]\nStates a position\n## Evidence [60%]\nCites two sources".into(),
             parts: 2,
@@ -1647,4 +1647,99 @@ fn a_rubric_is_read_from_a_picture_of_the_page_when_asked() {
             .unwrap()
             .starts_with("## Thesis [40%]\n")
     );
+}
+
+#[test]
+fn a_rubric_is_drafted_from_the_question_when_asked() {
+    const BUTTON: &str = "Draft a rubric from the question";
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    // The page gives a question and how much it is worth, and no rubric.
+    let Event::Read(mut report) = read() else {
+        unreachable!()
+    };
+    report.rubric = Ok(serde_json::from_value(serde_json::json!({
+        "essayPrompt": "Explain how sample size affects the margin of error.",
+        "maxScore": 14,
+    }))
+    .unwrap());
+    stand_in.events.send(Event::Read(report)).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Rubric").click();
+    frames(&mut harness);
+
+    press_in_rubric(&mut harness, BUTTON);
+    let Command::DraftRubric {
+        question,
+        max_score,
+        ..
+    } = sent(&mut stand_in)
+    else {
+        panic!("expected a rubric to be drafted");
+    };
+    assert_eq!(
+        question,
+        "Explain how sample size affects the margin of error."
+    );
+    assert_eq!(max_score, 14.0);
+    stand_in
+        .events
+        .send(Event::RubricDrafted(Ok(OutsideRubric {
+            requirements: "## Direction [40%]\nFull: says it shrinks | Partial: vague | None: wrong\n## Reason [60%]\nFull: names the standard error | Partial: hints | None: none".into(),
+            parts: 2,
+            name: "Margin of error".into(),
+        })))
+        .unwrap();
+    frames(&mut harness);
+    harness.get_by_label_contains("The AI drafted a rubric of 2 parts from the question.");
+    harness.get_by_label("Edited");
+    harness.get_by_label("2 requirements in 2 categories, no model response.");
+    shot(&mut harness, "24-rubric-drafted");
+}
+
+#[test]
+fn the_question_a_student_was_asked_will_do_where_the_rubric_names_none() {
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    stand_in
+        .events
+        .send(read_without_a_rubric(Vec::new()))
+        .unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Rubric").click();
+    frames(&mut harness);
+    press_in_rubric(&mut harness, "Draft a rubric from the question");
+    let Command::DraftRubric {
+        question,
+        max_score,
+        ..
+    } = sent(&mut stand_in)
+    else {
+        panic!("expected a rubric to be drafted");
+    };
+    assert_eq!(
+        question,
+        "Explain how sample size affects the margin of error."
+    );
+    // No rubric to say what the question is worth: the usual 10.
+    assert_eq!(max_score, 10.0);
+}
+
+#[test]
+fn a_page_without_a_question_has_nothing_to_draft_a_rubric_from() {
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    let Event::Read(mut report) = read_without_a_rubric(Vec::new()) else {
+        unreachable!()
+    };
+    for submission in &mut report.page.submissions {
+        submission.prompt = None;
+    }
+    stand_in.events.send(Event::Read(report)).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Rubric").click();
+    frames(&mut harness);
+    press_in_rubric(&mut harness, "Draft a rubric from the question");
+    assert!(stand_in.commands.try_recv().is_err());
+    harness.get_by_label("OGRE read no question on this page to draft a rubric from.");
 }

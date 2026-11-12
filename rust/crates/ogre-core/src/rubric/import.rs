@@ -55,7 +55,40 @@ Do not include markdown formatting, code fences, or explanations outside the JSO
 /// The user message that goes with the picture.
 pub const RUBRIC_FROM_IMAGE_USER_PROMPT: &str = "Extract the grading rubric from this screenshot image. Return structured JSON with all criteria, point values, and descriptions.";
 
-/// A rubric the AI read from a picture.
+/// The desktop app's `RUBRIC_GENERATION_PROMPT`, with its two blanks.
+const RUBRIC_DRAFT_TEMPLATE: &str = r##"You are a grading assistant. Create a JSON scoring rubric from the assignment text provided.
+
+OUTPUT FORMAT — Your entire response must be a single valid JSON object. Begin with `{` and end with `}`. No markdown, no code fences, no explanation text before or after.
+
+{
+  "suggestedName": "Short rubric title (5 words max)",
+  "rubric": [
+    { "criteria": "Short criterion name", "description": "Full: what earns full credit | Partial: what earns partial credit | None: what earns zero", "points": 5, "question": 1 }
+  ]
+}
+
+RULES:
+1. Include ONLY free-response/essay criteria. Skip multiple choice, true/false, fill-in-the-blank, and any auto-graded question types.
+2. Criteria point values must sum to EXACTLY ${maxScore}. Use whole numbers only.
+3. If multiple questions are present, set "question" to that question's number (1, 2, 3…). For a single question, always use 1.
+4. Each "description" is a single line in exactly this format: "Full: … | Partial: … | None: …" — no line breaks inside the description.
+5. If the text contains no gradable free-response content, return: {"suggestedName": "", "rubric": []}
+
+EXAMPLE (10-point assignment):
+{"suggestedName": "Essay Analysis", "rubric": [{"criteria": "Thesis Statement", "description": "Full: clear, arguable thesis stated | Partial: thesis present but vague or broad | None: no thesis or completely off-topic", "points": 4, "question": 1}, {"criteria": "Supporting Evidence", "description": "Full: 2+ specific examples with explanation | Partial: evidence cited but underdeveloped | None: no supporting evidence", "points": 6, "question": 1}]}
+Assignment (max ${maxScore} points):
+${content}"##;
+
+/// The prompt that asks the AI to write a rubric for `question`, with
+/// points that add up to `max_score`. The reply is read with
+/// [`parse_rubric_extraction`].
+pub fn rubric_draft_prompt(question: &str, max_score: f64) -> String {
+    RUBRIC_DRAFT_TEMPLATE
+        .replace("${maxScore}", &Num(max_score).to_string())
+        .replace("${content}", question.trim())
+}
+
+/// A rubric the AI read from a picture, or wrote for a question.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExtractedRubric {
     /// A title the AI found for it. May be empty.

@@ -35,7 +35,7 @@ pub use rubric::{
 pub use rubric::{
     ExtractedRubric, ExtractionError, RUBRIC_FROM_IMAGE_SYSTEM_PROMPT,
     RUBRIC_FROM_IMAGE_USER_PROMPT, imported_rubric_text, parse_rubric_extraction,
-    with_requirements,
+    rubric_draft_prompt, with_requirements,
 };
 pub use rubric::{
     NEUTRAL_LENIENCY, RewriteError, accept_rewrite, leniency_rewrite_prompt,
