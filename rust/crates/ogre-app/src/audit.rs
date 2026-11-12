@@ -28,8 +28,13 @@ impl AuditLog {
         }
     }
 
-    /// Starts a new record for a page that was just read.
-    pub fn begin(&mut self, page: &GradingPage) {
+    /// Where the records are kept.
+    pub fn dir(&self) -> &std::path::Path {
+        &self.dir
+    }
+
+    /// Starts a new record for a page that was just read on `site`.
+    pub fn begin(&mut self, page: &GradingPage, site: &str, saves_on_write: bool) {
         self.file = std::fs::create_dir_all(&self.dir)
             .and_then(|()| {
                 let path = self.dir.join(format!("{}.jsonl", now()));
@@ -41,6 +46,8 @@ impl AuditLog {
             "event": "read",
             "url": page.url,
             "title": page.title,
+            "site": site,
+            "saves_on_write": saves_on_write,
             "students": page.submissions.iter().map(|s| json!({
                 "index": s.index,
                 "id": s.student_id,

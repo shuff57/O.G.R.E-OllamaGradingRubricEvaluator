@@ -10,8 +10,9 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use ogre_app::{
     AgentAnswer, AgentLine, AgentQuestion, AgentSummary, Command, Event, Grade, GradeReport,
-    GradedRow, LineKind, MapReport, MemoryKeys, OgreApp, ProfileSummary, ProviderSettings,
-    ReadReport, Service, Settings, StandIn, Worker, WriteReport,
+    GradedRow, LineKind, MapReport, MemoryKeys, OgreApp, PastProposal, PastSession, PastStudent,
+    ProfileSummary, ProviderSettings, ReadReport, Service, SessionEnd, Settings, StandIn, Worker,
+    WriteReport,
 };
 use ogre_core::{
     FeedbackField, FeedbackKind, GradingPage, Position, Rubric, ScoreField, Submission,
@@ -770,4 +771,120 @@ fn the_agent_asks_and_the_teacher_answers() {
     harness.get_by_label("Finished");
     harness.get_by_label("Diaz, Remy has no score yet.");
     shot(&mut harness, "13-agent-done");
+}
+
+fn past_student(
+    name: &str,
+    on_page: Option<f64>,
+    proposed: f64,
+    written: Option<&str>,
+) -> PastStudent {
+    PastStudent {
+        name: name.into(),
+        on_page,
+        proposal: Some(PastProposal::Score(proposed)),
+        written: written.map(Into::into),
+    }
+}
+
+fn past_sessions() -> Vec<PastSession> {
+    vec![
+        PastSession {
+            at: 1_794_448_102,
+            url: "https://www.myopenmath.com/course/gradeallq2.php?cid=1&aid=2&qid=3".into(),
+            title: "Grading a Question in Unit 4 FRQ".into(),
+            site: Some("MyOpenMath".into()),
+            students: vec![
+                PastStudent {
+                    name: "Avery, Sam".into(),
+                    on_page: Some(10.0),
+                    ..PastStudent::default()
+                },
+                past_student("Brook, Kai", Some(0.0), 6.0, Some("6")),
+                PastStudent {
+                    name: "Cruz, Jo".into(),
+                    on_page: None,
+                    proposal: Some(PastProposal::NotGraded("the AI gave no score".into())),
+                    written: None,
+                },
+                past_student("Diaz, Remy", Some(0.0), 8.5, Some("8.5")),
+            ],
+            rubric: Some("## Concept [100%]\nMentions standard error (0pts)".into()),
+            problems: vec![],
+            end: SessionEnd::FilledIn,
+        },
+        PastSession {
+            at: 1_794_000_000,
+            url: "https://canvas.example.edu/courses/1/gradebook/speed_grader?assignment_id=2"
+                .into(),
+            title: "Essay 2".into(),
+            site: None,
+            students: vec![past_student("Avery, Sam", None, 9.0, Some("9"))],
+            rubric: None,
+            problems: vec![],
+            end: SessionEnd::Saved,
+        },
+    ]
+}
+
+#[test]
+fn history_lists_past_sessions_and_shows_one_in_detail() {
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    frames(&mut harness);
+
+    harness.get_by_label("History").click();
+    frames(&mut harness);
+    assert!(matches!(sent(&mut stand_in), Command::ListHistory));
+    stand_in.events.send(Event::History(vec![])).unwrap();
+    frames(&mut harness);
+    harness.get_by_label_contains("Nothing has been graded yet.");
+
+    // Coming back to the screen reads the records again.
+    harness.get_by_label("Grade").click();
+    frames(&mut harness);
+    harness.get_by_label("History").click();
+    frames(&mut harness);
+    assert!(matches!(sent(&mut stand_in), Command::ListHistory));
+    stand_in
+        .events
+        .send(Event::History(past_sessions()))
+        .unwrap();
+    frames(&mut harness);
+
+    harness.get_by_label("Grading a Question in Unit 4 FRQ");
+    harness.get_by_label("2 graded");
+    // Filled in with no save on record is the thing to look at.
+    harness.get_by_label("2 filled in, no save recorded");
+    harness.get_by_label("1 not graded");
+    harness.get_by_label("Essay 2");
+    harness.get_by_label("1 saved");
+    // A record without a site name falls back to the address's host.
+    harness.get_by_label_contains("canvas.example.edu");
+    assert!(harness.query_by_label("Brook, Kai").is_none());
+    shot(&mut harness, "13-history");
+
+    let show: Vec<_> = harness.query_all_by_label("Show details").collect();
+    assert_eq!(show.len(), 2);
+    show[0].click();
+    frames(&mut harness);
+    harness.get_by_label("Brook, Kai");
+    harness.get_by_label("Diaz, Remy");
+    // Proposed and written, side by side.
+    assert_eq!(harness.query_all_by_label("8.5").count(), 2);
+    harness.get_by_label("Not graded: the AI gave no score");
+    assert!(
+        harness.query_by_label("Avery, Sam").is_none(),
+        "a student nothing happened to is not listed"
+    );
+    shot(&mut harness, "14-history-details");
+
+    // The page can be opened again from here.
+    harness.get_by_label("Open this page").click();
+    frames(&mut harness);
+    let Command::Open(address) = sent(&mut stand_in) else {
+        panic!("expected the page to be opened");
+    };
+    assert!(address.contains("gradeallq2.php"));
+    harness.get_by_label("Read students");
 }

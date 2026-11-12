@@ -7,6 +7,7 @@ use ogre_grader::CancelFlag;
 use crate::agent_run::{
     AgentAnswer, AgentLine, AgentQuestion, AgentRequest, AgentSummary, LineKind,
 };
+use crate::history::{self, PastProposal, PastSession, SessionEnd};
 use crate::keys::KeyStore;
 use crate::kit;
 use crate::profiles::ProfileSummary;
@@ -40,6 +41,10 @@ pub struct OgreApp {
     profiles: Vec<ProfileSummary>,
     /// A mapping that was just worked out and is waiting to be saved.
     mapping: Option<MapReport>,
+    /// Past sessions, as last read from their records.
+    history: Vec<PastSession>,
+    /// The past session whose details are shown, by when it was read.
+    history_open: Option<u64>,
     agent: AgentView,
 }
 
@@ -63,6 +68,7 @@ enum Screen {
     Grade,
     Agent,
     Sites,
+    History,
     Settings,
 }
 
@@ -153,6 +159,8 @@ impl OgreApp {
             notice: None,
             markdown: CommonMarkCache::default(),
             profiles: Vec::new(),
+            history: Vec::new(),
+            history_open: None,
             mapping: None,
             agent: AgentView::default(),
         }
@@ -241,6 +249,7 @@ impl OgreApp {
                     self.selected = None;
                 }
                 Event::Profiles(profiles) => self.profiles = profiles,
+                Event::History(sessions) => self.history = sessions,
                 Event::Failed(message) => {
                     self.agent.running = false;
                     self.agent.question = None;
@@ -309,6 +318,9 @@ impl OgreApp {
                 self.screen = screen;
                 if screen == Screen::Sites && self.busy.is_none() {
                     self.send(Command::ListProfiles, "Loading your sites…");
+                }
+                if screen == Screen::History && self.busy.is_none() {
+                    self.send(Command::ListHistory, "Loading your history…");
                 }
             }
             Action::MapPage { with_ai } => {
@@ -417,6 +429,7 @@ impl OgreApp {
                 (Screen::Grade, icon::GRADE, "Grade"),
                 (Screen::Agent, icon::AGENT, "Agent"),
                 (Screen::Sites, icon::SITES, "Sites"),
+                (Screen::History, icon::HISTORY, "History"),
                 (Screen::Settings, icon::SETTINGS, "Settings"),
             ] {
                 if kit::dock_item(ui, glyph, label, self.screen == screen) {
@@ -1060,6 +1073,149 @@ impl OgreApp {
             });
     }
 
+    fn history_screen(&mut self, ui: &mut egui::Ui, actions: &mut Vec<Action>) {
+        let can_open = self.busy.is_none() && self.chrome_running;
+        egui::CentralPanel::default()
+            .frame(Frame::new().inner_margin(CONTENT_MARGIN))
+            .show(ui, |ui| {
+                kit::page_header(
+                    ui,
+                    "OGRE  /  History",
+                    "History",
+                    Some("Pages graded on this computer, newest first."),
+                );
+                self.messages(ui, actions);
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    if self.history.is_empty() && self.busy.is_none() {
+                        kit::card().show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            ui.label(theme::muted(
+                                "Nothing has been graded yet. A page appears here once \
+                                 grades have been proposed for it.",
+                            ));
+                        });
+                    }
+                    let mut toggled = None;
+                    for session in &self.history {
+                        let open = self.history_open == Some(session.at);
+                        kit::card().show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            if Self::past_session(ui, session, open) {
+                                toggled = Some(session.at);
+                            }
+                            if open {
+                                Self::past_session_details(ui, session, can_open, actions);
+                            }
+                        });
+                        ui.add_space(4.0);
+                    }
+                    if let Some(at) = toggled {
+                        self.history_open = (self.history_open != Some(at)).then_some(at);
+                    }
+                });
+            });
+    }
+
+    /// One past session's summary. True when its details were asked for or
+    /// dismissed.
+    fn past_session(ui: &mut egui::Ui, session: &PastSession, open: bool) -> bool {
+        let title = match session.title.trim() {
+            "" => "A page without a title",
+            title => title,
+        };
+        kit::panel_title(ui, title);
+        let place = session
+            .site
+            .as_deref()
+            .unwrap_or_else(|| host(&session.url));
+        ui.label(theme::muted(format!(
+            "{} · {place}",
+            history::when(session.at)
+        )));
+        let mut toggled = false;
+        ui.horizontal_wrapped(|ui| {
+            kit::calm_pill(ui, &format!("{} graded", session.graded()));
+            match session.end {
+                SessionEnd::NothingWritten => {}
+                // Worth a second look: these may never have reached the gradebook.
+                SessionEnd::FilledIn => {
+                    kit::marker_pill(
+                        ui,
+                        &format!("{} filled in, no save recorded", session.written()),
+                    );
+                }
+                SessionEnd::Saved => {
+                    kit::calm_pill(ui, &format!("{} saved", session.written()));
+                }
+            }
+            let mut notes = Vec::new();
+            if session.not_graded() > 0 {
+                notes.push(format!("{} not graded", session.not_graded()));
+            }
+            if session.end == SessionEnd::NothingWritten {
+                notes.push("nothing written".to_owned());
+            }
+            if !notes.is_empty() {
+                ui.label(theme::muted(notes.join(" · ")));
+            }
+            let label = if open { "Hide details" } else { "Show details" };
+            toggled = kit::ghost(ui, label, true).clicked();
+        });
+        toggled
+    }
+
+    fn past_session_details(
+        ui: &mut egui::Ui,
+        session: &PastSession,
+        can_open: bool,
+        actions: &mut Vec<Action>,
+    ) {
+        ui.add_space(4.0);
+        for problem in &session.problems {
+            kit::icon_line(ui, icon::WARNING, problem, pal().warn);
+        }
+        egui::Grid::new(("past-students", session.at))
+            .num_columns(4)
+            .spacing([22.0, 6.0])
+            .show(ui, |ui| {
+                for title in ["Student", "On the page", "Proposed", "Written"] {
+                    kit::section_label(ui, title);
+                }
+                ui.end_row();
+                for student in session.touched() {
+                    ui.label(theme::strong(&student.name).size(ty::BODY));
+                    ui.label(theme::body(
+                        student.on_page.map_or("–".to_owned(), format_score),
+                    ));
+                    match &student.proposal {
+                        Some(PastProposal::Score(score)) => {
+                            ui.label(theme::body(format_score(*score)))
+                        }
+                        Some(PastProposal::NotGraded(reason)) => {
+                            ui.label(theme::muted(format!("Not graded: {reason}")))
+                        }
+                        None => ui.label(theme::body("–")),
+                    };
+                    ui.label(theme::body(student.written.as_deref().unwrap_or("–")));
+                    ui.end_row();
+                }
+            });
+        if let Some(rubric) = &session.rubric {
+            egui::CollapsingHeader::new(theme::strong("Rubric used").size(ty::BODY))
+                .id_salt(("past-rubric", session.at))
+                .show(ui, |ui| {
+                    ui.label(theme::body(rubric));
+                });
+        }
+        ui.horizontal_wrapped(|ui| {
+            if kit::ghost(ui, "Open this page", can_open).clicked() {
+                actions.push(Action::Show(Screen::Grade));
+                actions.push(Action::Open(session.url.clone()));
+            }
+            ui.label(theme::muted(&session.url));
+        });
+    }
+
     fn sites_screen(&mut self, ui: &mut egui::Ui, actions: &mut Vec<Action>) {
         let idle = self.busy.is_none();
         egui::CentralPanel::default()
@@ -1356,6 +1512,7 @@ impl eframe::App for OgreApp {
             Screen::Grade => self.grade_screen(ui, &mut actions),
             Screen::Agent => self.agent_screen(ui, &mut actions),
             Screen::Sites => self.sites_screen(ui, &mut actions),
+            Screen::History => self.history_screen(ui, &mut actions),
             Screen::Settings => self.settings_screen(ui, &mut actions),
         }
 
@@ -1368,6 +1525,12 @@ impl eframe::App for OgreApp {
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, STORAGE_KEY, &self.settings);
     }
+}
+
+/// The host of an address, for telling sites apart: "www.myopenmath.com".
+fn host(url: &str) -> &str {
+    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
+    rest.split(['/', '?', '#']).next().unwrap_or(rest)
 }
 
 /// Shown in the empty rubric editor.

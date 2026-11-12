@@ -151,6 +151,7 @@ pub mod icon {
     pub const GRADE: &str = "\u{E742}";
     pub const AGENT: &str = "\u{E762}";
     pub const SITES: &str = "\u{E28E}";
+    pub const HISTORY: &str = "\u{E1A0}";
     pub const SETTINGS: &str = "\u{E270}";
     pub const SUN: &str = "\u{E472}";
     pub const MOON: &str = "\u{E330}";

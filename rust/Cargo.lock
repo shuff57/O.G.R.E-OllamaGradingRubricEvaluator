@@ -3018,6 +3018,7 @@ dependencies = [
  "egui_kittest",
  "image",
  "keyring",
+ "libc",
  "ogre-agent",
  "ogre-core",
  "ogre-grader",

@@ -20,6 +20,7 @@ use tokio::sync::mpsc;
 use crate::agent_run::{self, AgentAnswer, AgentLine, AgentQuestion, AgentRequest, AgentSummary};
 use crate::audit::AuditLog;
 use crate::grading::{self, GradeReport};
+use crate::history::{self, PastSession};
 use crate::profiles::{ProfileStore, ProfileSummary};
 use crate::settings::ProviderSettings;
 
@@ -58,6 +59,8 @@ pub enum Command {
     SaveProfile(Box<SiteProfile>),
     DeleteProfile(String),
     ListProfiles,
+    /// Read the past sessions from their records.
+    ListHistory,
     /// Let the AI work the open page on a task the teacher describes.
     RunAgent(Box<AgentRequest>),
 }
@@ -100,6 +103,8 @@ pub enum Event {
     Mapped(Box<MapReport>),
     /// The teacher's saved mappings, after any change to them.
     Profiles(Vec<ProfileSummary>),
+    /// Past grading sessions, newest first.
+    History(Vec<PastSession>),
     AgentLine(AgentLine),
     /// The agent wants to act and waits for [`Worker::answer`].
     AgentAsks(AgentQuestion),
@@ -454,6 +459,7 @@ impl Task {
                 Ok(Event::Profiles(self.profiles.summaries()))
             }
             Command::ListProfiles => Ok(Event::Profiles(self.profiles.summaries())),
+            Command::ListHistory => Ok(Event::History(history::load(self.audit.dir()))),
             Command::RunAgent(request) => {
                 let page = self.current_tab().await?;
                 let summary = agent_run::run(
@@ -502,7 +508,8 @@ impl Task {
             .read_rubric(&page)
             .await
             .map_err(|error| error.to_string());
-        self.audit.begin(&read);
+        self.audit
+            .begin(&read, adapter.name(), adapter.saves_on_write());
         let report = ReadReport {
             rubric,
             site: adapter.name(),

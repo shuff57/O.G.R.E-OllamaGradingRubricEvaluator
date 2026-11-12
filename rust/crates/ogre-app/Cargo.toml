@@ -25,6 +25,10 @@ serde_json.workspace = true
 tokio.workspace = true
 winit.workspace = true
 
+[target.'cfg(unix)'.dependencies]
+# For the local time zone on the History screen. Already built for Chrome's pipe.
+libc = "0.2"
+
 [dev-dependencies]
 async-trait.workspace = true
 egui_kittest.workspace = true
