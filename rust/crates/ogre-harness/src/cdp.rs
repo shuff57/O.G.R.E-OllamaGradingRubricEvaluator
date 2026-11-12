@@ -27,6 +27,12 @@ use tokio::time::timeout;
 
 use crate::{Error, InputDriver, PageDriver, Result};
 
+mod view;
+
+pub use view::{
+    DialogKind, Held, MouseAction, MouseButton, PageDialog, TabView, ViewEvent, ViewSize,
+};
+
 /// Chrome starting up and answering its first command.
 const LAUNCH_TIMEOUT: Duration = Duration::from_secs(20);
 /// A command Chrome answers by itself, normally within milliseconds.
@@ -166,27 +172,7 @@ impl Chrome {
 
     /// The tabs currently open, including those the teacher opened by hand.
     pub async fn pages(&self) -> Result<Vec<CdpPage>> {
-        let reply = self
-            .conn
-            .call(None, "Target.getTargets", json!({}), COMMAND_TIMEOUT)
-            .await?;
-        let mut pages = Vec::new();
-        for target in reply["targetInfos"].as_array().into_iter().flatten() {
-            // A page being loaded ahead of time is also a "page", with a
-            // subtype; it is not a tab the teacher can see.
-            let is_tab = target["type"] == "page"
-                && target["subtype"].as_str().unwrap_or_default().is_empty();
-            let Some(id) = target["targetId"].as_str().filter(|_| is_tab) else {
-                continue;
-            };
-            match self.conn.tab(id).await {
-                Ok(page) => pages.push(page),
-                Err(error) if self.conn.is_closed() => return Err(error),
-                // Closed between being listed and being attached to.
-                Err(_) => {}
-            }
-        }
-        Ok(pages)
+        self.conn.tabs().await
     }
 
     /// Whether the browser still answers. False once its window is closed.
@@ -593,6 +579,30 @@ impl Connection {
                 .push(sender);
         }
         receiver
+    }
+
+    /// The tabs currently open.
+    async fn tabs(self: &Arc<Self>) -> Result<Vec<CdpPage>> {
+        let reply = self
+            .call(None, "Target.getTargets", json!({}), COMMAND_TIMEOUT)
+            .await?;
+        let mut pages = Vec::new();
+        for target in reply["targetInfos"].as_array().into_iter().flatten() {
+            // A page being loaded ahead of time is also a "page", with a
+            // subtype; it is not a tab the teacher can see.
+            let is_tab = target["type"] == "page"
+                && target["subtype"].as_str().unwrap_or_default().is_empty();
+            let Some(id) = target["targetId"].as_str().filter(|_| is_tab) else {
+                continue;
+            };
+            match self.tab(id).await {
+                Ok(page) => pages.push(page),
+                Err(error) if self.is_closed() => return Err(error),
+                // Closed between being listed and being attached to.
+                Err(_) => {}
+            }
+        }
+        Ok(pages)
     }
 
     /// The tab with this target id, attaching to it on first use.
