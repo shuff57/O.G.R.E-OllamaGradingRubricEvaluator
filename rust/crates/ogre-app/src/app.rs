@@ -364,8 +364,8 @@ impl OgreApp {
                 Step::Save
             }
             Some(session) if session.unsaved => Step::Read,
-            Some(session) if !session.blocked && !session.to_write().is_empty() => Step::Write,
-            Some(session) if !session.to_grade().is_empty() => Step::Grade,
+            Some(session) if !session.blocked && session.write_count() > 0 => Step::Write,
+            Some(session) if session.grade_count() > 0 => Step::Grade,
             Some(_) => Step::Read,
         }
     }
@@ -483,8 +483,8 @@ impl OgreApp {
     /// The buttons that move a session forward, one stage at a time.
     fn stages(&self, ui: &mut egui::Ui, session: &mut Session, actions: &mut Vec<Action>) {
         let idle = self.busy.is_none();
-        let to_grade = session.to_grade().len();
-        let to_write = session.to_write().len();
+        let to_grade = session.grade_count();
+        let to_write = session.write_count();
         let has_key = !self.api_key.trim().is_empty();
         let provider_problem = self.settings.provider.problem(has_key);
 

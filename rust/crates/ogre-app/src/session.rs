@@ -6,7 +6,7 @@
 
 use ogre_core::{
     GradeWrite, GradingPage, Rubric, SkipReason, StudentWork, Submission, WritePolicy,
-    format_score, plan_write,
+    format_score, plan_write, skip_reason,
 };
 use ogre_harness::feedback;
 
@@ -183,6 +183,15 @@ impl Session {
     }
 
     /// The students a grading run would send to the AI.
+    /// How many students [`Self::to_grade`] would send.
+    pub fn grade_count(&self) -> usize {
+        self.page
+            .submissions
+            .iter()
+            .filter(|s| self.gradable(s))
+            .count()
+    }
+
     pub fn to_grade(&self) -> Vec<StudentWork> {
         self.page
             .submissions
@@ -200,9 +209,9 @@ impl Session {
         }
         match &row.proposal {
             Some(proposal) if !proposal.accepted => Status::Held,
-            Some(proposal) => match self.plan(submission, proposal) {
-                Ok(_) => Status::Ready,
-                Err(reason) => Status::Skipped(reason),
+            Some(proposal) => match skip_reason(submission, proposal.score, self.policy) {
+                None => Status::Ready,
+                Some(reason) => Status::Skipped(reason),
             },
             None if submission.has_nonzero_score() => Status::HasPoints,
             None if submission.has_feedback() => Status::HasFeedback,
@@ -213,6 +222,22 @@ impl Session {
 
     fn plan(&self, submission: &Submission, proposal: &Proposal) -> Result<GradeWrite, SkipReason> {
         plan_write(submission, proposal.score, &proposal.html(), self.policy)
+    }
+
+    /// How many grades [`Self::to_write`] would write.
+    pub fn write_count(&self) -> usize {
+        self.page
+            .submissions
+            .iter()
+            .zip(&self.rows)
+            .filter(|(_, row)| row.note.is_none())
+            .filter(|(submission, row)| {
+                row.proposal.as_ref().is_some_and(|proposal| {
+                    proposal.accepted
+                        && skip_reason(submission, proposal.score, self.policy).is_none()
+                })
+            })
+            .count()
     }
 
     /// The writes the teacher has approved and the rules allow.
@@ -523,6 +548,7 @@ mod tests {
         assert!(s.status(3).is_problem());
         let writes = s.to_write();
         assert_eq!(writes.len(), 1);
+        assert_eq!((s.write_count(), s.grade_count()), (1, s.to_grade().len()));
         assert_eq!(writes[0].name, "Brook, Kai");
         assert_eq!(writes[0].score.value, 7.5);
         assert_eq!(

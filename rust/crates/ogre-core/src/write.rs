@@ -74,6 +74,22 @@ impl SkipReason {
     }
 }
 
+/// Why `score` may not be written for this student, if it may not. The
+/// check [`plan_write`] makes, without building the write.
+pub fn skip_reason(submission: &Submission, score: f64, policy: WritePolicy) -> Option<SkipReason> {
+    let score_box = match submission.scores.as_slice() {
+        [] => return Some(SkipReason::NoScoreBox),
+        [only] => only,
+        _ => return Some(SkipReason::SeveralScoreBoxes),
+    };
+    if submission.has_nonzero_score() && !policy.overwrite_scores {
+        return Some(SkipReason::HasPoints);
+    }
+    let in_range =
+        score.is_finite() && score >= 0.0 && score_box.max.is_none_or(|max| score <= max);
+    (!in_range).then_some(SkipReason::ScoreOutOfRange)
+}
+
 /// Plans the write for one student, given the score and feedback to award.
 ///
 /// Existing feedback is kept unless `policy.replace_feedback` is set; the
@@ -84,19 +100,12 @@ pub fn plan_write(
     feedback_html: &str,
     policy: WritePolicy,
 ) -> Result<GradeWrite, SkipReason> {
-    let score_box = match submission.scores.as_slice() {
-        [] => return Err(SkipReason::NoScoreBox),
-        [only] => only,
-        _ => return Err(SkipReason::SeveralScoreBoxes),
+    if let Some(reason) = skip_reason(submission, score, policy) {
+        return Err(reason);
+    }
+    let [score_box] = submission.scores.as_slice() else {
+        return Err(SkipReason::SeveralScoreBoxes);
     };
-    if submission.has_nonzero_score() && !policy.overwrite_scores {
-        return Err(SkipReason::HasPoints);
-    }
-    let in_range =
-        score.is_finite() && score >= 0.0 && score_box.max.is_none_or(|max| score <= max);
-    if !in_range {
-        return Err(SkipReason::ScoreOutOfRange);
-    }
 
     let feedback = submission
         .feedback

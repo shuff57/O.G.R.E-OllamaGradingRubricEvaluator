@@ -33,4 +33,5 @@ pub use rubric::{
 pub use submission::{FeedbackField, FeedbackKind, GradingPage, Position, ScoreField, Submission};
 pub use write::{
     FeedbackWrite, GradeWrite, ScoreWrite, SkipReason, WritePolicy, format_score, plan_write,
+    skip_reason,
 };
