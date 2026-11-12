@@ -9,6 +9,7 @@
 //! JavaScript's rules for whitespace, digits and line ends.
 
 mod criteria;
+mod import;
 mod leniency;
 mod prepare;
 
@@ -19,6 +20,11 @@ pub use criteria::{
     RowType, RubricCriterion, WeightValidation, auto_fill_weights, criteria_to_text,
     equalize_weights, full_credit_points, has_unsaved_changes, is_allocation_criterion,
     text_to_criteria, validate_weights,
+};
+pub use import::{
+    ExtractedRubric, ExtractionError, RUBRIC_FROM_IMAGE_SYSTEM_PROMPT,
+    RUBRIC_FROM_IMAGE_USER_PROMPT, imported_rubric_text, parse_rubric_extraction,
+    with_requirements,
 };
 pub use leniency::{
     NEUTRAL_LENIENCY, RewriteError, accept_rewrite, leniency_rewrite_prompt,

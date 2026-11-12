@@ -189,3 +189,36 @@ async fn an_emptied_rubric_is_not_sent_for_rewording() {
     assert!(prepared.rubric.checklist_items.is_empty());
     assert_eq!(prepared.rubric.model_text, None);
 }
+
+#[tokio::test]
+async fn a_rubric_is_read_from_a_picture() {
+    let provider = ScriptedProvider::new().reply(
+        r#"```json
+{"suggestedName": "Essay 2", "rubric": [{"criteria": "Thesis", "description": "States a position", "points": 4}]}
+```"#,
+    );
+    let picture = ogre_llm::Image::new("image/png", "cG5n");
+    let rubric = ogre_grader::read_rubric_from_image(&provider, picture)
+        .await
+        .unwrap();
+    assert_eq!(rubric.suggested_name, "Essay 2");
+    assert_eq!(rubric.criteria[0].criteria, "Thesis");
+    let prompt = &provider.prompts()[0];
+    assert!(prompt.starts_with("You are a data extraction assistant."));
+    assert!(prompt.ends_with("point values, and descriptions."));
+}
+
+#[tokio::test]
+async fn a_picture_with_no_rubric_and_a_service_that_fails_are_told_apart() {
+    let provider = ScriptedProvider::new()
+        .reply("There is no rubric in this image.")
+        .fail(timeout_error());
+    let picture = || ogre_llm::Image::new("image/png", "cG5n");
+    let nothing = ogre_grader::read_rubric_from_image(&provider, picture()).await;
+    assert!(matches!(
+        nothing,
+        Err(ogre_grader::GraderError::NoRubricRead(_))
+    ));
+    let failed = ogre_grader::read_rubric_from_image(&provider, picture()).await;
+    assert!(matches!(failed, Err(ogre_grader::GraderError::Provider(_))));
+}

@@ -1,4 +1,4 @@
-use ogre_core::GradingError;
+use ogre_core::{ExtractionError, GradingError};
 use ogre_llm::LlmError;
 
 /// Why a grading call produced nothing at all. Problems with part of a batch
@@ -18,6 +18,10 @@ pub enum GraderError {
 
     #[error(transparent)]
     Provider(#[from] LlmError),
+
+    /// The AI was shown a picture and gave back no rubric.
+    #[error(transparent)]
+    NoRubricRead(#[from] ExtractionError),
 
     /// The AI answered, but not with anything that reads as a grade.
     #[error("the AI's reply could not be read as a grade: {reply}")]

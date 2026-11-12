@@ -33,6 +33,11 @@ pub use rubric::{
     rubric_text, text_to_criteria, unread_rubric_lines, validate_weights, with_default_weights,
 };
 pub use rubric::{
+    ExtractedRubric, ExtractionError, RUBRIC_FROM_IMAGE_SYSTEM_PROMPT,
+    RUBRIC_FROM_IMAGE_USER_PROMPT, imported_rubric_text, parse_rubric_extraction,
+    with_requirements,
+};
+pub use rubric::{
     NEUTRAL_LENIENCY, RewriteError, accept_rewrite, leniency_rewrite_prompt,
     restore_category_weights,
 };

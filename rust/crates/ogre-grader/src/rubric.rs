@@ -2,12 +2,15 @@
 //! does between reading a page and pressing Grade.
 
 use ogre_core::{
-    DEFAULT_WEIGHT_MODE, NEUTRAL_LENIENCY, Rubric, accept_rewrite, extract_model_text,
-    grading_text, leniency_rewrite_prompt, names_category_weights, restore_category_weights,
-    rubric_from_grading_text, rubric_from_text, rubric_text, text_to_criteria,
-    with_default_weights,
+    DEFAULT_WEIGHT_MODE, ExtractedRubric, NEUTRAL_LENIENCY, RUBRIC_FROM_IMAGE_SYSTEM_PROMPT,
+    RUBRIC_FROM_IMAGE_USER_PROMPT, Rubric, accept_rewrite, extract_model_text, grading_text,
+    leniency_rewrite_prompt, names_category_weights, parse_rubric_extraction,
+    restore_category_weights, rubric_from_grading_text, rubric_from_text, rubric_text,
+    text_to_criteria, with_default_weights,
 };
-use ogre_llm::{ChatProvider, ChatRequest, Message};
+use ogre_llm::{ChatProvider, ChatRequest, Image, Message};
+
+use crate::error::GraderError;
 
 /// A rubric ready for [`grade_batch`](crate::grade_batch).
 #[derive(Debug, Clone, PartialEq)]
@@ -99,6 +102,21 @@ async fn reword(
         Ok(rewritten) => (restore_category_weights(&rewritten, &original), None),
         Err(problem) => (original, Some(problem)),
     }
+}
+
+/// Asks the AI for the rubric that `picture` shows, such as a screenshot of
+/// the page it is on. The model has to be one that can look at pictures.
+pub async fn read_rubric_from_image(
+    provider: &dyn ChatProvider,
+    picture: Image,
+) -> Result<ExtractedRubric, GraderError> {
+    let request = ChatRequest::new([
+        Message::system(RUBRIC_FROM_IMAGE_SYSTEM_PROMPT),
+        Message::user(RUBRIC_FROM_IMAGE_USER_PROMPT).with_image(picture),
+    ])
+    .with_json(true);
+    let reply = provider.chat(&request).await?;
+    Ok(parse_rubric_extraction(&reply)?)
 }
 
 /// True when [`prepare_rubric`] would ask the AI to reword the rubric.

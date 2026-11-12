@@ -571,7 +571,7 @@ pub fn equalize_weights(criteria: &[RubricCriterion], mode: WeightMode) -> Vec<R
 
 /// Each share of `total` as a percentage with one decimal. The last takes
 /// whatever is left of 100, which rounding can push below zero.
-fn proportional_shares(points: &[f64], total: f64) -> Vec<f64> {
+pub(super) fn proportional_shares(points: &[f64], total: f64) -> Vec<f64> {
     let mut allocated = 0.0;
     let last = points.len().saturating_sub(1);
     points

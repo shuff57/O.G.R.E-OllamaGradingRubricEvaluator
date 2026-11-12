@@ -3,6 +3,7 @@
 
 mod editing;
 mod golden;
+mod import;
 mod utils_test;
 mod weights;
 
