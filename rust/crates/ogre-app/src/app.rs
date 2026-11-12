@@ -250,7 +250,11 @@ impl OgreApp {
                 Event::Read(read) => {
                     self.selected = None;
                     self.leaving = None;
-                    self.session = Some(Session::new(read));
+                    let mut session = Session::new(read);
+                    if let Some(earlier) = &self.session {
+                        session.keep_setup_from(earlier);
+                    }
+                    self.session = Some(session);
                 }
                 Event::Models(Ok(models)) => {
                     self.settings_note = models

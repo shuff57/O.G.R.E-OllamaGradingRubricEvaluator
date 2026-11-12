@@ -272,6 +272,28 @@ impl Session {
         }
     }
 
+    /// Takes over what the teacher set up in `earlier`, a session on the same
+    /// page: their rubric edits, instructions and scoring examples. Reading
+    /// a page again, for the students' new state, must not cost them that.
+    ///
+    /// Nothing is taken from another page, or when the page's own question
+    /// or rubric has changed since: the edits were made for what is no longer
+    /// there.
+    pub fn keep_setup_from(&mut self, earlier: &Session) {
+        let same_page = earlier.page.url == self.page.url
+            && earlier.page.title == self.page.title
+            && earlier.rubric.essay_prompt == self.rubric.essay_prompt
+            && earlier.rubric_text_as_read == self.rubric_text_as_read;
+        if !same_page {
+            return;
+        }
+        self.rubric_text.clone_from(&earlier.rubric_text);
+        self.rubric_text_changed();
+        self.instructions.clone_from(&earlier.instructions);
+        self.examples.clone_from(&earlier.examples);
+        self.examples_basis.clone_from(&earlier.examples_basis);
+    }
+
     /// The rubric to grade with, including the teacher's instructions.
     pub fn rubric_for_grading(&self) -> Rubric {
         let mut rubric = self.rubric.clone();
@@ -907,6 +929,38 @@ mod tests {
         s.remove_weights();
         assert!(!s.rubric_outline().weights_written);
         assert!(!s.rubric_edited(), "the text is the page's again");
+    }
+
+    #[test]
+    fn reading_the_same_page_again_keeps_what_the_teacher_set_up() {
+        let mut first = two_categories();
+        first.share_weights_equally();
+        first.instructions = "Accept answers in words.".into();
+        first.examples_asked_for(50);
+        first.examples_arrived("Excellent: all of it.".into());
+
+        let mut again = two_categories();
+        again.keep_setup_from(&first);
+        assert!(again.rubric_edited() && again.rubric_outline().weights_written);
+        assert_eq!(again.instructions, "Accept answers in words.");
+        assert_eq!(
+            again.examples_for_grading().as_deref(),
+            Some("Excellent: all of it.")
+        );
+        assert!(!again.examples_out_of_date(50));
+
+        // Another question starts clean.
+        let mut other = two_categories();
+        other.page.url.push_str("&qid=2");
+        other.keep_setup_from(&first);
+        assert!(!other.rubric_edited());
+        assert_eq!(other.examples_for_grading(), None);
+
+        // So does the same page once its own rubric has changed.
+        let mut changed = session();
+        changed.keep_setup_from(&first);
+        assert_eq!(changed.rubric_text, "");
+        assert_eq!(changed.instructions, "");
     }
 
     #[test]

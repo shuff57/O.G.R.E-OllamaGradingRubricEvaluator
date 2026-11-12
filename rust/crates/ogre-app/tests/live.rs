@@ -52,7 +52,10 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use eframe::egui::accesskit::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
-use ogre_app::{KeyStore, MemoryKeys, OgreApp, ProviderSettings, Service, Settings, Worker};
+use ogre_app::{
+    Command, Event, ExamplesRequest, KeyStore, MemoryKeys, OgreApp, ProviderSettings, Service,
+    Settings, Worker, engine_leniency,
+};
 use ogre_harness::cdp::LaunchOptions;
 use ogre_harness::sites::Sites;
 use serde_json::Value;
@@ -669,5 +672,79 @@ fn a_real_page_is_read_and_graded_without_writing() {
     );
     if let Some(warnings) = graded["warnings"].as_array().filter(|w| !w.is_empty()) {
         println!("warnings: {}", warnings.len());
+    }
+}
+
+/// Has the real service write scoring examples for a rubric, through the
+/// app's own worker. No browser and no student's work: the request holds a
+/// rubric and its question, and the reply is the AI's own writing.
+///
+///     cargo test -p ogre-app --test live scoring_examples -- --ignored --nocapture
+///
+/// `OGRE_LIVE_LENIENCY` is the app's setting, as above.
+#[test]
+#[ignore = "asks the Electron app's AI service to write scoring examples"]
+fn the_real_service_writes_scoring_examples() {
+    let leniency: u8 = std::env::var("OGRE_LIVE_LENIENCY")
+        .ok()
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(50);
+    let (provider, key) = electron_app_provider();
+    println!("asking {} at leniency {leniency}", provider.model);
+    let rubric: ogre_core::Rubric = serde_json::from_value(serde_json::json!({
+        "essayPrompt": "A basketball player makes 70% of free throws. In 20 attempts, find the probability of at least 16 makes.",
+        "maxScore": 14,
+        "modelText": "X ~ B(20, 0.7). P(X >= 16) = 0.2375.",
+        "rubricItems": [],
+        "checklistItems": [
+            {"category": "Check the Conditions(4 pts)", "items": ["Say there is a fixed number of trials, and how many.", "Say each trial has two outcomes, success or failure.", "Say the chance of success is the same on each trial and the trials are independent."]},
+            {"category": "Name the Parameters(2 pts)", "items": ["Say what one trial is and what counts as a success.", "Give the values of n and p, and write X ~ B(n, p)."]},
+            {"category": "State and Compute(4 pts)", "items": ["Write the probability asked for with the correct inequality, for example P(X >= k).", "Give the value, using a calculator."]},
+            {"category": "Interpret(4 pts)", "items": ["Say what the probability means for this situation, in a sentence.", "Find the mean np and say whether the outcome is unusual."]}
+        ]
+    }))
+    .unwrap();
+
+    let data_dir = std::env::temp_dir().join(format!("ogre-live-examples-{}", std::process::id()));
+    let worker = Worker::spawn(
+        LaunchOptions {
+            profile_dir: data_dir.join("chrome-profile"),
+            headless: true,
+            executable: None,
+        },
+        Sites::built_in(),
+        data_dir.clone(),
+        || {},
+    );
+    worker.send(Command::WriteExamples(Box::new(ExamplesRequest {
+        rubric,
+        rubric_text: None,
+        provider,
+        api_key: Some(key),
+        leniency: engine_leniency(leniency),
+    })));
+
+    let started = Instant::now();
+    let examples = loop {
+        let event = worker.poll().next();
+        match event {
+            Some(Event::Examples(result)) => break result,
+            Some(other) => panic!("unexpected news from the worker: {other:?}"),
+            None => {
+                assert!(
+                    started.elapsed() < Duration::from_secs(600),
+                    "no reply in ten minutes"
+                );
+                std::thread::sleep(Duration::from_millis(200));
+            }
+        }
+    };
+    drop(worker);
+    let _ = std::fs::remove_dir_all(&data_dir);
+
+    let examples = examples.expect("the examples were written");
+    println!("took {:.0?}\n{examples}", started.elapsed());
+    for level in ["Excellent: ", "Adequate: ", "Below Average: ", "Minimal: "] {
+        assert!(examples.contains(level), "no \"{level}\" example");
     }
 }

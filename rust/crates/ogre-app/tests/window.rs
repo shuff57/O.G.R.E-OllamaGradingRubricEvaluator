@@ -1355,3 +1355,36 @@ fn scoring_examples_are_written_when_asked_and_shown_to_the_grader() {
     };
     assert_eq!(request.examples, None);
 }
+
+#[test]
+fn reading_the_page_again_keeps_the_rubric_the_teacher_set_up() {
+    let (mut harness, stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    stand_in.events.send(read()).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Rubric").click();
+    frames(&mut harness);
+    press_in_rubric(&mut harness, "Set category weights");
+    stand_in
+        .events
+        .send(Event::Examples(Ok("Excellent: all of it.".into())))
+        .unwrap();
+    frames(&mut harness);
+
+    // The same page, read again for the students' new state.
+    stand_in.events.send(read()).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Edited");
+    harness.get_by_label_contains("They add up to 100%.");
+    harness.get_by_label("Write them again");
+
+    // Another question's page starts from what that page says.
+    let Event::Read(mut other) = read() else {
+        unreachable!()
+    };
+    other.page.url.push_str("&qid=2");
+    stand_in.events.send(Event::Read(other)).unwrap();
+    frames(&mut harness);
+    assert!(harness.query_by_label("Edited").is_none());
+    assert!(harness.query_by_label("Write them again").is_none());
+}

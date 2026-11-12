@@ -22,6 +22,11 @@
 //!   OGRE_COMPARE_ANCHORS=1  first have the AI write example answers at each
 //!                         score level and grade with them as calibration,
 //!                         as the Electron app's "Generate Anchors" does
+//!   OGRE_COMPARE_WEIGHTS=1  let the category weights that are filled in take
+//!                         part in the score, matched to the AI's categories
+//!                         by name. Without it they do not on a page whose
+//!                         categories name their points, as in the Electron
+//!                         app, and the AI's own total is the score.
 //!   OGRE_COMPARE_PROMPTS_FROM=<file>  use each student's question text as the
 //!                         Electron app read it (a file written by its
 //!                         extraction code), to test whether a difference in
@@ -486,7 +491,10 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             &provider,
             &rubric,
             students,
-            &GradeOptions::default(),
+            &GradeOptions {
+                weights_by_name: std::env::var_os("OGRE_COMPARE_WEIGHTS").is_some(),
+                ..GradeOptions::default()
+            },
             &CancelFlag::new(),
             &mut on_event,
         )
