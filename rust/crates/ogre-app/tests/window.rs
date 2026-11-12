@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use eframe::egui;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use ogre_agent::SkillDraft;
+use ogre_agent::{InterviewTurn, SkillDraft};
 use ogre_app::{
     AgentAnswer, AgentLine, AgentQuestion, AgentSummary, Command, Event, Grade, GradeReport,
     GradedRow, LineKind, MapReport, MemoryKeys, OgreApp, OutsideRubric, PastProposal, PastSession,
@@ -2032,4 +2032,153 @@ fn a_skill_is_written_changed_and_deleted_on_the_agent_screen() {
         panic!("expected a skill to delete");
     };
     assert_eq!(id, "late-work");
+}
+
+/// The Agent screen with the skill interview open.
+fn interview_open() -> (Harness<'static, OgreApp>, StandIn) {
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Agent").click();
+    frames(&mut harness);
+    assert!(matches!(sent(&mut stand_in), Command::ListSkills));
+    stand_in.events.send(skills()).unwrap();
+    frames(&mut harness);
+    scroll_to_and_press(&mut harness, "Write one with the AI");
+    harness.get_by_label("Write a skill with the AI");
+    (harness, stand_in)
+}
+
+/// Writes `message` to the AI in the skill interview and sends it. Gives
+/// the conversation the window sent.
+fn tell_the_ai(
+    harness: &mut Harness<'_, OgreApp>,
+    stand_in: &mut StandIn,
+    message: &str,
+) -> Vec<InterviewTurn> {
+    const BOX: &str = "Your message to the AI";
+    harness.get_by_label(BOX).scroll_to_me();
+    frames(harness);
+    harness.get_by_label(BOX).click();
+    frames(harness);
+    harness.get_by_label(BOX).type_text(message);
+    frames(harness);
+    scroll_to_and_press(harness, "Send");
+    let Command::SkillInterview { turns, .. } = sent(stand_in) else {
+        panic!("expected the interview to be sent");
+    };
+    turns
+}
+
+#[test]
+fn a_skill_is_written_by_talking_it_over_with_the_ai() {
+    // The AI answers in Markdown, which is shown as what it means.
+    const ASKED: &str = "**1.** What subject or course is this skill for?";
+    const QUESTION: &str = "What subject or course is this skill for?";
+    const WRITTEN: &str = "Here is your skill:\n\n```markdown\n---\nname: Late work in statistics\ndescription: How late work is marked down\nauthor: Created with O.G.R.E\n---\n\n# Late work in statistics\n\nOne point off for each day late, down to half credit.\n```\n\nDoes this look right?";
+    let (mut harness, mut stand_in) = interview_open();
+
+    // There is nothing to send until something is written.
+    scroll_to_and_press(&mut harness, "Send");
+    assert!(stand_in.commands.try_recv().is_err());
+
+    let turns = tell_the_ai(&mut harness, &mut stand_in, "A skill for late work");
+    assert_eq!(turns, [InterviewTurn::teacher("A skill for late work")]);
+    stand_in
+        .events
+        .send(Event::SkillInterview(Ok(ASKED.into())))
+        .unwrap();
+    frames(&mut harness);
+    harness.get_by_label_contains(QUESTION);
+    assert!(harness.query_by_label_contains("**").is_none());
+    assert!(
+        harness
+            .query_by_label("Put the skill in the editor")
+            .is_none(),
+        "a question is not a skill"
+    );
+
+    // The whole conversation goes with each message.
+    let turns = tell_the_ai(&mut harness, &mut stand_in, "AP Statistics");
+    assert_eq!(
+        turns,
+        [
+            InterviewTurn::teacher("A skill for late work"),
+            InterviewTurn::ai(ASKED),
+            InterviewTurn::teacher("AP Statistics"),
+        ]
+    );
+    stand_in
+        .events
+        .send(Event::SkillInterview(Ok(WRITTEN.into())))
+        .unwrap();
+    frames(&mut harness);
+    harness.get_by_label_contains("The AI wrote \u{201c}Late work in statistics\u{201d}.");
+    shot(&mut harness, "29-skill-interview");
+
+    // What the AI wrote goes to the editor. Nothing is saved until the
+    // teacher saves it there.
+    assert!(harness.query_by_label("A new skill").is_none());
+    scroll_to_and_press(&mut harness, "Put the skill in the editor");
+    assert!(stand_in.commands.try_recv().is_err());
+    harness.get_by_label("A new skill");
+    assert!(
+        harness
+            .query_all_by_value("Late work in statistics")
+            .next()
+            .is_some()
+    );
+    scroll_to_and_press(&mut harness, "Save the skill");
+    let Command::SaveSkill { id, draft } = sent(&mut stand_in) else {
+        panic!("expected a skill to save");
+    };
+    assert_eq!(id, None);
+    assert_eq!(draft.name, "Late work in statistics");
+    assert_eq!(draft.description, "How late work is marked down");
+    assert_eq!(
+        draft.body,
+        "# Late work in statistics\n\nOne point off for each day late, down to half credit."
+    );
+}
+
+#[test]
+fn a_message_the_ai_did_not_answer_can_be_sent_again() {
+    let (mut harness, mut stand_in) = interview_open();
+    tell_the_ai(&mut harness, &mut stand_in, "A skill for late work");
+    stand_in
+        .events
+        .send(Event::SkillInterview(Err(
+            "The AI could not be asked: the service did not answer in time.".into(),
+        )))
+        .unwrap();
+    frames(&mut harness);
+    harness.get_by_label_contains("The AI could not be asked");
+    // The message is back where it was written, and the conversation is as
+    // it was before it.
+    assert!(
+        harness
+            .query_all_by_value("A skill for late work")
+            .next()
+            .is_some()
+    );
+    scroll_to_and_press(&mut harness, "Send");
+    let Command::SkillInterview { turns, .. } = sent(&mut stand_in) else {
+        panic!("expected the interview to be sent");
+    };
+    assert_eq!(turns, [InterviewTurn::teacher("A skill for late work")]);
+
+    // Closing ends it; opening it again starts afresh.
+    stand_in
+        .events
+        .send(Event::SkillInterview(Ok("What grade level?".into())))
+        .unwrap();
+    frames(&mut harness);
+    scroll_to_and_press(&mut harness, "Close");
+    assert!(
+        harness
+            .query_by_label("Write a skill with the AI")
+            .is_none()
+    );
+    scroll_to_and_press(&mut harness, "Write one with the AI");
+    assert!(harness.query_by_label("What grade level?").is_none());
 }

@@ -32,6 +32,7 @@ tests/
 
 # MCP cache
 .playwright-mcp/
+.playwright-cli/
 
 # Per-session scratch
 ogre-desktop/.sisyphus/

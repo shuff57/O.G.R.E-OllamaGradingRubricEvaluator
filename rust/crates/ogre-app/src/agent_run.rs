@@ -295,6 +295,22 @@ pub(crate) fn save_skill(
     Ok(id)
 }
 
+/// What the AI says next in the interview that writes a skill.
+pub(crate) async fn skill_interview(
+    settings: &ProviderSettings,
+    api_key: Option<&str>,
+    turns: &[ogre_agent::InterviewTurn],
+) -> Result<String, String> {
+    let provider = grading::provider(settings, api_key)?;
+    match ogre_agent::continue_interview(&provider, turns).await {
+        Ok(reply) if reply.is_empty() => {
+            Err("The AI gave no answer. Send your message again.".to_owned())
+        }
+        Ok(reply) => Ok(reply),
+        Err(error) => Err(format!("The AI could not be asked: {error}")),
+    }
+}
+
 /// Removes a skill of the teacher's. One that is already gone is not an error.
 pub(crate) fn delete_skill(skills_dir: &Path, id: &str) -> Result<(), String> {
     match std::fs::remove_file(skill_file(skills_dir, id)?) {

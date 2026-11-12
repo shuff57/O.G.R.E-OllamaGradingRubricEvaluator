@@ -251,6 +251,20 @@ pub fn icon_line(ui: &mut Ui, icon: &str, text: &str, colour: Color32) {
     });
 }
 
+/// Text shown as it was written, line for line, set apart in a box: a file
+/// or a draft of one.
+pub fn quoted(ui: &mut Ui, text: &str) {
+    Frame::new()
+        .fill(pal().field)
+        .stroke(Stroke::new(1.0, pal().border))
+        .corner_radius(CornerRadius::same(R_FIELD))
+        .inner_margin(Margin::same(10))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.label(RichText::new(text).monospace().color(pal().text));
+        });
+}
+
 /// Something the teacher should know before going on.
 pub fn warning(ui: &mut Ui, text: &str) {
     icon_line(ui, icon::WARNING, text, pal().warn);

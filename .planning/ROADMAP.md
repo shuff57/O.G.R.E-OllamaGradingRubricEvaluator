@@ -158,7 +158,8 @@ Decisions: desktop only for now (code kept web-compilable), Linux only for now, 
 - Three deliberate departures from the Electron scoring: category scores are always read out of 10; a sub-maximum score is raised to full only when every verdict says "Correct"; category weights are used only when the weights of the categories the AI scored add up to 100 (before, a rubric with one category named differently from the rest scored a perfect answer 3 of 14).
 - A rubric drafted by the AI from the question, for a question that has none. Checked against Ollama Cloud `gemma4:31b`.
 - The Agent screen lists what the agent knows: the built-in site guides and the teacher's own skill files, each skill with a switch that is remembered. A skill of the teacher's is written, changed and deleted in a form there; it is still a Markdown file in the skills folder.
-- 957 tests pass by default; 77 more need Chrome, a local model or the AI service.
+- A skill written by talking it over with the AI: the Electron app's interview, one question at a time, then the skill as a Markdown block. What the AI writes goes to the editor's form; nothing is saved until the teacher saves it there. Checked against Ollama Cloud `gemma4:31b` with a made-up teacher.
+- 965 tests pass by default; 78 more need Chrome, a local model or the AI service.
 
 ## Checked on real MyOpenMath pages (read-only)
 
@@ -184,7 +185,7 @@ Four ungraded students on one MyOpenMath question, supervised step by step with 
 2. Choose the default way of scoring. The same student got 7, 7 and then 5.5 of 14 from the AI's own score in three runs; the Settings switch that works the score out from the feedback's verdicts removes that part of the variation.
 3. Weights that are only filled in do not count on a page whose categories name their points ("Interpret(4 pts)"), as in the Electron app: the score is the AI's own total. On a page with plain category names they do. Making them count everywhere was tried on question 360745106 and agreed less well with the grades on the page (average gap 1.72 against about 1.3), so it was left alone.
 4. Calibration from earlier sessions is in the engine with no control in the window. It needs graded answers to draw on, and the session records deliberately hold no student responses, so it starts with a decision about keeping them. Outlier review needs no control: the app already marks scores that stand apart.
-5. Not ported: the Electron app's AI interview for writing a skill (it wrote grading and tutoring skills, which the agent does not use), an update prompt. The solver chat is not planned: the Electron app has the component and no screen that shows it. The Electron app's own rubric library is not imported; this teacher's had nothing in it.
+5. Not ported: an update prompt (there is nowhere yet that a build of the Rust app is published for it to look at). The solver chat is not planned: the Electron app has the component and no screen that shows it. The Electron app's own rubric library is not imported; this teacher's had nothing in it.
 6. Windows support when wanted.
 
 ## Embedded browser

@@ -890,3 +890,90 @@ fn the_real_service_drafts_a_rubric_for_a_question() {
         "the drafted weights add up"
     );
 }
+
+/// Has the real service interview a teacher and write a skill, through the
+/// worker. Nothing about a student is sent: the teacher's side is made up.
+///
+///     cargo test -p ogre-app --test live skill_interview -- --ignored --nocapture
+#[test]
+#[ignore = "asks the Electron app's AI service to interview a teacher and write a skill"]
+fn the_real_service_runs_the_skill_interview_and_writes_a_skill() {
+    use ogre_agent::{InterviewTurn, drafted_skill};
+
+    let (provider, key) = electron_app_provider();
+    println!("asking {}", provider.model);
+    let data_dir = std::env::temp_dir().join(format!("ogre-live-skill-{}", std::process::id()));
+    let worker = Worker::spawn(
+        LaunchOptions {
+            profile_dir: data_dir.join("chrome-profile"),
+            headless: true,
+            executable: None,
+        },
+        Sites::built_in(),
+        data_dir.clone(),
+        || {},
+    );
+    let started = Instant::now();
+    let ask = |turns: &[InterviewTurn]| {
+        worker.send(Command::SkillInterview {
+            turns: turns.to_vec(),
+            provider: provider.clone(),
+            api_key: Some(key.clone()),
+        });
+        loop {
+            match worker.poll().next() {
+                Some(Event::SkillInterview(reply)) => break reply.expect("the AI answered"),
+                Some(other) => panic!("unexpected news from the worker: {other:?}"),
+                None => {
+                    assert!(
+                        started.elapsed() < Duration::from_secs(600),
+                        "no reply in ten minutes"
+                    );
+                    std::thread::sleep(Duration::from_millis(200));
+                }
+            }
+        }
+    };
+
+    // An opening that answers nothing: the AI should ask, not write.
+    let mut turns = vec![InterviewTurn::teacher("I want a skill for late work.")];
+    let first = ask(&turns);
+    println!("after {:.0?}, the AI asks:\n{first}\n", started.elapsed());
+    assert!(
+        drafted_skill(&first).is_none(),
+        "the AI interviews before it writes"
+    );
+    assert!(first.contains('?'), "the AI asks a question");
+
+    // Everything it wants to know, at once.
+    turns.push(InterviewTurn::ai(first));
+    turns.push(InterviewTurn::teacher(
+        "Here is all of it at once. Subject: AP Statistics. Audience: high school. \
+         Strictness: moderate. Focus: whether the work is shown. Rules: take one point off \
+         for each day late, down to half credit, and never below half. No example of ideal \
+         work. Please write the skill now.",
+    ));
+    let second = ask(&turns);
+    drop(worker);
+    let _ = std::fs::remove_dir_all(&data_dir);
+    println!(
+        "after {:.0?}, the AI writes:\n{second}\n",
+        started.elapsed()
+    );
+
+    let skill = drafted_skill(&second).expect("the AI wrote the skill out as a block");
+    println!(
+        "name {:?}, described as {:?}",
+        skill.name, skill.description
+    );
+    assert!(!skill.name.is_empty());
+    assert!(
+        skill.body.to_lowercase().contains("late"),
+        "the skill is about what was asked for"
+    );
+    // The file it would be saved as reads back the same.
+    assert_eq!(
+        ogre_agent::SkillDraft::from_markdown(&skill.to_markdown()),
+        skill
+    );
+}

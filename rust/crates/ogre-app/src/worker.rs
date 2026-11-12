@@ -103,6 +103,13 @@ pub enum Command {
         draft: Box<ogre_agent::SkillDraft>,
     },
     DeleteSkill(String),
+    /// Ask the AI for its next turn in the interview that writes a skill.
+    /// The last of `turns` is the teacher's.
+    SkillInterview {
+        turns: Vec<ogre_agent::InterviewTurn>,
+        provider: ProviderSettings,
+        api_key: Option<String>,
+    },
 }
 
 #[derive(Debug)]
@@ -179,6 +186,9 @@ pub enum Event {
         folder: String,
         skills: Vec<SkillSummary>,
     },
+    /// What the AI said next in the interview that writes a skill, or why
+    /// it said nothing.
+    SkillInterview(std::result::Result<String, String>),
     AgentLine(AgentLine),
     /// The agent wants to act and waits for [`Worker::answer`].
     AgentAsks(AgentQuestion),
@@ -699,6 +709,13 @@ impl Task {
                 agent_run::delete_skill(&self.skills_dir, &id).map_err(Error::Page)?;
                 Ok(self.skills())
             }
+            Command::SkillInterview {
+                turns,
+                provider,
+                api_key,
+            } => Ok(Event::SkillInterview(
+                agent_run::skill_interview(&provider, api_key.as_deref(), &turns).await,
+            )),
             Command::OpenSkillsFolder => {
                 std::fs::create_dir_all(&self.skills_dir)
                     .and_then(|()| {

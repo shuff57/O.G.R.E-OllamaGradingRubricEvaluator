@@ -25,6 +25,7 @@ mod reply;
 pub mod safety;
 mod script;
 mod site_guide;
+mod skill_interview;
 pub mod skills;
 
 #[cfg(test)]
@@ -47,6 +48,9 @@ pub use prompt::{
 pub use reply::{AgentReply, parse_agent_reply};
 pub use safety::ApprovalReason;
 pub use site_guide::{LearnedCorrection, SiteGuide, Workflow, convert_profile_to_json};
+pub use skill_interview::{
+    InterviewTurn, SKILL_INTERVIEW_PROMPT, Speaker, around_block, continue_interview, drafted_skill,
+};
 pub use skills::{
     ParsedSkill, Skill, SkillContext, SkillDraft, SkillSource, build_site_context_injection,
     build_skill_injection, bundled_site_profiles, find_matching_profiles, load_skills_dir,

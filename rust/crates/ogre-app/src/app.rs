@@ -30,7 +30,7 @@ mod skills;
 
 use self::browser::BrowserView;
 use self::rubric_card::RubricShelf;
-use self::skills::SkillEdit;
+use self::skills::{Interview, SkillEdit};
 
 pub struct OgreApp {
     worker: Worker,
@@ -85,6 +85,9 @@ struct AgentView {
     deleting_skill: Option<String>,
     /// The name of the skill being saved right now, and whether it is new.
     saving_skill: Option<(String, bool)>,
+    /// The conversation in which the AI helps write a skill, while it is
+    /// open.
+    interview: Option<Interview>,
     task: String,
     /// Let it act without asking, except where OGRE always asks.
     auto: bool,
@@ -161,6 +164,8 @@ enum Action {
     OpenSkillsFolder,
     /// Save the skill in the editor.
     SaveSkill,
+    /// Send what the teacher wrote in the skill interview to the AI.
+    AskInterview,
     DeleteSkill(String),
     ToggleDark,
     MapPage {
@@ -394,6 +399,17 @@ impl OgreApp {
                 }
                 Event::Profiles(profiles) => self.profiles = profiles,
                 Event::History(sessions) => self.history = sessions,
+                Event::SkillInterview(reply) => {
+                    if let Some(interview) = &mut self.agent.interview {
+                        match reply {
+                            Ok(reply) => interview.heard(reply),
+                            Err(problem) => {
+                                interview.unanswered();
+                                self.error = Some(problem);
+                            }
+                        }
+                    }
+                }
                 Event::Skills { folder, skills } => {
                     if let Some((name, new)) = self.agent.saving_skill.take() {
                         self.agent.editing = None;
@@ -414,6 +430,9 @@ impl OgreApp {
                 Event::Failed(message) => {
                     self.shelf.saving = None;
                     self.agent.saving_skill = None;
+                    if let Some(interview) = &mut self.agent.interview {
+                        interview.unanswered();
+                    }
                     self.agent.running = false;
                     self.agent.question = None;
                     self.error = Some(message);
@@ -559,6 +578,17 @@ impl OgreApp {
             }
             Action::OpenSkillsFolder => {
                 self.send(Command::OpenSkillsFolder, "Opening the skills folder…");
+            }
+            Action::AskInterview => {
+                let Some(turns) = self.agent.interview.as_mut().and_then(Interview::say) else {
+                    return;
+                };
+                let command = Command::SkillInterview {
+                    turns,
+                    provider: self.settings.provider.clone(),
+                    api_key: self.key(),
+                };
+                self.send(command, "The AI is thinking…");
             }
             Action::SaveSkill => {
                 let Some(edit) = &self.agent.editing else {
@@ -1356,6 +1386,12 @@ impl OgreApp {
                     kit::wide_card(ui, |ui| {
                         self.skills_card(ui, actions);
                     });
+                    if self.agent.interview.is_some() {
+                        ui.add_space(4.0);
+                        kit::wide_card(ui, |ui| {
+                            self.skill_interview(ui, actions);
+                        });
+                    }
                     if self.agent.editing.is_some() {
                         ui.add_space(4.0);
                         kit::wide_card(ui, |ui| {
