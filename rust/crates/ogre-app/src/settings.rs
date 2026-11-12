@@ -2,6 +2,7 @@
 
 use ogre_llm::{ProviderConfig, ProviderKind};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// The key under which [`Settings`] is stored.
 pub const STORAGE_KEY: &str = "settings";
@@ -18,6 +19,8 @@ pub struct Settings {
     /// Work each score out from the verdicts in the feedback instead of
     /// taking the AI's own score. Off unless the teacher turns it on.
     pub score_from_verdicts: bool,
+    /// The agent's skills the teacher has switched on or off, by id.
+    pub skills: BTreeMap<String, bool>,
 }
 
 impl Default for Settings {
@@ -27,6 +30,7 @@ impl Default for Settings {
             dark: false,
             leniency: DEFAULT_LENIENCY,
             score_from_verdicts: false,
+            skills: BTreeMap::new(),
         }
     }
 }
@@ -328,6 +332,7 @@ mod tests {
             dark: true,
             leniency: 20,
             score_from_verdicts: true,
+            skills: BTreeMap::from([("my-skill".to_owned(), false)]),
         };
         let json = serde_json::to_string(&settings).unwrap();
         assert_eq!(serde_json::from_str::<Settings>(&json).unwrap(), settings);

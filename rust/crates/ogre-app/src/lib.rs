@@ -14,7 +14,9 @@ mod settings;
 mod theme;
 mod worker;
 
-pub use agent_run::{AgentAnswer, AgentLine, AgentQuestion, AgentRequest, AgentSummary, LineKind};
+pub use agent_run::{
+    AgentAnswer, AgentLine, AgentQuestion, AgentRequest, AgentSummary, LineKind, SkillSummary,
+};
 pub use app::OgreApp;
 pub use grading::{Grade, GradeReport, GradedRow, Suggestion};
 pub use history::{PastProposal, PastSession, PastStudent, SessionEnd};

@@ -5,7 +5,7 @@ use ogre_core::format_score;
 use ogre_grader::CancelFlag;
 
 use crate::agent_run::{
-    AgentAnswer, AgentLine, AgentQuestion, AgentRequest, AgentSummary, LineKind,
+    AgentAnswer, AgentLine, AgentQuestion, AgentRequest, AgentSummary, LineKind, SkillSummary,
 };
 use crate::grading::Suggestion;
 use crate::history::{self, PastProposal, PastSession, SessionEnd};
@@ -71,6 +71,10 @@ pub struct OgreApp {
 /// The Agent screen's state.
 #[derive(Default)]
 struct AgentView {
+    /// What the agent knows, as last listed.
+    skills: Vec<SkillSummary>,
+    /// Where the teacher's own skill files go.
+    skills_folder: String,
     task: String,
     /// Let it act without asking, except where OGRE always asks.
     auto: bool,
@@ -141,6 +145,8 @@ enum Action {
     ServiceChanged,
     KeyChanged,
     Show(Screen),
+    ListSkills,
+    OpenSkillsFolder,
     ToggleDark,
     MapPage {
         with_ai: bool,
@@ -364,6 +370,10 @@ impl OgreApp {
                 }
                 Event::Profiles(profiles) => self.profiles = profiles,
                 Event::History(sessions) => self.history = sessions,
+                Event::Skills { folder, skills } => {
+                    self.agent.skills = skills;
+                    self.agent.skills_folder = folder;
+                }
                 Event::Failed(message) => {
                     self.saving_rubric = None;
                     self.agent.running = false;
@@ -481,6 +491,15 @@ impl OgreApp {
                 if screen == Screen::History && self.busy.is_none() {
                     self.send(Command::ListHistory, "Loading your history…");
                 }
+                if screen == Screen::Agent && self.busy.is_none() {
+                    self.send(Command::ListSkills, "Looking at what the agent knows…");
+                }
+            }
+            Action::ListSkills => {
+                self.send(Command::ListSkills, "Looking at what the agent knows…");
+            }
+            Action::OpenSkillsFolder => {
+                self.send(Command::OpenSkillsFolder, "Opening the skills folder…");
             }
             Action::MapPage { with_ai } => {
                 self.mapping = None;
@@ -508,6 +527,7 @@ impl OgreApp {
                     screenshots: self.agent.screenshots,
                     provider: self.settings.provider.clone(),
                     api_key: self.key(),
+                    skill_choices: self.settings.skills.clone(),
                     cancel: ogre_agent::CancelFlag::new(),
                 };
                 self.agent.log.clear();
@@ -1537,6 +1557,12 @@ impl OgreApp {
                         self.messages(ui, actions);
                     });
 
+                    ui.add_space(4.0);
+                    kit::card().show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        self.skills_card(ui, actions);
+                    });
+
                     if let Some(result) = &self.agent.result {
                         ui.add_space(4.0);
                         kit::card().show(ui, |ui| {
@@ -1571,6 +1597,60 @@ impl OgreApp {
                     }
                 });
             });
+    }
+
+    /// What the agent is given beside the task: OGRE's guides to the sites
+    /// it knows, and the teacher's own skill files with a switch each.
+    fn skills_card(&mut self, ui: &mut egui::Ui, actions: &mut Vec<Action>) {
+        let idle = self.busy.is_none();
+        kit::section_label(ui, "What the agent knows");
+        for skill in &self.agent.skills {
+            ui.horizontal_wrapped(|ui| {
+                if skill.sites.is_empty() {
+                    let mut on = self
+                        .settings
+                        .skills
+                        .get(&skill.id)
+                        .copied()
+                        .unwrap_or(skill.on_in_file);
+                    let switch = ui.add_enabled(
+                        !self.agent.running,
+                        egui::Checkbox::new(&mut on, theme::strong(&skill.name).size(ty::BODY)),
+                    );
+                    if switch.changed() {
+                        self.settings.skills.insert(skill.id.clone(), on);
+                    }
+                } else {
+                    ui.label(theme::strong(&skill.name).size(ty::BODY));
+                    kit::calm_pill(ui, &format!("Guide to {}", skill.sites.join(", ")));
+                }
+                if skill.built_in {
+                    ui.label(theme::meta("Built in"));
+                }
+            });
+            if !skill.description.is_empty() {
+                ui.label(theme::muted(&skill.description));
+            }
+        }
+        if self.agent.skills.is_empty() && idle {
+            ui.label(theme::muted("Nothing yet."));
+        }
+        ui.add_space(4.0);
+        ui.label(theme::muted(
+            "A guide is used whenever the agent is on its site. A skill of your own is a \
+             Markdown file in your skills folder, used on every task while it is ticked.",
+        ));
+        ui.horizontal_wrapped(|ui| {
+            if kit::ghost(ui, "Open the skills folder", idle).clicked() {
+                actions.push(Action::OpenSkillsFolder);
+            }
+            if kit::ghost(ui, "Look again", idle).clicked() {
+                actions.push(Action::ListSkills);
+            }
+            if !self.agent.skills_folder.is_empty() {
+                ui.label(theme::muted(&self.agent.skills_folder));
+            }
+        });
     }
 
     fn history_screen(&mut self, ui: &mut egui::Ui, actions: &mut Vec<Action>) {

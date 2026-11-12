@@ -12,7 +12,7 @@ use ogre_app::{
     AgentAnswer, AgentLine, AgentQuestion, AgentSummary, Command, Event, Grade, GradeReport,
     GradedRow, LineKind, MapReport, MemoryKeys, OgreApp, PastProposal, PastSession, PastStudent,
     PictureRubric, ProfileSummary, ProviderSettings, ReadReport, SavedRubric, Service, SessionEnd,
-    Settings, StandIn, Suggestion, Worker, WriteReport,
+    Settings, SkillSummary, StandIn, Suggestion, Worker, WriteReport,
 };
 use ogre_core::{
     FeedbackField, FeedbackKind, GradingPage, Position, QuestionLink, Rubric, ScoreField,
@@ -714,12 +714,88 @@ fn a_site_ogre_cannot_confirm_saving_on_is_saved_by_the_teacher() {
     assert!(harness.query_by_label("Save on Practice LMS").is_none());
 }
 
+/// What the worker reports the agent knows: a built-in site guide and one
+/// skill file of the teacher's that its own text leaves switched off.
+fn skills() -> Event {
+    Event::Skills {
+        folder: "/home/teacher/.local/share/ogre/skills".into(),
+        skills: vec![
+            SkillSummary {
+                id: "bundled-myopenmath".into(),
+                name: "MyOpenMath".into(),
+                description: "How to find your way around MyOpenMath as an instructor.".into(),
+                sites: vec!["myopenmath.com".into()],
+                built_in: true,
+                on_in_file: false,
+            },
+            SkillSummary {
+                id: "late-work".into(),
+                name: "Late work".into(),
+                description: "How this class treats work handed in late.".into(),
+                sites: Vec::new(),
+                built_in: false,
+                on_in_file: false,
+            },
+        ],
+    }
+}
+
+#[test]
+fn the_agent_screen_lists_what_the_agent_knows_and_skills_can_be_switched_on() {
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Agent").click();
+    frames(&mut harness);
+    assert!(matches!(sent(&mut stand_in), Command::ListSkills));
+    stand_in.events.send(skills()).unwrap();
+    frames(&mut harness);
+
+    harness.get_by_label("MyOpenMath");
+    harness.get_by_label("Guide to myopenmath.com");
+    harness.get_by_label("Built in");
+    harness.get_by_label("/home/teacher/.local/share/ogre/skills");
+    shot(&mut harness, "23-agent-skills");
+
+    // A task started now goes out with the teacher's choice, not the file's.
+    harness.get_by_label("Late work").click();
+    frames(&mut harness);
+    harness.get_by_label("Task").click();
+    frames(&mut harness);
+    harness
+        .get_by_label("Task")
+        .type_text("List the late work.");
+    frames(&mut harness);
+    harness.get_by_label("Start").click();
+    frames(&mut harness);
+    let Command::RunAgent(request) = sent(&mut stand_in) else {
+        panic!("expected the agent to start");
+    };
+    assert_eq!(request.skill_choices.get("late-work"), Some(&true));
+    assert_eq!(request.skill_choices.get("bundled-myopenmath"), None);
+    stand_in
+        .events
+        .send(Event::AgentDone(AgentSummary {
+            finished: true,
+            message: "Two students handed work in late.".into(),
+        }))
+        .unwrap();
+    frames(&mut harness);
+
+    harness.get_by_label("Open the skills folder").click();
+    frames(&mut harness);
+    assert!(matches!(sent(&mut stand_in), Command::OpenSkillsFolder));
+}
+
 #[test]
 fn the_agent_asks_and_the_teacher_answers() {
     let (mut harness, mut stand_in) = window(local_model());
     stand_in.events.send(Event::ChromeStarted).unwrap();
     frames(&mut harness);
     harness.get_by_label("Agent").click();
+    frames(&mut harness);
+    assert!(matches!(sent(&mut stand_in), Command::ListSkills));
+    stand_in.events.send(skills()).unwrap();
     frames(&mut harness);
 
     // Nothing to start until there is a task.

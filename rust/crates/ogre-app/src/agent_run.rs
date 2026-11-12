@@ -1,12 +1,13 @@
 //! Runs agent mode for the window: the AI proposes one action at a time on
 //! the open page, and the teacher is asked before it acts.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use async_trait::async_trait;
 use ogre_agent::{
     AgentContext, AgentEnd, AgentEvent, AgentMode, AgentOptions, Approver, CancelFlag, Decision,
-    ProposedAction, SkillSource, bundled_site_profiles, load_skills_dir, run_agent,
+    ProposedAction, Skill, SkillSource, bundled_site_profiles, load_skills_dir, run_agent,
 };
 use ogre_harness::InputDriver;
 use tokio::sync::mpsc;
@@ -26,7 +27,60 @@ pub struct AgentRequest {
     pub screenshots: bool,
     pub provider: ProviderSettings,
     pub api_key: Option<String>,
+    /// The skills the teacher has switched on or off, by id. A skill that is
+    /// not named here is on if its own file says so.
+    pub skill_choices: BTreeMap<String, bool>,
     pub cancel: CancelFlag,
+}
+
+/// Something the agent knows, as the Agent screen lists it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkillSummary {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    /// The sites it is a guide for. A guide is used on its sites whether or
+    /// not it is switched on; a skill with none is used on every task while
+    /// it is on.
+    pub sites: Vec<String>,
+    /// Shipped with OGRE, as opposed to a file in the teacher's folder.
+    pub built_in: bool,
+    /// Whether its own file switches it on.
+    pub on_in_file: bool,
+}
+
+/// The built-in site guides, then the teacher's own skill files, with the
+/// teacher's choices applied.
+fn skills(skills_dir: &Path, choices: &BTreeMap<String, bool>) -> Vec<Skill> {
+    let mut skills = bundled_site_profiles();
+    skills.extend(load_skills_dir(skills_dir, SkillSource::Local).unwrap_or_default());
+    for skill in &mut skills {
+        if let Some(on) = choices.get(&skill.id) {
+            skill.active = *on;
+        }
+    }
+    skills
+}
+
+/// What the agent would be given from `skills_dir`, for the teacher to see.
+pub(crate) fn list_skills(skills_dir: &Path) -> Vec<SkillSummary> {
+    skills(skills_dir, &BTreeMap::new())
+        .into_iter()
+        .map(|skill| SkillSummary {
+            built_in: skill.source == SkillSource::SiteProfile,
+            on_in_file: skill.active,
+            sites: skill
+                .url_patterns
+                .iter()
+                .flat_map(|pattern| pattern.split(','))
+                .map(|site| site.trim().to_owned())
+                .filter(|site| !site.is_empty())
+                .collect(),
+            id: skill.id,
+            name: skill.name,
+            description: skill.description,
+        })
+        .collect()
 }
 
 /// An action waiting for the teacher's decision.
@@ -118,11 +172,8 @@ pub(crate) async fn run(
         }
     };
 
-    // The built-in site guides, then the teacher's own skill files.
-    let mut skills = bundled_site_profiles();
-    skills.extend(load_skills_dir(skills_dir, SkillSource::Local).unwrap_or_default());
     let context = AgentContext {
-        skills,
+        skills: skills(skills_dir, &request.skill_choices),
         active_rubric: None,
         provider: Some(request.provider.service.label().to_owned()),
         model: Some(request.provider.model.clone()),
@@ -175,5 +226,75 @@ pub(crate) async fn run(
     AgentSummary {
         finished: matches!(outcome.end, AgentEnd::Done { success: true, .. }),
         message: outcome.end.message(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn folder(test: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("ogre-skills-{test}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn the_list_holds_the_built_in_guides_and_the_teachers_files() {
+        let dir = folder("list");
+        std::fs::write(
+            dir.join("late-work.md"),
+            "# Late work\n\nTake a point off for each day late.\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("schoology.md"),
+            "---\nname: Schoology\nactive: true\nurlPatterns:\n  - schoology.com\n---\nWhere things are.\n",
+        )
+        .unwrap();
+
+        let listed = list_skills(&dir);
+        let built_in: Vec<_> = listed.iter().filter(|s| s.built_in).collect();
+        assert_eq!(built_in.len(), 2);
+        assert!(built_in.iter().all(|guide| !guide.sites.is_empty()));
+
+        let late = listed.iter().find(|s| s.id == "late-work").unwrap();
+        assert_eq!(late.name, "Late work");
+        assert_eq!(late.description, "Take a point off for each day late.");
+        assert!(late.sites.is_empty() && !late.built_in && !late.on_in_file);
+        let guide = listed.iter().find(|s| s.id == "schoology").unwrap();
+        assert_eq!(guide.sites, ["schoology.com"]);
+        assert!(guide.on_in_file);
+
+        // A folder that is not there yet is no skills, not a failure.
+        assert_eq!(list_skills(&dir.join("missing")).len(), 2);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn the_teachers_choice_overrides_what_a_skill_file_says() {
+        let dir = folder("choices");
+        std::fs::write(dir.join("off.md"), "# Off by itself\n\nText.\n").unwrap();
+        std::fs::write(
+            dir.join("on.md"),
+            "---\nname: On by itself\nactive: true\n---\nText.\n",
+        )
+        .unwrap();
+        let active = |choices: &[(&str, bool)]| -> Vec<String> {
+            let choices = choices
+                .iter()
+                .map(|(id, on)| ((*id).to_owned(), *on))
+                .collect();
+            skills(&dir, &choices)
+                .into_iter()
+                .filter(|skill| skill.active && skill.source == SkillSource::Local)
+                .map(|skill| skill.id)
+                .collect()
+        };
+        assert_eq!(active(&[]), ["on"]);
+        assert_eq!(active(&[("off", true), ("on", false)]), ["off"]);
+        assert_eq!(active(&[("gone", true)]), ["on"]);
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

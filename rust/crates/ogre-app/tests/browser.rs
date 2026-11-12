@@ -687,6 +687,7 @@ fn the_agent_asks_before_it_changes_a_score() {
                 model: "stand-in".into(),
             },
             api_key: None,
+            skill_choices: Default::default(),
             cancel: ogre_agent::CancelFlag::new(),
         }))
     };

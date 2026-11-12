@@ -17,7 +17,9 @@ use ogre_harness::sites::{Mismatch, SiteAdapter, Sites, WriteReceipt, verify_wri
 use ogre_harness::{Error, InputDriver, PageDriver, Result};
 use tokio::sync::mpsc;
 
-use crate::agent_run::{self, AgentAnswer, AgentLine, AgentQuestion, AgentRequest, AgentSummary};
+use crate::agent_run::{
+    self, AgentAnswer, AgentLine, AgentQuestion, AgentRequest, AgentSummary, SkillSummary,
+};
 use crate::audit::AuditLog;
 use crate::grading::{self, GradeReport, PreparedCache};
 use crate::history::{self, PastSession};
@@ -76,6 +78,10 @@ pub enum Command {
     ListHistory,
     /// Let the AI work the open page on a task the teacher describes.
     RunAgent(Box<AgentRequest>),
+    /// Say what the agent knows: its site guides and the teacher's skills.
+    ListSkills,
+    /// Show the teacher's skills folder in the file manager.
+    OpenSkillsFolder,
 }
 
 #[derive(Debug)]
@@ -143,6 +149,11 @@ pub enum Event {
     Profiles(Vec<ProfileSummary>),
     /// Past grading sessions, newest first.
     History(Vec<PastSession>),
+    /// What the agent knows, and the folder the teacher's own skills are in.
+    Skills {
+        folder: String,
+        skills: Vec<SkillSummary>,
+    },
     AgentLine(AgentLine),
     /// The agent wants to act and waits for [`Worker::answer`].
     AgentAsks(AgentQuestion),
@@ -559,6 +570,22 @@ impl Task {
             }
             Command::ListProfiles => Ok(Event::Profiles(self.profiles.summaries())),
             Command::ListHistory => Ok(Event::History(history::load(self.audit.dir()))),
+            Command::ListSkills => Ok(self.skills()),
+            Command::OpenSkillsFolder => {
+                std::fs::create_dir_all(&self.skills_dir)
+                    .and_then(|()| {
+                        std::process::Command::new("xdg-open")
+                            .arg(&self.skills_dir)
+                            .spawn()
+                    })
+                    .map_err(|error| {
+                        Error::Page(format!(
+                            "The folder could not be opened ({error}). It is {}.",
+                            self.skills_dir.display()
+                        ))
+                    })?;
+                Ok(self.skills())
+            }
             Command::RunAgent(request) => {
                 let page = self.current_tab().await?;
                 let summary = agent_run::run(
@@ -573,6 +600,13 @@ impl Task {
                 self.target = None;
                 Ok(Event::AgentDone(summary))
             }
+        }
+    }
+
+    fn skills(&self) -> Event {
+        Event::Skills {
+            folder: self.skills_dir.display().to_string(),
+            skills: agent_run::list_skills(&self.skills_dir),
         }
     }
 
