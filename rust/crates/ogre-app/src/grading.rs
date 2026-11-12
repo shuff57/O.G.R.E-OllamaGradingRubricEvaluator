@@ -1,7 +1,6 @@
 //! Runs the grading engine for the window and boils its outcome down to what
 //! the review table shows.
 
-use ogre_core::format_score;
 use ogre_grader::{
     BatchOutcome, CancelFlag, GradeEvent, GradeOptions, GradeStatus, ScoreSource, grade_batch,
     prepare_edited_rubric, prepare_rubric,
@@ -37,6 +36,19 @@ pub struct Grade {
     pub feedback_html: String,
     /// A reason for the teacher to look at this grade before accepting it.
     pub flag: Option<String>,
+    /// A different grade the consistency check proposes. Never applied
+    /// unless the teacher takes it.
+    pub suggestion: Option<Suggestion>,
+}
+
+/// What the consistency check would give a student instead.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Suggestion {
+    pub score: f64,
+    /// Feedback rewritten to go with the score, where the check wrote any.
+    pub feedback_html: Option<String>,
+    /// Why the check thinks the first score is out of line.
+    pub reason: Option<String>,
 }
 
 /// Grades the request's students. `progress` is called with the number of
@@ -133,6 +145,7 @@ fn report(outcome: BatchOutcome) -> GradeReport {
                     score: grade.score,
                     feedback_html: grade.feedback.clone(),
                     flag: None,
+                    suggestion: None,
                 }),
                 GradeStatus::NotGraded(reason) => Err(reason.to_string()),
             },
@@ -159,18 +172,17 @@ fn report(outcome: BatchOutcome) -> GradeReport {
     }
     // The consistency check only suggests; the teacher decides.
     for adjustment in &outcome.sweep.adjustments {
-        let reason = adjustment
-            .reason
-            .as_deref()
-            .map(|reason| format!(": {reason}"))
-            .unwrap_or_default();
-        flag(
-            adjustment.student_index,
-            format!(
-                "A consistency check suggests {} instead{reason}",
-                format_score(adjustment.suggested_score)
-            ),
-        );
+        let grade = rows
+            .iter_mut()
+            .find(|row| row.index == adjustment.student_index)
+            .and_then(|row| row.outcome.as_mut().ok());
+        if let Some(grade) = grade {
+            grade.suggestion = Some(Suggestion {
+                score: adjustment.suggested_score,
+                feedback_html: adjustment.suggested_feedback.clone(),
+                reason: adjustment.reason.clone(),
+            });
+        }
     }
 
     GradeReport {

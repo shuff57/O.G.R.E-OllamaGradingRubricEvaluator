@@ -11,7 +11,7 @@ use ogre_core::{
 };
 use ogre_harness::feedback;
 
-use crate::grading::GradeReport;
+use crate::grading::{Grade, GradeReport, Suggestion};
 use crate::worker::{ReadReport, WriteReport};
 
 pub struct Session {
@@ -83,20 +83,46 @@ pub struct Proposal {
     edited: bool,
     /// A reason to look at this grade before accepting it.
     pub flag: Option<String>,
+    /// What the consistency check would give instead, until the teacher
+    /// takes it or sets it aside.
+    pub suggestion: Option<Suggestion>,
     /// Unticked proposals are not written.
     pub accepted: bool,
 }
 
 impl Proposal {
-    fn new(score: f64, html: String, flag: Option<String>) -> Self {
+    fn new(grade: Grade) -> Self {
         Self {
-            score,
-            text: feedback::plain_text(&html),
-            original_html: html,
+            score: grade.score,
+            text: feedback::plain_text(&grade.feedback_html),
+            original_html: grade.feedback_html,
             edited: false,
-            flag,
+            flag: grade.flag,
+            // A suggestion of the same score and no new feedback says nothing.
+            suggestion: grade
+                .suggestion
+                .filter(|s| s.score != grade.score || s.feedback_html.is_some()),
             accepted: true,
         }
+    }
+
+    /// Replaces the proposal with what the consistency check suggested: its
+    /// score, and its feedback where it wrote any. Feedback the teacher has
+    /// already edited is theirs and is kept.
+    pub fn use_suggestion(&mut self) {
+        let Some(suggestion) = self.suggestion.take() else {
+            return;
+        };
+        self.score = suggestion.score;
+        if let Some(html) = suggestion.feedback_html.filter(|_| !self.edited) {
+            self.text = feedback::plain_text(&html);
+            self.original_html = html;
+        }
+    }
+
+    /// Sets the suggestion aside; the proposal stands as it is.
+    pub fn keep_proposal(&mut self) {
+        self.suggestion = None;
     }
 
     /// Call after the teacher changes [`Self::text`].
@@ -136,6 +162,8 @@ pub enum Status {
     HasFeedback,
     Ungraded,
     Ready,
+    /// Ready, with a suggestion from the consistency check not yet decided.
+    Suggested,
     Held,
     Skipped(SkipReason),
     Note(Note),
@@ -149,6 +177,7 @@ impl Status {
             Self::HasFeedback => "Has feedback".into(),
             Self::Ungraded => "Ungraded".into(),
             Self::Ready => "Ready to write".into(),
+            Self::Suggested => "Has a suggestion".into(),
             Self::Held => "Held back".into(),
             Self::Skipped(reason) => format!("Skipped: {}", reason.explain()),
             Self::Note(Note::NotGraded(why)) => format!("Not graded: {why}"),
@@ -272,6 +301,7 @@ impl Session {
         match &row.proposal {
             Some(proposal) if !proposal.accepted => Status::Held,
             Some(proposal) => match skip_reason(submission, proposal.score, self.policy) {
+                None if proposal.suggestion.is_some() => Status::Suggested,
                 None => Status::Ready,
                 Some(reason) => Status::Skipped(reason),
             },
@@ -284,6 +314,16 @@ impl Session {
 
     fn plan(&self, submission: &Submission, proposal: &Proposal) -> Result<GradeWrite, SkipReason> {
         plan_write(submission, proposal.score, &proposal.html(), self.policy)
+    }
+
+    /// How many proposals have a suggestion the teacher has not decided on.
+    pub fn open_suggestions(&self) -> usize {
+        self.rows
+            .iter()
+            .filter(|row| row.note.is_none())
+            .filter_map(|row| row.proposal.as_ref())
+            .filter(|proposal| proposal.suggestion.is_some())
+            .count()
     }
 
     /// How many grades [`Self::to_write`] would write.
@@ -328,8 +368,7 @@ impl Session {
             };
             match graded.outcome {
                 Ok(grade) => {
-                    row.proposal =
-                        Some(Proposal::new(grade.score, grade.feedback_html, grade.flag));
+                    row.proposal = Some(Proposal::new(grade));
                     row.note = None;
                 }
                 Err(reason) => {
@@ -535,6 +574,7 @@ mod tests {
                 score,
                 feedback_html: html.into(),
                 flag: None,
+                suggestion: None,
             }),
         }
     }
@@ -587,6 +627,93 @@ mod tests {
         s.restore_rubric_text();
         assert_eq!(s.edited_rubric_text(), None);
         assert_eq!(*s.rubric_outline(), as_read);
+    }
+
+    fn suggested(index: usize, score: f64, to: f64, feedback: Option<&str>) -> GradedRow {
+        GradedRow {
+            index,
+            outcome: Ok(Grade {
+                score,
+                feedback_html: "<p>First thoughts.</p>".into(),
+                flag: None,
+                suggestion: Some(Suggestion {
+                    score: to,
+                    feedback_html: feedback.map(Into::into),
+                    reason: None,
+                }),
+            }),
+        }
+    }
+
+    #[test]
+    fn a_suggestion_changes_nothing_until_it_is_taken() {
+        let mut s = session();
+        s.apply_grades(report(vec![
+            suggested(1, 7.0, 5.5, Some("<p>Second thoughts.</p>")),
+            suggested(3, 9.0, 8.0, None),
+        ]));
+        assert_eq!(s.open_suggestions(), 2);
+        assert_eq!(s.status(1), Status::Suggested);
+        let writes = s.to_write();
+        assert_eq!(writes[0].score.value, 7.0);
+        assert_eq!(
+            writes[0].feedback.as_ref().unwrap().html,
+            "<p>First thoughts.</p>"
+        );
+
+        // Taken: the score, and the feedback that goes with it.
+        s.rows[1].proposal.as_mut().unwrap().use_suggestion();
+        // With no feedback of its own, only the score changes.
+        s.rows[3].proposal.as_mut().unwrap().use_suggestion();
+        assert_eq!(s.open_suggestions(), 0);
+        assert_eq!(s.status(1), Status::Ready);
+        let writes = s.to_write();
+        assert_eq!(writes[0].score.value, 5.5);
+        assert_eq!(
+            writes[0].feedback.as_ref().unwrap().html,
+            "<p>Second thoughts.</p>"
+        );
+        assert_eq!(writes[1].score.value, 8.0);
+        assert_eq!(
+            writes[1].feedback.as_ref().unwrap().html,
+            "<p>First thoughts.</p>"
+        );
+    }
+
+    #[test]
+    fn a_suggestion_set_aside_leaves_the_proposal_as_it_was() {
+        let mut s = session();
+        s.apply_grades(report(vec![suggested(1, 7.0, 5.5, Some("<p>Other.</p>"))]));
+        s.rows[1].proposal.as_mut().unwrap().keep_proposal();
+        assert_eq!(s.open_suggestions(), 0);
+        assert_eq!(s.to_write()[0].score.value, 7.0);
+        // Nothing is left to take.
+        s.rows[1].proposal.as_mut().unwrap().use_suggestion();
+        assert_eq!(s.to_write()[0].score.value, 7.0);
+    }
+
+    #[test]
+    fn feedback_the_teacher_wrote_survives_taking_a_suggestion() {
+        let mut s = session();
+        s.apply_grades(report(vec![suggested(1, 7.0, 5.5, Some("<p>Other.</p>"))]));
+        let proposal = s.rows[1].proposal.as_mut().unwrap();
+        proposal.text = "My own words.".into();
+        proposal.mark_edited();
+        proposal.use_suggestion();
+        let write = &s.to_write()[0];
+        assert_eq!(write.score.value, 5.5);
+        assert_eq!(
+            write.feedback.as_ref().unwrap().html,
+            "<p>My own words.</p>"
+        );
+    }
+
+    #[test]
+    fn a_suggestion_that_changes_nothing_is_not_shown() {
+        let mut s = session();
+        s.apply_grades(report(vec![suggested(1, 7.0, 7.0, None)]));
+        assert_eq!(s.open_suggestions(), 0);
+        assert_eq!(s.status(1), Status::Ready);
     }
 
     #[test]

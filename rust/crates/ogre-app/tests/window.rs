@@ -11,8 +11,8 @@ use egui_kittest::kittest::Queryable;
 use ogre_app::{
     AgentAnswer, AgentLine, AgentQuestion, AgentSummary, Command, Event, Grade, GradeReport,
     GradedRow, LineKind, MapReport, MemoryKeys, OgreApp, PastProposal, PastSession, PastStudent,
-    ProfileSummary, ProviderSettings, ReadReport, Service, SessionEnd, Settings, StandIn, Worker,
-    WriteReport,
+    ProfileSummary, ProviderSettings, ReadReport, Service, SessionEnd, Settings, StandIn,
+    Suggestion, Worker, WriteReport,
 };
 use ogre_core::{
     FeedbackField, FeedbackKind, GradingPage, Position, Rubric, ScoreField, Submission,
@@ -150,12 +150,13 @@ fn read() -> Event {
 }
 
 fn graded() -> Event {
-    let grade = |index, score, html: &str, flag: Option<&str>| GradedRow {
+    let grade = |index, score, html: &str, suggestion: Option<Suggestion>| GradedRow {
         index,
         outcome: Ok(Grade {
             score,
             feedback_html: html.into(),
-            flag: flag.map(Into::into),
+            flag: None,
+            suggestion,
         }),
     };
     Event::Graded(GradeReport {
@@ -171,7 +172,11 @@ fn graded() -> Event {
                 3,
                 8.5,
                 "<p>Remy, clear and correct.</p>",
-                Some("A consistency check suggests 8 instead: similar to Kai's answer"),
+                Some(Suggestion {
+                    score: 8.0,
+                    feedback_html: Some("<p>Remy, correct, but say why.</p>".into()),
+                    reason: Some("Kai gave the same reasoning and got less.".into()),
+                }),
             ),
         ],
         warnings: Vec::new(),
@@ -287,15 +292,27 @@ fn grades_fills_and_saves_one_explicit_step_at_a_time() {
 
     stand_in.events.send(graded()).unwrap();
     frames(&mut harness);
-    assert_eq!(harness.query_all_by_label("Ready to write").count(), 2);
+    harness.get_by_label("Ready to write");
+    // The consistency check proposes something else for Remy. It is marked
+    // and waits for a decision; nothing is changed by itself.
+    harness.get_by_label("Has a suggestion");
+    harness.get_by_label_contains("suggests a different grade for 1 student");
     assert!(
         harness.query_by_label_contains("Save on").is_none(),
         "nothing to save yet"
     );
     harness.get_by_label("Diaz, Remy").click();
     frames(&mut harness);
-    harness.get_by_label("A consistency check suggests 8 instead: similar to Kai's answer");
+    harness.get_by_label(
+        "8 instead of 8.5, with feedback rewritten to match. Kai gave the same reasoning and got less.",
+    );
     shot(&mut harness, "3-proposed");
+    harness.get_by_label("Keep the proposal").click();
+    frames(&mut harness);
+    assert!(harness.query_by_label("Has a suggestion").is_none());
+    assert!(harness.query_by_label("Use the suggestion").is_none());
+    // Both rows of the table, and once more in Remy's open panel.
+    assert_eq!(harness.query_all_by_label("Ready to write").count(), 3);
 
     harness.get_by_label("Fill in 2 grades").click();
     frames(&mut harness);
@@ -933,4 +950,60 @@ fn scores_come_from_the_ai_unless_the_teacher_chooses_the_feedback() {
         panic!("expected a grading request");
     };
     assert!(request.score_from_verdicts);
+}
+
+#[test]
+fn a_suggestion_the_teacher_takes_is_what_gets_written() {
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    stand_in.events.send(read()).unwrap();
+    stand_in.events.send(graded()).unwrap();
+    frames(&mut harness);
+
+    harness.get_by_label("Diaz, Remy").click();
+    frames(&mut harness);
+    harness.get_by_label("Use the suggestion").click();
+    frames(&mut harness);
+    assert!(harness.query_by_label("Has a suggestion").is_none());
+    assert!(
+        harness
+            .query_by_label_contains("suggests a different grade")
+            .is_none()
+    );
+
+    harness.get_by_label("Fill in 2 grades").click();
+    frames(&mut harness);
+    let Command::Write(writes) = sent(&mut stand_in) else {
+        panic!("expected a write");
+    };
+    assert_eq!(
+        (writes[1].name.as_str(), writes[1].score.value),
+        ("Diaz, Remy", 8.0)
+    );
+    assert_eq!(
+        writes[1].feedback.as_ref().unwrap().html,
+        "<p>Remy, correct, but say why.</p>"
+    );
+    // Kai had no suggestion and is written as proposed.
+    assert_eq!(writes[0].score.value, 6.0);
+}
+
+#[test]
+fn a_suggestion_left_undecided_does_not_change_what_is_written() {
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    stand_in.events.send(read()).unwrap();
+    stand_in.events.send(graded()).unwrap();
+    frames(&mut harness);
+
+    harness.get_by_label("Fill in 2 grades").click();
+    frames(&mut harness);
+    let Command::Write(writes) = sent(&mut stand_in) else {
+        panic!("expected a write");
+    };
+    assert_eq!(writes[1].score.value, 8.5);
+    assert_eq!(
+        writes[1].feedback.as_ref().unwrap().html,
+        "<p>Remy, clear and correct.</p>"
+    );
 }

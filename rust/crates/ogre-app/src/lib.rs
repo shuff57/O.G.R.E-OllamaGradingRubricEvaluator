@@ -15,7 +15,7 @@ mod worker;
 
 pub use agent_run::{AgentAnswer, AgentLine, AgentQuestion, AgentRequest, AgentSummary, LineKind};
 pub use app::OgreApp;
-pub use grading::{Grade, GradeReport, GradedRow};
+pub use grading::{Grade, GradeReport, GradedRow, Suggestion};
 pub use history::{PastProposal, PastSession, PastStudent, SessionEnd};
 pub use keys::{KeyStore, Keyring, MemoryKeys};
 pub use profiles::ProfileSummary;

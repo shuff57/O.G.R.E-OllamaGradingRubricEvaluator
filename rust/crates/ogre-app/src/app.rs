@@ -7,6 +7,7 @@ use ogre_grader::CancelFlag;
 use crate::agent_run::{
     AgentAnswer, AgentLine, AgentQuestion, AgentRequest, AgentSummary, LineKind,
 };
+use crate::grading::Suggestion;
 use crate::history::{self, PastProposal, PastSession, SessionEnd};
 use crate::keys::KeyStore;
 use crate::kit;
@@ -594,6 +595,17 @@ impl OgreApp {
             });
         }
 
+        match session.open_suggestions() {
+            0 => {}
+            n => {
+                ui.label(theme::muted(format!(
+                    "The consistency check suggests a different grade for {}. Open each one \
+                     to use the suggestion or keep the proposal; left alone, the proposal is written.",
+                    count(n, "student")
+                )));
+            }
+        }
+
         if session.unsaved && session.manual_save {
             kit::icon_line(
                 ui,
@@ -692,6 +704,10 @@ impl OgreApp {
             Status::Ready => {
                 kit::calm_pill(ui, &status.text());
             }
+            // The marker: a decision is waiting here.
+            Status::Suggested => {
+                kit::marker_pill(ui, &status.text());
+            }
             // The marker: these grades just went onto the page and are not saved.
             Status::Note(Note::Written) => {
                 kit::marker_pill(ui, &status.text());
@@ -747,6 +763,27 @@ impl OgreApp {
                 });
                 if let Some(flag) = &proposal.flag {
                     kit::icon_line(ui, icon::WARNING, flag, pal().warn);
+                }
+                if let Some(suggestion) = &proposal.suggestion {
+                    let text = suggestion_text(proposal.score, suggestion);
+                    let (mut take, mut keep) = (false, false);
+                    kit::card().show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        ui.horizontal(|ui| {
+                            kit::marker_pill(ui, "Suggestion");
+                            ui.label(theme::meta("from the consistency check"));
+                        });
+                        ui.label(theme::body(text));
+                        ui.horizontal_wrapped(|ui| {
+                            take = kit::ghost(ui, "Use the suggestion", true).clicked();
+                            keep = kit::ghost(ui, "Keep the proposal", true).clicked();
+                        });
+                    });
+                    if take {
+                        proposal.use_suggestion();
+                    } else if keep {
+                        proposal.keep_proposal();
+                    }
                 }
                 let label = kit::section_label(ui, "Proposed feedback");
                 let edit = ui
@@ -1547,6 +1584,37 @@ impl eframe::App for OgreApp {
 fn host(url: &str) -> &str {
     let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
     rest.split(['/', '?', '#']).next().unwrap_or(rest)
+}
+
+/// What the consistency check proposes, in a sentence or two.
+fn suggestion_text(proposed: f64, suggestion: &Suggestion) -> String {
+    let mut text = if suggestion.score == proposed {
+        format!(
+            "Keep the score of {} but reword the feedback.",
+            format_score(proposed)
+        )
+    } else {
+        format!(
+            "{} instead of {}{}.",
+            format_score(suggestion.score),
+            format_score(proposed),
+            if suggestion.feedback_html.is_some() {
+                ", with feedback rewritten to match"
+            } else {
+                ""
+            }
+        )
+    };
+    if let Some(reason) = suggestion
+        .reason
+        .as_deref()
+        .map(str::trim)
+        .filter(|r| !r.is_empty())
+    {
+        text.push(' ');
+        text.push_str(reason);
+    }
+    text
 }
 
 /// What a leniency setting does, in a line.

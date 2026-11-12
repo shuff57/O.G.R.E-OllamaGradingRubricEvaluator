@@ -70,6 +70,11 @@ impl AuditLog {
                     "score": grade.score,
                     "feedback": grade.feedback_html,
                     "flag": grade.flag,
+                    "suggestion": grade.suggestion.as_ref().map(|s| json!({
+                        "score": s.score,
+                        "feedback": s.feedback_html,
+                        "reason": s.reason,
+                    })),
                 }),
                 Err(reason) => json!({ "index": row.index, "not_graded": reason }),
             }).collect::<Vec<_>>(),
