@@ -95,6 +95,13 @@ pub enum Command {
     ListSkills,
     /// Show the teacher's skills folder in the file manager.
     OpenSkillsFolder,
+    /// Write a skill of the teacher's: over the one with this id, or as a
+    /// new one.
+    SaveSkill {
+        id: Option<String>,
+        draft: Box<ogre_agent::SkillDraft>,
+    },
+    DeleteSkill(String),
 }
 
 #[derive(Debug)]
@@ -682,6 +689,15 @@ impl Task {
             Command::ListProfiles => Ok(Event::Profiles(self.profiles.summaries())),
             Command::ListHistory => Ok(Event::History(history::load(self.audit.dir()))),
             Command::ListSkills => Ok(self.skills()),
+            Command::SaveSkill { id, draft } => {
+                agent_run::save_skill(&self.skills_dir, id.as_deref(), &draft)
+                    .map_err(Error::Page)?;
+                Ok(self.skills())
+            }
+            Command::DeleteSkill(id) => {
+                agent_run::delete_skill(&self.skills_dir, &id).map_err(Error::Page)?;
+                Ok(self.skills())
+            }
             Command::OpenSkillsFolder => {
                 std::fs::create_dir_all(&self.skills_dir)
                     .and_then(|()| {

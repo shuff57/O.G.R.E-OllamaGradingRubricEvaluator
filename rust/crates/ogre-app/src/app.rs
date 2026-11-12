@@ -88,6 +88,45 @@ struct BrowserView {
     last_press: Option<(f64, egui::Pos2, u32)>,
 }
 
+/// The form a skill is written in.
+#[derive(Default)]
+struct SkillEdit {
+    /// The skill being changed. `None` for a new one.
+    id: Option<String>,
+    name: String,
+    description: String,
+    /// The sites it guides the agent on, separated by commas.
+    sites: String,
+    body: String,
+}
+
+impl SkillEdit {
+    fn of(skill: &SkillSummary) -> Option<Self> {
+        let draft = skill.draft.as_ref()?;
+        Some(Self {
+            id: Some(skill.id.clone()),
+            name: draft.name.clone(),
+            description: draft.description.clone(),
+            sites: draft.sites.join(", "),
+            body: draft.body.clone(),
+        })
+    }
+
+    fn draft(&self) -> ogre_agent::SkillDraft {
+        ogre_agent::SkillDraft {
+            name: self.name.trim().to_owned(),
+            description: self.description.trim().to_owned(),
+            sites: self
+                .sites
+                .split(',')
+                .map(|site| site.trim().to_owned())
+                .filter(|site| !site.is_empty())
+                .collect(),
+            body: self.body.trim().to_owned(),
+        }
+    }
+}
+
 /// Two presses this close in time and place are a double click.
 const DOUBLE_CLICK_SECONDS: f64 = 0.4;
 const DOUBLE_CLICK_DISTANCE: f32 = 5.0;
@@ -101,6 +140,13 @@ struct AgentView {
     skills: Vec<SkillSummary>,
     /// Where the teacher's own skill files go.
     skills_folder: String,
+    /// The skill being written or changed, if one is.
+    editing: Option<SkillEdit>,
+    /// The skill of the teacher's that is about to be deleted, once
+    /// confirmed, by id.
+    deleting_skill: Option<String>,
+    /// The name of the skill being saved right now, and whether it is new.
+    saving_skill: Option<(String, bool)>,
     task: String,
     /// Let it act without asking, except where OGRE always asks.
     auto: bool,
@@ -178,6 +224,9 @@ enum Action {
     Show(Screen),
     ListSkills,
     OpenSkillsFolder,
+    /// Save the skill in the editor.
+    SaveSkill,
+    DeleteSkill(String),
     ToggleDark,
     MapPage {
         with_ai: bool,
@@ -428,11 +477,25 @@ impl OgreApp {
                 Event::Profiles(profiles) => self.profiles = profiles,
                 Event::History(sessions) => self.history = sessions,
                 Event::Skills { folder, skills } => {
+                    if let Some((name, new)) = self.agent.saving_skill.take() {
+                        self.agent.editing = None;
+                        self.notice = Some(format!("Saved the skill \u{201c}{name}\u{201d}."));
+                        // A skill the teacher has just written is one they
+                        // mean to use: it starts ticked.
+                        let known = |id: &String| self.agent.skills.iter().any(|s| s.id == *id);
+                        let written = skills
+                            .iter()
+                            .find(|s| new && s.name == name && s.sites.is_empty() && !known(&s.id));
+                        if let Some(written) = written {
+                            self.settings.skills.insert(written.id.clone(), true);
+                        }
+                    }
                     self.agent.skills = skills;
                     self.agent.skills_folder = folder;
                 }
                 Event::Failed(message) => {
                     self.saving_rubric = None;
+                    self.agent.saving_skill = None;
                     self.agent.running = false;
                     self.agent.question = None;
                     self.error = Some(message);
@@ -574,6 +637,24 @@ impl OgreApp {
             }
             Action::OpenSkillsFolder => {
                 self.send(Command::OpenSkillsFolder, "Opening the skills folder…");
+            }
+            Action::SaveSkill => {
+                let Some(edit) = &self.agent.editing else {
+                    return;
+                };
+                let draft = edit.draft();
+                let id = edit.id.clone();
+                self.agent.saving_skill = Some((draft.name.clone(), id.is_none()));
+                let command = Command::SaveSkill {
+                    id,
+                    draft: Box::new(draft),
+                };
+                self.send(command, "Saving the skill…");
+            }
+            Action::DeleteSkill(id) => {
+                self.agent.deleting_skill = None;
+                self.settings.skills.remove(&id);
+                self.send(Command::DeleteSkill(id), "Deleting the skill…");
             }
             Action::MapPage { with_ai } => {
                 self.mapping = None;
@@ -1973,6 +2054,13 @@ impl OgreApp {
                         ui.set_width(ui.available_width());
                         self.skills_card(ui, actions);
                     });
+                    if self.agent.editing.is_some() {
+                        ui.add_space(4.0);
+                        kit::card().show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            self.skill_editor(ui, actions);
+                        });
+                    }
 
                     if let Some(result) = &self.agent.result {
                         ui.add_space(4.0);
@@ -2015,6 +2103,7 @@ impl OgreApp {
     fn skills_card(&mut self, ui: &mut egui::Ui, actions: &mut Vec<Action>) {
         let idle = self.busy.is_none();
         kit::section_label(ui, "What the agent knows");
+        let (mut change, mut delete, mut keep) = (None, None, false);
         for skill in &self.agent.skills {
             ui.horizontal_wrapped(|ui| {
                 if skill.sites.is_empty() {
@@ -2038,10 +2127,49 @@ impl OgreApp {
                 if skill.built_in {
                     ui.label(theme::meta("Built in"));
                 }
+                // A skill of the teacher's own is theirs to change.
+                if skill.draft.is_some() {
+                    let free = idle && !self.agent.running;
+                    if kit::ghost(ui, "Change", free).clicked() {
+                        change = SkillEdit::of(skill);
+                    }
+                    if kit::ghost(ui, "Delete", free).clicked() {
+                        delete = Some(skill.id.clone());
+                    }
+                }
             });
             if !skill.description.is_empty() {
                 ui.label(theme::muted(&skill.description));
             }
+            if self.agent.deleting_skill.as_deref() == Some(skill.id.as_str()) {
+                kit::icon_line(
+                    ui,
+                    icon::WARNING,
+                    &format!(
+                        "Delete the skill \u{201c}{}\u{201d}? Its file is removed and cannot \
+                         be brought back.",
+                        skill.name
+                    ),
+                    pal().warn,
+                );
+                ui.horizontal(|ui| {
+                    if kit::ghost(ui, "Delete the skill", idle).clicked() {
+                        actions.push(Action::DeleteSkill(skill.id.clone()));
+                    }
+                    if kit::ghost(ui, "Keep it", true).clicked() {
+                        keep = true;
+                    }
+                });
+            }
+        }
+        if let Some(edit) = change {
+            self.agent.editing = Some(edit);
+        }
+        if let Some(id) = delete {
+            self.agent.deleting_skill = Some(id);
+        }
+        if keep {
+            self.agent.deleting_skill = None;
         }
         if self.agent.skills.is_empty() && idle {
             ui.label(theme::muted("Nothing yet."));
@@ -2052,6 +2180,10 @@ impl OgreApp {
              Markdown file in your skills folder, used on every task while it is ticked.",
         ));
         ui.horizontal_wrapped(|ui| {
+            let free = idle && !self.agent.running && self.agent.editing.is_none();
+            if kit::ghost(ui, "Write a skill", free).clicked() {
+                self.agent.editing = Some(SkillEdit::default());
+            }
             if kit::ghost(ui, "Open the skills folder", idle).clicked() {
                 actions.push(Action::OpenSkillsFolder);
             }
@@ -2062,6 +2194,66 @@ impl OgreApp {
                 ui.label(theme::muted(&self.agent.skills_folder));
             }
         });
+    }
+
+    /// The form a skill of the teacher's is written or changed in.
+    fn skill_editor(&mut self, ui: &mut egui::Ui, actions: &mut Vec<Action>) {
+        let idle = self.busy.is_none();
+        let Some(edit) = &mut self.agent.editing else {
+            return;
+        };
+        kit::panel_title(
+            ui,
+            if edit.id.is_some() {
+                "Change the skill"
+            } else {
+                "A new skill"
+            },
+        );
+        let line = |ui: &mut egui::Ui, label: &str, hint: &str, text: &mut String| {
+            let label = kit::section_label(ui, label);
+            ui.add(
+                egui::TextEdit::singleline(text)
+                    .hint_text(hint)
+                    .desired_width(f32::INFINITY),
+            )
+            .labelled_by(label.id);
+        };
+        line(ui, "Name", "For example: Late work", &mut edit.name);
+        line(
+            ui,
+            "What it is for",
+            "One line, for you to tell your skills apart",
+            &mut edit.description,
+        );
+        line(
+            ui,
+            "Sites it is a guide to",
+            "Leave empty for a skill used on every task. Otherwise: schoology.com, another.org",
+            &mut edit.sites,
+        );
+        let label = kit::section_label(ui, "What the agent should know");
+        ui.add(
+            egui::TextEdit::multiline(&mut edit.body)
+                .hint_text(
+                    "In your own words, or Markdown. For example: work handed in late \
+                     loses one point for each day, down to half credit.",
+                )
+                .desired_rows(8)
+                .desired_width(f32::INFINITY),
+        )
+        .labelled_by(label.id);
+        let complete = !edit.name.trim().is_empty() && !edit.body.trim().is_empty();
+        let mut cancel = false;
+        ui.horizontal(|ui| {
+            if kit::primary(ui, "Save the skill", idle && complete).clicked() {
+                actions.push(Action::SaveSkill);
+            }
+            cancel = kit::ghost(ui, "Cancel", true).clicked();
+        });
+        if cancel {
+            self.agent.editing = None;
+        }
     }
 
     fn history_screen(&mut self, ui: &mut egui::Ui, actions: &mut Vec<Action>) {

@@ -48,7 +48,7 @@ pub use reply::{AgentReply, parse_agent_reply};
 pub use safety::ApprovalReason;
 pub use site_guide::{LearnedCorrection, SiteGuide, Workflow, convert_profile_to_json};
 pub use skills::{
-    ParsedSkill, Skill, SkillContext, SkillSource, build_site_context_injection,
+    ParsedSkill, Skill, SkillContext, SkillDraft, SkillSource, build_site_context_injection,
     build_skill_injection, bundled_site_profiles, find_matching_profiles, load_skills_dir,
     parse_skill_markdown, select_best_profile, skill_context_for,
 };

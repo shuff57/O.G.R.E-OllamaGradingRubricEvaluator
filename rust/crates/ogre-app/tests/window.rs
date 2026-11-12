@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use eframe::egui;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
+use ogre_agent::SkillDraft;
 use ogre_app::{
     AgentAnswer, AgentLine, AgentQuestion, AgentSummary, Command, Event, Grade, GradeReport,
     GradedRow, LineKind, MapReport, MemoryKeys, OgreApp, OutsideRubric, PastProposal, PastSession,
@@ -731,6 +732,7 @@ fn skills() -> Event {
                 sites: vec!["myopenmath.com".into()],
                 built_in: true,
                 on_in_file: false,
+                draft: None,
             },
             SkillSummary {
                 id: "late-work".into(),
@@ -739,6 +741,12 @@ fn skills() -> Event {
                 sites: Vec::new(),
                 built_in: false,
                 on_in_file: false,
+                draft: Some(SkillDraft {
+                    name: "Late work".into(),
+                    description: "How this class treats work handed in late.".into(),
+                    sites: Vec::new(),
+                    body: "Take a point off for each day late.".into(),
+                }),
             },
         ],
     }
@@ -1920,4 +1928,126 @@ fn what_the_page_asks_can_be_answered_from_any_screen() {
     stand_in.view.state().dialog = None;
     frames(&mut harness);
     assert!(harness.query_by_label_contains("The page asks").is_none());
+}
+
+#[test]
+fn a_skill_is_written_changed_and_deleted_on_the_agent_screen() {
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Agent").click();
+    frames(&mut harness);
+    assert!(matches!(sent(&mut stand_in), Command::ListSkills));
+    stand_in.events.send(skills()).unwrap();
+    frames(&mut harness);
+
+    // A skill of the teacher's opens in the form with what its file holds.
+    press_in_rubric(&mut harness, "Change");
+    harness.get_by_label("Change the skill");
+    assert!(harness.query_all_by_value("Late work").next().is_some());
+    harness.get_by_label("What it is for").scroll_to_me();
+    frames(&mut harness);
+    harness.get_by_label("Sites it is a guide to").click();
+    frames(&mut harness);
+    harness
+        .get_by_label("Sites it is a guide to")
+        .type_text("schoology.com, ,canvas.example.edu ");
+    frames(&mut harness);
+    shot(&mut harness, "28-skill-editor");
+    press_in_rubric(&mut harness, "Save the skill");
+    let Command::SaveSkill { id, draft } = sent(&mut stand_in) else {
+        panic!("expected a skill to save");
+    };
+    assert_eq!(id.as_deref(), Some("late-work"));
+    assert_eq!(draft.name, "Late work");
+    assert_eq!(draft.body, "Take a point off for each day late.");
+    assert_eq!(draft.sites, ["schoology.com", "canvas.example.edu"]);
+    stand_in.events.send(skills()).unwrap();
+    frames(&mut harness);
+    harness.get_by_label_contains("Saved the skill \u{201c}Late work\u{201d}.");
+    assert!(harness.query_by_label("Change the skill").is_none());
+
+    // A new one needs a name and something for the agent to know.
+    press_in_rubric(&mut harness, "Write a skill");
+    harness.get_by_label("A new skill");
+    press_in_rubric(&mut harness, "Save the skill");
+    assert!(stand_in.commands.try_recv().is_err());
+    for (field, text) in [
+        ("Name", "Rounding"),
+        ("What the agent should know", "Round to two places."),
+    ] {
+        harness.get_by_label(field).scroll_to_me();
+        frames(&mut harness);
+        harness.get_by_label(field).click();
+        frames(&mut harness);
+        harness.get_by_label(field).type_text(text);
+        frames(&mut harness);
+    }
+    press_in_rubric(&mut harness, "Save the skill");
+    let Command::SaveSkill { id, draft } = sent(&mut stand_in) else {
+        panic!("expected a skill to save");
+    };
+    assert_eq!(id, None);
+    assert_eq!(
+        (draft.name.as_str(), draft.body.as_str()),
+        ("Rounding", "Round to two places.")
+    );
+    assert!(draft.sites.is_empty());
+
+    // The worker lists it under the id it gave the file; it starts ticked.
+    let Event::Skills { folder, mut skills } = skills() else {
+        unreachable!()
+    };
+    skills.push(SkillSummary {
+        id: "rounding".into(),
+        name: "Rounding".into(),
+        description: String::new(),
+        sites: Vec::new(),
+        built_in: false,
+        on_in_file: false,
+        draft: Some(*draft),
+    });
+    stand_in
+        .events
+        .send(Event::Skills { folder, skills })
+        .unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Task").click();
+    frames(&mut harness);
+    harness.get_by_label("Task").type_text("Round the scores.");
+    frames(&mut harness);
+    harness.get_by_label("Start").click();
+    frames(&mut harness);
+    let Command::RunAgent(request) = sent(&mut stand_in) else {
+        panic!("expected the agent to start");
+    };
+    assert_eq!(request.skill_choices.get("rounding"), Some(&true));
+    assert_eq!(request.skill_choices.get("late-work"), None);
+    stand_in
+        .events
+        .send(Event::AgentDone(AgentSummary {
+            finished: true,
+            message: "Done.".into(),
+        }))
+        .unwrap();
+    // Back to one skill of the teacher's, so that "Delete" names one thing.
+    stand_in.events.send(self::skills()).unwrap();
+    frames(&mut harness);
+
+    // Deleting asks first.
+    press_in_rubric(&mut harness, "Delete");
+    assert!(stand_in.commands.try_recv().is_err());
+    harness.get_by_label_contains("Delete the skill \u{201c}Late work\u{201d}?");
+    press_in_rubric(&mut harness, "Keep it");
+    assert!(
+        harness
+            .query_by_label_contains("cannot be brought back")
+            .is_none()
+    );
+    press_in_rubric(&mut harness, "Delete");
+    press_in_rubric(&mut harness, "Delete the skill");
+    let Command::DeleteSkill(id) = sent(&mut stand_in) else {
+        panic!("expected a skill to delete");
+    };
+    assert_eq!(id, "late-work");
 }

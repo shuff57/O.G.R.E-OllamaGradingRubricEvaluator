@@ -2,12 +2,13 @@
 //! the open page, and the teacher is asked before it acts.
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use ogre_agent::{
     AgentContext, AgentEnd, AgentEvent, AgentMode, AgentOptions, Approver, CancelFlag, Decision,
-    ProposedAction, Skill, SkillSource, bundled_site_profiles, load_skills_dir, run_agent,
+    ProposedAction, Skill, SkillDraft, SkillSource, bundled_site_profiles, load_skills_dir,
+    run_agent,
 };
 use ogre_harness::InputDriver;
 use tokio::sync::mpsc;
@@ -47,6 +48,9 @@ pub struct SkillSummary {
     pub built_in: bool,
     /// Whether its own file switches it on.
     pub on_in_file: bool,
+    /// The skill as the editor's form holds it. `None` for a built-in one,
+    /// which is not the teacher's to change.
+    pub draft: Option<SkillDraft>,
 }
 
 /// The built-in site guides, then the teacher's own skill files, with the
@@ -67,6 +71,8 @@ pub(crate) fn list_skills(skills_dir: &Path) -> Vec<SkillSummary> {
     skills(skills_dir, &BTreeMap::new())
         .into_iter()
         .map(|skill| SkillSummary {
+            draft: (skill.source == SkillSource::Local)
+                .then(|| SkillDraft::from_markdown(&skill.content)),
             built_in: skill.source == SkillSource::SiteProfile,
             on_in_file: skill.active,
             sites: skill
@@ -229,6 +235,81 @@ pub(crate) async fn run(
     }
 }
 
+/// The file of the teacher's skill `id`, which is either `<id>.md` or
+/// `<id>/SKILL.md`. An id is a file name the app made or found, never a path.
+fn skill_file(skills_dir: &Path, id: &str) -> Result<PathBuf, String> {
+    let plain = !id.is_empty()
+        && !id.starts_with('.')
+        && id
+            .chars()
+            .all(|c| c.is_alphanumeric() || matches!(c, '-' | '_' | '.' | ' '));
+    if !plain {
+        return Err(format!("\"{id}\" is not the name of a skill file."));
+    }
+    let in_folder = skills_dir.join(id).join("SKILL.md");
+    Ok(if in_folder.is_file() {
+        in_folder
+    } else {
+        skills_dir.join(format!("{id}.md"))
+    })
+}
+
+/// Writes a skill of the teacher's to their skills folder: over the file of
+/// `id`, or as a new file named after the skill. Returns its id.
+pub(crate) fn save_skill(
+    skills_dir: &Path,
+    id: Option<&str>,
+    draft: &SkillDraft,
+) -> Result<String, String> {
+    if draft.name.trim().is_empty() {
+        return Err("Give the skill a name.".into());
+    }
+    let id = match id {
+        Some(id) => id.to_owned(),
+        None => {
+            let base: String = draft
+                .name
+                .trim()
+                .chars()
+                .map(|c| {
+                    if c.is_alphanumeric() {
+                        c.to_lowercase().next().unwrap_or('-')
+                    } else {
+                        '-'
+                    }
+                })
+                .collect();
+            let base = base.trim_matches('-');
+            let base = if base.is_empty() { "skill" } else { base };
+            // A new skill never lands on a file that is already there.
+            let taken = |id: &str| {
+                skills_dir.join(format!("{id}.md")).exists() || skills_dir.join(id).exists()
+            };
+            (1..)
+                .map(|copy| match copy {
+                    1 => base.to_owned(),
+                    copy => format!("{base}-{copy}"),
+                })
+                .find(|id| !taken(id))
+                .unwrap_or_else(|| base.to_owned())
+        }
+    };
+    let file = skill_file(skills_dir, &id)?;
+    std::fs::create_dir_all(skills_dir)
+        .and_then(|()| std::fs::write(&file, draft.to_markdown()))
+        .map_err(|error| format!("The skill could not be saved: {error}"))?;
+    Ok(id)
+}
+
+/// Removes a skill of the teacher's. One that is already gone is not an error.
+pub(crate) fn delete_skill(skills_dir: &Path, id: &str) -> Result<(), String> {
+    match std::fs::remove_file(skill_file(skills_dir, id)?) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("The skill could not be deleted: {error}")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -295,6 +376,80 @@ mod tests {
         assert_eq!(active(&[]), ["on"]);
         assert_eq!(active(&[("off", true), ("on", false)]), ["off"]);
         assert_eq!(active(&[("gone", true)]), ["on"]);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    fn draft(name: &str, body: &str) -> SkillDraft {
+        SkillDraft {
+            name: name.to_owned(),
+            body: body.to_owned(),
+            ..SkillDraft::default()
+        }
+    }
+
+    #[test]
+    fn a_skill_is_written_changed_and_deleted_as_a_file_in_the_folder() {
+        let dir = folder("write").join("not-made-yet");
+        let id = save_skill(&dir, None, &draft("Late work!", "A point off a day.")).unwrap();
+        assert_eq!(id, "late-work");
+        assert!(dir.join("late-work.md").is_file());
+        // Another of the same name is another file, not the first one over.
+        let second = save_skill(&dir, None, &draft("Late work", "Other text.")).unwrap();
+        assert_eq!(second, "late-work-2");
+
+        let listed = list_skills(&dir);
+        let own: Vec<_> = listed.iter().filter(|s| !s.built_in).collect();
+        assert_eq!(own.len(), 2);
+        let first = own.iter().find(|s| s.id == "late-work").unwrap();
+        assert_eq!(first.draft.as_ref().unwrap().body, "A point off a day.");
+        assert!(
+            listed
+                .iter()
+                .filter(|s| s.built_in)
+                .all(|s| s.draft.is_none())
+        );
+
+        save_skill(&dir, Some("late-work"), &draft("Late work", "Two points.")).unwrap();
+        let changed = list_skills(&dir);
+        let first = changed.iter().find(|s| s.id == "late-work").unwrap();
+        assert_eq!(first.draft.as_ref().unwrap().body, "Two points.");
+        assert_eq!(changed.len(), listed.len(), "changed in place");
+
+        delete_skill(&dir, "late-work").unwrap();
+        delete_skill(&dir, "late-work").unwrap();
+        assert!(!dir.join("late-work.md").exists());
+        assert!(dir.join("late-work-2.md").exists());
+        let _ = std::fs::remove_dir_all(dir.parent().unwrap());
+    }
+
+    #[test]
+    fn a_skill_in_a_folder_of_its_own_is_changed_where_it_is() {
+        let dir = folder("in-folder");
+        std::fs::create_dir_all(dir.join("grading-voice")).unwrap();
+        std::fs::write(dir.join("grading-voice/SKILL.md"), "# Voice\n\nBe kind.\n").unwrap();
+        save_skill(&dir, Some("grading-voice"), &draft("Voice", "Be brief.")).unwrap();
+        let text = std::fs::read_to_string(dir.join("grading-voice/SKILL.md")).unwrap();
+        assert!(text.ends_with("Be brief.\n"), "{text}");
+        assert!(!dir.join("grading-voice.md").exists());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_skill_needs_a_name_and_an_id_cannot_reach_outside_the_folder() {
+        let dir = folder("refused");
+        assert!(save_skill(&dir, None, &draft("  ", "Text.")).is_err());
+        for id in ["../outside", "a/b", "", ".hidden"] {
+            assert!(
+                save_skill(&dir, Some(id), &draft("Name", "Text.")).is_err(),
+                "{id}"
+            );
+            assert!(delete_skill(&dir, id).is_err(), "{id}");
+        }
+        // A name of nothing but punctuation still gets a file name.
+        assert_eq!(
+            save_skill(&dir, None, &draft("???", "Text.")).unwrap(),
+            "skill"
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 }

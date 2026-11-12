@@ -78,6 +78,62 @@ impl Skill {
     }
 }
 
+/// A skill as a teacher writes one: what the form of a skill editor holds.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct SkillDraft {
+    pub name: String,
+    /// One line on what the skill is for.
+    pub description: String,
+    /// Parts of the addresses it guides the agent on. Empty for a skill
+    /// that is not about a site.
+    pub sites: Vec<String>,
+    /// What the agent should know, in Markdown.
+    pub body: String,
+}
+
+impl SkillDraft {
+    /// Reads a skill file into the form. Entries of its heading block other
+    /// than the name, the description and the sites are not carried over.
+    pub fn from_markdown(raw: &str) -> Self {
+        let parsed = parse_skill_markdown(raw);
+        let (matter, body) = frontmatter::split(raw);
+        Self {
+            name: parsed.name,
+            description: matter.text("description").unwrap_or_default().to_owned(),
+            sites: parsed.url_patterns.unwrap_or_default(),
+            body: body.trim().to_owned(),
+        }
+    }
+
+    /// The skill as a file that [`Skill::from_markdown`] reads back.
+    pub fn to_markdown(&self) -> String {
+        let quoted = |text: &str| {
+            let one_line = text.split_whitespace().collect::<Vec<_>>().join(" ");
+            format!(
+                "\"{}\"",
+                one_line.replace('\\', "\\\\").replace('"', "\\\"")
+            )
+        };
+        let mut file = format!("---\nname: {}\n", quoted(&self.name));
+        if !self.description.trim().is_empty() {
+            file += &format!("description: {}\n", quoted(&self.description));
+        }
+        let sites: Vec<&str> = self
+            .sites
+            .iter()
+            .map(|site| site.trim())
+            .filter(|site| !site.is_empty())
+            .collect();
+        if !sites.is_empty() {
+            file += "urlPatterns:\n";
+            for site in sites {
+                file += &format!("  - {}\n", quoted(site));
+            }
+        }
+        file + &format!("---\n\n{}\n", self.body.trim())
+    }
+}
+
 /// What a skill file says about itself.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ParsedSkill {
@@ -792,5 +848,50 @@ mod tests {
         assert_eq!(tone.description, "How to phrase feedback");
 
         assert!(load_skills_dir(&dir.join("missing"), SkillSource::Local).is_err());
+    }
+
+    #[test]
+    fn a_skill_written_in_the_form_reads_back_as_written() {
+        let draft = SkillDraft {
+            name: "Late \"work\" \\ policy".to_owned(),
+            description: "  How this class\n treats late work. ".to_owned(),
+            sites: vec![" schoology.com ".to_owned(), String::new()],
+            body: "\n# Late work\n\nTake a point off for each day late.\n".to_owned(),
+        };
+        let file = draft.to_markdown();
+        assert!(
+            file.starts_with("---\nname: \"Late \\\"work\\\" \\\\ policy\"\n"),
+            "{file}"
+        );
+        assert!(file.ends_with("---\n\n# Late work\n\nTake a point off for each day late.\n"));
+
+        let read = SkillDraft::from_markdown(&file);
+        assert_eq!(read.name, "Late \"work\" \\ policy");
+        assert_eq!(read.description, "How this class treats late work.");
+        assert_eq!(read.sites, ["schoology.com"]);
+        assert_eq!(
+            read.body,
+            "# Late work\n\nTake a point off for each day late."
+        );
+        // Saved again, nothing moves.
+        assert_eq!(read.to_markdown(), file);
+
+        let skill = Skill::from_markdown("late", "late", &file, SkillSource::Local);
+        assert_eq!(skill.name, read.name);
+        assert_eq!(skill.url_patterns, ["schoology.com"]);
+    }
+
+    #[test]
+    fn a_plain_file_fills_the_form_without_inventing_a_description() {
+        let draft = SkillDraft::from_markdown("# Rounding\n\nRound to two places.\n");
+        assert_eq!(draft.name, "Rounding");
+        assert_eq!(draft.description, "");
+        assert!(draft.sites.is_empty());
+        assert_eq!(draft.body, "# Rounding\n\nRound to two places.");
+        // Without sites or a description the heading block is the name alone.
+        assert_eq!(
+            draft.to_markdown(),
+            "---\nname: \"Rounding\"\n---\n\n# Rounding\n\nRound to two places.\n"
+        );
     }
 }
