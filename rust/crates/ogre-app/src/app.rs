@@ -15,6 +15,7 @@ use crate::profiles::ProfileSummary;
 use crate::session::{Note, RubricOutline, Session, Status, count, score_text};
 use crate::settings::{
     AS_WRITTEN_LENIENCY, DEFAULT_LENIENCY, STORAGE_KEY, Service, Settings, engine_leniency,
+    old_app_provider,
 };
 use crate::theme::{self, icon, pal, ty};
 use crate::worker::{Command, Event, GradeRequest, MapReport, Worker};
@@ -23,6 +24,8 @@ pub struct OgreApp {
     worker: Worker,
     keys: Box<dyn KeyStore>,
     settings: Settings,
+    /// The Electron app's settings file, where there is one to copy from.
+    old_app: Option<std::path::PathBuf>,
     screen: Screen,
     /// The step whose button is the primary one this frame.
     next: Step,
@@ -113,6 +116,7 @@ enum Action {
     Write,
     Save,
     ListModels,
+    CopyFromOldApp,
     ServiceChanged,
     KeyChanged,
     Show(Screen),
@@ -155,6 +159,7 @@ impl OgreApp {
         theme::setup(ctx, settings.dark);
         let api_key = keys.load(settings.provider.service).unwrap_or_default();
         Self {
+            old_app: None,
             worker,
             keys,
             settings,
@@ -178,6 +183,42 @@ impl OgreApp {
             mapping: None,
             agent: AgentView::default(),
         }
+    }
+
+    /// Offers, in Settings, to copy the AI service from the Electron app's
+    /// settings at `file`.
+    pub fn with_old_app_settings(mut self, file: Option<std::path::PathBuf>) -> Self {
+        self.old_app = file;
+        self
+    }
+
+    /// Takes the service, model and key the Electron app was set up with.
+    fn copy_from_old_app(&mut self) {
+        let found = self
+            .old_app
+            .as_ref()
+            .and_then(|file| std::fs::read_to_string(file).ok())
+            .and_then(|text| old_app_provider(&text));
+        let Some(found) = found else {
+            self.settings_note =
+                Some("The old OGRE app’s settings could not be read. Enter them here.".into());
+            return;
+        };
+        self.models.clear();
+        self.settings.provider = found.provider;
+        self.api_key = found.api_key.unwrap_or_default();
+        let stored = self
+            .keys
+            .store(self.settings.provider.service, self.api_key.trim());
+        self.settings_note = stored.err().map(|problem| {
+            format!("The key will be used now but could not be remembered: {problem}")
+        });
+        self.error = None;
+        self.notice = Some(format!(
+            "Copied from the old OGRE app: {}, model {}.",
+            self.settings.provider.service.label(),
+            self.settings.provider.model
+        ));
     }
 
     fn send(&mut self, command: Command, label: &'static str) {
@@ -318,6 +359,7 @@ impl OgreApp {
                 };
                 self.send(command, "Asking for the model list…");
             }
+            Action::CopyFromOldApp => self.copy_from_old_app(),
             Action::ServiceChanged => {
                 self.models.clear();
                 self.settings_note = None;
@@ -1487,6 +1529,7 @@ impl OgreApp {
                     ui.set_max_width(560.0);
                     kit::panel_title(ui, "AI service");
                     ui.add_space(4.0);
+                    let copy_offered = self.old_app.is_some();
                     let provider = &mut self.settings.provider;
                     egui::Grid::new("provider")
                         .num_columns(2)
@@ -1564,9 +1607,16 @@ impl OgreApp {
                             ui.end_row();
                         });
                     ui.add_space(6.0);
-                    if kit::ghost(ui, "List models", idle).clicked() {
-                        actions.push(Action::ListModels);
-                    }
+                    ui.horizontal_wrapped(|ui| {
+                        if kit::ghost(ui, "List models", idle).clicked() {
+                            actions.push(Action::ListModels);
+                        }
+                        if copy_offered
+                            && kit::ghost(ui, "Copy from the old OGRE app", idle).clicked()
+                        {
+                            actions.push(Action::CopyFromOldApp);
+                        }
+                    });
                     let where_it_runs = if provider.service.is_remote() {
                         "Student names and answers are sent to this service for grading."
                     } else {

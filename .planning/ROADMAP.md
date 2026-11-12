@@ -148,6 +148,8 @@ Decisions: desktop only for now (code kept web-compilable), Linux only for now, 
 - Safety rules are in code: no overwrite of a non-zero score or existing feedback unless allowed, a write is refused if the box changed since it was read, AI feedback is sanitized, writes go in batches of five and are read back, saving is a separate step, a missing AI score is "not graded" and never zero, every session is recorded.
 - Rubric editing before grading; what is in the editor is what is graded.
 - History screen from the session records.
+- Consistency-check suggestions can be used or kept with a click; left undecided, the proposal is written.
+- Previous and next question on MyOpenMath, from the assignment's Item Analysis list, with a warning before work would be lost.
 - Two deliberate departures from the Electron scoring: category scores are always read out of 10, and a sub-maximum score is raised to full only when every verdict says "Correct".
 - 869 tests pass by default; 66 more need Chrome or a local model.
 
@@ -170,7 +172,8 @@ Four ungraded students on one MyOpenMath question, supervised step by step with 
 
 ## Next
 
-1. Grade a whole page through the app's own window, with the teacher at the controls.
+1. Grade a whole assignment through the installed app, with the teacher at the controls. It is installed with `rust/packaging/install.sh` (menu entry "OGRE Grader") and built as one file with `rust/packaging/build-appimage.sh`. Settings has "Copy from the old OGRE app" for the AI service and key.
 2. Choose the default way of scoring. The same student got 7, 7 and then 5.5 of 14 from the AI's own score in three runs; the Settings switch that works the score out from the feedback's verdicts removes that part of the variation.
-3. Let the teacher leave single students out of a fill from the review table when grading through `tests/live.rs` (the window already has the tick boxes).
-4. Windows support when wanted.
+3. Still in the engine with no control in the window: anchors, a weight table, outlier review, calibration from earlier sessions.
+4. Not ported: rubric import, the solver chat, a skills manager screen, an update prompt.
+5. Windows support when wanted.

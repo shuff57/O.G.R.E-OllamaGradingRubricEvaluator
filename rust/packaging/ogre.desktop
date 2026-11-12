@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=OGRE Grader
+GenericName=Grading assistant
+Comment=Grade written answers with an AI, on the grading site you already use
+Exec=ogre
+Icon=ogre
+Categories=Education;
+Terminal=false
+StartupWMClass=ogre

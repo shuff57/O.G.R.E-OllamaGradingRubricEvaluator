@@ -31,6 +31,63 @@ impl Default for Settings {
     }
 }
 
+/// The AI service the Electron app was set up with, for a teacher moving
+/// over from it. The key is theirs; it is only ever handed to the key store.
+pub struct OldAppProvider {
+    pub provider: ProviderSettings,
+    pub api_key: Option<String>,
+}
+
+/// Where the Electron app keeps its settings, if it has been used here.
+pub fn old_app_settings_file() -> Option<std::path::PathBuf> {
+    let config = std::env::var_os("XDG_CONFIG_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| Some(std::path::PathBuf::from(std::env::var_os("HOME")?).join(".config")))?;
+    let file = config.join("ogre-desktop").join("ogre-server.json");
+    file.is_file().then_some(file)
+}
+
+/// Reads the Electron app's active AI service from its settings text. `None`
+/// unless it is an Ollama service, the only kind that app's file is known to
+/// describe.
+pub fn old_app_provider(settings_json: &str) -> Option<OldAppProvider> {
+    let settings: serde_json::Value = serde_json::from_str(settings_json).ok()?;
+    let active = settings["providers"]
+        .as_array()?
+        .iter()
+        .find(|provider| provider["is_active"] == true)?;
+    if active["id"] != "ollama" {
+        return None;
+    }
+    let address = active["api_url"].as_str().unwrap_or_default().trim();
+    let model = active["model"].as_str()?.trim();
+    let key = active["credentials"]["api_key"]
+        .as_str()
+        .map(str::trim)
+        .filter(|key| !key.is_empty());
+    // The same app talks to Ollama on this computer or to Ollama's own
+    // service, told apart by the address.
+    let cloud = address.contains("ollama.com");
+    let service = if cloud {
+        Service::OllamaCloud
+    } else {
+        Service::Ollama
+    };
+    let usual = service.kind().default_base_url();
+    Some(OldAppProvider {
+        provider: ProviderSettings {
+            service,
+            base_url: if address.trim_end_matches('/') == usual.trim_end_matches('/') {
+                String::new()
+            } else {
+                address.to_owned()
+            },
+            model: model.to_owned(),
+        },
+        api_key: key.filter(|_| cloud).map(str::to_owned),
+    })
+}
+
 /// The leniency a new teacher starts with. It grades as the Electron app did
 /// at its most lenient, which is how its teacher had it set.
 pub const DEFAULT_LENIENCY: u8 = 50;
@@ -204,6 +261,44 @@ mod tests {
         assert_eq!(config.api_key.as_deref(), Some("sk-secret"));
         assert!(!format!("{config:?}").contains("sk-secret"));
         assert_eq!(provider.to_config(Some("  ")).api_key, None);
+    }
+
+    #[test]
+    fn the_old_apps_service_is_read_from_its_settings() {
+        let cloud = r#"{"token":"t","providers":[
+            {"id":"ollama","api_url":"http://localhost:11434","model":"small","is_active":false},
+            {"id":"ollama","api_url":"https://ollama.com","model":"gemma4:31b","is_active":true,
+             "credentials":{"api_key":" secret "}}]}"#;
+        let found = old_app_provider(cloud).unwrap();
+        assert_eq!(found.provider.service, Service::OllamaCloud);
+        assert_eq!(found.provider.model, "gemma4:31b");
+        assert_eq!(
+            found.provider.base_url, "",
+            "the usual address is left blank"
+        );
+        assert_eq!(found.api_key.as_deref(), Some("secret"));
+
+        let local = r#"{"providers":[{"id":"ollama","api_url":"http://192.168.1.5:11434",
+            "model":"qwen3","is_active":true,"credentials":{"api_key":"unused"}}]}"#;
+        let found = old_app_provider(local).unwrap();
+        assert_eq!(found.provider.service, Service::Ollama);
+        assert_eq!(found.provider.base_url, "http://192.168.1.5:11434");
+        assert_eq!(found.api_key, None, "a local Ollama takes no key");
+    }
+
+    #[test]
+    fn settings_of_the_old_app_that_cannot_be_used_are_left_alone() {
+        for text in [
+            "",
+            "not json",
+            "{}",
+            r#"{"providers":[]}"#,
+            r#"{"providers":[{"id":"ollama","api_url":"https://ollama.com","model":"m","is_active":false}]}"#,
+            r#"{"providers":[{"id":"openai","api_url":"https://api.openai.com","model":"m","is_active":true}]}"#,
+            r#"{"providers":[{"id":"ollama","api_url":"https://ollama.com","is_active":true}]}"#,
+        ] {
+            assert!(old_app_provider(text).is_none(), "{text}");
+        }
     }
 
     #[test]

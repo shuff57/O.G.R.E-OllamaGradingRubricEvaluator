@@ -1139,3 +1139,56 @@ fn leaving_with_grades_filled_in_but_not_saved_is_asked_about_first() {
     frames(&mut harness);
     assert!(matches!(sent(&mut stand_in), Command::GoTo(_)));
 }
+
+#[test]
+fn the_old_apps_service_and_key_can_be_copied_in_settings() {
+    let dir = std::env::temp_dir().join(format!("ogre-test-old-app-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("ogre-server.json");
+    std::fs::write(
+        &file,
+        r#"{"providers":[{"id":"ollama","api_url":"https://ollama.com","model":"gemma4:31b",
+            "is_active":true,"credentials":{"api_key":"made-up-key"}}]}"#,
+    )
+    .unwrap();
+
+    let (worker, mut stand_in) = Worker::detached();
+    let old_app = Some(file.clone());
+    let mut harness = Harness::builder()
+        .with_size([1200.0, 760.0])
+        .build_eframe(move |cc| {
+            OgreApp::new(
+                &cc.egui_ctx,
+                worker,
+                Settings::default(),
+                Box::new(MemoryKeys::default()),
+            )
+            .with_old_app_settings(old_app)
+        });
+    frames(&mut harness);
+    harness.get_by_label("Settings").click();
+    frames(&mut harness);
+    harness.get_by_label("Copy from the old OGRE app").click();
+    frames(&mut harness);
+    harness.get_by_label("Copied from the old OGRE app: Ollama Cloud, model gemma4:31b.");
+    // The key is used but never shown.
+    assert!(harness.query_by_label_contains("made-up-key").is_none());
+
+    harness.get_by_label("List models").click();
+    frames(&mut harness);
+    let Command::ListModels { provider, api_key } = sent(&mut stand_in) else {
+        panic!("expected a model list request");
+    };
+    assert_eq!(provider.service, Service::OllamaCloud);
+    assert_eq!(provider.model, "gemma4:31b");
+    assert_eq!(api_key.as_deref(), Some("made-up-key"));
+
+    // A file that cannot be used says so and changes nothing.
+    std::fs::write(&file, "{}").unwrap();
+    stand_in.events.send(Event::Models(Ok(vec![]))).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Copy from the old OGRE app").click();
+    frames(&mut harness);
+    harness.get_by_label_contains("settings could not be read");
+    let _ = std::fs::remove_dir_all(&dir);
+}
