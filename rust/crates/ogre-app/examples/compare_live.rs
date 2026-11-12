@@ -30,6 +30,12 @@
 //!                         another reader; it holds student work, so keep it
 //!                         private and delete it afterwards
 //!
+//!   OGRE_COMPARE_VERDICTS=1  also compare the feedback requirement by
+//!                         requirement: where the page's feedback and OGRE's
+//!                         disagree on what was correct, and what score each
+//!                         gives for a given number of deductions. Counts and
+//!                         rubric wording only.
+//!
 //! Student names and answers are never printed; students are numbered.
 
 use std::process::Command;
@@ -91,6 +97,212 @@ impl PageDriver for CliPage {
             return Ok(serde_json::Value::Null);
         }
         Ok(serde_json::from_str(result)?)
+    }
+}
+
+/// What feedback says about one requirement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Verdict {
+    Correct,
+    /// Anything else: incorrect, incomplete, not addressed.
+    Deducted,
+}
+
+/// The requirement sections of a piece of feedback, in order: each heading
+/// with the verdict that follows it. Feedback has one `<strong>` heading per
+/// requirement, a quotation, then a paragraph that opens with the verdict.
+fn verdicts(html: &str) -> Vec<(String, Verdict)> {
+    let lower = html.to_lowercase();
+    let mut sections = Vec::new();
+    let mut at = 0;
+    while let Some(open) = lower[at..].find("<strong") {
+        let open = at + open;
+        let Some(close) = lower[open..].find("</strong>") else {
+            break;
+        };
+        let close = open + close;
+        let heading = plain(&html[open..close]);
+        let rest = close + "</strong>".len();
+        let end = lower[rest..]
+            .find("<strong")
+            .map_or(html.len(), |next| rest + next);
+        at = end;
+        // The verdict is the first paragraph after the quotation.
+        let body = &html[rest..end];
+        let after_quote = body
+            .to_lowercase()
+            .rfind("</blockquote>")
+            .map_or(body, |quote| &body[quote + "</blockquote>".len()..]);
+        let said = plain(after_quote).to_lowercase();
+        if heading.is_empty() || said.is_empty() {
+            continue;
+        }
+        let verdict = if said.starts_with("correct") {
+            Verdict::Correct
+        } else {
+            Verdict::Deducted
+        };
+        sections.push((heading, verdict));
+    }
+    sections
+}
+
+/// The shape of a piece of feedback without what it says about anyone: its
+/// tags, with only the first word of each run of text after the greeting,
+/// and nothing of what is quoted.
+fn skeleton(html: &str) -> String {
+    let start = html.to_lowercase().find("<strong").unwrap_or(0);
+    let mut out = String::new();
+    let mut quoted = false;
+    for (i, piece) in html[start..].split('<').enumerate() {
+        let (tag, text) = if i == 0 {
+            ("", piece)
+        } else {
+            piece.split_once('>').unwrap_or((piece, ""))
+        };
+        if !tag.is_empty() {
+            let name = tag.split_whitespace().next().unwrap_or(tag).to_lowercase();
+            match name.as_str() {
+                "blockquote" => quoted = true,
+                "/blockquote" => quoted = false,
+                _ => {}
+            }
+            out.push_str(&format!("<{name}>"));
+        }
+        let first = text.split_whitespace().next().unwrap_or("");
+        if !first.is_empty() {
+            out.push_str(if quoted { "…" } else { first });
+            out.push('…');
+        }
+    }
+    out
+}
+
+/// The text of a piece of HTML, tags removed and spaces squashed.
+fn plain(html: &str) -> String {
+    let mut text = String::new();
+    let mut in_tag = false;
+    for c in html.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' => {
+                in_tag = false;
+                text.push(' ');
+            }
+            c if !in_tag => text.push(c),
+            _ => {}
+        }
+    }
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Scores listed with how often each was given: "14×9 11×3".
+fn tally(scores: &[f64]) -> String {
+    let mut sorted = scores.to_vec();
+    sorted.sort_by(|a, b| b.total_cmp(a));
+    let mut groups: Vec<(f64, usize)> = Vec::new();
+    for score in sorted {
+        match groups.last_mut() {
+            Some((last, count)) if *last == score => *count += 1,
+            _ => groups.push((score, 1)),
+        }
+    }
+    groups
+        .iter()
+        .map(|(score, count)| format!("{score}×{count}"))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Prints where two sets of feedback disagree. Each entry is one student:
+/// the page's score and feedback, then OGRE's.
+fn compare_verdicts(pairs: &[(f64, String, f64, String)]) {
+    let read: Vec<_> = pairs
+        .iter()
+        .map(|(page_score, page, ogre_score, ogre)| {
+            (*page_score, verdicts(page), *ogre_score, verdicts(ogre))
+        })
+        .collect();
+    let sections = read
+        .iter()
+        .map(|(_, _, _, ogre)| ogre.len())
+        .max()
+        .unwrap_or(0);
+    let comparable: Vec<_> = read
+        .iter()
+        .filter(|(_, page, _, ogre)| page.len() == sections && ogre.len() == sections)
+        .collect();
+    println!(
+        "requirement by requirement: {} of {} students have {sections} sections in both sets of feedback",
+        comparable.len(),
+        read.len()
+    );
+    for index in 0..sections {
+        let mut counts = [0usize; 4];
+        for (_, page, _, ogre) in &comparable {
+            let slot = match (page[index].1, ogre[index].1) {
+                (Verdict::Correct, Verdict::Correct) => 0,
+                (Verdict::Deducted, Verdict::Correct) => 1,
+                (Verdict::Correct, Verdict::Deducted) => 2,
+                (Verdict::Deducted, Verdict::Deducted) => 3,
+            };
+            counts[slot] += 1;
+        }
+        let heading: String = comparable
+            .first()
+            .map(|(_, _, _, ogre)| ogre[index].0.chars().take(48).collect())
+            .unwrap_or_default();
+        println!(
+            "  R{} both correct {:>2} | only the page deducts {:>2} | only OGRE deducts {:>2} | both deduct {:>2} | {heading}",
+            index + 1,
+            counts[0],
+            counts[1],
+            counts[2],
+            counts[3]
+        );
+    }
+    if std::env::var_os("OGRE_COMPARE_SHAPES").is_some() {
+        let top = pairs.iter().map(|p| p.2).fold(0.0, f64::max);
+        for (number, (_, _, score, feedback)) in pairs.iter().enumerate() {
+            let deducted = verdicts(feedback)
+                .iter()
+                .filter(|(_, verdict)| *verdict == Verdict::Deducted)
+                .count();
+            if *score == top && deducted > 0 {
+                println!(
+                    "  shape of full-mark feedback with {deducted} deducted (#{}): {}",
+                    number + 1,
+                    skeleton(feedback)
+                );
+            }
+        }
+    }
+    println!("score given for each number of deductions in the same feedback:");
+    for deductions in 0..=sections {
+        let scores = |ogre_side: bool| -> Vec<f64> {
+            read.iter()
+                .filter_map(|(page_score, page, ogre_score, ogre)| {
+                    let (score, sections) = if ogre_side {
+                        (ogre_score, ogre)
+                    } else {
+                        (page_score, page)
+                    };
+                    let count = sections
+                        .iter()
+                        .filter(|(_, verdict)| *verdict == Verdict::Deducted)
+                        .count();
+                    (count == deductions && !sections.is_empty()).then_some(*score)
+                })
+                .collect()
+        };
+        let (page, ogre) = (scores(false), scores(true));
+        if !page.is_empty() || !ogre.is_empty() {
+            println!(
+                "  {deductions} deducted | page: {} | OGRE: {}",
+                tally(&page),
+                tally(&ogre)
+            );
+        }
     }
 }
 
@@ -287,6 +499,21 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             println!("  warning: {warning}");
         }
 
+        // The page's feedback as HTML, in the order the students were read.
+        let page_feedback: Vec<Option<String>> =
+            if std::env::var_os("OGRE_COMPARE_VERDICTS").is_some() {
+                serde_json::from_value(
+                    page.eval(
+                        "Array.from(document.querySelectorAll('div.bigquestionwrap')).map((s) => { \
+                         const b = s.querySelector('.scoredetails .fbbox'); \
+                         return b ? (b.tagName === 'TEXTAREA' ? b.value : b.innerHTML) : null; })",
+                    )
+                    .await?,
+                )?
+            } else {
+                Vec::new()
+            };
+        let mut feedback_pairs = Vec::new();
         let (mut on_page, mut proposed) = (Vec::new(), Vec::new());
         println!("  student  on page  OGRE   diff   feedback");
         for (number, student) in outcome.students.iter().enumerate() {
@@ -307,6 +534,14 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     );
                     on_page.push(existing);
                     proposed.push(grade.score);
+                    if let Some(Some(theirs)) = page_feedback.get(student.student_index) {
+                        feedback_pairs.push((
+                            existing,
+                            theirs.clone(),
+                            grade.score,
+                            grade.feedback.clone(),
+                        ));
+                    }
                 }
                 (GradeStatus::Graded(grade), None) => {
                     println!(
@@ -343,6 +578,63 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             within(step),
             correlation(&on_page, &proposed).map_or("n/a".to_owned(), |r| format!("{r:.2}")),
         );
+        if !feedback_pairs.is_empty() {
+            compare_verdicts(&feedback_pairs);
+        }
+
+        // The Electron app offers the consistency check's suggestions for the
+        // teacher to accept. Had every one been accepted:
+        let adjustments = &outcome.sweep.adjustments;
+        if !adjustments.is_empty() {
+            let (mut page_scores, mut adjusted, mut pairs) = (Vec::new(), Vec::new(), Vec::new());
+            let mut moved = Vec::new();
+            for student in &outcome.students {
+                let submission = &read.submissions[student.student_index];
+                let existing = submission
+                    .score()
+                    .filter(|_| submission.has_nonzero_score() || submission.has_feedback());
+                let (GradeStatus::Graded(grade), Some(existing)) = (&student.status, existing)
+                else {
+                    continue;
+                };
+                let suggestion = adjustments
+                    .iter()
+                    .find(|a| a.student_index == student.student_index);
+                let score = suggestion.map_or(grade.score, |a| a.suggested_score);
+                let feedback = suggestion
+                    .and_then(|a| a.suggested_feedback.clone())
+                    .unwrap_or_else(|| grade.feedback.clone());
+                if let Some(a) = suggestion {
+                    moved.push(a.suggested_score - a.original_score);
+                }
+                page_scores.push(existing);
+                adjusted.push(score);
+                if let Some(Some(theirs)) = page_feedback.get(student.student_index) {
+                    pairs.push((existing, theirs.clone(), score, feedback));
+                }
+            }
+            let gaps: Vec<f64> = page_scores
+                .iter()
+                .zip(&adjusted)
+                .map(|(a, b)| (b - a).abs())
+                .collect();
+            println!(
+                "consistency check: {} suggestions (changes {}) | with all accepted: mean OGRE {:.2} | mean gap {:.2} | identical {} | within 1.5: {} | correlation {}",
+                adjustments.len(),
+                tally(&moved),
+                mean(&adjusted),
+                mean(&gaps),
+                gaps.iter().filter(|gap| **gap == 0.0).count(),
+                gaps.iter().filter(|gap| **gap <= 1.5).count(),
+                correlation(&page_scores, &adjusted)
+                    .map_or("n/a".to_owned(), |r| format!("{r:.2}")),
+            );
+            if !pairs.is_empty() {
+                compare_verdicts(&pairs);
+            }
+        } else {
+            println!("consistency check: no suggestions");
+        }
     }
     Ok(())
 }
