@@ -150,13 +150,17 @@ Decisions: desktop only for now (code kept web-compilable), Linux only for now, 
 - History screen from the session records.
 - Consistency-check suggestions can be used or kept with a click; left undecided, the proposal is written.
 - Previous and next question on MyOpenMath, from the assignment's Item Analysis list, with a warning before work would be lost.
-- Two deliberate departures from the Electron scoring: category scores are always read out of 10, and a sub-maximum score is raised to full only when every verdict says "Correct".
-- 869 tests pass by default; 66 more need Chrome or a local model.
+- Category weights in the rubric card. Weights the teacher sets are written into the rubric text and decide how the AI's per-category scores add up; grading waits while they do not add up to 100.
+- Scoring examples (the Electron app's anchors) in the rubric card: written by the AI on request, editable, shown to the grader, kept in the session record.
+- Reading the same page again keeps the teacher's rubric edits, instructions and scoring examples.
+- Three deliberate departures from the Electron scoring: category scores are always read out of 10; a sub-maximum score is raised to full only when every verdict says "Correct"; category weights are used only when the weights of the categories the AI scored add up to 100 (before, a rubric with one category named differently from the rest scored a perfect answer 3 of 14).
+- 919 tests pass by default; 69 more need Chrome, a local model or the AI service.
 
 ## Checked on real MyOpenMath pages (read-only)
 
 - Three already-graded pages, 69 students, Ollama Cloud `gemma4:31b`, the Electron app's leniency 0: average gap to the grades on the page about 1.0 of 14; 57 to 60 of 69 within one score step.
 - Through the app's own window and Chrome (`rust/crates/ogre-app/tests/live.rs`): one page, 18 students, average gap 0.42, 17 of 18 within one step, page unchanged afterwards.
+- Scoring examples on question 360745106 (29 students, 2026-11-12): average gap 1.45, no closer than without them (1.24 to 1.43 over earlier runs).
 - Question 360745106 stays about 1.4 away. The two sets of feedback agree on which requirements are correct for 95% of verdicts; the difference is points taken off per missed requirement. That page carries the mark of the Electron app before its 28 October fix (students marked all correct but given 12.5 of 14), so its grades are not a clean target.
 
 ## First live write (2026-11-11)
@@ -174,6 +178,7 @@ Four ungraded students on one MyOpenMath question, supervised step by step with 
 
 1. Grade a whole assignment through the installed app, with the teacher at the controls. It is installed with `rust/packaging/install.sh` (menu entry "OGRE Grader") and built as one file with `rust/packaging/build-appimage.sh`. Settings has "Copy from the old OGRE app" for the AI service and key.
 2. Choose the default way of scoring. The same student got 7, 7 and then 5.5 of 14 from the AI's own score in three runs; the Settings switch that works the score out from the feedback's verdicts removes that part of the variation.
-3. Still in the engine with no control in the window: anchors, a weight table, outlier review, calibration from earlier sessions.
-4. Not ported: rubric import, the solver chat, a skills manager screen, an update prompt.
-5. Windows support when wanted.
+3. Weights that are only filled in do not count on a page whose categories name their points ("Interpret(4 pts)"), as in the Electron app: the score is the AI's own total. On a page with plain category names they do. Making them count everywhere was tried on question 360745106 and agreed less well with the grades on the page (average gap 1.72 against about 1.3), so it was left alone.
+4. Calibration from earlier sessions is in the engine with no control in the window. It needs graded answers to draw on, and the session records deliberately hold no student responses, so it starts with a decision about keeping them. Outlier review needs no control: the app already marks scores that stand apart.
+5. Not ported: rubric import, the solver chat, a skills manager screen, an update prompt.
+6. Windows support when wanted.
