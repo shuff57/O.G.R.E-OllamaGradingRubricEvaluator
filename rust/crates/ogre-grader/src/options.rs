@@ -91,8 +91,8 @@ pub enum SweepKind {
 
 /// Asks a running grading call to stop. Clones share the flag.
 ///
-/// The flag is read before each request to the AI, so a request already
-/// under way finishes and its results are kept.
+/// The flag is read before each request to the AI and while one is pending.
+/// A request under way is abandoned: its students come back as not graded.
 #[derive(Debug, Clone, Default)]
 pub struct CancelFlag(Arc<AtomicBool>);
 

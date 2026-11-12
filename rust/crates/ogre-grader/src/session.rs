@@ -13,6 +13,9 @@ use tokio::time::{Instant, timeout};
 use crate::options::CancelFlag;
 use crate::outcome::GradeEvent;
 
+/// How often a pending request looks at the cancel flag.
+const CANCEL_CHECK: Duration = Duration::from_millis(250);
+
 /// Why a request to the AI gave no reply.
 pub(crate) enum Stop {
     Cancelled,
@@ -100,16 +103,26 @@ impl<'a> Session<'a> {
         let request = ChatRequest::new([Message::user(prompt)]);
         let provider = self.provider;
         let mut reply = provider.chat(&request);
-        let outcome = match self.heartbeat {
-            None => reply.await,
-            Some(every) => {
-                let asked = Instant::now();
-                loop {
-                    match timeout(every, &mut reply).await {
-                        Ok(outcome) => break outcome,
-                        Err(_) => self.emit(GradeEvent::Heartbeat {
+        // The reply is awaited in short slices so that Stop takes effect on a
+        // request that is under way: a model that never answers must not hold
+        // the teacher for the provider's whole timeout. Dropping the request
+        // abandons it.
+        let asked = Instant::now();
+        let mut next_heartbeat = self.heartbeat.map(|every| asked + every);
+        let outcome = loop {
+            match timeout(CANCEL_CHECK, &mut reply).await {
+                Ok(outcome) => break outcome,
+                Err(_) => {
+                    if self.check_cancelled() {
+                        return Err(Stop::Cancelled);
+                    }
+                    if let (Some(every), Some(due)) = (self.heartbeat, next_heartbeat)
+                        && Instant::now() >= due
+                    {
+                        self.emit(GradeEvent::Heartbeat {
                             elapsed: asked.elapsed(),
-                        }),
+                        });
+                        next_heartbeat = Some(due + every);
                     }
                 }
             }

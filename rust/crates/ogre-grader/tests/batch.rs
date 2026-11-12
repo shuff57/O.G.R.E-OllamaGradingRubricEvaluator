@@ -874,3 +874,40 @@ async fn a_result_without_a_score_is_not_a_zero() {
     // Students without a grade do not pull the class average down.
     assert_eq!(outcome.outliers.mean, 4.0);
 }
+
+#[tokio::test(start_paused = true)]
+async fn stopping_abandons_a_request_that_is_under_way() {
+    // The model takes ten minutes to answer; the teacher presses Stop after five seconds.
+    let provider =
+        ScriptedProvider::new().reply_after(Duration::from_secs(600), grades(&[9.0, 8.0]));
+    let cancel = CancelFlag::new();
+    let stop = {
+        let cancel = cancel.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            cancel.cancel();
+        })
+    };
+    let started = tokio::time::Instant::now();
+
+    let (outcome, _) = run_batch(&provider, students(0, 2), &plain_options(5), &cancel).await;
+
+    stop.await.unwrap();
+    assert!(
+        started.elapsed() < Duration::from_secs(10),
+        "{:?}",
+        started.elapsed()
+    );
+    assert!(outcome.cancelled);
+    assert_eq!(
+        outcome
+            .students
+            .iter()
+            .map(|student| student.status.clone())
+            .collect::<Vec<_>>(),
+        [
+            not_graded(NotGradedReason::Cancelled),
+            not_graded(NotGradedReason::Cancelled)
+        ]
+    );
+}

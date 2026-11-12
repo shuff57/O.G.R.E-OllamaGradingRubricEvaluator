@@ -37,6 +37,8 @@ fn shot(window: &mut Window, name: &str) {
 
 /// Keeps the window drawing until `done` says so, as a person watching would.
 fn wait_until(window: &mut Window, what: &str, limit: Duration, done: impl Fn(&Window) -> bool) {
+    // Named as it starts, so a run that stalls says where.
+    println!("waiting for {what}");
     let deadline = Instant::now() + limit;
     loop {
         window.run_steps(2);
