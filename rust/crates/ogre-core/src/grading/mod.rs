@@ -26,7 +26,8 @@ pub use batch::{
 };
 pub use constants::{GRADING_PHILOSOPHY, SCORING_SCALE_DESCRIPTORS};
 pub use feedback::{
-    extract_first_name, feedback_names_specific_deficiency, reconcile_score_with_feedback,
+    every_verdict_is_correct, extract_first_name, feedback_names_specific_deficiency,
+    reconcile_explained_score, reconcile_score_with_feedback,
 };
 pub use parse::{
     CheckedResult, PARSE_ERROR_FEEDBACK, parse_batch_response, parse_batch_response_checked,

@@ -38,6 +38,10 @@ static NON_ACTIONABLE_IMPROVEMENT: LazyLock<Regex> = LazyLock::new(|| {
         r"^(?i-u:n/?a|none|nothing|no (?:specific )?improvements?(?: needed)?|keep (?:up|it up))[.!]?$",
     )
 });
+static PARAGRAPH: LazyLock<Regex> =
+    LazyLock::new(|| pattern(r"(?i-u:<p\b)[^>]*>((?s:.)*?)(?i-u:</p>)"));
+static STRONG_ELEMENT: LazyLock<Regex> =
+    LazyLock::new(|| pattern(r"(?i-u:<strong\b)[^>]*>(?s:.)*?(?i-u:</strong>)"));
 static NO_RESPONSE: LazyLock<Regex> = LazyLock::new(|| pattern("(?i-u:no response submitted)"));
 static STRONG_TAG: LazyLock<Regex> = LazyLock::new(|| pattern(r"(?i-u:<strong\b)"));
 
@@ -162,6 +166,49 @@ pub fn reconcile_score_with_feedback(score: f64, feedback: &str, max_score: f64)
         && STRONG_TAG.is_match(feedback)
         && !feedback_names_specific_deficiency(feedback);
     if unexplained { max } else { score }
+}
+
+/// True when the feedback gives a verdict on at least one requirement and
+/// every verdict it gives is "Correct".
+///
+/// A verdict is a paragraph under a requirement heading that is not the
+/// heading itself, a quote of the student, or a "To improve" line.
+pub fn every_verdict_is_correct(feedback: &str) -> bool {
+    let without_quotes = BLOCKQUOTE.replace_all(feedback, " ");
+    let Some(first_heading) = STRONG_TAG.find(&without_quotes) else {
+        return false;
+    };
+    let mut verdicts = 0;
+    for paragraph in PARAGRAPH.captures_iter(&without_quotes[first_heading.start()..]) {
+        let body = STRONG_ELEMENT.replace_all(&paragraph[1], " ");
+        let stripped = TAG.replace_all(&body, " ");
+        let text = js::trim(&stripped).to_lowercase();
+        if text.is_empty() || text.starts_with("to improve") {
+            continue;
+        }
+        if !text.starts_with("correct") {
+            return false;
+        }
+        verdicts += 1;
+    }
+    verdicts > 0
+}
+
+/// Like [`reconcile_score_with_feedback`], but raises a score only on
+/// positive evidence: every requirement is marked Correct and nothing is
+/// named as a deficiency.
+///
+/// The original raised any sub-maximum score whose feedback it did not
+/// recognise as critical, so "You omitted the units." under a requirement
+/// turned 3 out of 10 into full credit. Feedback that criticises in words
+/// the check does not know now leaves the AI's score alone.
+pub fn reconcile_explained_score(score: f64, feedback: &str, max_score: f64) -> f64 {
+    let raised = reconcile_score_with_feedback(score, feedback, max_score);
+    if raised != score && !every_verdict_is_correct(feedback) {
+        score
+    } else {
+        raised
+    }
 }
 
 #[cfg(test)]

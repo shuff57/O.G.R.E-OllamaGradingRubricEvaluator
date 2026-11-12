@@ -16,9 +16,9 @@ pub use grading::{
     StudentResult, StudentWork, WeightMap, WeightMode, build_batch_prompt,
     build_compact_sweep_prompt, build_outlier_review_prompt, build_pairwise_sweep_prompts,
     build_single_grade_prompt, chunk_students, chunk_students_by_prompt, detect_outliers,
-    extract_first_name, feedback_names_specific_deficiency, generate_scoring_anchors,
-    merge_results, parse_batch_response, parse_batch_response_checked, parse_single_grade_response,
-    reconcile_score_with_feedback,
+    every_verdict_is_correct, extract_first_name, feedback_names_specific_deficiency,
+    generate_scoring_anchors, merge_results, parse_batch_response, parse_batch_response_checked,
+    parse_single_grade_response, reconcile_explained_score, reconcile_score_with_feedback,
 };
 pub use rubric::{
     DEFAULT_WEIGHT_MODE, RowType, RubricCriterion, WeightValidation, auto_fill_weights,

@@ -8,7 +8,10 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use super::feedback::{normalize_feedback_html, normalize_greeting, reconcile_score_with_feedback};
+use super::feedback::{
+    normalize_feedback_html, normalize_greeting, reconcile_explained_score,
+    reconcile_score_with_feedback,
+};
 use super::js::{self, Json, WS};
 use super::pattern;
 use super::types::{CategoryWeighting, GradingError, SingleGrade, StudentResult, StudentWork};
@@ -55,8 +58,17 @@ pub fn parse_batch_response(
     max_score: f64,
     weighting: Option<&CategoryWeighting>,
 ) -> Result<Vec<StudentResult>, GradingError> {
-    let checked = parse_batch_response_checked(ai_text, students, max_score, weighting)?;
+    let checked = parse_batch(ai_text, students, max_score, weighting, Rules::Original)?;
     Ok(checked.into_iter().map(|checked| checked.result).collect())
+}
+
+/// Which scoring rules a batch reply is read with.
+#[derive(Clone, Copy)]
+enum Rules {
+    /// Exactly what the JavaScript server did.
+    Original,
+    /// The same, with its two known scoring faults corrected.
+    Corrected,
 }
 
 /// One result of [`parse_batch_response_checked`].
@@ -68,16 +80,45 @@ pub struct CheckedResult {
     pub score_given: bool,
 }
 
-/// Like [`parse_batch_response`], and also says for each result whether the
-/// AI actually gave a score. The JavaScript server turned a missing or
-/// unreadable score into a zero; a caller that must never invent a grade
-/// needs to tell the two apart.
+/// Reads a batch reply for the app: like [`parse_batch_response`], but says
+/// for each result whether the AI actually gave a score, and corrects two
+/// faults of the JavaScript server's scoring.
+///
+/// - A missing or unreadable score came out as a zero there. Here it is
+///   reported through [`CheckedResult::score_given`], so a caller that must
+///   never invent a grade can tell the two apart.
+/// - Category scores are asked for out of 10, but were divided by the
+///   category's points, so half marks in every category could come out as
+///   full credit. Here they are divided by 10.
+/// - A score below the maximum was raised to full credit whenever the
+///   feedback's wording was not recognised as critical. Here it is raised
+///   only when every requirement is marked Correct
+///   ([`reconcile_explained_score`](super::reconcile_explained_score)).
 pub fn parse_batch_response_checked(
     ai_text: &str,
     students: &[StudentWork],
     max_score: f64,
     weighting: Option<&CategoryWeighting>,
 ) -> Result<Vec<CheckedResult>, GradingError> {
+    parse_batch(ai_text, students, max_score, weighting, Rules::Corrected)
+}
+
+fn parse_batch(
+    ai_text: &str,
+    students: &[StudentWork],
+    max_score: f64,
+    weighting: Option<&CategoryWeighting>,
+    rules: Rules,
+) -> Result<Vec<CheckedResult>, GradingError> {
+    // Corrected: every category is scored out of 10, as the prompt asks.
+    let out_of_ten = weighting.map(|given| CategoryWeighting {
+        weights: given.weights.clone(),
+        max_points: None,
+    });
+    let weighting = match rules {
+        Rules::Original => weighting,
+        Rules::Corrected => out_of_ten.as_ref(),
+    };
     let text = strip_wrapping(ai_text);
     let Some(items) = batch_items(&text) else {
         return Ok(students
@@ -92,7 +133,7 @@ pub fn parse_batch_response_checked(
             })
             .collect());
     };
-    let results = validate_batch_results(&items, students, max_score, weighting)?;
+    let results = validate_batch_results(&items, students, max_score, weighting, rules)?;
     Ok(results
         .into_iter()
         .zip(&items)
@@ -261,7 +302,12 @@ fn validate_batch_results(
     students: &[StudentWork],
     max_score: f64,
     weighting: Option<&CategoryWeighting>,
+    rules: Rules,
 ) -> Result<Vec<StudentResult>, GradingError> {
+    let reconcile = match rules {
+        Rules::Original => reconcile_score_with_feedback,
+        Rules::Corrected => reconcile_explained_score,
+    };
     // The original reads a property of every item before dropping the extra
     // ones, so a null anywhere fails the whole response.
     if let Some(position) = items.iter().position(|item| matches!(item, Json::Null)) {
@@ -287,7 +333,7 @@ fn validate_batch_results(
             let feedback = normalize_greeting(&feedback, &student.name);
             StudentResult {
                 student_index: student.index,
-                score: reconcile_score_with_feedback(score, &feedback, max_score),
+                score: reconcile(score, &feedback, max_score),
                 feedback,
             }
         })
@@ -620,13 +666,40 @@ mod checked_tests {
     }
 
     #[test]
-    fn the_unchecked_parser_returns_the_same_results() {
-        let reply = r#"[{"studentIndex": 0, "score": 7, "feedback": "a"}, {"studentIndex": 1, "feedback": "b"}]"#;
-        let plain = parse_batch_response(reply, &students(2), 10.0, None).unwrap();
-        let checked = parse_batch_response_checked(reply, &students(2), 10.0, None).unwrap();
-        assert_eq!(
-            plain,
-            checked.into_iter().map(|c| c.result).collect::<Vec<_>>()
-        );
+    fn half_marks_in_every_category_stay_half_marks() {
+        use crate::grading::types::WeightMap;
+        let weighting = CategoryWeighting {
+            weights: [("Concept".to_owned(), 50.0), ("Work".to_owned(), 50.0)]
+                .into_iter()
+                .collect::<WeightMap>(),
+            max_points: Some(
+                [("Concept".to_owned(), 5.0), ("Work".to_owned(), 3.0)]
+                    .into_iter()
+                    .collect::<WeightMap>(),
+            ),
+        };
+        let reply = r#"[{"studentIndex": 0, "criterion_scores": {"Concept": 5, "Work": 5}, "feedback": "Half right."}]"#;
+        // The original divides the 0-10 category scores by the category's points.
+        let original = parse_batch_response(reply, &students(1), 10.0, Some(&weighting)).unwrap();
+        assert_eq!(original[0].score, 10.0);
+        let corrected =
+            parse_batch_response_checked(reply, &students(1), 10.0, Some(&weighting)).unwrap();
+        assert_eq!(corrected[0].result.score, 5.0);
+        assert!(corrected[0].score_given);
+    }
+
+    #[test]
+    fn criticism_in_unfamiliar_words_no_longer_earns_full_credit() {
+        let omitted = r#"[{"studentIndex": 0, "score": 3, "feedback": "<p>Hi Sam,</p><p><strong>Units</strong></p><p>You omitted the units.</p>"}]"#;
+        let original = parse_batch_response(omitted, &students(1), 10.0, None).unwrap();
+        assert_eq!(original[0].score, 10.0, "the original raises it");
+        let corrected = parse_batch_response_checked(omitted, &students(1), 10.0, None).unwrap();
+        assert_eq!(corrected[0].result.score, 3.0);
+
+        // What the rule was written for still works: everything Correct, yet a deduction.
+        let unexplained = r#"[{"studentIndex": 0, "score": 8, "feedback": "<p>Hi Sam,</p><p><strong>Names the theorem</strong></p><blockquote>You said: \"it is not wrong\"</blockquote><p>Correct. The answer states the Central Limit Theorem.</p><p><em>To improve: N/A</em></p>"}]"#;
+        let corrected =
+            parse_batch_response_checked(unexplained, &students(1), 10.0, None).unwrap();
+        assert_eq!(corrected[0].result.score, 10.0);
     }
 }
