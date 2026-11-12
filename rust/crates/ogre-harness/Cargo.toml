@@ -7,7 +7,7 @@ publish.workspace = true
 [features]
 default = ["cdp"]
 # Drive a Chrome or Edge browser over the DevTools Protocol. Desktop only.
-cdp = ["dep:chromiumoxide", "dep:futures", "dep:tokio"]
+cdp = ["dep:base64", "dep:libc", "dep:tokio"]
 
 [dependencies]
 ogre-core.workspace = true
@@ -20,9 +20,13 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 
-chromiumoxide = { workspace = true, optional = true }
-futures = { workspace = true, optional = true }
-tokio = { workspace = true, optional = true }
+# Screenshots arrive as base64.
+base64 = { version = "0.22", optional = true }
+tokio = { workspace = true, optional = true, features = ["io-util", "process"] }
+
+# For handing Chrome its pipe on the descriptors it expects.
+[target.'cfg(unix)'.dependencies]
+libc = { version = "0.2", optional = true }
 
 [dev-dependencies]
 # With its HTTP client, for the discovery test against a local Ollama.

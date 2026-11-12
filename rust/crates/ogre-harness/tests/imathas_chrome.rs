@@ -203,40 +203,61 @@ async fn a_page_with_no_students_is_an_error_and_script_errors_surface() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs Chrome installed"]
 async fn sees_tabs_it_did_not_open_and_where_they_navigate() {
+    use ogre_harness::InputDriver;
+
     let (chrome, profile_dir) = chrome("tabs").await;
-    // A second connection stands in for the teacher.
-    let teacher = Chrome::attach(chrome.endpoint()).await.unwrap();
-    // A page may only send itself to a file address from another file address.
-    let tab = teacher
-        .open(&fixture_url("imathas-gradeallq2.html"))
+    let first = fixture_url("imathas-gradeallq2.html");
+    let second = fixture_url("imathas-gradeallq2-plain-feedback.html");
+    let page = chrome.open(&first).await.unwrap();
+
+    // A real click on a link that opens a new tab stands in for the teacher:
+    // the tab it opens is not one OGRE asked for.
+    let spot = page
+        .eval(&format!(
+            "(() => {{ const a = document.createElement('a'); a.href = {second:?}; a.target = '_blank'; \
+               a.textContent = 'open'; a.style.cssText = 'position:fixed;left:0;top:0;padding:20px;z-index:99999;background:white'; \
+               document.body.append(a); const r = a.getBoundingClientRect(); \
+               return {{ x: r.x + r.width / 2, y: r.y + r.height / 2 }}; }})()"
+        ))
         .await
         .unwrap();
-    let fixture = fixture_url("imathas-gradeallq2-plain-feedback.html");
-    tab.eval(&format!("location.href = {fixture:?}"))
+    page.click_at(spot["x"].as_f64().unwrap(), spot["y"].as_f64().unwrap())
         .await
         .unwrap();
 
-    let mut found = None;
-    for _ in 0..50 {
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        for page in chrome.pages().await.unwrap() {
-            if page.url().await.unwrap() == fixture {
-                found = Some(page);
+    let find = async |url: &str, not: Option<&str>| {
+        for _ in 0..50 {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            let mut at_url = Vec::new();
+            for candidate in chrome.pages().await.unwrap() {
+                if candidate.url().await.unwrap() == url {
+                    at_url.push(candidate);
+                }
+            }
+            // `not` is how many tabs were already there before the change.
+            let needed = if not.is_some() { 2 } else { 1 };
+            if at_url.len() >= needed {
+                return at_url;
             }
         }
-        if found.is_some() {
-            break;
-        }
-    }
-    let page = found.expect("the first connection sees the teacher's tab at its new address");
+        Vec::new()
+    };
+
+    let opened = find(&second, None).await;
+    assert_eq!(opened.len(), 1, "OGRE sees the tab the click opened");
+    let teachers_tab = &opened[0];
     assert_eq!(
-        IMathAs.read_page(&page).await.unwrap().submissions[0].name,
+        IMathAs.read_page(teachers_tab).await.unwrap().submissions[0].name,
         "Ellis, Pat"
     );
 
-    // Closing an attached connection leaves the browser running.
-    teacher.close().await.unwrap();
-    assert!(chrome.is_alive().await);
+    // The teacher's tab moves on by itself; OGRE sees where it went.
+    teachers_tab
+        .eval(&format!("location.href = {first:?}"))
+        .await
+        .unwrap();
+    let at_first = find(&first, Some(&first)).await;
+    assert_eq!(at_first.len(), 2, "both tabs now show the first page");
 
     finish(chrome, profile_dir).await;
 }
