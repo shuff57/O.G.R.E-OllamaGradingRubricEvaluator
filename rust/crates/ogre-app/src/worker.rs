@@ -14,7 +14,7 @@ use ogre_harness::sites::generic::{
     StudentSample, ValidationReport, capture_snapshot, discover, draft_profile, validate_profile,
 };
 use ogre_harness::sites::{Mismatch, SiteAdapter, Sites, WriteReceipt, verify_writes};
-use ogre_harness::{Error, PageDriver, Result};
+use ogre_harness::{Error, InputDriver, PageDriver, Result};
 use tokio::sync::mpsc;
 
 use crate::agent_run::{self, AgentAnswer, AgentLine, AgentQuestion, AgentRequest, AgentSummary};
@@ -22,6 +22,7 @@ use crate::audit::AuditLog;
 use crate::grading::{self, GradeReport, PreparedCache};
 use crate::history::{self, PastSession};
 use crate::profiles::{ProfileStore, ProfileSummary};
+use crate::rubrics::{RubricStore, SavedRubric};
 use crate::settings::ProviderSettings;
 
 /// Writes are checked against the page after this many students.
@@ -49,6 +50,14 @@ pub enum Command {
     Grade(Box<GradeRequest>),
     /// Have the AI write example answers at four levels for a rubric.
     WriteExamples(Box<ExamplesRequest>),
+    /// Have the AI read the rubric from a screenshot of the grading tab.
+    RubricFromPicture {
+        provider: ProviderSettings,
+        api_key: Option<String>,
+    },
+    /// Keep a rubric for other pages, replacing the one of the same name.
+    SaveRubric(Box<SavedRubric>),
+    DeleteRubric(String),
     /// Put these grades into the page that was read. Saves nothing.
     Write(Vec<GradeWrite>),
     /// Have the site store what was written.
@@ -119,6 +128,10 @@ pub enum Event {
     Graded(GradeReport),
     /// The scoring examples the AI wrote, or why there are none.
     Examples(std::result::Result<String, String>),
+    /// The rubric the AI read from a picture of the page, or why none.
+    RubricRead(std::result::Result<PictureRubric, String>),
+    /// The teacher's saved rubrics, after a change to them.
+    Rubrics(Vec<SavedRubric>),
     WriteProgress {
         done: usize,
         total: usize,
@@ -166,6 +179,19 @@ pub struct ReadReport {
     pub manual_save: bool,
     /// The assignment's questions, where the site lists them. Empty otherwise.
     pub questions: Vec<QuestionLink>,
+    /// The rubrics the teacher has saved, to use in place of the page's.
+    pub saved_rubrics: Vec<SavedRubric>,
+}
+
+/// A rubric read from a screenshot.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PictureRubric {
+    /// The requirements as text for the rubric editor.
+    pub requirements: String,
+    /// How many criteria the picture showed.
+    pub parts: usize,
+    /// The title the AI found for the rubric. May be empty.
+    pub name: String,
 }
 
 /// A mapping that was just worked out and proven on the open page.
@@ -341,6 +367,7 @@ fn run(
             launch,
             sites,
             profiles: ProfileStore::open(data_dir.clone()),
+            rubrics: RubricStore::open(data_dir.clone()),
             skills_dir: data_dir.join("skills"),
             answers,
             chrome: None,
@@ -401,6 +428,7 @@ struct Task {
     launch: LaunchOptions,
     sites: Sites,
     profiles: ProfileStore,
+    rubrics: RubricStore,
     /// The teacher's own skill files for agent mode.
     skills_dir: PathBuf,
     answers: mpsc::UnboundedReceiver<AgentAnswer>,
@@ -493,6 +521,24 @@ impl Task {
             Command::WriteExamples(request) => Ok(Event::Examples(
                 grading::write_examples(*request, &mut self.prepared).await,
             )),
+            Command::RubricFromPicture { provider, api_key } => {
+                let page = match &self.target {
+                    Some(target) => target.page.clone(),
+                    None => self.current_tab().await?,
+                };
+                let png = page.screenshot_png().await?;
+                Ok(Event::RubricRead(
+                    grading::rubric_from_picture(&provider, api_key.as_deref(), &png).await,
+                ))
+            }
+            Command::SaveRubric(rubric) => {
+                self.rubrics.save(*rubric).map_err(Error::Page)?;
+                Ok(Event::Rubrics(self.rubrics.all()))
+            }
+            Command::DeleteRubric(name) => {
+                self.rubrics.delete(&name).map_err(Error::Page)?;
+                Ok(Event::Rubrics(self.rubrics.all()))
+            }
             Command::Write(writes) => self.write(writes).await,
             Command::Save => {
                 let target = self.target().await?;
@@ -577,6 +623,7 @@ impl Task {
             saves_on_write: adapter.saves_on_write(),
             manual_save,
             page: read.clone(),
+            saved_rubrics: self.rubrics.all(),
         };
         self.target = Some(Target {
             page,

@@ -9,6 +9,8 @@ name = "ogre"
 path = "src/main.rs"
 
 [dependencies]
+# A screenshot goes to the AI as base64.
+base64 = "0.22"
 ogre-agent.workspace = true
 ogre-core.workspace = true
 ogre-grader.workspace = true

@@ -12,6 +12,7 @@ use crate::history::{self, PastProposal, PastSession, SessionEnd};
 use crate::keys::KeyStore;
 use crate::kit;
 use crate::profiles::ProfileSummary;
+use crate::rubrics::SavedRubric;
 use crate::session::{Note, RubricOutline, Session, Status, count, score_text};
 use crate::settings::{
     AS_WRITTEN_LENIENCY, DEFAULT_LENIENCY, STORAGE_KEY, Service, Settings, engine_leniency,
@@ -46,6 +47,16 @@ pub struct OgreApp {
     /// Good news from the last step, such as a confirmed save.
     notice: Option<String>,
     markdown: CommonMarkCache,
+    /// The teacher's saved rubrics.
+    saved_rubrics: Vec<SavedRubric>,
+    /// The saved rubric chosen in the rubric card, by name.
+    rubric_pick: Option<String>,
+    /// The name the rubric in hand would be saved under.
+    rubric_name: String,
+    /// The chosen saved rubric is about to be deleted, once confirmed.
+    deleting_rubric: bool,
+    /// The name of the rubric being saved right now.
+    saving_rubric: Option<String>,
     /// The teacher's saved site mappings.
     profiles: Vec<ProfileSummary>,
     /// A mapping that was just worked out and is waiting to be saved.
@@ -118,6 +129,11 @@ enum Action {
     StopGrading,
     /// Have the AI write scoring examples for the rubric.
     WriteExamples,
+    /// Have the AI read the rubric from a picture of the grading tab.
+    RubricFromPicture,
+    /// Keep the rubric in hand under the name in the name box.
+    SaveRubric,
+    DeleteRubric(String),
     Write,
     Save,
     ListModels,
@@ -182,6 +198,11 @@ impl OgreApp {
             error: None,
             notice: None,
             markdown: CommonMarkCache::default(),
+            saved_rubrics: Vec::new(),
+            rubric_pick: None,
+            rubric_name: String::new(),
+            deleting_rubric: false,
+            saving_rubric: None,
             profiles: Vec::new(),
             history: Vec::new(),
             history_open: None,
@@ -247,9 +268,10 @@ impl OgreApp {
             match event {
                 Event::ChromeStarted => self.chrome_running = true,
                 Event::Opened(url) => self.address = url,
-                Event::Read(read) => {
+                Event::Read(mut read) => {
                     self.selected = None;
                     self.leaving = None;
+                    self.set_saved_rubrics(std::mem::take(&mut read.saved_rubrics));
                     let mut session = Session::new(read);
                     if let Some(earlier) = &self.session {
                         session.keep_setup_from(earlier);
@@ -282,6 +304,27 @@ impl OgreApp {
                     }
                 }
                 Event::Examples(Err(problem)) => self.error = Some(problem),
+                Event::RubricRead(Ok(read)) => {
+                    if let Some(session) = &mut self.session {
+                        session.set_requirements(&read.requirements);
+                        if self.rubric_name.trim().is_empty() {
+                            self.rubric_name = read.name;
+                        }
+                        self.notice = Some(format!(
+                            "Read a rubric of {} from the picture of the page. Check it \
+                             against the page before grading.",
+                            count(read.parts, "part")
+                        ));
+                    }
+                }
+                Event::RubricRead(Err(problem)) => self.error = Some(problem),
+                Event::Rubrics(rubrics) => {
+                    self.set_saved_rubrics(rubrics);
+                    if let Some(name) = self.saving_rubric.take() {
+                        self.notice = Some(format!("Saved the rubric as \u{201c}{name}\u{201d}."));
+                        self.rubric_pick = Some(name);
+                    }
+                }
                 Event::Written(report) => {
                     if let Some(session) = &mut self.session {
                         let written = report.written.len();
@@ -322,6 +365,7 @@ impl OgreApp {
                 Event::Profiles(profiles) => self.profiles = profiles,
                 Event::History(sessions) => self.history = sessions,
                 Event::Failed(message) => {
+                    self.saving_rubric = None;
                     self.agent.running = false;
                     self.agent.question = None;
                     self.error = Some(message);
@@ -377,6 +421,23 @@ impl OgreApp {
                     Command::WriteExamples(Box::new(request)),
                     "Writing scoring examples…",
                 );
+            }
+            Action::RubricFromPicture => {
+                let command = Command::RubricFromPicture {
+                    provider: self.settings.provider.clone(),
+                    api_key: self.key(),
+                };
+                self.send(command, "Reading the rubric from a picture of the page…");
+            }
+            Action::SaveRubric => {
+                let Some(session) = &self.session else { return };
+                let rubric = session.as_saved(&self.rubric_name);
+                self.saving_rubric = Some(rubric.name.clone());
+                self.send(Command::SaveRubric(Box::new(rubric)), "Saving the rubric…");
+            }
+            Action::DeleteRubric(name) => {
+                self.deleting_rubric = false;
+                self.send(Command::DeleteRubric(name), "Deleting the saved rubric…");
             }
             Action::StopGrading => self.worker.cancel(),
             Action::Write => {
@@ -469,6 +530,16 @@ impl OgreApp {
                 self.settings.dark = !self.settings.dark;
                 theme::set_dark(ctx, self.settings.dark);
             }
+        }
+    }
+
+    /// Takes the saved rubrics as the worker now has them.
+    fn set_saved_rubrics(&mut self, rubrics: Vec<SavedRubric>) {
+        self.saved_rubrics = rubrics;
+        let still_there = |name: &String| self.saved_rubrics.iter().any(|r| r.name == *name);
+        if !self.rubric_pick.as_ref().is_some_and(still_there) {
+            self.rubric_pick = None;
+            self.deleting_rubric = false;
         }
     }
 
@@ -899,7 +970,122 @@ impl OgreApp {
         }
     }
 
-    fn rubric(&self, ui: &mut egui::Ui, session: &mut Session, actions: &mut Vec<Action>) {
+    /// Rubrics that do not come from the page's own rubric: the teacher's
+    /// saved ones, and one read from a picture of the page.
+    fn other_rubrics(
+        &mut self,
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        actions: &mut Vec<Action>,
+    ) {
+        let idle = self.busy.is_none();
+        let section = kit::section_label(ui, "Saved rubrics");
+        let mut use_it = false;
+        ui.horizontal_wrapped(|ui| {
+            if self.saved_rubrics.is_empty() {
+                ui.label(theme::muted(
+                    "None yet. Save this one under a name to use it on another page.",
+                ));
+                return;
+            }
+            let shown = self.rubric_pick.as_deref().unwrap_or("Choose one");
+            let mut pick = None;
+            egui::ComboBox::from_id_salt("saved-rubrics")
+                .selected_text(theme::body(shown))
+                .width(240.0)
+                .show_ui(ui, |ui| {
+                    for saved in &self.saved_rubrics {
+                        let chosen = self.rubric_pick.as_deref() == Some(saved.name.as_str());
+                        if ui.selectable_label(chosen, &saved.name).clicked() {
+                            pick = Some(saved.name.clone());
+                        }
+                    }
+                })
+                .response
+                .labelled_by(section.id);
+            if let Some(pick) = pick {
+                self.rubric_pick = Some(pick);
+                self.deleting_rubric = false;
+            }
+            let picked = self.rubric_pick.is_some();
+            use_it = kit::ghost(ui, "Use it", picked).clicked();
+            if kit::ghost(ui, "Delete it", picked && idle).clicked() {
+                self.deleting_rubric = true;
+            }
+        });
+        let picked = self
+            .rubric_pick
+            .as_ref()
+            .and_then(|name| self.saved_rubrics.iter().find(|saved| saved.name == *name));
+        if use_it && let Some(saved) = picked {
+            session.use_saved(saved);
+        }
+        if self.deleting_rubric
+            && let Some(name) = self.rubric_pick.clone()
+        {
+            kit::icon_line(
+                ui,
+                icon::WARNING,
+                &format!(
+                    "Delete the saved rubric \u{201c}{name}\u{201d}? It cannot be brought back."
+                ),
+                pal().warn,
+            );
+            ui.horizontal(|ui| {
+                if kit::ghost(ui, "Delete the saved rubric", idle).clicked() {
+                    actions.push(Action::DeleteRubric(name));
+                }
+                if kit::ghost(ui, "Keep it", true).clicked() {
+                    self.deleting_rubric = false;
+                }
+            });
+        }
+
+        ui.horizontal_wrapped(|ui| {
+            let label = ui.label(theme::muted("Save this rubric as"));
+            ui.add(
+                egui::TextEdit::singleline(&mut self.rubric_name)
+                    .hint_text("A name, such as the assignment\u{2019}s")
+                    .desired_width(240.0),
+            )
+            .labelled_by(label.id);
+            let name = self.rubric_name.trim();
+            let replaces = self.saved_rubrics.iter().any(|saved| saved.name == name);
+            let label = if replaces {
+                "Replace the saved rubric"
+            } else {
+                "Save the rubric"
+            };
+            let worth_saving = session.rubric_outline().requirements > 0;
+            if kit::ghost(ui, label, idle && !name.is_empty() && worth_saving).clicked() {
+                actions.push(Action::SaveRubric);
+            }
+        });
+
+        kit::section_label(ui, "Rubric shown on the page");
+        let has_key = !self.api_key.trim().is_empty();
+        let service = self.settings.provider.service;
+        let can_ask =
+            idle && self.chrome_running && self.settings.provider.problem(has_key).is_none();
+        ui.horizontal_wrapped(|ui| {
+            if kit::ghost(ui, "Read the rubric from a picture of the page", can_ask).clicked() {
+                actions.push(Action::RubricFromPicture);
+            }
+            ui.label(theme::muted(if service.is_remote() {
+                format!(
+                    "For a rubric OGRE could not read. Scroll it into view in Chrome first. \
+                     A picture of what the tab shows goes to {}, with any student work in view.",
+                    service.label()
+                )
+            } else {
+                "For a rubric OGRE could not read. Scroll it into view in Chrome first. \
+                 The model has to be one that can look at pictures."
+                    .to_owned()
+            }));
+        });
+    }
+
+    fn rubric(&mut self, ui: &mut egui::Ui, session: &mut Session, actions: &mut Vec<Action>) {
         let heading = theme::strong("Rubric").size(ty::BODY);
         // An open rubric is as tall as the window allows and scrolls beyond
         // that, so the steps below it never leave the screen.
@@ -964,6 +1150,7 @@ impl OgreApp {
                             kit::icon_line(ui, icon::WARNING, &warning, pal().warn);
                         }
                         Self::weights(ui, session);
+                        self.other_rubrics(ui, session, actions);
                         let label = kit::section_label(ui, "Your instructions to the grader");
                         ui.add(
                             egui::TextEdit::multiline(&mut session.instructions)

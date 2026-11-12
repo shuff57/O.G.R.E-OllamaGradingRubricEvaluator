@@ -8,6 +8,7 @@ mod history;
 mod keys;
 mod kit;
 mod profiles;
+mod rubrics;
 mod session;
 mod settings;
 mod theme;
@@ -19,9 +20,10 @@ pub use grading::{Grade, GradeReport, GradedRow, Suggestion};
 pub use history::{PastProposal, PastSession, PastStudent, SessionEnd};
 pub use keys::{KeyStore, Keyring, MemoryKeys};
 pub use profiles::ProfileSummary;
+pub use rubrics::SavedRubric;
 pub use settings::engine_leniency;
 pub use settings::{ProviderSettings, STORAGE_KEY, Service, Settings, old_app_settings_file};
 pub use worker::{
-    Command, Event, ExamplesRequest, GradeRequest, MapReport, ReadReport, StandIn, Worker,
-    WriteReport,
+    Command, Event, ExamplesRequest, GradeRequest, MapReport, PictureRubric, ReadReport, StandIn,
+    Worker, WriteReport,
 };

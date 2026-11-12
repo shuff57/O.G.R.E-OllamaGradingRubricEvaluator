@@ -748,3 +748,86 @@ fn the_real_service_writes_scoring_examples() {
         assert!(examples.contains(level), "no \"{level}\" example");
     }
 }
+
+/// Has the real service read a rubric from a picture of a page, through the
+/// app's own worker and a Chrome it starts out of sight. The page is a made-up
+/// rubric table: no student's work is on it.
+///
+///     cargo test -p ogre-app --test live rubric_from_a_picture -- --ignored --nocapture
+#[test]
+#[ignore = "starts Chrome and sends a picture of a made-up rubric to the Electron app's AI service"]
+fn the_real_service_reads_a_rubric_from_a_picture_of_the_page() {
+    let (provider, key) = electron_app_provider();
+    println!("asking {}", provider.model);
+    let fixture = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/rubric/essay-rubric.html"
+    );
+    let data_dir = std::env::temp_dir().join(format!("ogre-live-picture-{}", std::process::id()));
+    let worker = Worker::spawn(
+        LaunchOptions {
+            profile_dir: data_dir.join("chrome-profile"),
+            headless: true,
+            executable: None,
+        },
+        Sites::built_in(),
+        data_dir.clone(),
+        || {},
+    );
+    let next = |worker: &Worker, what: &str| -> Event {
+        let started = Instant::now();
+        loop {
+            if let Some(event) = worker.poll().next() {
+                return event;
+            }
+            assert!(
+                started.elapsed() < Duration::from_secs(600),
+                "no reply in ten minutes while {what}"
+            );
+            std::thread::sleep(Duration::from_millis(200));
+        }
+    };
+
+    worker.send(Command::StartChrome);
+    assert!(matches!(
+        next(&worker, "starting Chrome"),
+        Event::ChromeStarted
+    ));
+    let fixture = std::fs::canonicalize(fixture).expect("the fixture page is there");
+    worker.send(Command::Open(format!("file://{}", fixture.display())));
+    assert!(matches!(
+        next(&worker, "opening the page"),
+        Event::Opened(_)
+    ));
+    let started = Instant::now();
+    worker.send(Command::RubricFromPicture {
+        provider,
+        api_key: Some(key),
+    });
+    let read = next(&worker, "reading the rubric");
+    drop(worker);
+    let _ = std::fs::remove_dir_all(&data_dir);
+
+    let Event::RubricRead(read) = read else {
+        panic!("unexpected news from the worker: {read:?}");
+    };
+    let rubric = read.expect("a rubric was read from the picture");
+    println!(
+        "took {:.0?}; {} parts, named {:?}\n{}",
+        started.elapsed(),
+        rubric.parts,
+        rubric.name,
+        rubric.requirements
+    );
+    assert_eq!(rubric.parts, 3);
+    for expected in [
+        "## Concept [40%]",
+        "## Reasoning [40%]",
+        "## Communication [20%]",
+    ] {
+        assert!(
+            rubric.requirements.contains(expected),
+            "no \"{expected}\" in what was read"
+        );
+    }
+}

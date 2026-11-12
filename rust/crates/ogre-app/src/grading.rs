@@ -1,15 +1,18 @@
 //! Runs the grading engine for the window and boils its outcome down to what
 //! the review table shows.
 
-use ogre_core::Rubric;
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64;
+use ogre_core::{Rubric, imported_rubric_text};
 use ogre_grader::{
-    BatchOutcome, CancelFlag, GradeEvent, GradeOptions, GradeStatus, PreparedRubric, ScoreSource,
-    generate_anchor_examples, grade_batch, prepare_edited_rubric, prepare_rubric,
+    BatchOutcome, CancelFlag, GradeEvent, GradeOptions, GradeStatus, GraderError, PreparedRubric,
+    ScoreSource, generate_anchor_examples, grade_batch, prepare_edited_rubric, prepare_rubric,
+    read_rubric_from_image,
 };
-use ogre_llm::HttpProvider;
+use ogre_llm::{HttpProvider, Image};
 
 use crate::settings::ProviderSettings;
-use crate::worker::{ExamplesRequest, GradeRequest};
+use crate::worker::{ExamplesRequest, GradeRequest, PictureRubric};
 
 /// The heading the grader's prompt knows scoring examples by.
 const EXAMPLES_HEADING: &str = "SCORING CALIBRATION:";
@@ -309,6 +312,33 @@ pub async fn write_examples(
         );
     }
     Ok(text)
+}
+
+/// Has the AI read the rubric that a screenshot of the page shows, as text
+/// for the rubric editor.
+pub async fn rubric_from_picture(
+    settings: &ProviderSettings,
+    api_key: Option<&str>,
+    png: &[u8],
+) -> Result<PictureRubric, String> {
+    let provider = provider(settings, api_key)?;
+    let picture = Image::new("image/png", BASE64.encode(png));
+    match read_rubric_from_image(&provider, picture).await {
+        Ok(rubric) => Ok(PictureRubric {
+            requirements: imported_rubric_text(&rubric.criteria),
+            parts: rubric.criteria.len(),
+            name: rubric.suggested_name,
+        }),
+        Err(GraderError::NoRubricRead(_)) => Err(
+            "The AI found no rubric in the picture of the page. Scroll the rubric into view \
+             in Chrome and try again."
+                .to_owned(),
+        ),
+        Err(error) => Err(format!(
+            "The picture of the page could not be read: {error} The model has to be one \
+             that can look at pictures."
+        )),
+    }
 }
 
 /// The AI service described by `settings`, ready to be asked.

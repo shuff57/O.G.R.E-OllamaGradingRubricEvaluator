@@ -11,8 +11,8 @@ use egui_kittest::kittest::Queryable;
 use ogre_app::{
     AgentAnswer, AgentLine, AgentQuestion, AgentSummary, Command, Event, Grade, GradeReport,
     GradedRow, LineKind, MapReport, MemoryKeys, OgreApp, PastProposal, PastSession, PastStudent,
-    ProfileSummary, ProviderSettings, ReadReport, Service, SessionEnd, Settings, StandIn,
-    Suggestion, Worker, WriteReport,
+    PictureRubric, ProfileSummary, ProviderSettings, ReadReport, SavedRubric, Service, SessionEnd,
+    Settings, StandIn, Suggestion, Worker, WriteReport,
 };
 use ogre_core::{
     FeedbackField, FeedbackKind, GradingPage, Position, QuestionLink, Rubric, ScoreField,
@@ -148,6 +148,7 @@ fn read() -> Event {
         saves_on_write: false,
         manual_save: false,
         questions: Vec::new(),
+        saved_rubrics: Vec::new(),
     })
 }
 
@@ -690,6 +691,7 @@ fn a_site_ogre_cannot_confirm_saving_on_is_saved_by_the_teacher() {
             saves_on_write: false,
             manual_save: true,
             questions: Vec::new(),
+            saved_rubrics: Vec::new(),
         }))
         .unwrap();
     stand_in.events.send(graded()).unwrap();
@@ -1225,6 +1227,7 @@ fn read_with_a_loose_requirement() -> Event {
         saves_on_write: false,
         manual_save: false,
         questions: Vec::new(),
+        saved_rubrics: Vec::new(),
     })
 }
 
@@ -1387,4 +1390,185 @@ fn reading_the_page_again_keeps_the_rubric_the_teacher_set_up() {
     frames(&mut harness);
     assert!(harness.query_by_label("Edited").is_none());
     assert!(harness.query_by_label("Write them again").is_none());
+}
+
+fn saved(name: &str, text: &str) -> SavedRubric {
+    SavedRubric {
+        name: name.into(),
+        text: text.into(),
+        ..SavedRubric::default()
+    }
+}
+
+/// A page of a site that shows no rubric OGRE can read, with the teacher's
+/// saved rubrics at hand.
+fn read_without_a_rubric(saved_rubrics: Vec<SavedRubric>) -> Event {
+    let mut page = page();
+    page.url = "https://grades.example.edu/course/7/grade".into();
+    page.title = "Grading an essay on sampling".into();
+    Event::Read(ReadReport {
+        page,
+        rubric: Err("this site shows no rubric OGRE can read".into()),
+        site: "Example LMS",
+        saves_on_write: false,
+        manual_save: true,
+        questions: Vec::new(),
+        saved_rubrics,
+    })
+}
+
+#[test]
+fn a_rubric_is_saved_under_a_name_and_used_on_another_page() {
+    const NAME_BOX: &str = "Save this rubric as";
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    stand_in.events.send(read()).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Rubric").click();
+    frames(&mut harness);
+    harness.get_by_label_contains("None yet.");
+
+    harness.get_by_label(NAME_BOX).scroll_to_me();
+    frames(&mut harness);
+    harness.get_by_label(NAME_BOX).click();
+    frames(&mut harness);
+    harness.get_by_label(NAME_BOX).type_text("Margin of error");
+    frames(&mut harness);
+    press_in_rubric(&mut harness, "Save the rubric");
+    let Command::SaveRubric(rubric) = sent(&mut stand_in) else {
+        panic!("expected a rubric to save");
+    };
+    assert_eq!(rubric.name, "Margin of error");
+    assert!(
+        rubric
+            .text
+            .starts_with("## Concept\nMentions standard error\n")
+    );
+    let library = vec![
+        saved(
+            "Essay 2",
+            "## Thesis [40%]\nStates a position\n## Evidence [60%]\nCites two sources",
+        ),
+        *rubric,
+    ];
+    stand_in
+        .events
+        .send(Event::Rubrics(library.clone()))
+        .unwrap();
+    frames(&mut harness);
+    harness.get_by_label_contains("Saved the rubric as \u{201c}Margin of error\u{201d}.");
+    // The name is taken now, and saying so is the button's job.
+    harness.get_by_label("Replace the saved rubric");
+    shot(&mut harness, "20-saved-rubrics");
+
+    // Another site's page, which has no rubric of its own.
+    stand_in
+        .events
+        .send(read_without_a_rubric(library))
+        .unwrap();
+    frames(&mut harness);
+    harness.get_by_label_contains("The rubric could not be read from the page");
+    harness.get_by_label("Saved rubrics").click();
+    frames(&mut harness);
+    harness.get_by_label("Essay 2").click();
+    frames(&mut harness);
+    press_in_rubric(&mut harness, "Use it");
+    harness.get_by_label("2 requirements in 2 categories, no model response.");
+    harness.get_by_label_contains("They add up to 100%.");
+    shot(&mut harness, "21-saved-rubric-in-use");
+
+    harness.get_by_label("Grade 2 students").click();
+    frames(&mut harness);
+    let Command::Grade(request) = sent(&mut stand_in) else {
+        panic!("expected a grading request");
+    };
+    assert_eq!(
+        request.rubric_text.as_deref(),
+        Some("## Thesis [40%]\nStates a position\n## Evidence [60%]\nCites two sources")
+    );
+    stand_in.events.send(graded()).unwrap();
+    frames(&mut harness);
+
+    // Deleting asks first, and only then goes.
+    press_in_rubric(&mut harness, "Delete it");
+    assert!(stand_in.commands.try_recv().is_err());
+    harness.get_by_label_contains("Delete the saved rubric \u{201c}Essay 2\u{201d}?");
+    press_in_rubric(&mut harness, "Keep it");
+    assert!(
+        harness
+            .query_by_label_contains("cannot be brought back")
+            .is_none()
+    );
+    press_in_rubric(&mut harness, "Delete it");
+    press_in_rubric(&mut harness, "Delete the saved rubric");
+    let Command::DeleteRubric(name) = sent(&mut stand_in) else {
+        panic!("expected a rubric to delete");
+    };
+    assert_eq!(name, "Essay 2");
+    stand_in.events.send(Event::Rubrics(Vec::new())).unwrap();
+    frames(&mut harness);
+    harness.get_by_label_contains("None yet.");
+    // The rubric in the editor is the teacher's to keep using.
+    harness.get_by_label("2 requirements in 2 categories, no model response.");
+}
+
+#[test]
+fn a_rubric_is_read_from_a_picture_of_the_page_when_asked() {
+    const BUTTON: &str = "Read the rubric from a picture of the page";
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    stand_in
+        .events
+        .send(read_without_a_rubric(Vec::new()))
+        .unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Rubric").click();
+    frames(&mut harness);
+
+    press_in_rubric(&mut harness, BUTTON);
+    assert!(matches!(
+        sent(&mut stand_in),
+        Command::RubricFromPicture { .. }
+    ));
+    stand_in
+        .events
+        .send(Event::RubricRead(Err(
+            "The AI found no rubric in the picture of the page. Scroll the rubric into view in Chrome and try again.".into(),
+        )))
+        .unwrap();
+    frames(&mut harness);
+    harness.get_by_label_contains("found no rubric in the picture");
+    assert!(harness.query_by_label("Edited").is_none());
+
+    press_in_rubric(&mut harness, BUTTON);
+    assert!(matches!(
+        sent(&mut stand_in),
+        Command::RubricFromPicture { .. }
+    ));
+    stand_in
+        .events
+        .send(Event::RubricRead(Ok(PictureRubric {
+            requirements:
+                "## Thesis [40%]\nStates a position\n## Evidence [60%]\nCites two sources".into(),
+            parts: 2,
+            name: "Essay 2 rubric".into(),
+        })))
+        .unwrap();
+    frames(&mut harness);
+    harness.get_by_label_contains("Read a rubric of 2 parts from the picture of the page.");
+    harness.get_by_label("Edited");
+    harness.get_by_label("2 requirements in 2 categories, no model response.");
+    shot(&mut harness, "22-rubric-from-a-picture");
+
+    harness.get_by_label("Grade 2 students").click();
+    frames(&mut harness);
+    let Command::Grade(request) = sent(&mut stand_in) else {
+        panic!("expected a grading request");
+    };
+    assert!(
+        request
+            .rubric_text
+            .unwrap()
+            .starts_with("## Thesis [40%]\n")
+    );
 }

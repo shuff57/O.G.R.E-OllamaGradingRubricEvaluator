@@ -9,11 +9,12 @@ use ogre_core::{
     StudentWork, Submission, WritePolicy, category_shares, category_weight_problem,
     editable_rubric_text, format_score, names_category_weights, plan_write,
     rubric_from_edited_text, skip_reason, unread_rubric_lines, with_category_weight,
-    with_equal_category_weights, without_category_weights,
+    with_equal_category_weights, with_requirements, without_category_weights,
 };
 use ogre_harness::feedback;
 
 use crate::grading::{Grade, GradeReport, Suggestion};
+use crate::rubrics::SavedRubric;
 use crate::worker::{ReadReport, WriteReport};
 
 pub struct Session {
@@ -327,6 +328,38 @@ impl Session {
     /// What the grader will find in the rubric text.
     pub fn rubric_outline(&self) -> &RubricOutline {
         &self.outline
+    }
+
+    /// Puts a saved rubric in place of the one in hand. Its instructions and
+    /// scoring examples come with it where it has any.
+    pub fn use_saved(&mut self, saved: &SavedRubric) {
+        self.rubric_text.clone_from(&saved.text);
+        self.rubric_text_changed();
+        if !saved.instructions.trim().is_empty() {
+            self.instructions.clone_from(&saved.instructions);
+        }
+        if !saved.examples.trim().is_empty() {
+            self.examples.clone_from(&saved.examples);
+            // Written for that rubric, whenever that was.
+            self.examples_basis = None;
+        }
+    }
+
+    /// The rubric in hand, to keep under `name`.
+    pub fn as_saved(&self, name: &str) -> SavedRubric {
+        SavedRubric {
+            name: name.trim().to_owned(),
+            text: self.rubric_text.clone(),
+            instructions: self.instructions.trim().to_owned(),
+            examples: self.examples.trim().to_owned(),
+        }
+    }
+
+    /// Replaces the requirements with ones that came from elsewhere, such
+    /// as a picture of the page. The exemplar answer stays.
+    pub fn set_requirements(&mut self, requirements: &str) {
+        self.rubric_text = with_requirements(&self.rubric_text, requirements);
+        self.rubric_text_changed();
     }
 
     /// Makes `category` count for `weight` percent of the grade. Every
@@ -724,6 +757,7 @@ mod tests {
             saves_on_write: false,
             manual_save: false,
             questions: Vec::new(),
+            saved_rubrics: Vec::new(),
         })
     }
 
@@ -760,6 +794,7 @@ mod tests {
             saves_on_write: false,
             manual_save: false,
             questions: Vec::new(),
+            saved_rubrics: Vec::new(),
         });
         assert_eq!(s.edited_rubric_text(), None);
         let as_read = s.rubric_outline().clone();
@@ -900,6 +935,7 @@ mod tests {
             saves_on_write: false,
             manual_save: false,
             questions: Vec::new(),
+            saved_rubrics: Vec::new(),
         })
     }
 
@@ -964,6 +1000,70 @@ mod tests {
     }
 
     #[test]
+    fn a_rubric_is_saved_as_it_stands_and_put_back_whole() {
+        let mut s = two_categories();
+        s.share_weights_equally();
+        s.instructions = " Accept answers in words. ".into();
+        s.examples_asked_for(50);
+        s.examples_arrived("Excellent: all of it.".into());
+        let saved = s.as_saved("  Unit 4 FRQ ");
+        assert_eq!(saved.name, "Unit 4 FRQ");
+        assert_eq!(saved.text, s.rubric_text);
+        assert_eq!(saved.instructions, "Accept answers in words.");
+
+        // On a page with no rubric of its own.
+        let mut bare = session();
+        bare.instructions = "Mine.".into();
+        bare.use_saved(&saved);
+        assert!(bare.rubric_edited());
+        assert_eq!(bare.rubric_outline().categories, 2);
+        assert!(bare.rubric_outline().weights_written);
+        assert_eq!(bare.instructions, "Accept answers in words.");
+        assert_eq!(
+            bare.examples_for_grading().as_deref(),
+            Some("Excellent: all of it.")
+        );
+        assert!(
+            !bare.examples_out_of_date(80),
+            "nothing known to compare with"
+        );
+
+        // A saved rubric without instructions leaves the teacher's alone.
+        let plain = SavedRubric {
+            name: "Plain".into(),
+            text: "Names the theorem".into(),
+            ..SavedRubric::default()
+        };
+        bare.use_saved(&plain);
+        assert_eq!(bare.rubric_text, "Names the theorem");
+        assert_eq!(bare.instructions, "Accept answers in words.");
+    }
+
+    #[test]
+    fn requirements_from_elsewhere_keep_the_exemplar_answer() {
+        let rubric: Rubric = serde_json::from_value(serde_json::json!({
+            "checklistItems": [{ "category": "Concept", "items": ["Names the theorem"] }],
+            "modelText": "The Central Limit Theorem.",
+        }))
+        .unwrap();
+        let mut s = Session::new(ReadReport {
+            page: page(),
+            rubric: Ok(rubric),
+            site: "MyOpenMath",
+            saves_on_write: false,
+            manual_save: false,
+            questions: Vec::new(),
+            saved_rubrics: Vec::new(),
+        });
+        s.set_requirements("## Thesis [40%]\nStates a position\n## Evidence [60%]\nCites sources");
+        assert!(s.rubric_edited());
+        let outline = s.rubric_outline();
+        assert_eq!((outline.categories, outline.requirements), (2, 2));
+        assert!(outline.exemplar && outline.weights_written);
+        assert!(s.rubric_text.ends_with("The Central Limit Theorem."));
+    }
+
+    #[test]
     fn scoring_examples_go_stale_when_what_they_were_written_for_changes() {
         let mut s = two_categories();
         assert_eq!(s.examples_for_grading(), None);
@@ -1015,6 +1115,7 @@ mod tests {
             saves_on_write: false,
             manual_save: false,
             questions: Vec::new(),
+            saved_rubrics: Vec::new(),
         });
         let names: Vec<_> = s.to_grade().into_iter().map(|w| w.name).collect();
         assert_eq!(names, ["Diaz, Remy"], "Kai was given a zero on purpose");
