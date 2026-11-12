@@ -17,6 +17,28 @@ use crate::worker::{ExamplesRequest, GradeRequest, OutsideRubric};
 /// The heading the grader's prompt knows scoring examples by.
 const EXAMPLES_HEADING: &str = "SCORING CALIBRATION:";
 
+/// The teacher's instructions and the scoring examples, as one text for the
+/// grader's prompt.
+///
+/// The examples lead, as the Electron app's anchors do: the prompt takes
+/// them for examples to calibrate by only at the start of the text. Anywhere
+/// else they would be read as more instructions the AI must follow.
+fn instructions_with_examples(
+    instructions: Option<&str>,
+    examples: Option<&str>,
+) -> Option<String> {
+    let examples = examples
+        .map(str::trim)
+        .filter(|examples| !examples.is_empty())
+        .map(|examples| format!("{EXAMPLES_HEADING}\n{examples}"));
+    let parts: Vec<&str> = examples
+        .as_deref()
+        .into_iter()
+        .chain(instructions)
+        .collect();
+    (!parts.is_empty()).then(|| parts.join("\n\n"))
+}
+
 /// Everything a rubric's preparation depends on.
 #[derive(Debug, Clone, PartialEq)]
 struct Basis {
@@ -162,21 +184,13 @@ pub async fn grade(
         )
         .await;
     let mut rubric = prepared.rubric;
-    // The teacher's own instructions ride along unchanged, and the scoring
-    // examples after them, the way the Electron app sends its anchors.
     let examples = request
         .examples
         .as_deref()
         .map(str::trim)
         .filter(|examples| !examples.is_empty());
-    let instructions = request
-        .rubric
-        .custom_instructions
-        .iter()
-        .cloned()
-        .chain(examples.map(|examples| format!("{EXAMPLES_HEADING}\n{examples}")))
-        .collect::<Vec<_>>();
-    rubric.custom_instructions = (!instructions.is_empty()).then(|| instructions.join("\n\n"));
+    rubric.custom_instructions =
+        instructions_with_examples(request.rubric.custom_instructions.as_deref(), examples);
 
     let options = GradeOptions {
         score_source: if request.score_from_verdicts {
@@ -394,4 +408,74 @@ pub async fn list_models(
         }
         other => other.to_string(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use ogre_core::{StudentWork, build_batch_prompt, generate_scoring_anchors};
+
+    use super::*;
+
+    /// The prompt a class is graded with, given what the teacher set up.
+    fn prompt(instructions: Option<&str>, examples: Option<&str>) -> String {
+        let rubric = Rubric {
+            max_score: Some(ogre_core::MaxScore::Number(10.0)),
+            custom_instructions: instructions_with_examples(instructions, examples),
+            ..Rubric::default()
+        };
+        let student = StudentWork {
+            index: 0,
+            name: "Student 1".into(),
+            response: "An answer.".into(),
+            prompt: None,
+        };
+        let anchors = generate_scoring_anchors(&rubric);
+        build_batch_prompt(&rubric, &[student], &anchors, None, None).unwrap()
+    }
+
+    /// The part of `prompt` under the heading that starts with `heading`, up
+    /// to the next blank line.
+    fn under<'a>(prompt: &'a str, heading: &str) -> &'a str {
+        let from = prompt
+            .find(heading)
+            .unwrap_or_else(|| panic!("no {heading:?} in:\n{prompt}"));
+        let rest = &prompt[from..];
+        let rest = &rest[rest.find('\n').map_or(rest.len(), |at| at + 1)..];
+        &rest[..rest.find("\n\n").unwrap_or(rest.len())]
+    }
+
+    const MUST_FOLLOW: &str = "INSTRUCTOR OVERRIDE INSTRUCTIONS";
+    const TO_CALIBRATE: &str = "SCORING CALIBRATION EXAMPLES";
+    const EXAMPLES: &str =
+        "Excellent: Names the theorem and its conditions.\n\nMinimal: Says it is about averages.";
+
+    #[test]
+    fn scoring_examples_calibrate_and_instructions_are_followed() {
+        let prompt = prompt(Some("Accept answers given in words."), Some(EXAMPLES));
+        assert_eq!(
+            under(&prompt, MUST_FOLLOW),
+            "Accept answers given in words."
+        );
+        assert!(
+            under(&prompt, TO_CALIBRATE).starts_with("Excellent: Names the theorem"),
+            "{prompt}"
+        );
+        assert!(prompt.contains("Minimal: Says it is about averages."));
+    }
+
+    #[test]
+    fn either_one_goes_alone() {
+        let only_examples = prompt(None, Some(EXAMPLES));
+        assert!(!only_examples.contains(MUST_FOLLOW));
+        assert!(under(&only_examples, TO_CALIBRATE).starts_with("Excellent:"));
+
+        let only_instructions = prompt(Some("Accept answers given in words."), Some("  "));
+        assert!(!only_instructions.contains(TO_CALIBRATE));
+        assert_eq!(
+            under(&only_instructions, MUST_FOLLOW),
+            "Accept answers given in words."
+        );
+
+        assert_eq!(instructions_with_examples(None, None), None);
+    }
 }

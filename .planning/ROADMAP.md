@@ -158,7 +158,7 @@ Decisions: desktop only for now (code kept web-compilable), Linux only for now, 
 - Three deliberate departures from the Electron scoring: category scores are always read out of 10; a sub-maximum score is raised to full only when every verdict says "Correct"; category weights are used only when the weights of the categories the AI scored add up to 100 (before, a rubric with one category named differently from the rest scored a perfect answer 3 of 14).
 - A rubric drafted by the AI from the question, for a question that has none. Checked against Ollama Cloud `gemma4:31b`.
 - The Agent screen lists what the agent knows: the built-in site guides and the teacher's own skill files, each skill with a switch that is remembered. A skill of the teacher's is written, changed and deleted in a form there; it is still a Markdown file in the skills folder.
-- 955 tests pass by default; 77 more need Chrome, a local model or the AI service.
+- 957 tests pass by default; 77 more need Chrome, a local model or the AI service.
 
 ## Checked on real MyOpenMath pages (read-only)
 
