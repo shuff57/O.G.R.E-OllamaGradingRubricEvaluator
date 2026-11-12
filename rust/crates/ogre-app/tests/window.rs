@@ -275,6 +275,10 @@ fn grades_fills_and_saves_one_explicit_step_at_a_time() {
         .unwrap();
     frames(&mut harness);
     harness.get_by_label("Grading… 1 of 2");
+    // A clock appears once the wait is long enough to wonder about.
+    assert!(harness.query_by_label_contains("0:0").is_none());
+    harness.run_steps(40);
+    harness.get_by_label_contains("0:1");
 
     stand_in.events.send(graded()).unwrap();
     frames(&mut harness);

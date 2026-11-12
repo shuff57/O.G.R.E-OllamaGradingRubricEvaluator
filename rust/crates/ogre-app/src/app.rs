@@ -72,6 +72,17 @@ struct Busy {
     /// Students done and in total, for work that reports progress.
     progress: Option<(usize, usize)>,
     can_stop: bool,
+    /// When the window first drew this work, in the window's own seconds.
+    started: Option<f64>,
+}
+
+/// Work shorter than this shows no clock.
+const CLOCK_AFTER_SECONDS: f64 = 5.0;
+
+/// "1:05" for 65 seconds.
+fn clock(seconds: f64) -> String {
+    let seconds = seconds.max(0.0) as u64;
+    format!("{}:{:02}", seconds / 60, seconds % 60)
 }
 
 /// Something the teacher asked for this frame. Collected while drawing and
@@ -154,6 +165,7 @@ impl OgreApp {
             label,
             progress: None,
             can_stop: matches!(command, Command::Grade(_) | Command::RunAgent(_)),
+            started: None,
         });
         self.worker.send(command);
     }
@@ -431,6 +443,13 @@ impl OgreApp {
                     }
                     None => ui.label(theme::body(busy.label)),
                 };
+                // A slow model must not look like a window that has stopped.
+                let elapsed = busy
+                    .started
+                    .map_or(0.0, |start| ui.input(|i| i.time) - start);
+                if elapsed >= CLOCK_AFTER_SECONDS {
+                    ui.label(theme::meta(clock(elapsed)));
+                }
                 if busy.can_stop && kit::ghost(ui, "Stop", true).clicked() {
                     actions.push(Action::StopGrading);
                 }
@@ -1313,6 +1332,10 @@ impl OgreApp {
 impl eframe::App for OgreApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.take_events();
+        if let Some(busy) = &mut self.busy {
+            let now = ui.input(|i| i.time);
+            busy.started.get_or_insert(now);
+        }
         // Decided once, before the screens borrow the session to draw it.
         self.next = self.next_step();
         let mut actions = Vec::new();
