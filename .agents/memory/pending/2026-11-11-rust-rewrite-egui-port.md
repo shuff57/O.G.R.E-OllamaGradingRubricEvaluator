@@ -21,13 +21,17 @@ Date: 2026-11-11. Branch `rust-rewrite`, folder `rust/`. Status and open items: 
 - **A local 31B model was too slow to test with** (8k context, minutes per request). Ollama Cloud with the same model name was used instead, with the teacher's agreement, since it sends student work off the computer.
 - **Comparison tools must never print student names or answers.** Number the students, print counts and rubric wording only, delete any dump afterwards.
 
+- **MyOpenMath's feedback editor drops the line breaks between paragraphs.** Text read back from it has the same words with no space where a break was, so a read-back check must ignore white space. Found only by the first live write; saved copies of the page do not show it.
+- **A grading address can show the sign-in form** when the session has lapsed, with nothing in the address to say so. Look for a password box before reporting "no students".
+- **The first live write was done in steps the teacher approved one at a time** (preview file, fill, check in Chrome, save), then confirmed from a second browser. That shape worked and is worth keeping for any first write to a new site.
+
 ## Corrections received
 
 - "Don't think you have to create all of the code, check for GitHub repos that might help" — look for existing crates first.
 - "For a UI design philosophy, use verSHion" — paper tones, one green accent, one primary button, highlighter as a marker only.
 - "We need to get closer to the original app" — parity with the Electron pipeline came before new behaviour.
 - Reduce size and optimise only after the port, without removing features.
-- Linux only for now. Default leniency stays 50. Fix both scoring rules that inflated grades (category scores divided by category points; raise-to-full on feedback that criticises in unlisted words).
+- Linux only for now. The leniency setting starts at 50, and the teacher asked that 50 mean what the Electron app's most lenient setting did. Fix both scoring rules that inflated grades (category scores divided by category points; raise-to-full on feedback that criticises in unlisted words).
 
 ## Skill creation/improvement suggestions
 

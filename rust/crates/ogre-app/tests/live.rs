@@ -37,8 +37,9 @@
 //! 3. It waits again, with Chrome open, for the teacher to look at the page.
 //!    A file named `save` has the app save and wait for the site to confirm;
 //!    `done` means the teacher saved or discarded in Chrome themselves.
-//! 4. It reads the page once more and reports how many of the written scores
-//!    the site now holds, then deletes the folder.
+//! 4. It reads the open page once more and reports how many of the written
+//!    scores its form shows, then deletes the folder. Whether the site stored
+//!    them is for a fresh look from another browser to say.
 //!
 //!   OGRE_LIVE_WAIT_MINUTES   how long each wait lasts (default 30)
 
@@ -378,7 +379,9 @@ fn supervised_fill(window: &mut Window, data_dir: &Path, start: u64, model: &str
         None => println!("NO ANSWER: left as it is; closing Chrome discards what was not saved"),
     }
 
-    // What the site holds now, for the students this run wrote to.
+    // What the open page shows now, for the students this run wrote to. This
+    // is the page's form, not proof of what the site stored: check that from
+    // another browser, or by opening the page afresh.
     if !shows(window, "Chrome is no longer running") {
         click_read(window);
         let after = records_since(&sessions, start);
@@ -391,7 +394,7 @@ fn supervised_fill(window: &mut Window, data_dir: &Path, start: u64, model: &str
             })
             .count();
         println!(
-            "AFTERWARDS: the page holds {kept} of the {} proposed scores",
+            "AFTERWARDS: the open page shows {kept} of the {} proposed scores (its form, not proof of storage)",
             proposed.len()
         );
     }

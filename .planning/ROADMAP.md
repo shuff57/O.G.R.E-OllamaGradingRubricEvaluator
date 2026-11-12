@@ -157,14 +157,20 @@ Decisions: desktop only for now (code kept web-compilable), Linux only for now, 
 - Through the app's own window and Chrome (`rust/crates/ogre-app/tests/live.rs`): one page, 18 students, average gap 0.42, 17 of 18 within one step, page unchanged afterwards.
 - Question 360745106 stays about 1.4 away. The two sets of feedback agree on which requirements are correct for 95% of verdicts; the difference is points taken off per missed requirement. That page carries the mark of the Electron app before its 28 October fix (students marked all correct but given 12.5 of 14), so its grades are not a clean target.
 
+## First live write (2026-11-11)
+
+Four ungraded students on one MyOpenMath question, supervised step by step with `OGRE_LIVE_FILL=1` in `rust/crates/ogre-app/tests/live.rs`: preview, approval, fill, read-back with no mismatch, approval, save confirmed by the site. A fresh look from a second browser found all four scores and their feedback stored. The first attempt was discarded unsaved: the read-back check tripped on line breaks the site's editor drops, which is fixed.
+
 ## Not verified
 
-- Writing grades to a live MyOpenMath or Canvas page (only saved copies and stand-ins so far).
+- Writing to a live Canvas page, and to a site mapped by the teacher.
+- A live MyOpenMath write of more than a handful of students, or one that overwrites existing grades.
 - Windows and macOS.
 - AI services other than Ollama and Ollama Cloud against the real service.
 
 ## Next
 
-1. A supervised first write on a real page: fill in, stop before saving, check, then save.
-2. Decide whether the score should follow from the per-requirement verdicts, which would make grades repeatable; today it is the model's own 0 to 10 judgment.
-3. Windows support when wanted.
+1. Grade a whole page through the app's own window, with the teacher at the controls.
+2. Choose the default way of scoring. The same student got 7, 7 and then 5.5 of 14 from the AI's own score in three runs; the Settings switch that works the score out from the feedback's verdicts removes that part of the variation.
+3. Let the teacher leave single students out of a fill from the review table when grading through `tests/live.rs` (the window already has the tick boxes).
+4. Windows support when wanted.
