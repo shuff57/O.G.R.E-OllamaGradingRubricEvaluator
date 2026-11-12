@@ -174,7 +174,22 @@ async fn a_page_with_no_students_is_an_error_and_script_errors_surface() {
     let page = chrome.open("about:blank").await.unwrap();
 
     let err = IMathAs.read_page(&page).await.unwrap_err();
-    assert!(matches!(err, Error::Page(_)), "{err:?}");
+    assert!(
+        matches!(&err, Error::Page(m) if m.contains("No student work found")),
+        "{err:?}"
+    );
+
+    // A sign-in form where the students should be is named for what it is.
+    page.eval(
+        "document.body.innerHTML = '<form><input name=\"u\"><input type=\"password\"></form>'",
+    )
+    .await
+    .unwrap();
+    let err = IMathAs.read_page(&page).await.unwrap_err();
+    assert!(
+        matches!(&err, Error::Page(m) if m.contains("MyOpenMath is asking you to sign in")),
+        "{err:?}"
+    );
 
     let err = page
         .eval("(() => { throw new Error('boom') })()")

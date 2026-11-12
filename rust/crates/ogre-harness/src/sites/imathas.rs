@@ -36,6 +36,13 @@ impl SiteAdapter for IMathAs {
 
     async fn read_page(&self, page: &dyn PageDriver) -> Result<GradingPage> {
         let raw: RawPage = eval_as(page, EXTRACT_SCRIPT).await?;
+        if raw.submissions.is_empty() && raw.sign_in {
+            return Err(Error::Page(format!(
+                "{} is asking you to sign in. Sign in in the OGRE Chrome window, then read \
+                 the students again.",
+                self.name()
+            )));
+        }
         if raw.submissions.is_empty() {
             return Err(Error::Page(format!(
                 "No student work found at {}. Open a question's \"Grade all\" page first.",
@@ -141,6 +148,9 @@ struct RawPage {
     url: String,
     title: String,
     position: Option<Position>,
+    /// The page holds a password box: the site wants a sign-in.
+    #[serde(default)]
+    sign_in: bool,
     submissions: Vec<RawSubmission>,
 }
 

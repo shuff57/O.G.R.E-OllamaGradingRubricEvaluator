@@ -22,6 +22,24 @@
 //!   OGRE_LIVE_LOGIN_MINUTES  how long to wait for a login (default 15)
 //!   OGRE_LIVE_ONLY_READ=1    stop once the students are read; nothing is
 //!                            sent to the AI service
+//!
+//! # A supervised first write
+//!
+//! `OGRE_LIVE_FILL=1` turns the run into a write that a person approves at
+//! each step. It grades only the students who have no grade yet, then stops:
+//!
+//! 1. It writes the proposals, with names and feedback, to `preview.html` in
+//!    a private folder and prints where that is. Nothing is on the page yet.
+//! 2. It waits for a file named `approve` to appear in that folder (or
+//!    `cancel`). Only then does it fill the grades into the page's form,
+//!    reading each batch back. Nothing is saved.
+//! 3. It waits again, with Chrome open, for the teacher to look at the page.
+//!    A file named `save` has the app save and wait for the site to confirm;
+//!    `done` means the teacher saved or discarded in Chrome themselves.
+//! 4. It reads the page once more and reports how many of the written scores
+//!    the site now holds, then deletes the folder.
+//!
+//!   OGRE_LIVE_WAIT_MINUTES   how long each wait lasts (default 30)
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -132,6 +150,253 @@ fn page_state(read: &Value) -> Vec<(u64, Option<f64>, bool)> {
         .unwrap_or_default()
 }
 
+fn button_starting(window: &Window, start: &str) -> Option<String> {
+    window
+        .query_by(|node| {
+            node.role() == Role::Button
+                && node.label().is_some_and(|label| label.starts_with(start))
+        })
+        .and_then(|node| node.accesskit_node().label())
+}
+
+fn escape(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+/// Waits for one of `names` to appear as a file in `dir`. `None` when the
+/// time runs out or Chrome is closed first.
+fn wait_for_file(
+    window: &mut Window,
+    dir: &Path,
+    names: &[&'static str],
+    limit: Duration,
+) -> Option<&'static str> {
+    let deadline = Instant::now() + limit;
+    while Instant::now() < deadline {
+        window.run_steps(2);
+        if let Some(name) = names.iter().find(|name| dir.join(name).exists()) {
+            return Some(name);
+        }
+        if shows(window, "Chrome is no longer running") {
+            println!("Chrome was closed");
+            return None;
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    None
+}
+
+/// The supervised first write described at the top of this file. The
+/// students have been read; nothing is graded yet.
+fn supervised_fill(window: &mut Window, data_dir: &Path, start: u64, model: &str, leniency: u8) {
+    let wait = Duration::from_secs(
+        60 * std::env::var("OGRE_LIVE_WAIT_MINUTES")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(30),
+    );
+    let Some(grade) = button_starting(window, "Grade ").filter(|label| label != "Grade 0 students")
+    else {
+        println!("NOTHING TO DO: no student on this page has an answer and no grade");
+        return;
+    };
+    println!(
+        "pressing {grade:?} (leniency {leniency}, {model}); students with a grade are left alone"
+    );
+    window.get_by_label(&grade).click();
+    window.run_steps(2);
+    wait_until(window, "the AI to grade", Duration::from_secs(1500), |w| {
+        !shows(w, "Grading…")
+    });
+
+    let sessions = data_dir.join("sessions");
+    let records = records_since(&sessions, start);
+    let read = records
+        .iter()
+        .rfind(|r| r["event"] == "read")
+        .expect("the read was recorded");
+    let graded = records
+        .iter()
+        .rfind(|r| r["event"] == "graded")
+        .expect("the grading run was recorded");
+    let name_of = |index: u64| {
+        read["students"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|s| s["index"] == index)
+            .map(|s| {
+                (
+                    s["name"].as_str().unwrap_or("?").to_owned(),
+                    s["score"].as_f64(),
+                )
+            })
+            .unwrap_or_default()
+    };
+
+    // The folder the teacher and this run talk through. It holds student
+    // names and feedback, so nobody else may read it, and it is deleted at
+    // the end.
+    let dir = std::env::temp_dir().join(format!("ogre-first-write-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    let mut rows = String::new();
+    let mut proposed = Vec::new();
+    println!("  student  on page  proposed  feedback");
+    for result in graded["results"].as_array().into_iter().flatten() {
+        let index = result["index"].as_u64().unwrap_or(0);
+        let (name, on_page) = name_of(index);
+        let on_page = on_page.map_or("blank".to_owned(), |score| score.to_string());
+        match result["score"].as_f64() {
+            Some(score) => {
+                let feedback = result["feedback"].as_str().unwrap_or_default();
+                println!(
+                    "  S{:02}     {on_page:>7}  {score:>8}  {} characters",
+                    index + 1,
+                    feedback.len()
+                );
+                rows += &format!(
+                    "<tr><td>{}</td><td>{on_page}</td><td><b>{score}</b></td><td>{}</td></tr>\n",
+                    escape(&name),
+                    ogre_harness::feedback::safe_html(feedback)
+                );
+                proposed.push((index, score));
+            }
+            None => {
+                println!("  S{:02}     {on_page:>7}  not graded", index + 1);
+                rows += &format!(
+                    "<tr><td>{}</td><td>{on_page}</td><td>not graded</td><td>{}</td></tr>\n",
+                    escape(&name),
+                    escape(result["not_graded"].as_str().unwrap_or_default())
+                );
+            }
+        }
+    }
+    let rubric = graded["rubric"].as_str().unwrap_or("(none recorded)");
+    let preview = dir.join("preview.html");
+    std::fs::write(
+        &preview,
+        format!(
+            "<!doctype html><meta charset=\"utf-8\"><title>OGRE: grades waiting for approval</title>\
+             <style>body{{font:15px/1.45 sans-serif;max-width:1100px;margin:2em auto;padding:0 1em}}\
+             table{{border-collapse:collapse}}td,th{{border:1px solid #bbb;padding:6px 10px;vertical-align:top;text-align:left}}\
+             pre{{white-space:pre-wrap;background:#f4f1ea;padding:10px}}blockquote{{color:#555}}</style>\
+             <h1>Grades waiting for your approval</h1>\
+             <p>{}</p><p>Nothing has been written to the page. {} graded with {} at leniency {leniency}.</p>\
+             <table><tr><th>Student</th><th>On the page now</th><th>Proposed</th><th>Feedback</th></tr>\n{rows}</table>\
+             <h2>Rubric used</h2><pre>{}</pre>",
+            escape(read["title"].as_str().unwrap_or_default()),
+            proposed.len(),
+            escape(model),
+            escape(rubric),
+        ),
+    )
+    .unwrap();
+    for warning in graded["warnings"].as_array().into_iter().flatten() {
+        // Warnings can name a student, so they go in the folder, not here.
+        let mut text = std::fs::read_to_string(dir.join("warnings.txt")).unwrap_or_default();
+        text += warning.as_str().unwrap_or_default();
+        text.push('\n');
+        std::fs::write(dir.join("warnings.txt"), text).unwrap();
+    }
+    println!("PREVIEW: {}", preview.display());
+    println!("FOLDER: {}", dir.display());
+    let Some(fill) = button_starting(window, "Fill in ") else {
+        println!("NOTHING TO WRITE: no usable grade was proposed");
+        let _ = std::fs::remove_dir_all(&dir);
+        return;
+    };
+    println!("WAITING FOR APPROVAL: nothing is on the page yet ({fill:?} is the next step)");
+    if wait_for_file(window, &dir, &["approve", "cancel"], wait) != Some("approve") {
+        println!("NOT APPROVED: nothing was filled in");
+        let _ = std::fs::remove_dir_all(&dir);
+        return;
+    }
+
+    window.get_by_label(&fill).click();
+    window.run_steps(2);
+    wait_until(
+        window,
+        "the grades to be filled in",
+        Duration::from_secs(300),
+        |w| !shows(w, "Writing grades"),
+    );
+    let checked = shows(window, "filled in on the page and checked");
+    let written: Vec<Value> = records_since(&sessions, start)
+        .into_iter()
+        .filter(|r| r["event"] == "written")
+        .collect();
+    let filled: usize = written
+        .iter()
+        .map(|r| r["students"].as_array().map_or(0, Vec::len))
+        .sum();
+    let mismatches: usize = written
+        .iter()
+        .map(|r| r["mismatches"].as_array().map_or(0, Vec::len))
+        .sum();
+    println!(
+        "FILLED: {filled} of {} grades are in the page's form and {}; {mismatches} did not read back as written. Nothing is saved.",
+        proposed.len(),
+        if checked {
+            "were read back and checked"
+        } else {
+            "the app did not report them all checked"
+        }
+    );
+    println!("WAITING FOR YOUR CHECK: look at the page in the OGRE Chrome window");
+
+    match wait_for_file(window, &dir, &["save", "done"], wait) {
+        Some("save") => match button_starting(window, "Save on ") {
+            Some(save) => {
+                window.get_by_label(&save).click();
+                window.run_steps(2);
+                wait_until(
+                    window,
+                    "the site to confirm the save",
+                    Duration::from_secs(120),
+                    |w| !shows(w, "Saving on the site"),
+                );
+                println!(
+                    "SAVE: {}",
+                    if shows(window, "confirmed the save") {
+                        "the site confirmed it"
+                    } else {
+                        "the site did NOT confirm it"
+                    }
+                );
+            }
+            None => println!("SAVE: the app offers no save here; save in the Chrome window"),
+        },
+        Some(_) => println!("DONE: the teacher finished in the Chrome window"),
+        None => println!("NO ANSWER: left as it is; closing Chrome discards what was not saved"),
+    }
+
+    // What the site holds now, for the students this run wrote to.
+    if !shows(window, "Chrome is no longer running") {
+        click_read(window);
+        let after = records_since(&sessions, start);
+        let now = page_state(after.iter().rfind(|r| r["event"] == "read").unwrap());
+        let kept = proposed
+            .iter()
+            .filter(|(index, score)| {
+                now.iter()
+                    .any(|(i, on_page, _)| i == index && *on_page == Some(*score))
+            })
+            .count();
+        println!(
+            "AFTERWARDS: the page holds {kept} of the {} proposed scores",
+            proposed.len()
+        );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 fn click_read(window: &mut Window) {
     window.get_by_label("Read students").click();
     window.run_steps(2);
@@ -231,6 +496,8 @@ fn a_real_page_is_read_and_graded_without_writing() {
             "not read: {}",
             if elsewhere {
                 "the Chrome window is not on a grading page"
+            } else if shows(&window, "is asking you to sign in") {
+                "the site is asking for a sign-in"
             } else if shows(&window, "No student work found") {
                 "the grading page shows no students"
             } else {
@@ -252,6 +519,10 @@ fn a_real_page_is_read_and_graded_without_writing() {
     }
     println!("READ: the students were read");
     if std::env::var_os("OGRE_LIVE_ONLY_READ").is_some() {
+        return;
+    }
+    if std::env::var_os("OGRE_LIVE_FILL").is_some() {
+        supervised_fill(&mut window, &data_dir, start, &model, leniency);
         return;
     }
 

@@ -128,6 +128,8 @@
     url: location.href,
     title: document.title,
     position,
+    // The site shows its sign-in form at the address that was asked for.
+    sign_in: !!document.querySelector('input[type="password"]'),
     submissions: Array.from(document.querySelectorAll('div.bigquestionwrap')).map(readStudent),
   };
 })()
