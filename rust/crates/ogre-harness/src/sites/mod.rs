@@ -122,8 +122,8 @@ pub async fn verify_writes(
             )));
         }
         if let Some(expected) = &receipt.feedback_text {
-            let shown = submission.feedback.as_ref().map(|f| squash(&f.text));
-            if !feedback_matches(&squash(expected), shown.as_deref().unwrap_or_default()) {
+            let shown = submission.feedback.as_ref().map(|f| f.text.as_str());
+            if !feedback_matches(expected, shown.unwrap_or_default()) {
                 mismatches.push(mismatch(
                     "feedback on the page differs from what was written".into(),
                 ));
@@ -133,17 +133,23 @@ pub async fn verify_writes(
     Ok(mismatches)
 }
 
-/// The page re-renders math written between backticks, which changes the text
-/// from that point on; only the part before the first formula is comparable.
+/// Whether the page shows the feedback that was written.
+///
+/// White space is not compared: a rich-text editor keeps the words and drops
+/// the line breaks between paragraphs (MyOpenMath's does), so "Hi Sam,
+/// First" comes back as "Hi Sam,First". And the page re-renders math written
+/// between backticks, which changes the text from that point on, so only the
+/// part before the first formula is compared.
 fn feedback_matches(expected: &str, shown: &str) -> bool {
+    let (expected, shown) = (without_space(expected), without_space(shown));
     match expected.split_once('`') {
         None => expected == shown,
-        Some((before_math, _)) => shown.starts_with(before_math.trim_end()),
+        Some((before_math, _)) => shown.starts_with(before_math),
     }
 }
 
-fn squash(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
+fn without_space(text: &str) -> String {
+    text.chars().filter(|c| !c.is_whitespace()).collect()
 }
 
 #[cfg(test)]
@@ -171,5 +177,24 @@ mod tests {
             "The slope 9 is right."
         ));
         assert!(!feedback_matches("The slope `9` is right.", "A slope"));
+    }
+
+    #[test]
+    fn an_editor_that_drops_the_breaks_between_paragraphs_still_matches() {
+        // Written with line breaks between the paragraphs; MyOpenMath's
+        // editor shows the same words with none.
+        let written =
+            "Hi Sam, First requirement You said: \"abc\" Correct. The slope `9` is right.";
+        let shown = "Hi Sam,First requirementYou said: \"abc\"Correct. The slope is right.";
+        assert!(feedback_matches(written, shown));
+        assert!(feedback_matches(
+            "Hi Sam,\n\nGood work.",
+            "Hi Sam,Good work."
+        ));
+        // Different words are still a mismatch.
+        assert!(!feedback_matches("Hi Sam, Good work.", "Hi Sam,Good try."));
+        assert!(!feedback_matches(written, "Hi Sam,Second requirement"));
+        // Nothing on the page is not what was written.
+        assert!(!feedback_matches("Good work.", ""));
     }
 }
