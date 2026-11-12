@@ -3,8 +3,8 @@
 
 use ogre_core::{
     DEFAULT_WEIGHT_MODE, NEUTRAL_LENIENCY, Rubric, accept_rewrite, extract_model_text,
-    leniency_rewrite_prompt, restore_category_weights, rubric_from_edited_text, rubric_from_text,
-    rubric_text, text_to_criteria, with_default_weights,
+    grading_text, leniency_rewrite_prompt, restore_category_weights, rubric_from_grading_text,
+    rubric_from_text, rubric_text, text_to_criteria, with_default_weights,
 };
 use ogre_llm::{ChatProvider, ChatRequest, Message};
 
@@ -52,13 +52,16 @@ pub async fn prepare_edited_rubric(
     text: &str,
     leniency: u8,
 ) -> PreparedRubric {
-    let (reworded, rewrite_problem) = if text_to_criteria(text).is_empty() {
+    // Every line the teacher wrote is a requirement from here on. What the
+    // AI adds while rewording is not: that text is read as it stands.
+    let original = grading_text(text);
+    let (reworded, rewrite_problem) = if text_to_criteria(&original).is_empty() {
         // Nothing the rewrite could keep; it would refuse or invent a rubric.
-        (text.to_owned(), None)
+        (original, None)
     } else {
-        reword(provider, text.to_owned(), leniency).await
+        reword(provider, original, leniency).await
     };
-    let mut rubric = rubric_from_edited_text(scraped, &reworded, DEFAULT_WEIGHT_MODE);
+    let mut rubric = rubric_from_grading_text(scraped, &reworded, DEFAULT_WEIGHT_MODE);
     rubric.model_text = extract_model_text(text);
     PreparedRubric {
         rubric,

@@ -23,9 +23,9 @@ pub use grading::{
 pub use rubric::{
     DEFAULT_WEIGHT_MODE, RowType, RubricCriterion, WeightValidation, auto_fill_weights,
     criteria_to_text, editable_rubric_text, equalize_weights, extract_model_text,
-    full_credit_points, has_unsaved_changes, is_allocation_criterion, prepare_for_grading,
-    rubric_from_edited_text, rubric_from_text, rubric_text, text_to_criteria, unread_rubric_lines,
-    validate_weights, with_default_weights,
+    full_credit_points, grading_text, has_unsaved_changes, is_allocation_criterion,
+    prepare_for_grading, rubric_from_edited_text, rubric_from_grading_text, rubric_from_text,
+    rubric_text, text_to_criteria, unread_rubric_lines, validate_weights, with_default_weights,
 };
 pub use rubric::{
     NEUTRAL_LENIENCY, RewriteError, accept_rewrite, leniency_rewrite_prompt,

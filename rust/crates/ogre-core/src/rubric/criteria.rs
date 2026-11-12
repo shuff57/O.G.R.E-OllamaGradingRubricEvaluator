@@ -188,6 +188,74 @@ pub(super) fn is_rubric_line(line: &str) -> bool {
     CATEGORY.is_match(line) || LINE.is_match(line)
 }
 
+/// The requirements part of rubric text and the rest, which starts at the
+/// model response marker.
+fn split_at_model_response(text: &str) -> (&str, &str) {
+    text.split_at(text.find(MODEL_RESPONSE_MARKER).unwrap_or(text.len()))
+}
+
+/// Rubric text for a teacher to read: a criterion worth no points and with
+/// no weight is shown as its name alone, without "(0pts)".
+///
+/// A name that would itself read as a heading or a criterion keeps its
+/// "(0pts)", so [`pointed_lines`] gives back what this was given.
+pub(super) fn plain_lines(text: &str) -> String {
+    if !is_line_layout(text) {
+        return text.to_owned();
+    }
+    let (body, rest) = split_at_model_response(text);
+    let lines: Vec<String> = body
+        .split('\n')
+        .map(|raw| {
+            let line = js::trim(raw);
+            let Some(parts) = LINE.captures(line) else {
+                return raw.to_owned();
+            };
+            let worth_nothing = js::parse_float(&parts[2]) == 0.0 && parts.get(3).is_none();
+            let name = js::trim(&parts[1]);
+            let plain = match parts.get(4).map(|d| js::trim(d.as_str())) {
+                Some(description) if !description.is_empty() => format!("{name}: {description}"),
+                _ => name.to_owned(),
+            };
+            if worth_nothing && !name.is_empty() && !is_rubric_line(&plain) {
+                plain
+            } else {
+                raw.to_owned()
+            }
+        })
+        .collect();
+    lines.join("\n") + rest
+}
+
+/// The reverse of [`plain_lines`], for text a teacher has typed: a line that
+/// is neither a heading nor a criterion becomes a criterion worth no points,
+/// so that every line they wrote is graded against.
+///
+/// Text in the older `[Category]` and `- item` layout is left as it is.
+pub(super) fn pointed_lines(text: &str) -> String {
+    if !is_line_layout(text) {
+        return text.to_owned();
+    }
+    let (body, rest) = split_at_model_response(text);
+    let trimmed = || body.split('\n').map(js::trim);
+    let bracketed = trimmed().any(|line| line.starts_with('[') && line.ends_with(']'));
+    if bracketed && !trimmed().any(is_rubric_line) {
+        return text.to_owned();
+    }
+    let lines: Vec<String> = body
+        .split('\n')
+        .map(|raw| {
+            let line = js::trim(raw);
+            if line.is_empty() || is_rubric_line(line) {
+                raw.to_owned()
+            } else {
+                format!("{line} (0pts)")
+            }
+        })
+        .collect();
+    lines.join("\n") + rest
+}
+
 /// Reads rubric text back into criteria. Lines that are not criteria are
 /// skipped, and so is everything from the model response marker on.
 pub fn text_to_criteria(text: &str) -> Vec<RubricCriterion> {

@@ -572,11 +572,17 @@ mod tests {
         // The stray line became part of the exemplar answer, which is fine.
         assert!(s.rubric_outline().unread.is_empty());
 
-        s.rubric_text = "Names the theorem".into();
+        assert_eq!(s.rubric_text.lines().nth(1), Some("Names the theorem"));
+        s.rubric_text = "Names the theorem\nSays when it applies".into();
         s.rubric_text_changed();
-        assert_eq!(s.rubric_outline().requirements, 0);
+        assert_eq!(s.rubric_outline().requirements, 2);
         assert!(!s.rubric_outline().exemplar);
-        assert_eq!(s.rubric_outline().unread, ["Names the theorem"]);
+
+        // The older bracketed layout can have a line outside any category.
+        s.rubric_text = "a stray line\n[Concept]\n- Names the theorem".into();
+        s.rubric_text_changed();
+        assert_eq!(s.rubric_outline().requirements, 1);
+        assert_eq!(s.rubric_outline().unread, ["a stray line"]);
 
         s.restore_rubric_text();
         assert_eq!(s.edited_rubric_text(), None);

@@ -363,7 +363,7 @@ fn the_rubric_can_be_edited_before_grading() {
     harness.get_by_label("3 requirements in 2 categories, no model response.");
     assert!(harness.query_by_label("Edited").is_none());
 
-    // A requirement typed without its points, on a line of its own.
+    // A requirement is typed on a line of its own, in plain words.
     harness.get_by_label(EDITOR).click();
     frames(&mut harness);
     harness.key_press(egui::Key::End);
@@ -371,18 +371,13 @@ fn the_rubric_can_be_edited_before_grading() {
     harness.get_by_label(EDITOR).type_text("Shows every step");
     frames(&mut harness);
     harness.get_by_label("Edited");
-    harness.get_by_label_contains("This line will not be used for grading: “Shows every step”.");
-    shot(&mut harness, "12-rubric-edited");
-
-    // Given points, it counts.
-    harness.get_by_label(EDITOR).type_text(" (2pts)");
-    frames(&mut harness);
     harness.get_by_label("4 requirements in 2 categories, no model response.");
     assert!(
         harness
             .query_by_label_contains("will not be used")
             .is_none()
     );
+    shot(&mut harness, "12-rubric-edited");
 
     harness.get_by_label("Grade 2 students").click();
     frames(&mut harness);
@@ -390,7 +385,8 @@ fn the_rubric_can_be_edited_before_grading() {
         panic!("expected a grading request");
     };
     let text = request.rubric_text.expect("the edited rubric is sent");
-    assert!(text.contains("\nShows every step (2pts)\n"), "{text}");
+    assert!(text.contains("\nShows every step\n"), "{text}");
+    assert!(!text.contains("pts)"), "{text}");
     assert!(text.starts_with("## Concept\n"), "{text}");
     stand_in.events.send(graded()).unwrap();
     frames(&mut harness);

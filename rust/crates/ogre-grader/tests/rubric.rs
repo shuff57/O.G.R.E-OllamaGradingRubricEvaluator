@@ -3,7 +3,7 @@
 mod common;
 
 use common::{ScriptedProvider, timeout_error};
-use ogre_core::{Rubric, WeightMode, editable_rubric_text};
+use ogre_core::{Rubric, WeightMode, editable_rubric_text, grading_text};
 use ogre_grader::{prepare_edited_rubric, prepare_rubric, rewrites_rubric};
 
 fn scraped() -> Rubric {
@@ -150,7 +150,8 @@ async fn the_teachers_edits_are_what_is_graded() {
 async fn leniency_rewords_the_edited_criteria_but_not_the_teachers_exemplar() {
     let text = editable_rubric_text(&scraped()).replace("20 seeds", "25 seeds");
     // The AI softens a requirement and, unasked, rewrites the exemplar too.
-    let reply = text
+    // It answers in the form it was asked in, each requirement with points.
+    let reply = grading_text(&text)
         .replace(
             "Say there is a fixed number of trials, and how many.",
             "Mention that the number of trials is set.",
@@ -161,6 +162,11 @@ async fn leniency_rewords_the_edited_criteria_but_not_the_teachers_exemplar() {
     let prepared = prepare_edited_rubric(&provider, &scraped(), &text, 0).await;
 
     assert_eq!(provider.calls(), 1);
+    assert!(
+        provider.prompts()[0]
+            .contains("Say each trial has two outcomes, success or failure. (0pts)"),
+        "the AI is shown the rubric in the form it is asked to keep"
+    );
     assert_eq!(prepared.rewrite_problem, None);
     assert!(
         prepared.rubric.checklist_items[0]

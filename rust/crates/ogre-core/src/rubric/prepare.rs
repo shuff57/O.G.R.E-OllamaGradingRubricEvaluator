@@ -13,7 +13,7 @@ use regex::Regex;
 
 use super::criteria::{
     MODEL_RESPONSE_MARKER, RowType, RubricCriterion, auto_fill_weights, criteria_to_text,
-    is_line_layout, is_rubric_line, pattern, text_to_criteria,
+    is_line_layout, is_rubric_line, pattern, plain_lines, pointed_lines, text_to_criteria,
 };
 use crate::grading::js::{self, WS};
 use crate::grading::{
@@ -330,12 +330,13 @@ pub fn rubric_from_text(scraped: &Rubric, text: &str, mode: WeightMode) -> Rubri
     }
 }
 
-/// The rubric text to put in an editor for the teacher: [`rubric_text`], or
-/// only the exemplar answer when the page has no requirements, or nothing.
+/// The rubric text to put in an editor for the teacher: [`rubric_text`] with
+/// requirements that carry no points written as plain lines, or only the
+/// exemplar answer when the page has no requirements, or nothing.
 pub fn editable_rubric_text(scraped: &Rubric) -> String {
     let text = rubric_text(scraped);
     if text != NO_RUBRIC_TEXT {
-        return text;
+        return plain_lines(&text);
     }
     match scraped.model_text.as_deref().filter(|t| !t.is_empty()) {
         Some(model_text) => format!("{MODEL_RESPONSE_MARKER}\n{model_text}"),
@@ -343,18 +344,27 @@ pub fn editable_rubric_text(scraped: &Rubric) -> String {
     }
 }
 
+/// The teacher's edited rubric text in the form grading reads: every line
+/// they wrote that is not a heading is a requirement, with "(0pts)" added
+/// where they gave no points.
+pub fn grading_text(edited: &str) -> String {
+    pointed_lines(edited)
+}
+
 /// The lines of edited rubric text that grading will not use: neither a
-/// requirement nor a heading, and not part of the exemplar answer. A teacher
-/// who typed a requirement without its `(2pts)` finds it here.
+/// requirement nor a heading, and not part of the exemplar answer.
 ///
+/// With one requirement per line there are none. Text in the older
+/// `[Category]` and `- item` layout can have lines outside any category.
 /// Empty for text in a table layout, where lines cannot be judged one by one.
-pub fn unread_rubric_lines(text: &str) -> Vec<String> {
-    if !is_line_layout(text) {
+pub fn unread_rubric_lines(edited: &str) -> Vec<String> {
+    let text = grading_text(edited);
+    if !is_line_layout(&text) {
         return Vec::new();
     }
     let body = match text.find(MODEL_RESPONSE_MARKER) {
         Some(marker) => &text[..marker],
-        None => text,
+        None => &text,
     };
     let lines = || body.split('\n').map(js::trim).filter(|l| !l.is_empty());
     if lines().any(is_rubric_line) {
@@ -380,13 +390,20 @@ pub fn unread_rubric_lines(text: &str) -> Vec<String> {
     unread
 }
 
-/// The rubric to grade against when the teacher has changed the rubric text.
+/// The rubric to grade against when the teacher has changed the rubric text,
+/// from the text as they left it in the editor.
+pub fn rubric_from_edited_text(scraped: &Rubric, edited: &str, mode: WeightMode) -> Rubric {
+    rubric_from_grading_text(scraped, &grading_text(edited), mode)
+}
+
+/// The rubric to grade against when the teacher has changed the rubric text,
+/// from that text in the form [`grading_text`] gives.
 ///
 /// Unlike [`rubric_from_text`], nothing is taken from the page behind the
 /// teacher's back: requirements and an exemplar answer they deleted stay
 /// deleted. Weights are filled in as [`with_default_weights`] does. The
 /// question and the maximum score still come from `scraped`.
-pub fn rubric_from_edited_text(scraped: &Rubric, text: &str, mode: WeightMode) -> Rubric {
+pub fn rubric_from_grading_text(scraped: &Rubric, text: &str, mode: WeightMode) -> Rubric {
     let only_the_page_facts = Rubric {
         checklist_items: Vec::new(),
         rubric_items: Vec::new(),

@@ -1371,9 +1371,10 @@ impl eframe::App for OgreApp {
 }
 
 /// Shown in the empty rubric editor.
-const RUBRIC_HINT: &str = "One requirement per line, under headings if you like:\n\
+const RUBRIC_HINT: &str = "One requirement per line. A line that starts with ## \
+is a heading for the requirements under it:\n\
 ## Method\n\
-Sets up the equation (2pts): Uses the rate given in the question.";
+Sets up the equation with the rate given in the question";
 
 /// One line saying what the grader will find in the rubric text.
 fn rubric_summary(outline: &RubricOutline) -> String {
@@ -1406,15 +1407,12 @@ fn unread_warning(unread: &[String]) -> Option<String> {
     } else {
         ""
     };
-    let which = match unread.len() {
+    Some(match unread.len() {
         1 => format!("This line will not be used for grading: “{first}{ellipsis}”."),
         n => {
             format!("{n} lines will not be used for grading, the first being “{first}{ellipsis}”.")
         }
-    };
-    Some(format!(
-        "{which} Write a requirement as “Name (2pts): what to look for”."
-    ))
+    })
 }
 
 fn summary(session: &Session) -> String {
