@@ -120,3 +120,51 @@
 
 *Roadmap created: 2026-03-29*
 *Total requirements: 20 (verified — all v1 requirements assigned)*
+
+---
+
+# Rust rewrite
+
+*Status on 2026-11-11. Branch `rust-rewrite`, folder `rust/`. The roadmap above is for the Electron app and is unchanged.*
+
+## What it is
+
+OGRE rebuilt in Rust with egui/eframe as one desktop program. It drives the teacher's own Chrome over the DevTools Protocol instead of embedding a browser, and has no separate grading server.
+
+| Crate | Holds |
+|---|---|
+| `ogre-core` | Grading rules ported from `grading-server/grading.js` (prompts byte for byte), rubric text, the rules for what may be written to a page |
+| `ogre-llm` | Ollama, Ollama Cloud, OpenAI, Anthropic, Gemini |
+| `ogre-grader` | Batch grading, consistency check, anchors, leniency rewording |
+| `ogre-harness` | Chrome driver, MyOpenMath and Canvas adapters, mapping of other sites |
+| `ogre-agent` | Agent mode and skills, with forced approvals |
+| `ogre-app` | The window: Grade, Agent, Sites, History, Settings |
+
+Decisions: desktop only for now (code kept web-compilable), Linux only for now, default leniency 50, UI follows the verSHion design.
+
+## Done
+
+- All four areas ported: MyOpenMath batch grading, Canvas, bring-your-own-site mapping, agent mode and skills.
+- Safety rules are in code: no overwrite of a non-zero score or existing feedback unless allowed, a write is refused if the box changed since it was read, AI feedback is sanitized, writes go in batches of five and are read back, saving is a separate step, a missing AI score is "not graded" and never zero, every session is recorded.
+- Rubric editing before grading; what is in the editor is what is graded.
+- History screen from the session records.
+- Two deliberate departures from the Electron scoring: category scores are always read out of 10, and a sub-maximum score is raised to full only when every verdict says "Correct".
+- 869 tests pass by default; 66 more need Chrome or a local model.
+
+## Checked on real MyOpenMath pages (read-only)
+
+- Three already-graded pages, 69 students, Ollama Cloud `gemma4:31b`, leniency 0: average gap to the grades on the page about 1.0 of 14; 57 to 60 of 69 within one score step.
+- Through the app's own window and Chrome (`rust/crates/ogre-app/tests/live.rs`): one page, 18 students, average gap 0.42, 17 of 18 within one step, page unchanged afterwards.
+- Question 360745106 stays about 1.4 away. The two sets of feedback agree on which requirements are correct for 95% of verdicts; the difference is points taken off per missed requirement. That page carries the mark of the Electron app before its 28 October fix (students marked all correct but given 12.5 of 14), so its grades are not a clean target.
+
+## Not verified
+
+- Writing grades to a live MyOpenMath or Canvas page (only saved copies and stand-ins so far).
+- Windows and macOS.
+- AI services other than Ollama and Ollama Cloud against the real service.
+
+## Next
+
+1. A supervised first write on a real page: fill in, stop before saving, check, then save.
+2. Decide whether the score should follow from the per-requirement verdicts, which would make grades repeatable; today it is the model's own 0 to 10 judgment.
+3. Windows support when wanted.
