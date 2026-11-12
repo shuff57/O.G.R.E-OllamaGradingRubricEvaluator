@@ -61,6 +61,9 @@ pub async fn grade_batch(
 
     let mut job = Job::new(rubric);
     job.score_source = options.score_source;
+    if options.weights_by_name {
+        job.match_weights_by_name();
+    }
     // A rubric that cannot be turned into a prompt fails every chunk alike.
     // Building a prompt for nobody finds that out before anything is sent.
     build_batch_prompt(rubric, &[], &job.anchors, None, None)?;

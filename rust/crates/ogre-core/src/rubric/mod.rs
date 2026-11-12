@@ -25,7 +25,9 @@ pub use leniency::{
     restore_category_weights,
 };
 pub use prepare::{
-    DEFAULT_WEIGHT_MODE, editable_rubric_text, extract_model_text, grading_text,
+    CategoryShare, DEFAULT_WEIGHT_MODE, category_shares, category_weight_problem,
+    editable_rubric_text, extract_model_text, grading_text, names_category_weights,
     prepare_for_grading, rubric_from_edited_text, rubric_from_grading_text, rubric_from_text,
-    rubric_text, unread_rubric_lines, with_default_weights,
+    rubric_text, unread_rubric_lines, with_category_weight, with_default_weights,
+    with_equal_category_weights, without_category_weights,
 };

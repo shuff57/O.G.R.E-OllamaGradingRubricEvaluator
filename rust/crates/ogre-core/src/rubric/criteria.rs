@@ -256,6 +256,45 @@ pub(super) fn pointed_lines(text: &str) -> String {
     lines.join("\n") + rest
 }
 
+/// The category a heading line names. `line` is trimmed already.
+fn heading_category(line: &str) -> Option<&str> {
+    let parts = CATEGORY.captures(line)?;
+    Some(js::trim(parts.get(1)?.as_str()))
+}
+
+/// Rubric text with the weight in every heading of the categories in
+/// `weights` replaced. Other lines, and the exemplar answer, stay as they
+/// are. Text that is not one criterion per line is returned unchanged.
+pub(super) fn reweighted_headings(text: &str, weights: &[(String, f64)]) -> String {
+    rewritten_headings(text, |category| {
+        let (name, weight) = weights.iter().find(|(name, _)| name == category)?;
+        Some(format!("## {name} [{}%]", Num(*weight)))
+    })
+}
+
+/// Rubric text with the weight taken out of every heading.
+pub(super) fn unweighted_headings(text: &str) -> String {
+    rewritten_headings(text, |category| Some(format!("## {category}")))
+}
+
+/// Rubric text with each heading replaced by what `rewrite` gives for its
+/// category, where it gives anything.
+fn rewritten_headings(text: &str, rewrite: impl Fn(&str) -> Option<String>) -> String {
+    if !is_line_layout(text) {
+        return text.to_owned();
+    }
+    let (body, rest) = split_at_model_response(text);
+    let lines: Vec<String> = body
+        .split('\n')
+        .map(|raw| {
+            heading_category(js::trim(raw))
+                .and_then(&rewrite)
+                .unwrap_or_else(|| raw.to_owned())
+        })
+        .collect();
+    lines.join("\n") + rest
+}
+
 /// Reads rubric text back into criteria. Lines that are not criteria are
 /// skipped, and so is everything from the model response marker on.
 pub fn text_to_criteria(text: &str) -> Vec<RubricCriterion> {

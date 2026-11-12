@@ -13,7 +13,8 @@ use regex::Regex;
 
 use super::criteria::{
     MODEL_RESPONSE_MARKER, RowType, RubricCriterion, auto_fill_weights, criteria_to_text,
-    is_line_layout, is_rubric_line, pattern, plain_lines, pointed_lines, text_to_criteria,
+    equalize_weights, is_line_layout, is_rubric_line, pattern, plain_lines, pointed_lines,
+    reweighted_headings, text_to_criteria, unweighted_headings,
 };
 use crate::grading::js::{self, WS};
 use crate::grading::{
@@ -418,6 +419,138 @@ pub fn rubric_from_grading_text(scraped: &Rubric, text: &str, mode: WeightMode) 
     // Filling in weights rewrites the text without its exemplar answer.
     rubric.model_text = extract_model_text(text);
     rubric
+}
+
+/// A category of the rubric text and how much of the grade it is.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CategoryShare {
+    pub category: String,
+    /// The percentage grading will use: the one in the category's heading,
+    /// or the one that is filled in when the text names no weights.
+    pub weight: f64,
+}
+
+/// The largest distance from 100 at which weights still count as adding up.
+const WEIGHT_TOLERANCE: f64 = 0.5;
+
+/// The named categories of edited rubric text, in order, each with the
+/// weight grading will use for it. Empty for text without headings and for
+/// text that is not laid out one requirement per line.
+pub fn category_shares(edited: &str) -> Vec<CategoryShare> {
+    let text = grading_text(edited);
+    if !is_line_layout(&text) {
+        return Vec::new();
+    }
+    shares(&text_to_criteria(&with_default_weights(
+        &text,
+        DEFAULT_WEIGHT_MODE,
+    )))
+}
+
+/// Each named category once, with the first weight given for it.
+fn shares(rows: &[RubricCriterion]) -> Vec<CategoryShare> {
+    let mut shares: Vec<(CategoryShare, bool)> = Vec::new();
+    for row in rows {
+        let Some(category) = row.category.as_deref() else {
+            continue;
+        };
+        match shares
+            .iter_mut()
+            .find(|(share, _)| share.category == category)
+        {
+            Some((share, weighted)) => {
+                if let Some(weight) = row.category_weight.filter(|_| !*weighted) {
+                    share.weight = weight;
+                    *weighted = true;
+                }
+            }
+            None => shares.push((
+                CategoryShare {
+                    category: category.to_owned(),
+                    weight: row.category_weight.unwrap_or(0.0),
+                },
+                row.category_weight.is_some(),
+            )),
+        }
+    }
+    shares.into_iter().map(|(share, _)| share).collect()
+}
+
+/// True when edited rubric text itself says how much a category counts, as
+/// opposed to leaving the weights to be filled in.
+pub fn names_category_weights(edited: &str) -> bool {
+    let text = grading_text(edited);
+    is_line_layout(&text)
+        && text_to_criteria(&text)
+            .iter()
+            .any(|row| row.category.is_some() && row.category_weight.unwrap_or(0.0) != 0.0)
+}
+
+/// The edited rubric text with no weight in any heading.
+pub fn without_category_weights(edited: &str) -> String {
+    unweighted_headings(edited)
+}
+
+/// The edited rubric text with `category` counting for `weight` percent.
+///
+/// Every category's weight is written into its heading, so that weights the
+/// text left to be filled in are now the teacher's to see and change.
+pub fn with_category_weight(edited: &str, category: &str, weight: f64) -> String {
+    let weight = js::round_to(weight.clamp(0.0, 100.0), 10.0);
+    let weights: Vec<(String, f64)> = category_shares(edited)
+        .into_iter()
+        .map(|share| {
+            let weight = if share.category == category {
+                weight
+            } else {
+                share.weight
+            };
+            (share.category, weight)
+        })
+        .collect();
+    reweighted_headings(edited, &weights)
+}
+
+/// The edited rubric text with every named category counting the same.
+pub fn with_equal_category_weights(edited: &str) -> String {
+    let named: Vec<RubricCriterion> = text_to_criteria(&grading_text(edited))
+        .into_iter()
+        .filter(|row| row.category.is_some())
+        .collect();
+    let weights: Vec<(String, f64)> = shares(&equalize_weights(&named, DEFAULT_WEIGHT_MODE))
+        .into_iter()
+        .map(|share| (share.category, share.weight))
+        .collect();
+    reweighted_headings(edited, &weights)
+}
+
+/// Why the weights in edited rubric text would give wrong scores, if they
+/// would: a class graded against weights that do not add up to 100 has
+/// every score scaled by what they do add up to.
+pub fn category_weight_problem(edited: &str) -> Option<String> {
+    let text = grading_text(edited);
+    if !is_line_layout(&text) {
+        return None;
+    }
+    let rows = text_to_criteria(&with_default_weights(&text, DEFAULT_WEIGHT_MODE));
+    let shares = shares(&rows);
+    if shares.is_empty() {
+        return None;
+    }
+    if rows.iter().any(|row| row.category.is_none()) {
+        return Some(
+            "The requirements above the first heading are in no category, so they \
+             would not count toward the score. Put them under a heading."
+                .to_owned(),
+        );
+    }
+    let sum = js::round_to(shares.iter().map(|share| share.weight).sum(), 10.0);
+    ((sum - 100.0).abs() > WEIGHT_TOLERANCE).then(|| {
+        format!(
+            "The category weights add up to {}%. They must add up to 100%.",
+            js::Num(sum)
+        )
+    })
 }
 
 /// The scraped maximum, or "10" where JavaScript finds it falsy.

@@ -157,6 +157,12 @@ impl<'a> Job<'a> {
         }
     }
 
+    /// Looks category weights up by the name the AI reports a category by,
+    /// so that they count on a rubric whose categories name their points.
+    pub(crate) fn match_weights_by_name(&mut self) {
+        self.weighting = self.rubric.category_weighting_by_reported_name();
+    }
+
     /// Reads a reply to a batch prompt for `students`. `None` if nothing in
     /// it could be read.
     ///

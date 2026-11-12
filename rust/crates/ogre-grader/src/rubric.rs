@@ -3,8 +3,9 @@
 
 use ogre_core::{
     DEFAULT_WEIGHT_MODE, NEUTRAL_LENIENCY, Rubric, accept_rewrite, extract_model_text,
-    grading_text, leniency_rewrite_prompt, restore_category_weights, rubric_from_grading_text,
-    rubric_from_text, rubric_text, text_to_criteria, with_default_weights,
+    grading_text, leniency_rewrite_prompt, names_category_weights, restore_category_weights,
+    rubric_from_grading_text, rubric_from_text, rubric_text, text_to_criteria,
+    with_default_weights,
 };
 use ogre_llm::{ChatProvider, ChatRequest, Message};
 
@@ -18,6 +19,10 @@ pub struct PreparedRubric {
     /// Why the leniency rewrite was skipped, if it was asked for and failed.
     /// Grading then uses the rubric as written.
     pub rewrite_problem: Option<String>,
+    /// True when the rubric text itself said how much a category counts, as
+    /// opposed to weights that were only filled in. Such weights are meant:
+    /// grade with [`GradeOptions::weights_by_name`](crate::GradeOptions::weights_by_name).
+    pub weights_given: bool,
 }
 
 /// Prepares `scraped` for grading.
@@ -32,12 +37,15 @@ pub async fn prepare_rubric(
     scraped: &Rubric,
     leniency: i16,
 ) -> PreparedRubric {
-    let (text, rewrite_problem) = reword(provider, rubric_text(scraped), leniency).await;
+    let original = rubric_text(scraped);
+    let weights_given = names_category_weights(&original);
+    let (text, rewrite_problem) = reword(provider, original, leniency).await;
     let text = with_default_weights(&text, DEFAULT_WEIGHT_MODE);
     PreparedRubric {
         rubric: rubric_from_text(scraped, &text, DEFAULT_WEIGHT_MODE),
         text,
         rewrite_problem,
+        weights_given,
     }
 }
 
@@ -68,6 +76,7 @@ pub async fn prepare_edited_rubric(
         rubric,
         text: with_default_weights(&reworded, DEFAULT_WEIGHT_MODE),
         rewrite_problem,
+        weights_given: names_category_weights(text),
     }
 }
 

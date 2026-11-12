@@ -67,7 +67,7 @@ pub fn parse_batch_response(
 enum Rules {
     /// Exactly what the JavaScript server did.
     Original,
-    /// The same, with its two known scoring faults corrected.
+    /// The same, with its known scoring faults corrected.
     Corrected,
 }
 
@@ -81,7 +81,7 @@ pub struct CheckedResult {
 }
 
 /// Reads a batch reply for the app: like [`parse_batch_response`], but says
-/// for each result whether the AI actually gave a score, and corrects two
+/// for each result whether the AI actually gave a score, and corrects the
 /// faults of the JavaScript server's scoring.
 ///
 /// - A missing or unreadable score came out as a zero there. Here it is
@@ -90,6 +90,11 @@ pub struct CheckedResult {
 /// - Category scores are asked for out of 10, but were divided by the
 ///   category's points, so half marks in every category could come out as
 ///   full credit. Here they are divided by 10.
+/// - Category weights were added up over whichever categories the reply
+///   happened to name as the weights do, so a rubric with one category
+///   named differently scored every student out of that category's share.
+///   Here the weights are used only when those of the scored categories add
+///   up to 100; otherwise the AI's own total stands.
 /// - A score below the maximum was raised to full credit whenever the
 ///   feedback's wording was not recognised as critical. Here it is raised
 ///   only when every requirement is marked Correct
@@ -134,12 +139,13 @@ fn parse_batch(
             .collect());
     };
     let results = validate_batch_results(&items, students, max_score, weighting, rules)?;
+    let whole = matches!(rules, Rules::Corrected);
     Ok(results
         .into_iter()
         .zip(&items)
         .map(|(result, item)| CheckedResult {
             result,
-            score_given: has_score(item, weighting, max_score),
+            score_given: has_score(item, weighting, max_score, whole),
         })
         .collect())
 }
@@ -172,9 +178,14 @@ fn batch_items(text: &str) -> Option<Vec<Json>> {
 
 /// Whether `item` carries a score [`final_score`] can use, as opposed to
 /// falling back to zero.
-fn has_score(item: &Json, weighting: Option<&CategoryWeighting>, max_score: f64) -> bool {
+fn has_score(
+    item: &Json,
+    weighting: Option<&CategoryWeighting>,
+    max_score: f64,
+    whole: bool,
+) -> bool {
     let weighted =
-        weighting.and_then(|w| weighted_score(item.get("criterion_scores"), w, max_score));
+        weighting.and_then(|w| weighted_score(item.get("criterion_scores"), w, max_score, whole));
     let plain = item.get("score").parse_float();
     weighted.is_some() || (!plain.is_nan() && plain >= 0.0)
 }
@@ -318,7 +329,8 @@ fn validate_batch_results(
         .iter()
         .zip(students)
         .map(|(item, student)| {
-            let score = final_score(item, max_score, weighting);
+            let whole = matches!(rules, Rules::Corrected);
+            let score = final_score(item, max_score, weighting, whole);
             let raw_feedback = match item.get("feedback") {
                 Json::Array(parts) => Json::join(parts, "\n"),
                 other if other.is_truthy() => other.to_js_string(),
@@ -350,7 +362,7 @@ fn clamp_single_result(
     if matches!(parsed, Json::Null) {
         return None;
     }
-    let score = final_score(parsed, max_score, weighting);
+    let score = final_score(parsed, max_score, weighting, false);
     let raw_feedback = match parsed.get("feedback") {
         Json::String(text) => js::trim(text),
         other if other.is_truthy() => return None,
@@ -369,9 +381,14 @@ fn clamp_single_result(
 }
 
 /// The item's score on the rubric's real scale, capped and snapped.
-fn final_score(item: &Json, max_score: f64, weighting: Option<&CategoryWeighting>) -> f64 {
+fn final_score(
+    item: &Json,
+    max_score: f64,
+    weighting: Option<&CategoryWeighting>,
+    whole: bool,
+) -> f64 {
     let weighted =
-        weighting.and_then(|w| weighted_score(item.get("criterion_scores"), w, max_score));
+        weighting.and_then(|w| weighted_score(item.get("criterion_scores"), w, max_score, whole));
     let score = weighted.unwrap_or_else(|| {
         let out_of_ten = item.get("score").parse_float();
         let out_of_ten = if out_of_ten.is_nan() || out_of_ten < 0.0 {
@@ -384,16 +401,27 @@ fn final_score(item: &Json, max_score: f64, weighting: Option<&CategoryWeighting
     snap_score(if score > max_score { max_score } else { score }, max_score)
 }
 
+/// How far from 100 the weights of the scored categories may add up and still
+/// count as the whole grade. Equal thirds add up to 99.9 or 100.1.
+const WHOLE_WEIGHT_TOLERANCE: f64 = 0.5;
+
 /// The percentage-weighted total of per-category scores:
 /// `sum(score / category max * weight% / 100) * max_score`. `None` if no
 /// category has both a usable score and a weight.
+///
+/// With `whole`, also `None` unless the weights of the categories that were
+/// scored add up to 100. The original adds up whichever categories it can
+/// match, so a reply that names only one of five scores the student out of a
+/// fifth of the points.
 fn weighted_score(
     criterion_scores: &Json,
     weighting: &CategoryWeighting,
     max_score: f64,
+    whole: bool,
 ) -> Option<f64> {
     let mut fraction = 0.0;
     let mut counted = false;
+    let mut weight_used = 0.0;
     for (category, value) in criterion_scores.entries() {
         let raw = value.parse_float();
         if raw.is_nan() || raw < 0.0 {
@@ -409,6 +437,10 @@ fn weighted_score(
             .map_or(10.0, |&points| js::or_number(points, 10.0));
         fraction += (raw / category_max) * (weight_percent / 100.0);
         counted = true;
+        weight_used += weight_percent;
+    }
+    if whole && (weight_used - 100.0).abs() > WHOLE_WEIGHT_TOLERANCE {
+        return None;
     }
     counted.then_some(fraction * max_score)
 }

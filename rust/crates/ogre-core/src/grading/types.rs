@@ -162,6 +162,25 @@ impl Rubric {
             max_points: (!max_points.is_empty()).then_some(max_points),
         })
     }
+
+    /// [`Self::category_weighting`] with every weight under the name the
+    /// prompts ask the AI to report its category by, which is the category
+    /// without a "(5 pts)" suffix.
+    ///
+    /// The Electron app looks weights up by the category as it is written,
+    /// so on a rubric whose categories name their points the weights never
+    /// take part in a score. This is for weights that are meant to.
+    pub fn category_weighting_by_reported_name(&self) -> Option<CategoryWeighting> {
+        let weighting = self.category_weighting()?;
+        Some(CategoryWeighting {
+            weights: weighting
+                .weights
+                .iter()
+                .map(|(category, weight)| (super::prompts::criterion_name(category), *weight))
+                .collect(),
+            ..weighting
+        })
+    }
 }
 
 /// A rubric's maximum score, which saved rubrics store as either a number or a

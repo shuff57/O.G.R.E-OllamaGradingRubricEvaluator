@@ -22,6 +22,10 @@ pub use grading::{
 };
 pub use grading::{Verdict, feedback_verdicts, score_from_verdicts};
 pub use rubric::{
+    CategoryShare, category_shares, category_weight_problem, names_category_weights,
+    with_category_weight, with_equal_category_weights, without_category_weights,
+};
+pub use rubric::{
     DEFAULT_WEIGHT_MODE, RowType, RubricCriterion, WeightValidation, auto_fill_weights,
     criteria_to_text, editable_rubric_text, equalize_weights, extract_model_text,
     full_credit_points, grading_text, has_unsaved_changes, is_allocation_criterion,

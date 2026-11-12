@@ -18,6 +18,13 @@ pub const MIN_SWEEP_STUDENTS: usize = 5;
 pub struct GradeOptions {
     /// Where each student's score comes from.
     pub score_source: ScoreSource,
+    /// Match category weights to the AI's per-category scores by the name
+    /// the prompt asks for, which leaves out a "(4 pts)" at the end of a
+    /// category. Off, such a category's weight never takes part in a score
+    /// and the AI's own total is used, as in the Electron app. Turn it on
+    /// for weights the rubric text itself names
+    /// ([`PreparedRubric::weights_given`](crate::PreparedRubric::weights_given)).
+    pub weights_by_name: bool,
     /// Students per request. Zero means the default of 30; other values are
     /// clamped to [`MIN_CHUNK_SIZE`]..=[`MAX_CHUNK_SIZE`].
     pub chunk_size: usize,
@@ -39,6 +46,7 @@ impl Default for GradeOptions {
     fn default() -> Self {
         Self {
             score_source: ScoreSource::Ai,
+            weights_by_name: false,
             chunk_size: DEFAULT_PROMPT_CHUNK_SIZE,
             sweep: SweepMode::Auto,
             outlier_review: false,

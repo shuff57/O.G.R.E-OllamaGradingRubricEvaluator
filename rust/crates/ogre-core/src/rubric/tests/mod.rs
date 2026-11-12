@@ -4,6 +4,7 @@
 mod editing;
 mod golden;
 mod utils_test;
+mod weights;
 
 use super::*;
 use crate::grading::{Rubric, WeightMode};
