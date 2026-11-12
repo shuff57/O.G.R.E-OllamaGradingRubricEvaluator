@@ -15,7 +15,8 @@ use ogre_app::{
     Suggestion, Worker, WriteReport,
 };
 use ogre_core::{
-    FeedbackField, FeedbackKind, GradingPage, Position, Rubric, ScoreField, Submission,
+    FeedbackField, FeedbackKind, GradingPage, Position, QuestionLink, Rubric, ScoreField,
+    Submission,
 };
 use ogre_harness::sites::Mismatch;
 use ogre_harness::sites::generic::{PageMap, SiteProfile, StudentSample, UrlRule};
@@ -146,6 +147,7 @@ fn read() -> Event {
         site: "MyOpenMath",
         saves_on_write: false,
         manual_save: false,
+        questions: Vec::new(),
     })
 }
 
@@ -685,6 +687,7 @@ fn a_site_ogre_cannot_confirm_saving_on_is_saved_by_the_teacher() {
             site: "Practice LMS",
             saves_on_write: false,
             manual_save: true,
+            questions: Vec::new(),
         }))
         .unwrap();
     stand_in.events.send(graded()).unwrap();
@@ -1006,4 +1009,133 @@ fn a_suggestion_left_undecided_does_not_change_what_is_written() {
         writes[1].feedback.as_ref().unwrap().html,
         "<p>Remy, clear and correct.</p>"
     );
+}
+
+fn question(number: usize, title: &str, current: bool) -> QuestionLink {
+    QuestionLink {
+        number: number.to_string(),
+        title: title.into(),
+        url: format!("https://www.myopenmath.com/course/gradeallq2.php?cid=1&aid=2&qid={number}"),
+        current,
+    }
+}
+
+/// The page as read, as question `current` of three.
+fn read_question(current: usize) -> Event {
+    let Event::Read(mut report) = read() else {
+        unreachable!()
+    };
+    report.questions = (1..=3)
+        .map(|n| question(n, &format!("Part {n}"), n == current))
+        .collect();
+    Event::Read(report)
+}
+
+#[test]
+fn moves_between_the_questions_of_an_assignment() {
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    // A site that lists no questions gets no question bar.
+    stand_in.events.send(read()).unwrap();
+    frames(&mut harness);
+    assert!(harness.query_by_label("Next question").is_none());
+
+    stand_in.events.send(read_question(2)).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Question 2 of 3");
+    harness.get_by_label("Part 2");
+
+    // Nothing is at stake, so the next question opens at once.
+    harness.get_by_label("Next question").click();
+    frames(&mut harness);
+    let Command::GoTo(address) = sent(&mut stand_in) else {
+        panic!("expected to go to the next question");
+    };
+    assert!(address.ends_with("qid=3"), "{address}");
+    harness.get_by_label("Opening the question…");
+
+    // The last question has nowhere further to go.
+    stand_in.events.send(read_question(3)).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Question 3 of 3");
+    harness.get_by_label("Next question").click();
+    frames(&mut harness);
+    assert!(stand_in.commands.try_recv().is_err());
+    harness.get_by_label("Previous question").click();
+    frames(&mut harness);
+    let Command::GoTo(address) = sent(&mut stand_in) else {
+        panic!("expected to go to the previous question");
+    };
+    assert!(address.ends_with("qid=2"), "{address}");
+}
+
+#[test]
+fn leaving_a_question_with_unwritten_grades_is_asked_about_first() {
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    stand_in.events.send(read_question(1)).unwrap();
+    stand_in.events.send(graded()).unwrap();
+    frames(&mut harness);
+
+    harness.get_by_label("Next question").click();
+    frames(&mut harness);
+    assert!(stand_in.commands.try_recv().is_err(), "nothing moves yet");
+    harness.get_by_label("2 proposed grades have not been written. Leaving drops them.");
+    shot(&mut harness, "16-leaving-a-question");
+
+    harness.get_by_label("Stay here").click();
+    frames(&mut harness);
+    assert!(harness.query_by_label("Leave this question").is_none());
+    assert!(stand_in.commands.try_recv().is_err());
+    harness.get_by_label("Fill in 2 grades");
+
+    harness.get_by_label("Next question").click();
+    frames(&mut harness);
+    harness.get_by_label("Leave this question").click();
+    frames(&mut harness);
+    let Command::GoTo(address) = sent(&mut stand_in) else {
+        panic!("expected to go to the next question");
+    };
+    assert!(address.ends_with("qid=2"), "{address}");
+}
+
+#[test]
+fn leaving_with_grades_filled_in_but_not_saved_is_asked_about_first() {
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    stand_in.events.send(read_question(1)).unwrap();
+    stand_in.events.send(graded()).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Fill in 2 grades").click();
+    frames(&mut harness);
+    sent(&mut stand_in);
+    let mut filled = page();
+    filled.submissions[1].scores[0].raw = "6".into();
+    filled.submissions[3].scores[0].raw = "8.5".into();
+    stand_in
+        .events
+        .send(Event::Written(WriteReport {
+            written: vec![1, 3],
+            failed: vec![],
+            mismatches: vec![],
+            page: Some(filled.clone()),
+        }))
+        .unwrap();
+    frames(&mut harness);
+
+    harness.get_by_label("Next question").click();
+    frames(&mut harness);
+    assert!(stand_in.commands.try_recv().is_err());
+    harness.get_by_label("Grades are filled in on the page but not saved. Leaving loses them.");
+
+    // Once saved there is nothing to lose, and the way is clear.
+    harness.get_by_label("Save on MyOpenMath").click();
+    frames(&mut harness);
+    assert!(matches!(sent(&mut stand_in), Command::Save));
+    stand_in.events.send(Event::Saved(Some(filled))).unwrap();
+    frames(&mut harness);
+    assert!(harness.query_by_label("Leave this question").is_none());
+    harness.get_by_label("Next question").click();
+    frames(&mut harness);
+    assert!(matches!(sent(&mut stand_in), Command::GoTo(_)));
 }

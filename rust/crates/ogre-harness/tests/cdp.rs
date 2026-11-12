@@ -175,3 +175,35 @@ where
     }
     results
 }
+
+/// A page with unsaved changes asks "Leave site?" once the teacher has
+/// clicked in it, and Chrome holds the navigation until that is answered.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs Chrome installed"]
+async fn navigating_away_from_a_page_that_asks_to_stay_still_arrives() {
+    use ogre_harness::{InputDriver, PageDriver};
+
+    let profile_dir = profile("leave");
+    let chrome = launch(&profile_dir).await;
+    let page = chrome
+        .open("data:text/html,<title>one</title><body style='height:100vh'>changes")
+        .await
+        .unwrap();
+    page.eval(
+        "window.addEventListener('beforeunload', (e) => { e.preventDefault(); e.returnValue = 'x'; }), 1",
+    )
+    .await
+    .unwrap();
+    // The prompt only appears on a page the user has interacted with.
+    page.click_at(40.0, 40.0).await.unwrap();
+
+    let started = Instant::now();
+    page.navigate("data:text/html,<title>two</title>arrived")
+        .await
+        .unwrap();
+    assert_eq!(page.eval("document.title").await.unwrap(), "two");
+    assert!(started.elapsed() < Duration::from_secs(10));
+
+    chrome.close().await.unwrap();
+    let _ = std::fs::remove_dir_all(&profile_dir);
+}

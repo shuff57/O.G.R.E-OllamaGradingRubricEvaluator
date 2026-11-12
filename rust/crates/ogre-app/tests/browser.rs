@@ -144,6 +144,31 @@ fn a_read_straight_after_opening_waits_for_the_page_to_arrive() {
     };
     assert_eq!(read.page.submissions.len(), 5);
     assert!(read.page.url.ends_with("/fixtures/imathas-gradeallq2.html"));
+    assert!(read.questions.is_empty(), "a saved page links to no list");
+
+    // Going to another question moves the tab that was read, without
+    // opening a new one, and reads it.
+    let (event, _) = ask(
+        &worker,
+        &woken,
+        Command::GoTo("https://example.com/".into()),
+    );
+    assert!(
+        matches!(&event, Event::Failed(m) if m.contains("does not know the grading page")),
+        "{event:?}"
+    );
+    let (event, _) = ask(
+        &worker,
+        &woken,
+        Command::GoTo(fixture("late/imathas-gradeallq2.html")),
+    );
+    let Event::Read(read) = event else {
+        panic!("expected students, got {event:?}");
+    };
+    assert_eq!(read.page.submissions.len(), 5);
+    // The page that was gone to is the one later writes will go to.
+    let (event, _) = ask(&worker, &woken, Command::Write(vec![]));
+    assert!(matches!(event, Event::Written(_)), "{event:?}");
 
     drop(worker);
     let _ = std::fs::remove_dir_all(&data_dir);

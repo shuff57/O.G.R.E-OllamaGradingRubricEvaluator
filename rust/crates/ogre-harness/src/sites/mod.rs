@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use ogre_core::{GradeWrite, GradingPage, Rubric, format_score};
+use ogre_core::{GradeWrite, GradingPage, QuestionLink, Rubric, format_score};
 
 use crate::{PageDriver, Result};
 
@@ -38,6 +38,13 @@ pub trait SiteAdapter: Send + Sync {
 
     /// Stores what was written, and returns once the site has confirmed it.
     async fn save(&self, page: &dyn PageDriver) -> Result<()>;
+
+    /// The questions of the assignment the page belongs to, in the site's
+    /// order, for moving from one question to the next. Changes nothing.
+    /// Empty where the site has no such list or the adapter cannot read it.
+    async fn questions(&self, _page: &dyn PageDriver) -> Result<Vec<QuestionLink>> {
+        Ok(Vec::new())
+    }
 }
 
 /// What a write left on the page, read back straight afterwards.

@@ -2,7 +2,8 @@
 
 use async_trait::async_trait;
 use ogre_core::{
-    FeedbackField, GradeWrite, GradingPage, Position, Rubric, ScoreField, Submission, format_score,
+    FeedbackField, GradeWrite, GradingPage, Position, QuestionLink, Rubric, ScoreField, Submission,
+    format_score,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -15,6 +16,7 @@ const EXTRACT_SCRIPT: &str = include_str!("imathas_extract.js");
 const RUBRIC_SCRIPT: &str = include_str!("imathas_rubric.js");
 const WRITE_SCRIPT: &str = include_str!("imathas_write.js");
 const SAVE_SCRIPT: &str = include_str!("imathas_save.js");
+const QUESTIONS_SCRIPT: &str = include_str!("imathas_questions.js");
 
 /// How long to wait for the site to confirm a save.
 const SAVE_TIMEOUT_MS: u32 = 30_000;
@@ -102,6 +104,17 @@ impl SiteAdapter for IMathAs {
                 outcome.error.unwrap_or_else(|| "no reason given".into())
             )))
         }
+    }
+
+    async fn questions(&self, page: &dyn PageDriver) -> Result<Vec<QuestionLink>> {
+        let questions: Vec<QuestionLink> = eval_as(page, QUESTIONS_SCRIPT).await?;
+        // A list that does not hold this page's question cannot say what
+        // comes before or after it.
+        Ok(if questions.iter().any(|q| q.current) {
+            questions
+        } else {
+            Vec::new()
+        })
     }
 }
 

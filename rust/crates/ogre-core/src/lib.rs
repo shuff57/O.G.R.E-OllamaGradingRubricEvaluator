@@ -32,7 +32,9 @@ pub use rubric::{
     NEUTRAL_LENIENCY, RewriteError, accept_rewrite, leniency_rewrite_prompt,
     restore_category_weights,
 };
-pub use submission::{FeedbackField, FeedbackKind, GradingPage, Position, ScoreField, Submission};
+pub use submission::{
+    FeedbackField, FeedbackKind, GradingPage, Position, QuestionLink, ScoreField, Submission,
+};
 pub use write::{
     FeedbackWrite, GradeWrite, ScoreWrite, SkipReason, WritePolicy, format_score, plan_write,
     skip_reason,

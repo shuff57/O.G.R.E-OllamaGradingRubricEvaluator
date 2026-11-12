@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use ogre_core::{GradeWrite, GradingPage, Rubric, StudentWork};
+use ogre_core::{GradeWrite, GradingPage, QuestionLink, Rubric, StudentWork};
 use ogre_grader::CancelFlag;
 use ogre_harness::cdp::{CdpPage, Chrome, LaunchOptions};
 use ogre_harness::sites::generic::{
@@ -40,6 +40,8 @@ pub enum Command {
     /// Open this address in a new tab.
     Open(String),
     ReadStudents,
+    /// Take the grading tab to another question's page and read it.
+    GoTo(String),
     ListModels {
         provider: ProviderSettings,
         api_key: Option<String>,
@@ -142,6 +144,8 @@ pub struct ReadReport {
     /// True if OGRE cannot tell whether this site saved, so the teacher has
     /// to save in the browser themselves.
     pub manual_save: bool,
+    /// The assignment's questions, where the site lists them. Empty otherwise.
+    pub questions: Vec<QuestionLink>,
 }
 
 /// A mapping that was just worked out and proven on the open page.
@@ -365,6 +369,7 @@ struct Target {
 }
 
 /// The adapter chosen for a page, and what is known about saving with it.
+#[derive(Clone)]
 struct Chosen {
     page: CdpPage,
     adapter: Arc<dyn SiteAdapter>,
@@ -428,7 +433,27 @@ impl Task {
                 self.opened_at = Some(Instant::now());
                 Ok(Event::Opened(url))
             }
-            Command::ReadStudents => self.read().await,
+            Command::ReadStudents => self.read(None).await,
+            Command::GoTo(url) => {
+                // Only to a page OGRE was built for: a mapped site's pages
+                // are proven one by one, by a read the teacher asks for.
+                let adapter = self.sites.adapter_for(&url).ok_or_else(|| {
+                    Error::Page("OGRE does not know the grading page at that address.".into())
+                })?;
+                let page = self
+                    .target
+                    .as_ref()
+                    .map(|target| target.page.clone())
+                    .ok_or_else(|| Error::Page("Read the students first.".into()))?;
+                page.navigate(&url).await?;
+                self.opened_at = Some(Instant::now());
+                self.read(Some(Chosen {
+                    page,
+                    adapter,
+                    manual_save: false,
+                }))
+                .await
+            }
             Command::ListModels { provider, api_key } => Ok(Event::Models(
                 grading::list_models(&provider, api_key.as_deref()).await,
             )),
@@ -486,14 +511,18 @@ impl Task {
             .ok_or_else(|| Error::Browser("Chrome is not running".into()))
     }
 
-    async fn read(&mut self) -> Result<Event> {
+    /// Reads `tab`, or the grading page that is open when none is named.
+    async fn read(&mut self, tab: Option<Chosen>) -> Result<Event> {
         // A grading page that was only just opened may not be there yet: a
         // site can show its sign-in page at that address for a moment and
         // then bring up what was asked for. Keep trying for a little while
         // after an open. A page OGRE does not know at all fails at once.
         let settled = self.opened_at.map(|at| at + SETTLE_TIME);
         let (chosen, read) = loop {
-            let chosen = self.grading_page().await?;
+            let chosen = match &tab {
+                Some(chosen) => chosen.clone(),
+                None => self.grading_page().await?,
+            };
             match chosen.adapter.read_page(&chosen.page).await {
                 Ok(read) => break (chosen, read),
                 Err(error) if settled.is_none_or(|settled| Instant::now() >= settled) => {
@@ -511,10 +540,14 @@ impl Task {
             .read_rubric(&page)
             .await
             .map_err(|error| error.to_string());
+        // Moving between questions is a convenience; a list that cannot be
+        // read must not stop the students from being read.
+        let questions = adapter.questions(&page).await.unwrap_or_default();
         self.audit
             .begin(&read, adapter.name(), adapter.saves_on_write());
         let report = ReadReport {
             rubric,
+            questions,
             site: adapter.name(),
             saves_on_write: adapter.saves_on_write(),
             manual_save,

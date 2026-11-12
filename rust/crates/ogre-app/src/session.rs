@@ -5,9 +5,9 @@
 //! written can be tested directly.
 
 use ogre_core::{
-    DEFAULT_WEIGHT_MODE, GradeWrite, GradingPage, Rubric, SkipReason, StudentWork, Submission,
-    WritePolicy, editable_rubric_text, format_score, plan_write, rubric_from_edited_text,
-    skip_reason, unread_rubric_lines,
+    DEFAULT_WEIGHT_MODE, GradeWrite, GradingPage, QuestionLink, Rubric, SkipReason, StudentWork,
+    Submission, WritePolicy, editable_rubric_text, format_score, plan_write,
+    rubric_from_edited_text, skip_reason, unread_rubric_lines,
 };
 use ogre_harness::feedback;
 
@@ -29,6 +29,8 @@ pub struct Session {
     pub rubric_text: String,
     rubric_text_as_read: String,
     outline: RubricOutline,
+    /// The assignment's questions, where the site lists them.
+    pub questions: Vec<QuestionLink>,
     /// The teacher's own instructions to the grader for this question.
     pub instructions: String,
     /// One per student, in page order.
@@ -41,6 +43,17 @@ pub struct Session {
     pub unsaved: bool,
     /// The last write left the page in a state that must not be saved.
     pub blocked: bool,
+}
+
+/// A question's place in its assignment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Place<'a> {
+    /// From 1.
+    pub number: usize,
+    pub total: usize,
+    pub current: &'a QuestionLink,
+    pub previous: Option<&'a QuestionLink>,
+    pub next: Option<&'a QuestionLink>,
 }
 
 /// What the rubric text holds, as the grader will read it.
@@ -211,6 +224,7 @@ impl Session {
                 .map(|_| Row::default())
                 .collect(),
             instructions: rubric.custom_instructions.clone().unwrap_or_default(),
+            questions: read.questions,
             outline: RubricOutline::of(&rubric, &rubric_text),
             rubric_text_as_read: rubric_text.clone(),
             rubric_text,
@@ -314,6 +328,45 @@ impl Session {
 
     fn plan(&self, submission: &Submission, proposal: &Proposal) -> Result<GradeWrite, SkipReason> {
         plan_write(submission, proposal.score, &proposal.html(), self.policy)
+    }
+
+    /// Where this question sits among the assignment's questions: its place
+    /// from 1, how many there are, and the questions before and after it.
+    /// `None` where the site gave no list.
+    pub fn place(&self) -> Option<Place<'_>> {
+        let at = self.questions.iter().position(|q| q.current)?;
+        Some(Place {
+            number: at + 1,
+            total: self.questions.len(),
+            current: &self.questions[at],
+            previous: at.checked_sub(1).map(|i| &self.questions[i]),
+            next: self.questions.get(at + 1),
+        })
+    }
+
+    /// What would be lost by leaving this page now, if anything.
+    pub fn at_stake(&self) -> Option<String> {
+        if self.unsaved {
+            return Some(
+                "Grades are filled in on the page but not saved. Leaving loses them.".into(),
+            );
+        }
+        let waiting = self
+            .rows
+            .iter()
+            .filter(|row| row.note.is_none() && row.proposal.is_some())
+            .count();
+        (waiting > 0).then(|| {
+            format!(
+                "{} not been written. Leaving drops {}.",
+                if waiting == 1 {
+                    "1 proposed grade has".to_owned()
+                } else {
+                    format!("{waiting} proposed grades have")
+                },
+                if waiting == 1 { "it" } else { "them" }
+            )
+        })
     }
 
     /// How many proposals have a suggestion the teacher has not decided on.
@@ -564,6 +617,7 @@ mod tests {
             site: "MyOpenMath",
             saves_on_write: false,
             manual_save: false,
+            questions: Vec::new(),
         })
     }
 
@@ -599,6 +653,7 @@ mod tests {
             site: "MyOpenMath",
             saves_on_write: false,
             manual_save: false,
+            questions: Vec::new(),
         });
         assert_eq!(s.edited_rubric_text(), None);
         let as_read = s.rubric_outline().clone();
@@ -748,6 +803,7 @@ mod tests {
             site: "MyOpenMath",
             saves_on_write: false,
             manual_save: false,
+            questions: Vec::new(),
         });
         let names: Vec<_> = s.to_grade().into_iter().map(|w| w.name).collect();
         assert_eq!(names, ["Diaz, Remy"], "Kai was given a zero on purpose");

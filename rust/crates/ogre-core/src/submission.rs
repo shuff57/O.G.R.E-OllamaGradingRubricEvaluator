@@ -17,6 +17,18 @@ pub struct Position {
     pub total: usize,
 }
 
+/// Another question of the same assignment, and where its grading page is.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuestionLink {
+    /// The question's number as the site shows it: "3".
+    pub number: String,
+    /// The question's name, where the site gives one.
+    pub title: String,
+    pub url: String,
+    /// True for the question the page that was read belongs to.
+    pub current: bool,
+}
+
 /// One student's answer to one question, with the fields a grader would fill.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Submission {

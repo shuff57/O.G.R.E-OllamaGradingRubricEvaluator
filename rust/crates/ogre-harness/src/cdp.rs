@@ -257,7 +257,29 @@ impl CdpPage {
     async fn load(&self, url: &str) -> Result<Option<String>> {
         // Listening starts before the request so no event can be missed.
         let mut events = self.conn.listen(&self.session);
-        let reply = self.call("Page.navigate", json!({ "url": url })).await?;
+        // A page with unsaved changes may ask "Leave site?", and Chrome then
+        // holds the navigation until someone answers. Whoever calls this has
+        // decided to leave, so the answer is yes.
+        let mut early = Vec::new();
+        let reply = {
+            let navigate = self.call("Page.navigate", json!({ "url": url }));
+            tokio::pin!(navigate);
+            loop {
+                tokio::select! {
+                    reply = &mut navigate => break reply?,
+                    Some(event) = events.recv() => {
+                        if event.method == "Page.javascriptDialogOpening"
+                            && event.params["type"] == "beforeunload"
+                        {
+                            let leave = json!({ "accept": true });
+                            let _ = self.call("Page.handleJavaScriptDialog", leave).await;
+                        } else {
+                            early.push(event);
+                        }
+                    }
+                }
+            }
+        };
         if let Some(reason) = reply["errorText"].as_str() {
             return Ok(Some(reason.to_owned()));
         }
@@ -268,7 +290,16 @@ impl CdpPage {
         };
         let mut committed = false;
         let loaded = async {
-            while let Some(event) = events.recv().await {
+            let mut early = early.into_iter();
+            loop {
+                // What arrived while the request was pending comes first.
+                let event = match early.next() {
+                    Some(event) => event,
+                    None => match events.recv().await {
+                        Some(event) => event,
+                        None => break,
+                    },
+                };
                 let params = &event.params;
                 match event.method.as_str() {
                     "Page.frameNavigated" if params["frame"]["id"] == frame => {

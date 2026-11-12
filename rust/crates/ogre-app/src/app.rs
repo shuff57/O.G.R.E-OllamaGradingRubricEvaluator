@@ -35,6 +35,9 @@ pub struct OgreApp {
     busy: Option<Busy>,
     address: String,
     session: Option<Session>,
+    /// Another question the teacher asked to go to while work on this one
+    /// would be lost, waiting for them to confirm.
+    leaving: Option<String>,
     selected: Option<usize>,
     error: Option<String>,
     /// Good news from the last step, such as a confirmed save.
@@ -100,6 +103,11 @@ enum Action {
     StartChrome,
     Open(String),
     Read,
+    /// Take the grading tab to another question of the assignment.
+    GoTo(String),
+    /// The same, but work would be lost: ask first.
+    AskToLeave(String),
+    Stay,
     Grade,
     StopGrading,
     Write,
@@ -109,7 +117,9 @@ enum Action {
     KeyChanged,
     Show(Screen),
     ToggleDark,
-    MapPage { with_ai: bool },
+    MapPage {
+        with_ai: bool,
+    },
     SaveMapping,
     DiscardMapping,
     DeleteProfile(String),
@@ -157,6 +167,7 @@ impl OgreApp {
             busy: None,
             address: String::new(),
             session: None,
+            leaving: None,
             selected: None,
             error: None,
             notice: None,
@@ -192,6 +203,7 @@ impl OgreApp {
                 Event::Opened(url) => self.address = url,
                 Event::Read(read) => {
                     self.selected = None;
+                    self.leaving = None;
                     self.session = Some(Session::new(read));
                 }
                 Event::Models(Ok(models)) => {
@@ -271,6 +283,12 @@ impl OgreApp {
             Action::StartChrome => self.send(Command::StartChrome, "Starting Chrome…"),
             Action::Open(address) => self.send(Command::Open(address), "Opening the page…"),
             Action::Read => self.send(Command::ReadStudents, "Reading the page…"),
+            Action::GoTo(address) => {
+                self.leaving = None;
+                self.send(Command::GoTo(address), "Opening the question…");
+            }
+            Action::AskToLeave(address) => self.leaving = Some(address),
+            Action::Stay => self.leaving = None,
             Action::Grade => {
                 let Some(session) = &self.session else { return };
                 let request = GradeRequest {
@@ -633,6 +651,50 @@ impl OgreApp {
         }
     }
 
+    /// Where this question sits in its assignment, and the way to the ones
+    /// beside it. Nothing is drawn where the site lists no questions.
+    fn question_bar(&self, ui: &mut egui::Ui, session: &Session, actions: &mut Vec<Action>) {
+        let Some(place) = session.place() else { return };
+        let idle = self.busy.is_none();
+        ui.horizontal_wrapped(|ui| {
+            kit::section_label(
+                ui,
+                &format!("Question {} of {}", place.current.number, place.total),
+            );
+            if !place.current.title.is_empty() {
+                ui.label(theme::body(&place.current.title));
+            }
+            for (label, to) in [
+                ("Previous question", place.previous),
+                ("Next question", place.next),
+            ] {
+                if kit::ghost(ui, label, idle && to.is_some()).clicked()
+                    && let Some(to) = to
+                {
+                    // Work that would be lost is named before anything moves.
+                    actions.push(match session.at_stake() {
+                        Some(_) => Action::AskToLeave(to.url.clone()),
+                        None => Action::GoTo(to.url.clone()),
+                    });
+                }
+            }
+        });
+        if let Some(address) = &self.leaving
+            && let Some(at_stake) = session.at_stake()
+        {
+            kit::icon_line(ui, icon::WARNING, &at_stake, pal().warn);
+            ui.horizontal(|ui| {
+                if kit::ghost(ui, "Leave this question", idle).clicked() {
+                    actions.push(Action::GoTo(address.clone()));
+                }
+                if kit::ghost(ui, "Stay here", true).clicked() {
+                    actions.push(Action::Stay);
+                }
+            });
+        }
+        ui.add_space(4.0);
+    }
+
     fn rubric(ui: &mut egui::Ui, session: &mut Session) {
         let heading = theme::strong("Rubric").size(ty::BODY);
         egui::CollapsingHeader::new(heading)
@@ -937,6 +999,7 @@ impl OgreApp {
                 ui.add_space(4.0);
                 kit::card().show(ui, |ui| {
                     ui.set_width(ui.available_width());
+                    self.question_bar(ui, session, actions);
                     Self::rubric(ui, session);
                     ui.add_space(2.0);
                     self.stages(ui, session, actions);

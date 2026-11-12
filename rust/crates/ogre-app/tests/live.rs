@@ -23,6 +23,9 @@
 //!   OGRE_LIVE_LOGIN_MINUTES  how long to wait for a login (default 15)
 //!   OGRE_LIVE_ONLY_READ=1    stop once the students are read; nothing is
 //!                            sent to the AI service
+//!   OGRE_LIVE_QUESTIONS=1    after reading, go to the previous question and
+//!                            back with the app's own buttons, reading each;
+//!                            nothing is graded or written
 //!
 //! # A supervised first write
 //!
@@ -522,6 +525,43 @@ fn a_real_page_is_read_and_graded_without_writing() {
         }
     }
     println!("READ: the students were read");
+    if std::env::var_os("OGRE_LIVE_QUESTIONS").is_some() {
+        let place = |w: &Window| {
+            w.query_by(|node| node.label().is_some_and(|l| l.starts_with("Question ")))
+                .and_then(|node| node.accesskit_node().label())
+        };
+        let students = |w: &Window| {
+            w.query_by(|node| {
+                node.label()
+                    .is_some_and(|l| l.contains(" with no points yet"))
+            })
+            .and_then(|node| node.accesskit_node().label())
+            .map(|label| label.split(" · ").nth(1).unwrap_or_default().to_owned())
+        };
+        let Some(start) = place(&window) else {
+            println!("NO QUESTION LIST: the app shows no question bar for this page");
+            return;
+        };
+        println!("AT: {start} | {}", students(&window).unwrap_or_default());
+        for button in ["Previous question", "Next question"] {
+            let before = place(&window);
+            window.get_by_label(button).click();
+            window.run_steps(2);
+            wait_until(
+                &mut window,
+                "the other question to be read",
+                Duration::from_secs(90),
+                |w| !shows(w, "Opening the question") && place(w) != before,
+            );
+            println!(
+                "{button}: {} | {}",
+                place(&window).unwrap_or_default(),
+                students(&window).unwrap_or_default()
+            );
+        }
+        assert_eq!(place(&window), Some(start), "back where it started");
+        return;
+    }
     if std::env::var_os("OGRE_LIVE_ONLY_READ").is_some() {
         return;
     }
