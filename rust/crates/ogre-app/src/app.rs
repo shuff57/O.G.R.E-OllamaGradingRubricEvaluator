@@ -18,7 +18,7 @@ use crate::settings::{
     old_app_provider,
 };
 use crate::theme::{self, icon, pal, ty};
-use crate::worker::{Command, Event, GradeRequest, MapReport, Worker};
+use crate::worker::{Command, Event, ExamplesRequest, GradeRequest, MapReport, Worker};
 
 pub struct OgreApp {
     worker: Worker,
@@ -91,6 +91,9 @@ struct Busy {
     started: Option<f64>,
 }
 
+/// How much of the window's height an open rubric may take before it scrolls.
+const RUBRIC_SHARE_OF_WINDOW: f32 = 0.42;
+
 /// Work shorter than this shows no clock.
 const CLOCK_AFTER_SECONDS: f64 = 5.0;
 
@@ -113,6 +116,8 @@ enum Action {
     Stay,
     Grade,
     StopGrading,
+    /// Have the AI write scoring examples for the rubric.
+    WriteExamples,
     Write,
     Save,
     ListModels,
@@ -267,6 +272,12 @@ impl OgreApp {
                         session.apply_grades(report);
                     }
                 }
+                Event::Examples(Ok(examples)) => {
+                    if let Some(session) = &mut self.session {
+                        session.examples_arrived(examples);
+                    }
+                }
+                Event::Examples(Err(problem)) => self.error = Some(problem),
                 Event::Written(report) => {
                     if let Some(session) = &mut self.session {
                         let written = report.written.len();
@@ -340,9 +351,28 @@ impl OgreApp {
                     api_key: self.key(),
                     leniency: engine_leniency(self.settings.leniency),
                     score_from_verdicts: self.settings.score_from_verdicts,
+                    examples: session.examples_for_grading(),
                     cancel: CancelFlag::new(),
                 };
                 self.send(Command::Grade(Box::new(request)), "Grading…");
+            }
+            Action::WriteExamples => {
+                let leniency = self.settings.leniency;
+                let Some(session) = &mut self.session else {
+                    return;
+                };
+                session.examples_asked_for(leniency);
+                let request = ExamplesRequest {
+                    rubric: session.rubric_for_grading(),
+                    rubric_text: session.edited_rubric_text(),
+                    provider: self.settings.provider.clone(),
+                    api_key: self.key(),
+                    leniency: engine_leniency(leniency),
+                };
+                self.send(
+                    Command::WriteExamples(Box::new(request)),
+                    "Writing scoring examples…",
+                );
             }
             Action::StopGrading => self.worker.cancel(),
             Action::Write => {
@@ -584,10 +614,12 @@ impl OgreApp {
         let to_write = session.write_count();
         let has_key = !self.api_key.trim().is_empty();
         let provider_problem = self.settings.provider.problem(has_key);
+        let weight_problem = session.rubric_outline().weight_problem.clone();
 
         ui.horizontal_wrapped(|ui| {
             let label = format!("Grade {}", count(to_grade, "student"));
-            let enabled = idle && to_grade > 0 && provider_problem.is_none();
+            let enabled =
+                idle && to_grade > 0 && provider_problem.is_none() && weight_problem.is_none();
             if self.step_button(ui, Step::Grade, &label, enabled) {
                 actions.push(Action::Grade);
             }
@@ -619,6 +651,13 @@ impl OgreApp {
         });
         if let Some(problem) = provider_problem {
             kit::icon_line(ui, icon::WARNING, problem, pal().warn);
+        } else if let Some(problem) = &weight_problem {
+            kit::icon_line(
+                ui,
+                icon::WARNING,
+                &format!("{problem} Open the rubric to put it right."),
+                pal().warn,
+            );
         } else if to_grade == 0 && session.rows.iter().all(|row| row.proposal.is_none()) {
             ui.label(theme::muted(
                 "There are no ungraded written answers on this page.",
@@ -737,69 +776,200 @@ impl OgreApp {
         ui.add_space(4.0);
     }
 
-    fn rubric(ui: &mut egui::Ui, session: &mut Session) {
+    /// How much each category counts, for the teacher to set. Nothing is
+    /// drawn for a rubric with fewer than two categories.
+    fn weights(ui: &mut egui::Ui, session: &mut Session) {
+        let outline = session.rubric_outline();
+        if outline.shares.len() < 2 && !outline.weights_written {
+            return;
+        }
+        kit::section_label(ui, "Category weights");
+        if !outline.weights_written {
+            let mut set = false;
+            ui.horizontal_wrapped(|ui| {
+                ui.label(theme::muted("None are set, so the categories count alike."));
+                set = kit::ghost(ui, "Set category weights", true).clicked();
+            });
+            if let Some(problem) = &outline.weight_problem {
+                kit::icon_line(ui, icon::WARNING, problem, pal().warn);
+            }
+            if set {
+                session.share_weights_equally();
+            }
+            return;
+        }
+
+        let shares = outline.shares.clone();
+        let problem = outline.weight_problem.clone();
+        let mut change = None;
+        egui::Grid::new("category-weights")
+            .num_columns(2)
+            .spacing([22.0, 6.0])
+            .show(ui, |ui| {
+                for share in &shares {
+                    let name = ui.label(theme::body(&share.category));
+                    let mut weight = share.weight;
+                    let field = ui
+                        .add(
+                            egui::DragValue::new(&mut weight)
+                                .range(0.0..=100.0)
+                                .speed(0.5)
+                                .max_decimals(1)
+                                // "50%", not "50.0%".
+                                .custom_formatter(|weight, _| format_score(weight))
+                                .suffix("%"),
+                        )
+                        .labelled_by(name.id);
+                    if field.changed() {
+                        change = Some((share.category.clone(), weight));
+                    }
+                    ui.end_row();
+                }
+            });
+        match &problem {
+            Some(problem) => kit::icon_line(ui, icon::WARNING, problem, pal().warn),
+            None => {
+                ui.label(theme::muted(
+                    "They add up to 100%. Each category counts for its share of the student\u{2019}s score.",
+                ));
+            }
+        }
+        let (mut equal, mut remove) = (false, false);
+        ui.horizontal_wrapped(|ui| {
+            equal = kit::ghost(ui, "Share equally", true).clicked();
+            remove = kit::ghost(ui, "Remove the weights", true).clicked();
+        });
+        if let Some((category, weight)) = change {
+            session.set_category_weight(&category, weight);
+        }
+        if equal {
+            session.share_weights_equally();
+        }
+        if remove {
+            session.remove_weights();
+        }
+    }
+
+    /// Example answers at four levels that the grader is shown: written by
+    /// the AI when the teacher asks, and theirs to edit.
+    fn examples(&self, ui: &mut egui::Ui, session: &mut Session, actions: &mut Vec<Action>) {
+        let has_key = !self.api_key.trim().is_empty();
+        let can_ask = self.busy.is_none()
+            && self.settings.provider.problem(has_key).is_none()
+            && session.rubric_outline().requirements > 0;
+        let label = kit::section_label(ui, "Scoring examples");
+        if session.examples.trim().is_empty() {
+            ui.label(theme::muted(
+                "Optional. The AI writes a short example answer at four levels for this \
+                 question, and the grader is shown them so it knows what each level looks \
+                 like. You can edit them before grading.",
+            ));
+            if kit::ghost(ui, "Write scoring examples", can_ask).clicked() {
+                actions.push(Action::WriteExamples);
+            }
+            return;
+        }
+        ui.add(
+            egui::TextEdit::multiline(&mut session.examples)
+                .desired_rows(6)
+                .desired_width(f32::INFINITY),
+        )
+        .labelled_by(label.id);
+        if session.examples_out_of_date(self.settings.leniency) {
+            kit::icon_line(
+                ui,
+                icon::WARNING,
+                "The rubric or the leniency has changed since these were written.",
+                pal().warn,
+            );
+        }
+        let mut remove = false;
+        ui.horizontal_wrapped(|ui| {
+            if kit::ghost(ui, "Write them again", can_ask).clicked() {
+                actions.push(Action::WriteExamples);
+            }
+            remove = kit::ghost(ui, "Remove the examples", true).clicked();
+        });
+        if remove {
+            session.remove_examples();
+        }
+    }
+
+    fn rubric(&self, ui: &mut egui::Ui, session: &mut Session, actions: &mut Vec<Action>) {
         let heading = theme::strong("Rubric").size(ty::BODY);
+        // An open rubric is as tall as the window allows and scrolls beyond
+        // that, so the steps below it never leave the screen.
+        let room = (ui.ctx().content_rect().height() * RUBRIC_SHARE_OF_WINDOW).max(160.0);
         egui::CollapsingHeader::new(heading)
             .id_salt("rubric")
             .show(ui, |ui| {
-                if let Some(problem) = &session.rubric_problem {
-                    kit::icon_line(
-                        ui,
-                        icon::WARNING,
-                        &format!("The rubric could not be read from the page: {problem}"),
-                        pal().warn,
-                    );
-                }
-                ui.label(theme::meta(format!(
-                    "Out of {}",
-                    format_score(session.rubric.max_score_value())
-                )));
-                if let Some(prompt) = session
-                    .rubric
-                    .essay_prompt
-                    .as_deref()
-                    .filter(|p| !p.is_empty())
-                {
-                    kit::section_label(ui, "Question");
-                    ui.label(theme::body(prompt));
-                }
+                egui::ScrollArea::vertical()
+                    .id_salt("rubric-body")
+                    .max_height(room)
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        if let Some(problem) = &session.rubric_problem {
+                            kit::icon_line(
+                                ui,
+                                icon::WARNING,
+                                &format!("The rubric could not be read from the page: {problem}"),
+                                pal().warn,
+                            );
+                        }
+                        ui.label(theme::meta(format!(
+                            "Out of {}",
+                            format_score(session.rubric.max_score_value())
+                        )));
+                        if let Some(prompt) = session
+                            .rubric
+                            .essay_prompt
+                            .as_deref()
+                            .filter(|p| !p.is_empty())
+                        {
+                            kit::section_label(ui, "Question");
+                            ui.label(theme::body(prompt));
+                        }
 
-                let label = kit::section_label(ui, "Requirements and model response");
-                let editor = ui
-                    .add(
-                        egui::TextEdit::multiline(&mut session.rubric_text)
-                            .hint_text(RUBRIC_HINT)
-                            .desired_rows(6)
-                            .desired_width(f32::INFINITY),
-                    )
-                    .labelled_by(label.id);
-                if editor.changed() {
-                    session.rubric_text_changed();
-                }
-                let mut restore = false;
-                ui.horizontal_wrapped(|ui| {
-                    if session.rubric_edited() {
-                        kit::marker_pill(ui, "Edited");
-                    }
-                    ui.label(theme::muted(rubric_summary(session.rubric_outline())));
-                    if session.rubric_edited() {
-                        restore = kit::ghost(ui, "Use the page\u{2019}s rubric", true).clicked();
-                    }
-                });
-                if restore {
-                    session.restore_rubric_text();
-                }
-                if let Some(warning) = unread_warning(&session.rubric_outline().unread) {
-                    kit::icon_line(ui, icon::WARNING, &warning, pal().warn);
-                }
-                let label = kit::section_label(ui, "Your instructions to the grader");
-                ui.add(
-                    egui::TextEdit::multiline(&mut session.instructions)
-                        .hint_text("Optional. For example: accept answers given in words.")
-                        .desired_rows(2)
-                        .desired_width(f32::INFINITY),
-                )
-                .labelled_by(label.id);
+                        let label = kit::section_label(ui, "Requirements and model response");
+                        let editor = ui
+                            .add(
+                                egui::TextEdit::multiline(&mut session.rubric_text)
+                                    .hint_text(RUBRIC_HINT)
+                                    .desired_rows(6)
+                                    .desired_width(f32::INFINITY),
+                            )
+                            .labelled_by(label.id);
+                        if editor.changed() {
+                            session.rubric_text_changed();
+                        }
+                        let mut restore = false;
+                        ui.horizontal_wrapped(|ui| {
+                            if session.rubric_edited() {
+                                kit::marker_pill(ui, "Edited");
+                            }
+                            ui.label(theme::muted(rubric_summary(session.rubric_outline())));
+                            if session.rubric_edited() {
+                                restore =
+                                    kit::ghost(ui, "Use the page\u{2019}s rubric", true).clicked();
+                            }
+                        });
+                        if restore {
+                            session.restore_rubric_text();
+                        }
+                        if let Some(warning) = unread_warning(&session.rubric_outline().unread) {
+                            kit::icon_line(ui, icon::WARNING, &warning, pal().warn);
+                        }
+                        Self::weights(ui, session);
+                        let label = kit::section_label(ui, "Your instructions to the grader");
+                        ui.add(
+                            egui::TextEdit::multiline(&mut session.instructions)
+                                .hint_text("Optional. For example: accept answers given in words.")
+                                .desired_rows(2)
+                                .desired_width(f32::INFINITY),
+                        )
+                        .labelled_by(label.id);
+                        self.examples(ui, session, actions);
+                    });
             });
     }
 
@@ -1042,7 +1212,7 @@ impl OgreApp {
                 kit::card().show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     self.question_bar(ui, session, actions);
-                    Self::rubric(ui, session);
+                    self.rubric(ui, session, actions);
                     ui.add_space(2.0);
                     self.stages(ui, session, actions);
                 });
@@ -1344,6 +1514,13 @@ impl OgreApp {
                 .id_salt(("past-rubric", session.at))
                 .show(ui, |ui| {
                     ui.label(theme::body(rubric));
+                });
+        }
+        if let Some(examples) = &session.examples {
+            egui::CollapsingHeader::new(theme::strong("Scoring examples used").size(ty::BODY))
+                .id_salt(("past-examples", session.at))
+                .show(ui, |ui| {
+                    ui.label(theme::body(examples));
                 });
         }
         ui.horizontal_wrapped(|ui| {

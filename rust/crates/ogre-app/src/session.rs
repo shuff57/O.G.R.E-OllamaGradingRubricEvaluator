@@ -5,9 +5,11 @@
 //! written can be tested directly.
 
 use ogre_core::{
-    DEFAULT_WEIGHT_MODE, GradeWrite, GradingPage, QuestionLink, Rubric, SkipReason, StudentWork,
-    Submission, WritePolicy, editable_rubric_text, format_score, plan_write,
-    rubric_from_edited_text, skip_reason, unread_rubric_lines,
+    CategoryShare, DEFAULT_WEIGHT_MODE, GradeWrite, GradingPage, QuestionLink, Rubric, SkipReason,
+    StudentWork, Submission, WritePolicy, category_shares, category_weight_problem,
+    editable_rubric_text, format_score, names_category_weights, plan_write,
+    rubric_from_edited_text, skip_reason, unread_rubric_lines, with_category_weight,
+    with_equal_category_weights, without_category_weights,
 };
 use ogre_harness::feedback;
 
@@ -33,6 +35,13 @@ pub struct Session {
     pub questions: Vec<QuestionLink>,
     /// The teacher's own instructions to the grader for this question.
     pub instructions: String,
+    /// Example answers at four levels, shown to the grader beside the
+    /// rubric. Written by the AI when asked, and the teacher's to edit.
+    pub examples: String,
+    /// What the examples in hand were written for.
+    examples_basis: Option<ExamplesBasis>,
+    /// What the examples being written now are for.
+    examples_asked: Option<ExamplesBasis>,
     /// One per student, in page order.
     pub rows: Vec<Row>,
     pub policy: WritePolicy,
@@ -56,14 +65,29 @@ pub struct Place<'a> {
     pub next: Option<&'a QuestionLink>,
 }
 
+/// The rubric and leniency a set of scoring examples was written for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ExamplesBasis {
+    rubric_text: String,
+    leniency: u8,
+}
+
 /// What the rubric text holds, as the grader will read it.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct RubricOutline {
     pub categories: usize,
     pub requirements: usize,
     pub exemplar: bool,
     /// Lines the teacher wrote that grading will not use.
     pub unread: Vec<String>,
+    /// The named categories and how much of the grade each is.
+    pub shares: Vec<CategoryShare>,
+    /// True when the text itself gives the weights. They then decide how
+    /// the scores for the categories add up.
+    pub weights_written: bool,
+    /// Why the weights would give wrong scores, if they would. Grading
+    /// waits until this is put right.
+    pub weight_problem: Option<String>,
 }
 
 impl RubricOutline {
@@ -76,6 +100,9 @@ impl RubricOutline {
             requirements: checklist.chain(targets).sum(),
             exemplar: rubric.model_text.is_some(),
             unread: unread_rubric_lines(text),
+            shares: category_shares(text),
+            weights_written: names_category_weights(text),
+            weight_problem: category_weight_problem(text),
         }
     }
 }
@@ -224,6 +251,9 @@ impl Session {
                 .map(|_| Row::default())
                 .collect(),
             instructions: rubric.custom_instructions.clone().unwrap_or_default(),
+            examples: String::new(),
+            examples_basis: None,
+            examples_asked: None,
             questions: read.questions,
             outline: RubricOutline::of(&rubric, &rubric_text),
             rubric_text_as_read: rubric_text.clone(),
@@ -275,6 +305,60 @@ impl Session {
     /// What the grader will find in the rubric text.
     pub fn rubric_outline(&self) -> &RubricOutline {
         &self.outline
+    }
+
+    /// Makes `category` count for `weight` percent of the grade. Every
+    /// category's weight is then written in the rubric text.
+    pub fn set_category_weight(&mut self, category: &str, weight: f64) {
+        self.rubric_text = with_category_weight(&self.rubric_text, category, weight);
+        self.rubric_text_changed();
+    }
+
+    /// Writes the same weight for every category into the rubric text.
+    pub fn share_weights_equally(&mut self) {
+        self.rubric_text = with_equal_category_weights(&self.rubric_text);
+        self.rubric_text_changed();
+    }
+
+    /// Takes the weights out of the rubric text.
+    pub fn remove_weights(&mut self) {
+        self.rubric_text = without_category_weights(&self.rubric_text);
+        self.rubric_text_changed();
+    }
+
+    /// Call when the AI is asked to write scoring examples, with the
+    /// leniency setting it is asked at.
+    pub fn examples_asked_for(&mut self, leniency: u8) {
+        self.examples_asked = Some(ExamplesBasis {
+            rubric_text: self.rubric_text.clone(),
+            leniency,
+        });
+    }
+
+    /// Takes the scoring examples the AI wrote.
+    pub fn examples_arrived(&mut self, examples: String) {
+        self.examples = examples;
+        self.examples_basis = self.examples_asked.take();
+    }
+
+    pub fn remove_examples(&mut self) {
+        self.examples.clear();
+        self.examples_basis = None;
+    }
+
+    /// True when the examples were written for a rubric or a leniency that
+    /// has since changed, so they may no longer show what the levels are.
+    pub fn examples_out_of_date(&self, leniency: u8) -> bool {
+        !self.examples.trim().is_empty()
+            && self.examples_basis.as_ref().is_some_and(|basis| {
+                basis.rubric_text != self.rubric_text || basis.leniency != leniency
+            })
+    }
+
+    /// The scoring examples to show the grader, if there are any.
+    pub fn examples_for_grading(&self) -> Option<String> {
+        let examples = self.examples.trim();
+        (!examples.is_empty()).then(|| examples.to_owned())
     }
 
     /// A zero with feedback is a grade someone gave, not a blank.
@@ -779,6 +863,79 @@ mod tests {
         assert_eq!(*s.rubric_outline(), RubricOutline::default());
     }
 
+    fn two_categories() -> Session {
+        let rubric: Rubric = serde_json::from_value(serde_json::json!({
+            "checklistItems": [
+                { "category": "Concept(4 pts)", "items": ["Names the theorem"] },
+                { "category": "Writing(2 pts)", "items": ["Uses sentences"] },
+            ],
+        }))
+        .unwrap();
+        Session::new(ReadReport {
+            page: page(),
+            rubric: Ok(rubric),
+            site: "MyOpenMath",
+            saves_on_write: false,
+            manual_save: false,
+            questions: Vec::new(),
+        })
+    }
+
+    #[test]
+    fn weights_are_written_into_the_rubric_only_when_the_teacher_sets_them() {
+        let mut s = two_categories();
+        let outline = s.rubric_outline();
+        assert!(!outline.weights_written && outline.weight_problem.is_none());
+        assert_eq!(outline.shares.len(), 2);
+        assert!(!s.rubric_edited());
+
+        s.share_weights_equally();
+        assert!(s.rubric_edited());
+        assert!(s.rubric_outline().weights_written);
+        assert!(s.rubric_text.starts_with("## Concept(4 pts) [50%]\n"));
+
+        s.set_category_weight("Concept(4 pts)", 70.0);
+        assert_eq!(
+            s.rubric_outline().weight_problem.as_deref(),
+            Some("The category weights add up to 120%. They must add up to 100%.")
+        );
+        s.set_category_weight("Writing(2 pts)", 30.0);
+        assert_eq!(s.rubric_outline().weight_problem, None);
+        let weights: Vec<f64> = s.rubric_outline().shares.iter().map(|c| c.weight).collect();
+        assert_eq!(weights, [70.0, 30.0]);
+
+        s.remove_weights();
+        assert!(!s.rubric_outline().weights_written);
+        assert!(!s.rubric_edited(), "the text is the page's again");
+    }
+
+    #[test]
+    fn scoring_examples_go_stale_when_what_they_were_written_for_changes() {
+        let mut s = two_categories();
+        assert_eq!(s.examples_for_grading(), None);
+        assert!(!s.examples_out_of_date(50));
+
+        s.examples_asked_for(50);
+        s.examples_arrived("Excellent: all of it.\n\nMinimal: a guess.\n".into());
+        assert_eq!(
+            s.examples_for_grading().as_deref(),
+            Some("Excellent: all of it.\n\nMinimal: a guess.")
+        );
+        assert!(!s.examples_out_of_date(50));
+        // The teacher's own edits to the examples do not make them stale.
+        s.examples.push_str("Adequate: most of it.");
+        assert!(!s.examples_out_of_date(50));
+
+        assert!(s.examples_out_of_date(80), "another leniency");
+        s.rubric_text.push_str("\nNames the units");
+        s.rubric_text_changed();
+        assert!(s.examples_out_of_date(50), "another rubric");
+
+        s.remove_examples();
+        assert_eq!(s.examples_for_grading(), None);
+        assert!(!s.examples_out_of_date(50));
+    }
+
     #[test]
     fn only_ungraded_students_with_a_response_are_sent_for_grading() {
         let mut s = session();
@@ -959,6 +1116,7 @@ mod tests {
         let mut s = session();
         s.apply_grades(GradeReport {
             rubric_text: None,
+            examples: None,
             rows: vec![graded(1, 7.0, "<p>a</p>")],
             warnings: vec!["Chunk 2 was not graded.".into()],
             cancelled: true,

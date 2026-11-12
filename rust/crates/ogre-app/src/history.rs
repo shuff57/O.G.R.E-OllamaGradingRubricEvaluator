@@ -23,6 +23,8 @@ pub struct PastSession {
     pub students: Vec<PastStudent>,
     /// The rubric text the last grading run used.
     pub rubric: Option<String>,
+    /// The scoring examples the last grading run showed the grader.
+    pub examples: Option<String>,
     /// What went wrong while writing, one line per student.
     pub problems: Vec<String>,
     pub end: SessionEnd,
@@ -119,6 +121,8 @@ impl PastSession {
                 (Some("graded"), Some(session)) => {
                     if let Some(rubric) = event["rubric"].as_str() {
                         session.rubric = Some(rubric.to_owned());
+                        // What that run was shown, which may be nothing.
+                        session.examples = event["examples"].as_str().map(str::to_owned);
                     }
                     for result in list(&event["results"]) {
                         let Some(student) = student_at(session, &result["index"]) else {
@@ -325,6 +329,21 @@ mod tests {
         );
         let touched: Vec<_> = session.touched().map(|s| s.name.as_str()).collect();
         assert_eq!(touched, ["Brook, Kai", "Cruz, Jo"]);
+    }
+
+    #[test]
+    fn the_examples_shown_to_the_grader_are_those_of_the_last_run() {
+        let with_examples = GRADED.replace(
+            r#""cancelled":false"#,
+            r#""examples":"Excellent: all of it.","cancelled":false"#,
+        );
+        let session = PastSession::from_record(100, &record(&[READ, &with_examples])).unwrap();
+        assert_eq!(session.examples.as_deref(), Some("Excellent: all of it."));
+
+        // Graded again without any: the record of the last run stands.
+        let session =
+            PastSession::from_record(100, &record(&[READ, &with_examples, GRADED])).unwrap();
+        assert_eq!(session.examples, None);
     }
 
     #[test]

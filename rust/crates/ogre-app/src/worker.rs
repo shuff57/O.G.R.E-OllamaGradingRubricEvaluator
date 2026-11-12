@@ -19,7 +19,7 @@ use tokio::sync::mpsc;
 
 use crate::agent_run::{self, AgentAnswer, AgentLine, AgentQuestion, AgentRequest, AgentSummary};
 use crate::audit::AuditLog;
-use crate::grading::{self, GradeReport};
+use crate::grading::{self, GradeReport, PreparedCache};
 use crate::history::{self, PastSession};
 use crate::profiles::{ProfileStore, ProfileSummary};
 use crate::settings::ProviderSettings;
@@ -47,6 +47,8 @@ pub enum Command {
         api_key: Option<String>,
     },
     Grade(Box<GradeRequest>),
+    /// Have the AI write example answers at four levels for a rubric.
+    WriteExamples(Box<ExamplesRequest>),
     /// Put these grades into the page that was read. Saves nothing.
     Write(Vec<GradeWrite>),
     /// Have the site store what was written.
@@ -82,8 +84,24 @@ pub struct GradeRequest {
     pub leniency: i16,
     /// Work each score out from the feedback's verdicts.
     pub score_from_verdicts: bool,
+    /// Example answers at four levels to show the grader, if the teacher
+    /// has any.
+    pub examples: Option<String>,
     /// Stops the run after the AI call in flight.
     pub cancel: CancelFlag,
+}
+
+/// What scoring examples are written from. No student's work is part of it.
+#[derive(Debug)]
+pub struct ExamplesRequest {
+    /// The rubric as read from the page.
+    pub rubric: Rubric,
+    /// The rubric text as the teacher left it, if they changed it.
+    pub rubric_text: Option<String>,
+    pub provider: ProviderSettings,
+    pub api_key: Option<String>,
+    /// On the grading engine's scale, as in [`GradeRequest::leniency`].
+    pub leniency: i16,
 }
 
 /// News from the worker. Every command ends with exactly one event for which
@@ -99,6 +117,8 @@ pub enum Event {
         total: usize,
     },
     Graded(GradeReport),
+    /// The scoring examples the AI wrote, or why there are none.
+    Examples(std::result::Result<String, String>),
     WriteProgress {
         done: usize,
         total: usize,
@@ -327,6 +347,7 @@ fn run(
             opened: None,
             opened_at: None,
             target: None,
+            prepared: PreparedCache::default(),
             audit: AuditLog::new(data_dir),
             report: Reporter {
                 outbox: outbox.clone(),
@@ -391,6 +412,7 @@ struct Task {
     target: Option<Target>,
     audit: AuditLog,
     report: Reporter,
+    prepared: PreparedCache,
 }
 
 impl Task {
@@ -461,13 +483,16 @@ impl Task {
                 let total = request.students.len();
                 let report = self.report.clone();
                 let cancel = request.cancel.clone();
-                let graded = grading::grade(*request, &cancel, move |done| {
+                let graded = grading::grade(*request, &cancel, &mut self.prepared, move |done| {
                     report.progress(Event::GradeProgress { done, total });
                 })
                 .await;
                 self.audit.graded(&graded);
                 Ok(Event::Graded(graded))
             }
+            Command::WriteExamples(request) => Ok(Event::Examples(
+                grading::write_examples(*request, &mut self.prepared).await,
+            )),
             Command::Write(writes) => self.write(writes).await,
             Command::Save => {
                 let target = self.target().await?;

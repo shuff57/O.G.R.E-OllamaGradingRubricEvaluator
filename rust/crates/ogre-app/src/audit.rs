@@ -62,6 +62,7 @@ impl AuditLog {
         self.append(json!({
             "event": "graded",
             "rubric": report.rubric_text,
+            "examples": report.examples,
             "cancelled": report.cancelled,
             "warnings": report.warnings,
             "results": report.rows.iter().map(|row| match &row.outcome {

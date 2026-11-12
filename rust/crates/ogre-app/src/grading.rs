@@ -1,14 +1,73 @@
 //! Runs the grading engine for the window and boils its outcome down to what
 //! the review table shows.
 
+use ogre_core::Rubric;
 use ogre_grader::{
-    BatchOutcome, CancelFlag, GradeEvent, GradeOptions, GradeStatus, ScoreSource, grade_batch,
-    prepare_edited_rubric, prepare_rubric,
+    BatchOutcome, CancelFlag, GradeEvent, GradeOptions, GradeStatus, PreparedRubric, ScoreSource,
+    generate_anchor_examples, grade_batch, prepare_edited_rubric, prepare_rubric,
 };
 use ogre_llm::HttpProvider;
 
 use crate::settings::ProviderSettings;
-use crate::worker::GradeRequest;
+use crate::worker::{ExamplesRequest, GradeRequest};
+
+/// The heading the grader's prompt knows scoring examples by.
+const EXAMPLES_HEADING: &str = "SCORING CALIBRATION:";
+
+/// Everything a rubric's preparation depends on.
+#[derive(Debug, Clone, PartialEq)]
+struct Basis {
+    rubric: Rubric,
+    rubric_text: Option<String>,
+    leniency: i16,
+    provider: ProviderSettings,
+}
+
+/// The rubric as it was last prepared for grading. Rewording a rubric for
+/// leniency is the AI's work and comes out differently each time, so the
+/// result is kept: scoring examples and the grading that follows them, and a
+/// second grading run, all use one wording.
+#[derive(Debug, Default)]
+pub struct PreparedCache(Option<(Basis, PreparedRubric)>);
+
+impl PreparedCache {
+    async fn prepare(
+        &mut self,
+        provider: &HttpProvider,
+        rubric: &Rubric,
+        rubric_text: Option<&str>,
+        leniency: i16,
+        settings: &ProviderSettings,
+    ) -> PreparedRubric {
+        let basis = Basis {
+            // The teacher's instructions take no part in the preparation.
+            rubric: Rubric {
+                custom_instructions: None,
+                ..rubric.clone()
+            },
+            rubric_text: rubric_text.map(str::to_owned),
+            leniency,
+            provider: settings.clone(),
+        };
+        if let Some((kept, prepared)) = &self.0
+            && *kept == basis
+        {
+            return prepared.clone();
+        }
+        // What the page gave is shaped the way the teacher's settings ask:
+        // reworded for leniency, with category weights filled in.
+        let prepared = match rubric_text {
+            Some(text) => prepare_edited_rubric(provider, rubric, text, leniency).await,
+            None => prepare_rubric(provider, rubric, leniency).await,
+        };
+        // A rewording that failed is tried again next time.
+        self.0 = prepared
+            .rewrite_problem
+            .is_none()
+            .then(|| (basis, prepared.clone()));
+        prepared
+    }
+}
 
 /// What a grading run produced, one row per student that was sent.
 #[derive(Debug, Default)]
@@ -17,6 +76,8 @@ pub struct GradeReport {
     /// edits, any rewording for leniency and the filling in of weights.
     /// `None` when grading never started.
     pub rubric_text: Option<String>,
+    /// The scoring examples the grader was shown, if any.
+    pub examples: Option<String>,
     pub rows: Vec<GradedRow>,
     pub warnings: Vec<String>,
     pub cancelled: bool,
@@ -57,11 +118,13 @@ pub struct Suggestion {
 pub async fn grade(
     request: GradeRequest,
     cancel: &CancelFlag,
+    cache: &mut PreparedCache,
     mut progress: impl FnMut(usize) + Send,
 ) -> GradeReport {
     let indices: Vec<usize> = request.students.iter().map(|s| s.index).collect();
     let nobody_graded = |reason: String| GradeReport {
         rubric_text: None,
+        examples: None,
         rows: indices
             .iter()
             .map(|&index| GradedRow {
@@ -86,17 +149,31 @@ pub async fn grade(
             progress(done);
         }
     };
-    // What the page gave is first shaped the way the teacher's settings ask:
-    // reworded for leniency, with category weights filled in. The teacher's
-    // own instructions ride along unchanged.
-    let prepared = match &request.rubric_text {
-        Some(text) => {
-            prepare_edited_rubric(&provider, &request.rubric, text, request.leniency).await
-        }
-        None => prepare_rubric(&provider, &request.rubric, request.leniency).await,
-    };
+    let prepared = cache
+        .prepare(
+            &provider,
+            &request.rubric,
+            request.rubric_text.as_deref(),
+            request.leniency,
+            &request.provider,
+        )
+        .await;
     let mut rubric = prepared.rubric;
-    rubric.custom_instructions = request.rubric.custom_instructions.clone();
+    // The teacher's own instructions ride along unchanged, and the scoring
+    // examples after them, the way the Electron app sends its anchors.
+    let examples = request
+        .examples
+        .as_deref()
+        .map(str::trim)
+        .filter(|examples| !examples.is_empty());
+    let instructions = request
+        .rubric
+        .custom_instructions
+        .iter()
+        .cloned()
+        .chain(examples.map(|examples| format!("{EXAMPLES_HEADING}\n{examples}")))
+        .collect::<Vec<_>>();
+    rubric.custom_instructions = (!instructions.is_empty()).then(|| instructions.join("\n\n"));
 
     let options = GradeOptions {
         score_source: if request.score_from_verdicts {
@@ -104,6 +181,8 @@ pub async fn grade(
         } else {
             ScoreSource::Ai
         },
+        // Weights the rubric text names are meant to count.
+        weights_by_name: prepared.weights_given,
         ..GradeOptions::default()
     };
     let outcome = grade_batch(
@@ -119,6 +198,7 @@ pub async fn grade(
         Ok(outcome) => {
             let mut report = report(outcome);
             report.rubric_text = Some(prepared.text);
+            report.examples = examples.map(str::to_owned);
             if let Some(problem) = prepared.rewrite_problem {
                 report.warnings.insert(
                     0,
@@ -187,10 +267,48 @@ fn report(outcome: BatchOutcome) -> GradeReport {
 
     GradeReport {
         rubric_text: None,
+        examples: None,
         rows,
         warnings: outcome.warnings,
         cancelled: outcome.cancelled,
     }
+}
+
+/// Has the AI write an example answer at each of four levels for the
+/// request's rubric, as text for the teacher to read and edit.
+pub async fn write_examples(
+    request: ExamplesRequest,
+    cache: &mut PreparedCache,
+) -> Result<String, String> {
+    let provider = provider(&request.provider, request.api_key.as_deref())?;
+    let prepared = cache
+        .prepare(
+            &provider,
+            &request.rubric,
+            request.rubric_text.as_deref(),
+            request.leniency,
+            &request.provider,
+        )
+        .await;
+    let examples = generate_anchor_examples(
+        &provider,
+        &prepared.rubric,
+        Some(f64::from(request.leniency)),
+    )
+    .await
+    .map_err(|error| format!("The scoring examples could not be written: {error}"))?;
+    let text = examples
+        .iter()
+        .filter(|example| !example.response.is_empty())
+        .map(|example| format!("{}: {}", example.label, example.response))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    if text.is_empty() {
+        return Err(
+            "The AI's reply did not hold the examples that were asked for. Try again.".to_owned(),
+        );
+    }
+    Ok(text)
 }
 
 /// The AI service described by `settings`, ready to be asked.

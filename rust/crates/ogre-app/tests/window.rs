@@ -163,6 +163,7 @@ fn graded() -> Event {
     };
     Event::Graded(GradeReport {
         rubric_text: None,
+        examples: None,
         rows: vec![
             grade(
                 1,
@@ -480,6 +481,7 @@ fn a_running_grade_can_be_stopped_and_failures_are_shown() {
         .events
         .send(Event::Graded(GradeReport {
             rubric_text: None,
+            examples: None,
             rows: vec![GradedRow {
                 index: 1,
                 outcome: Err("grading was cancelled first".into()),
@@ -834,6 +836,7 @@ fn past_sessions() -> Vec<PastSession> {
                 past_student("Diaz, Remy", Some(0.0), 8.5, Some("8.5")),
             ],
             rubric: Some("## Concept [100%]\nMentions standard error (0pts)".into()),
+            examples: Some("Excellent: The margin of error shrinks as n grows.".into()),
             problems: vec![],
             end: SessionEnd::FilledIn,
         },
@@ -845,6 +848,7 @@ fn past_sessions() -> Vec<PastSession> {
             site: None,
             students: vec![past_student("Avery, Sam", None, 9.0, Some("9"))],
             rubric: None,
+            examples: None,
             problems: vec![],
             end: SessionEnd::Saved,
         },
@@ -1191,4 +1195,163 @@ fn the_old_apps_service_and_key_can_be_copied_in_settings() {
     frames(&mut harness);
     harness.get_by_label_contains("settings could not be read");
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Clicks something in the rubric, which scrolls: it is brought into view
+/// first, as the teacher would.
+fn press_in_rubric(harness: &mut Harness<'_, OgreApp>, label: &str) {
+    harness.get_by_label(label).scroll_to_me();
+    frames(harness);
+    harness.get_by_label(label).click();
+    frames(harness);
+}
+
+/// A page whose first requirement stands outside every category.
+fn read_with_a_loose_requirement() -> Event {
+    let rubric: Rubric = serde_json::from_value(serde_json::json!({
+        "maxScore": 10,
+        "checklistItems": [
+            { "items": ["Names the units"] },
+            { "category": "Concept", "items": ["Mentions standard error"] },
+            { "category": "Communication", "items": ["Uses course vocabulary"] }
+        ],
+        "rubricItems": [],
+    }))
+    .unwrap();
+    Event::Read(ReadReport {
+        page: page(),
+        rubric: Ok(rubric),
+        site: "MyOpenMath",
+        saves_on_write: false,
+        manual_save: false,
+        questions: Vec::new(),
+    })
+}
+
+#[test]
+fn category_weights_are_set_in_the_rubric_and_sent_with_it() {
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    stand_in.events.send(read()).unwrap();
+    frames(&mut harness);
+
+    harness.get_by_label("Rubric").click();
+    frames(&mut harness);
+    harness.get_by_label("None are set, so the categories count alike.");
+    assert!(harness.query_by_label_contains("They add up to").is_none());
+
+    press_in_rubric(&mut harness, "Set category weights");
+    harness.get_by_label("Edited");
+    harness.get_by_label_contains("They add up to 100%.");
+    shot(&mut harness, "17-category-weights");
+
+    harness.get_by_label("Grade 2 students").click();
+    frames(&mut harness);
+    let Command::Grade(request) = sent(&mut stand_in) else {
+        panic!("expected a grading request");
+    };
+    let text = request
+        .rubric_text
+        .expect("the weights are in the rubric that is sent");
+    assert!(text.starts_with("## Concept [50%]\n"), "{text}");
+    assert!(text.contains("\n## Communication [50%]\n"), "{text}");
+    stand_in.events.send(graded()).unwrap();
+    frames(&mut harness);
+
+    // Without the weights the rubric is the page's own again.
+    press_in_rubric(&mut harness, "Remove the weights");
+    assert!(harness.query_by_label("Edited").is_none());
+    harness.get_by_label("None are set, so the categories count alike.");
+}
+
+#[test]
+fn grading_waits_while_the_weights_would_give_wrong_scores() {
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    stand_in
+        .events
+        .send(read_with_a_loose_requirement())
+        .unwrap();
+    frames(&mut harness);
+
+    // Said where the teacher is looking, without opening the rubric.
+    harness.get_by_label_contains("are in no category");
+    harness.get_by_label("Grade 2 students").click();
+    frames(&mut harness);
+    assert!(
+        stand_in.commands.try_recv().is_err(),
+        "nothing is graded against weights that do not add up"
+    );
+    shot(&mut harness, "18-weights-do-not-add-up");
+}
+
+#[test]
+fn scoring_examples_are_written_when_asked_and_shown_to_the_grader() {
+    const EXAMPLES: &str = "Excellent: The margin of error shrinks as n grows, because the standard error is s over root n.\n\nMinimal: It gets smaller.";
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    stand_in.events.send(read()).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Rubric").click();
+    frames(&mut harness);
+
+    press_in_rubric(&mut harness, "Write scoring examples");
+    let Command::WriteExamples(request) = sent(&mut stand_in) else {
+        panic!("expected a request for scoring examples");
+    };
+    assert_eq!(request.rubric_text, None, "the page's rubric, unedited");
+    assert_eq!(request.rubric.checklist_items.len(), 2);
+    // The setting's default, on the grading engine's scale.
+    assert_eq!(request.leniency, 0);
+    harness.get_by_label_contains("Writing scoring examples");
+
+    stand_in
+        .events
+        .send(Event::Examples(Ok(EXAMPLES.into())))
+        .unwrap();
+    frames(&mut harness);
+    assert!(harness.query_by_label("Write scoring examples").is_none());
+    harness.get_by_label("Write them again");
+    assert!(
+        harness
+            .query_by_label_contains("has changed since these were written")
+            .is_none()
+    );
+    shot(&mut harness, "19-scoring-examples");
+
+    harness.get_by_label("Grade 2 students").click();
+    frames(&mut harness);
+    let Command::Grade(request) = sent(&mut stand_in) else {
+        panic!("expected a grading request");
+    };
+    assert_eq!(request.examples.as_deref(), Some(EXAMPLES));
+    stand_in.events.send(graded()).unwrap();
+    frames(&mut harness);
+
+    // A second try that fails says so and leaves the examples in hand alone.
+    press_in_rubric(&mut harness, "Write them again");
+    assert!(matches!(sent(&mut stand_in), Command::WriteExamples(_)));
+    stand_in
+        .events
+        .send(Event::Examples(Err(
+            "The scoring examples could not be written: the service timed out".into(),
+        )))
+        .unwrap();
+    frames(&mut harness);
+    harness.get_by_label_contains("the service timed out");
+    harness.get_by_label("Write them again");
+
+    // Removed, they are not sent.
+    press_in_rubric(&mut harness, "Remove the examples");
+    harness.get_by_label("Write scoring examples");
+    harness
+        .get_by_label("Include students who are already graded")
+        .click();
+    frames(&mut harness);
+    harness.get_by_label("Grade 3 students").click();
+    frames(&mut harness);
+    let Command::Grade(request) = sent(&mut stand_in) else {
+        panic!("expected a grading request");
+    };
+    assert_eq!(request.examples, None);
 }
