@@ -184,7 +184,8 @@ impl OgreApp {
         ui.add_space(4.0);
         ui.label(theme::muted(
             "A guide is used whenever the agent is on its site. A skill of your own is a \
-             Markdown file in your skills folder, used on every task while it is ticked.",
+             Markdown file in your skills folder. While it is ticked, the agent uses it on \
+             every task and the grader is given it on the Grade screen.",
         ));
         ui.horizontal_wrapped(|ui| {
             let free = idle && !self.agent.running && self.agent.editing.is_none();

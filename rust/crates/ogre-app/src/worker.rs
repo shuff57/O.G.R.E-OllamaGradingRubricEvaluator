@@ -130,6 +130,9 @@ pub struct GradeRequest {
     /// Example answers at four levels to show the grader, if the teacher
     /// has any.
     pub examples: Option<String>,
+    /// The skills the teacher has switched on or off, by id. Those that are
+    /// on and are not a guide to a site are given to the grader.
+    pub skill_choices: std::collections::BTreeMap<String, bool>,
     /// Stops the run after the AI call in flight.
     pub cancel: CancelFlag,
 }
@@ -155,7 +158,7 @@ pub enum Event {
     /// Chrome was shut down because the teacher asked.
     ChromeClosed,
     Opened(String),
-    Read(ReadReport),
+    Read(Box<ReadReport>),
     Models(std::result::Result<Vec<String>, String>),
     GradeProgress {
         done: usize,
@@ -227,6 +230,9 @@ pub struct ReadReport {
     pub questions: Vec<QuestionLink>,
     /// The rubrics the teacher has saved, to use in place of the page's.
     pub saved_rubrics: Vec<SavedRubric>,
+    /// What the agent knows, for the Grade screen to say which of the
+    /// teacher's skills the grader will be given.
+    pub skills: Vec<SkillSummary>,
 }
 
 /// A rubric that did not come from the page's own rubric: read from a
@@ -643,9 +649,16 @@ impl Task {
                 let total = request.students.len();
                 let report = self.report.clone();
                 let cancel = request.cancel.clone();
-                let graded = grading::grade(*request, &cancel, &mut self.prepared, move |done| {
-                    report.progress(Event::GradeProgress { done, total });
-                })
+                let skills = agent_run::grading_skills(&self.skills_dir, &request.skill_choices);
+                let graded = grading::grade(
+                    *request,
+                    &skills,
+                    &cancel,
+                    &mut self.prepared,
+                    move |done| {
+                        report.progress(Event::GradeProgress { done, total });
+                    },
+                )
                 .await;
                 self.audit.graded(&graded);
                 Ok(Event::Graded(graded))
@@ -818,6 +831,7 @@ impl Task {
             manual_save,
             page: read.clone(),
             saved_rubrics: self.rubrics.all(),
+            skills: agent_run::list_skills(&self.skills_dir),
         };
         // The page that was read is the one the teacher will want to see.
         self.show(&page);
@@ -826,7 +840,7 @@ impl Task {
             adapter,
             url: read.url,
         });
-        Ok(Event::Read(report))
+        Ok(Event::Read(Box::new(report)))
     }
 
     /// The tab to read and the adapter for it: a site OGRE was built for, or

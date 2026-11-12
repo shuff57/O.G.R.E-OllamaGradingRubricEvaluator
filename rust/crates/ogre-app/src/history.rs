@@ -25,6 +25,8 @@ pub struct PastSession {
     pub rubric: Option<String>,
     /// The scoring examples the last grading run showed the grader.
     pub examples: Option<String>,
+    /// The teacher's skills the last grading run gave the grader, by name.
+    pub skills: Vec<String>,
     /// What went wrong while writing, one line per student.
     pub problems: Vec<String>,
     pub end: SessionEnd,
@@ -123,6 +125,9 @@ impl PastSession {
                         session.rubric = Some(rubric.to_owned());
                         // What that run was shown, which may be nothing.
                         session.examples = event["examples"].as_str().map(str::to_owned);
+                        session.skills = list(&event["skills"])
+                            .filter_map(|name| name.as_str().map(str::to_owned))
+                            .collect();
                     }
                     for result in list(&event["results"]) {
                         let Some(student) = student_at(session, &result["index"]) else {
@@ -339,6 +344,17 @@ mod tests {
         );
         let session = PastSession::from_record(100, &record(&[READ, &with_examples])).unwrap();
         assert_eq!(session.examples.as_deref(), Some("Excellent: all of it."));
+
+        assert!(session.skills.is_empty());
+        let with_skills = GRADED.replace(
+            r#""cancelled":false"#,
+            r#""skills":["Late work","Units"],"cancelled":false"#,
+        );
+        let session = PastSession::from_record(100, &record(&[READ, &with_skills])).unwrap();
+        assert_eq!(session.skills, ["Late work", "Units"]);
+        let session =
+            PastSession::from_record(100, &record(&[READ, &with_skills, GRADED])).unwrap();
+        assert!(session.skills.is_empty(), "the last run was given none");
 
         // Graded again without any: the record of the last run stands.
         let session =

@@ -143,7 +143,7 @@ fn rubric() -> Rubric {
 }
 
 fn read() -> Event {
-    Event::Read(ReadReport {
+    Event::Read(Box::new(ReadReport {
         page: page(),
         rubric: Ok(rubric()),
         site: "MyOpenMath",
@@ -151,7 +151,8 @@ fn read() -> Event {
         manual_save: false,
         questions: Vec::new(),
         saved_rubrics: Vec::new(),
-    })
+        skills: Vec::new(),
+    }))
 }
 
 fn graded() -> Event {
@@ -167,6 +168,7 @@ fn graded() -> Event {
     Event::Graded(GradeReport {
         rubric_text: None,
         examples: None,
+        skills: Vec::new(),
         rows: vec![
             grade(
                 1,
@@ -482,6 +484,7 @@ fn a_running_grade_can_be_stopped_and_failures_are_shown() {
         .send(Event::Graded(GradeReport {
             rubric_text: None,
             examples: None,
+            skills: Vec::new(),
             rows: vec![GradedRow {
                 index: 1,
                 outcome: Err("grading was cancelled first".into()),
@@ -683,7 +686,7 @@ fn a_site_ogre_cannot_confirm_saving_on_is_saved_by_the_teacher() {
     stand_in.events.send(Event::ChromeStarted).unwrap();
     stand_in
         .events
-        .send(Event::Read(ReadReport {
+        .send(Event::Read(Box::new(ReadReport {
             page: page(),
             rubric: Ok(rubric()),
             site: "Practice LMS",
@@ -691,7 +694,8 @@ fn a_site_ogre_cannot_confirm_saving_on_is_saved_by_the_teacher() {
             manual_save: true,
             questions: Vec::new(),
             saved_rubrics: Vec::new(),
-        }))
+            skills: Vec::new(),
+        })))
         .unwrap();
     stand_in.events.send(graded()).unwrap();
     frames(&mut harness);
@@ -921,6 +925,7 @@ fn past_sessions() -> Vec<PastSession> {
             ],
             rubric: Some("## Concept [100%]\nMentions standard error (0pts)".into()),
             examples: Some("Excellent: The margin of error shrinks as n grows.".into()),
+            skills: vec!["Late work".into()],
             problems: vec![],
             end: SessionEnd::FilledIn,
         },
@@ -933,6 +938,7 @@ fn past_sessions() -> Vec<PastSession> {
             students: vec![past_student("Avery, Sam", None, 9.0, Some("9"))],
             rubric: None,
             examples: None,
+            skills: Vec::new(),
             problems: vec![],
             end: SessionEnd::Saved,
         },
@@ -985,6 +991,7 @@ fn history_lists_past_sessions_and_shows_one_in_detail() {
     // Proposed and written, side by side.
     assert_eq!(harness.query_all_by_label("8.5").count(), 2);
     harness.get_by_label("Not graded: the AI gave no score");
+    harness.get_by_label("The grader was also given your skill: Late work.");
     assert!(
         harness.query_by_label("Avery, Sam").is_none(),
         "a student nothing happened to is not listed"
@@ -1314,7 +1321,7 @@ fn read_with_a_loose_requirement() -> Event {
         "rubricItems": [],
     }))
     .unwrap();
-    Event::Read(ReadReport {
+    Event::Read(Box::new(ReadReport {
         page: page(),
         rubric: Ok(rubric),
         site: "MyOpenMath",
@@ -1322,7 +1329,8 @@ fn read_with_a_loose_requirement() -> Event {
         manual_save: false,
         questions: Vec::new(),
         saved_rubrics: Vec::new(),
-    })
+        skills: Vec::new(),
+    }))
 }
 
 #[test]
@@ -1484,7 +1492,7 @@ fn read_without_a_rubric(saved_rubrics: Vec<SavedRubric>) -> Event {
     let mut page = page();
     page.url = "https://grades.example.edu/course/7/grade".into();
     page.title = "Grading an essay on sampling".into();
-    Event::Read(ReadReport {
+    Event::Read(Box::new(ReadReport {
         page,
         rubric: Err("this site shows no rubric OGRE can read".into()),
         site: "Example LMS",
@@ -1492,7 +1500,8 @@ fn read_without_a_rubric(saved_rubrics: Vec<SavedRubric>) -> Event {
         manual_save: true,
         questions: Vec::new(),
         saved_rubrics,
-    })
+        skills: Vec::new(),
+    }))
 }
 
 #[test]
@@ -2181,4 +2190,59 @@ fn a_message_the_ai_did_not_answer_can_be_sent_again() {
     );
     scroll_to_and_press(&mut harness, "Write one with the AI");
     assert!(harness.query_by_label("What grade level?").is_none());
+}
+
+/// The page of [`read`], read while the teacher has the skills of
+/// [`skills`] in their folder.
+fn read_with_skills() -> Event {
+    let (Event::Read(mut report), Event::Skills { skills, .. }) = (read(), skills()) else {
+        unreachable!()
+    };
+    report.skills = skills;
+    Event::Read(report)
+}
+
+#[test]
+fn a_ticked_skill_is_given_to_the_grader_and_the_rubric_card_says_so() {
+    const SAYS_SO: &str = "The grader is also given your skill: Late work.";
+
+    // Nothing is ticked: the grader gets the rubric and nothing else.
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    stand_in.events.send(read_with_skills()).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Rubric").click();
+    frames(&mut harness);
+    assert!(
+        harness
+            .query_by_label_contains("The grader is also given")
+            .is_none()
+    );
+    harness.get_by_label("Grade 2 students").click();
+    frames(&mut harness);
+    let Command::Grade(request) = sent(&mut stand_in) else {
+        panic!("expected grading to start");
+    };
+    assert!(request.skill_choices.is_empty());
+
+    // The teacher ticked "Late work" on the Agent screen. The guide to
+    // MyOpenMath is not a skill for grading, whatever its switch says.
+    let mut settings = local_model();
+    settings.skills.insert("late-work".into(), true);
+    settings.skills.insert("bundled-myopenmath".into(), true);
+    let (mut harness, mut stand_in) = window(settings);
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    stand_in.events.send(read_with_skills()).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Rubric").click();
+    frames(&mut harness);
+    harness.get_by_label_contains(SAYS_SO).scroll_to_me();
+    frames(&mut harness);
+    shot(&mut harness, "30-skills-for-grading");
+    harness.get_by_label("Grade 2 students").click();
+    frames(&mut harness);
+    let Command::Grade(request) = sent(&mut stand_in) else {
+        panic!("expected grading to start");
+    };
+    assert_eq!(request.skill_choices.get("late-work"), Some(&true));
 }

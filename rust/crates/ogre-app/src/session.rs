@@ -772,6 +772,7 @@ mod tests {
             manual_save: false,
             questions: Vec::new(),
             saved_rubrics: Vec::new(),
+            skills: Vec::new(),
         })
     }
 
@@ -809,6 +810,7 @@ mod tests {
             manual_save: false,
             questions: Vec::new(),
             saved_rubrics: Vec::new(),
+            skills: Vec::new(),
         });
         assert_eq!(s.edited_rubric_text(), None);
         let as_read = s.rubric_outline().clone();
@@ -950,6 +952,7 @@ mod tests {
             manual_save: false,
             questions: Vec::new(),
             saved_rubrics: Vec::new(),
+            skills: Vec::new(),
         })
     }
 
@@ -1068,6 +1071,7 @@ mod tests {
             manual_save: false,
             questions: Vec::new(),
             saved_rubrics: Vec::new(),
+            skills: Vec::new(),
         });
         s.set_requirements("## Thesis [40%]\nStates a position\n## Evidence [60%]\nCites sources");
         assert!(s.rubric_edited());
@@ -1130,6 +1134,7 @@ mod tests {
             manual_save: false,
             questions: Vec::new(),
             saved_rubrics: Vec::new(),
+            skills: Vec::new(),
         });
         let names: Vec<_> = s.to_grade().into_iter().map(|w| w.name).collect();
         assert_eq!(names, ["Diaz, Remy"], "Kai was given a zero on purpose");
@@ -1286,6 +1291,7 @@ mod tests {
         s.apply_grades(GradeReport {
             rubric_text: None,
             examples: None,
+            skills: Vec::new(),
             rows: vec![graded(1, 7.0, "<p>a</p>")],
             warnings: vec!["Chunk 2 was not graded.".into()],
             cancelled: true,

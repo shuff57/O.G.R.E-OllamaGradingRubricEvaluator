@@ -159,7 +159,9 @@ Decisions: desktop only for now (code kept web-compilable), Linux only for now, 
 - A rubric drafted by the AI from the question, for a question that has none. Checked against Ollama Cloud `gemma4:31b`.
 - The Agent screen lists what the agent knows: the built-in site guides and the teacher's own skill files, each skill with a switch that is remembered. A skill of the teacher's is written, changed and deleted in a form there; it is still a Markdown file in the skills folder.
 - A skill written by talking it over with the AI: the Electron app's interview, one question at a time, then the skill as a Markdown block. What the AI writes goes to the editor's form; nothing is saved until the teacher saves it there. Checked against Ollama Cloud `gemma4:31b` with a made-up teacher.
-- 965 tests pass by default; 78 more need Chrome, a local model or the AI service.
+- A ticked skill is given to the grader as well as to the agent, as in the Electron app: after the teacher's own instructions, each between `--- SKILL: name ---` lines. Guides to a site are not. The rubric card names the skills the grader will be given, and the session record and History keep their names.
+- Scoring examples lead the instructions sent to the grader, so that they calibrate and are not read as instructions (they were joined after the teacher's instructions and then were).
+- 968 tests pass by default; 78 more need Chrome, a local model or the AI service.
 
 ## Checked on real MyOpenMath pages (read-only)
 

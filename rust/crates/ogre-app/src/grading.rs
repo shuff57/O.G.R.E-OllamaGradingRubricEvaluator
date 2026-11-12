@@ -3,6 +3,7 @@
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
+use ogre_agent::{Skill, build_skill_injection};
 use ogre_core::{ExtractedRubric, Rubric, imported_rubric_text};
 use ogre_grader::{
     BatchOutcome, CancelFlag, GradeEvent, GradeOptions, GradeStatus, GraderError, PreparedRubric,
@@ -17,24 +18,28 @@ use crate::worker::{ExamplesRequest, GradeRequest, OutsideRubric};
 /// The heading the grader's prompt knows scoring examples by.
 const EXAMPLES_HEADING: &str = "SCORING CALIBRATION:";
 
-/// The teacher's instructions and the scoring examples, as one text for the
-/// grader's prompt.
+/// The scoring examples, the teacher's instructions and their skills, as
+/// one text for the grader's prompt.
 ///
 /// The examples lead, as the Electron app's anchors do: the prompt takes
 /// them for examples to calibrate by only at the start of the text. Anywhere
-/// else they would be read as more instructions the AI must follow.
-fn instructions_with_examples(
+/// else they would be read as more instructions the AI must follow. The
+/// skills come last, each between the lines the Electron app marks one with.
+fn grader_instructions(
     instructions: Option<&str>,
     examples: Option<&str>,
+    skills: &[Skill],
 ) -> Option<String> {
     let examples = examples
         .map(str::trim)
         .filter(|examples| !examples.is_empty())
         .map(|examples| format!("{EXAMPLES_HEADING}\n{examples}"));
+    let skills = build_skill_injection(skills);
     let parts: Vec<&str> = examples
         .as_deref()
         .into_iter()
         .chain(instructions)
+        .chain(Some(skills.trim()).filter(|skills| !skills.is_empty()))
         .collect();
     (!parts.is_empty()).then(|| parts.join("\n\n"))
 }
@@ -103,6 +108,8 @@ pub struct GradeReport {
     pub rubric_text: Option<String>,
     /// The scoring examples the grader was shown, if any.
     pub examples: Option<String>,
+    /// The teacher's skills the grader was given, by name.
+    pub skills: Vec<String>,
     pub rows: Vec<GradedRow>,
     pub warnings: Vec<String>,
     pub cancelled: bool,
@@ -142,6 +149,7 @@ pub struct Suggestion {
 /// start reports every student as not graded, with the reason.
 pub async fn grade(
     request: GradeRequest,
+    skills: &[Skill],
     cancel: &CancelFlag,
     cache: &mut PreparedCache,
     mut progress: impl FnMut(usize) + Send,
@@ -150,6 +158,7 @@ pub async fn grade(
     let nobody_graded = |reason: String| GradeReport {
         rubric_text: None,
         examples: None,
+        skills: Vec::new(),
         rows: indices
             .iter()
             .map(|&index| GradedRow {
@@ -189,8 +198,11 @@ pub async fn grade(
         .as_deref()
         .map(str::trim)
         .filter(|examples| !examples.is_empty());
-    rubric.custom_instructions =
-        instructions_with_examples(request.rubric.custom_instructions.as_deref(), examples);
+    rubric.custom_instructions = grader_instructions(
+        request.rubric.custom_instructions.as_deref(),
+        examples,
+        skills,
+    );
 
     let options = GradeOptions {
         score_source: if request.score_from_verdicts {
@@ -216,6 +228,7 @@ pub async fn grade(
             let mut report = report(outcome);
             report.rubric_text = Some(prepared.text);
             report.examples = examples.map(str::to_owned);
+            report.skills = skills.iter().map(|skill| skill.name.clone()).collect();
             if let Some(problem) = prepared.rewrite_problem {
                 report.warnings.insert(
                     0,
@@ -285,6 +298,7 @@ fn report(outcome: BatchOutcome) -> GradeReport {
     GradeReport {
         rubric_text: None,
         examples: None,
+        skills: Vec::new(),
         rows,
         warnings: outcome.warnings,
         cancelled: outcome.cancelled,
@@ -418,9 +432,17 @@ mod tests {
 
     /// The prompt a class is graded with, given what the teacher set up.
     fn prompt(instructions: Option<&str>, examples: Option<&str>) -> String {
+        prompt_with_skills(instructions, examples, &[])
+    }
+
+    fn prompt_with_skills(
+        instructions: Option<&str>,
+        examples: Option<&str>,
+        skills: &[Skill],
+    ) -> String {
         let rubric = Rubric {
             max_score: Some(ogre_core::MaxScore::Number(10.0)),
-            custom_instructions: instructions_with_examples(instructions, examples),
+            custom_instructions: grader_instructions(instructions, examples, skills),
             ..Rubric::default()
         };
         let student = StudentWork {
@@ -476,6 +498,58 @@ mod tests {
             "Accept answers given in words."
         );
 
-        assert_eq!(instructions_with_examples(None, None), None);
+        assert_eq!(grader_instructions(None, None, &[]), None);
+    }
+
+    fn skill(name: &str, content: &str) -> Skill {
+        Skill {
+            name: name.to_owned(),
+            content: content.to_owned(),
+            ..Skill::from_markdown("skill", "", "", ogre_agent::SkillSource::Local)
+        }
+    }
+
+    #[test]
+    fn the_teachers_skills_are_instructions_the_grader_must_follow() {
+        let skills = [
+            skill("Late work", "One point off for each day late."),
+            skill("Units", "An answer without units loses a point."),
+        ];
+        let prompt = prompt_with_skills(
+            Some("Accept answers given in words."),
+            Some(EXAMPLES),
+            &skills,
+        );
+        // The examples still calibrate, and only calibrate.
+        let calibration = under(&prompt, TO_CALIBRATE);
+        assert!(calibration.starts_with("Excellent:"), "{prompt}");
+        assert!(!prompt[prompt.find(TO_CALIBRATE).unwrap()..].contains("SKILL"));
+        // The instructions come first, then each skill under its name.
+        let (from, to) = (
+            prompt.find(MUST_FOLLOW).unwrap(),
+            prompt.find(TO_CALIBRATE).unwrap(),
+        );
+        assert!(from < to, "{prompt}");
+        let must_follow = &prompt[from..to];
+        let places: Vec<usize> = [
+            "Accept answers given in words.",
+            "--- SKILL: Late work ---\nOne point off for each day late.\n--- END SKILL ---",
+            "--- SKILL: Units ---\nAn answer without units loses a point.\n--- END SKILL ---",
+        ]
+        .iter()
+        .map(|part| {
+            must_follow
+                .find(part)
+                .unwrap_or_else(|| panic!("no {part:?} in:\n{must_follow}"))
+        })
+        .collect();
+        assert!(places.is_sorted(), "{places:?}");
+
+        // Skills alone are instructions too.
+        let alone = prompt_with_skills(None, None, &skills[..1]);
+        assert!(
+            under(&alone, MUST_FOLLOW).starts_with("--- SKILL: Late work ---"),
+            "{alone}"
+        );
     }
 }

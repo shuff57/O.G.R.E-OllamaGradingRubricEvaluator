@@ -66,6 +66,18 @@ fn skills(skills_dir: &Path, choices: &BTreeMap<String, bool>) -> Vec<Skill> {
     skills
 }
 
+/// The skills the grader is given beside the rubric: those that are switched
+/// on and are not a guide to a site, by name. The agent is given the same
+/// ones on every task.
+pub(crate) fn grading_skills(skills_dir: &Path, choices: &BTreeMap<String, bool>) -> Vec<Skill> {
+    let mut skills: Vec<Skill> = skills(skills_dir, choices)
+        .into_iter()
+        .filter(|skill| skill.active && skill.sites().next().is_none())
+        .collect();
+    skills.sort_by(|a, b| a.name.cmp(&b.name));
+    skills
+}
+
 /// What the agent would be given from `skills_dir`, for the teacher to see.
 pub(crate) fn list_skills(skills_dir: &Path) -> Vec<SkillSummary> {
     skills(skills_dir, &BTreeMap::new())
@@ -329,6 +341,55 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn the_grader_is_given_the_skills_that_are_on_and_are_not_site_guides() {
+        let dir = folder("grading");
+        let write = |file: &str, text: &str| std::fs::write(dir.join(file), text).unwrap();
+        write(
+            "units.md",
+            "# Units\n\nAn answer without units loses a point.\n",
+        );
+        write(
+            "late-work.md",
+            "# Late work\n\nA point off for each day late.\n",
+        );
+        write("off.md", "# Rounding\n\nRound to two places.\n");
+        write(
+            "on-in-file.md",
+            "---\nname: Always\nactive: true\n---\nShow the work.\n",
+        );
+        write(
+            "schoology.md",
+            "---\nname: Schoology\nactive: true\nurlPatterns:\n  - schoology.com\n---\nWhere things are.\n",
+        );
+
+        let names = |choices: &[(&str, bool)]| -> Vec<String> {
+            let choices = choices
+                .iter()
+                .map(|(id, on)| ((*id).to_owned(), *on))
+                .collect();
+            grading_skills(&dir, &choices)
+                .into_iter()
+                .map(|skill| skill.name)
+                .collect()
+        };
+        // With nothing chosen, only what its own file switches on.
+        assert_eq!(names(&[]), ["Always"]);
+        // The teacher's ticks decide, in name order. A guide to a site is
+        // for finding the way around it, ticked or not; so are OGRE's own.
+        assert_eq!(
+            names(&[
+                ("units", true),
+                ("late-work", true),
+                ("on-in-file", false),
+                ("schoology", true),
+                ("bundled-myopenmath", true),
+            ]),
+            ["Late work", "Units"]
+        );
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

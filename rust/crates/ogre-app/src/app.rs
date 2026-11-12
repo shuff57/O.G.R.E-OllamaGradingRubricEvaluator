@@ -306,7 +306,8 @@ impl OgreApp {
                     self.leaving = None;
                     self.shelf
                         .set_saved(std::mem::take(&mut read.saved_rubrics));
-                    let mut session = Session::new(read);
+                    self.agent.skills = std::mem::take(&mut read.skills);
+                    let mut session = Session::new(*read);
                     if let Some(earlier) = &self.session {
                         session.keep_setup_from(earlier);
                     }
@@ -471,6 +472,7 @@ impl OgreApp {
                     leniency: engine_leniency(self.settings.leniency),
                     score_from_verdicts: self.settings.score_from_verdicts,
                     examples: session.examples_for_grading(),
+                    skill_choices: self.settings.skills.clone(),
                     cancel: CancelFlag::new(),
                 };
                 self.send(Command::Grade(Box::new(request)), "Grading…");
@@ -671,6 +673,24 @@ impl OgreApp {
             self.shelf.name = rubric.name;
         }
         self.notice = Some(notice(&count(rubric.parts, "part")));
+    }
+
+    /// The names of the teacher's skills the grader will be given: those
+    /// that are switched on and are not a guide to a site.
+    fn skills_for_grading(&self) -> Vec<&str> {
+        let mut names: Vec<&str> = self
+            .agent
+            .skills
+            .iter()
+            .filter(|skill| skill.sites.is_empty())
+            .filter(|skill| {
+                let choice = self.settings.skills.get(&skill.id);
+                choice.copied().unwrap_or(skill.on_in_file)
+            })
+            .map(|skill| skill.name.as_str())
+            .collect();
+        names.sort_unstable();
+        names
     }
 
     /// Why the AI service cannot be asked anything yet, if it cannot.
@@ -1564,6 +1584,17 @@ impl OgreApp {
                 .show(ui, |ui| {
                     ui.label(theme::body(rubric));
                 });
+        }
+        if !session.skills.is_empty() {
+            ui.label(theme::muted(format!(
+                "The grader was also given your {}: {}.",
+                if session.skills.len() == 1 {
+                    "skill"
+                } else {
+                    "skills"
+                },
+                session.skills.join(", ")
+            )));
         }
         if let Some(examples) = &session.examples {
             egui::CollapsingHeader::new(theme::strong("Scoring examples used").size(ty::BODY))

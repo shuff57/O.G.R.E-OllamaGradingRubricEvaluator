@@ -63,6 +63,7 @@ impl AuditLog {
             "event": "graded",
             "rubric": report.rubric_text,
             "examples": report.examples,
+            "skills": report.skills,
             "cancelled": report.cancelled,
             "warnings": report.warnings,
             "results": report.rows.iter().map(|row| match &row.outcome {

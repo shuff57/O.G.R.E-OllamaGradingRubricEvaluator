@@ -358,6 +358,15 @@ impl OgreApp {
                                 .desired_width(f32::INFINITY),
                         )
                         .labelled_by(label.id);
+                        let skills = self.skills_for_grading();
+                        if !skills.is_empty() {
+                            ui.label(theme::muted(format!(
+                                "The grader is also given your {}: {}. A skill is given while \
+                                 it is ticked on the Agent screen.",
+                                if skills.len() == 1 { "skill" } else { "skills" },
+                                skills.join(", ")
+                            )));
+                        }
                         self.examples(ui, session, actions);
                     });
             });
