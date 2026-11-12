@@ -12,8 +12,8 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use super::criteria::{
-    MODEL_RESPONSE_MARKER, RowType, RubricCriterion, auto_fill_weights, criteria_to_text, pattern,
-    text_to_criteria,
+    MODEL_RESPONSE_MARKER, RowType, RubricCriterion, auto_fill_weights, criteria_to_text,
+    is_line_layout, is_rubric_line, pattern, text_to_criteria,
 };
 use crate::grading::js::{self, WS};
 use crate::grading::{
@@ -328,6 +328,79 @@ pub fn rubric_from_text(scraped: &Rubric, text: &str, mode: WeightMode) -> Rubri
             .then(|| criterion_weights(&rows))
             .flatten(),
     }
+}
+
+/// The rubric text to put in an editor for the teacher: [`rubric_text`], or
+/// only the exemplar answer when the page has no requirements, or nothing.
+pub fn editable_rubric_text(scraped: &Rubric) -> String {
+    let text = rubric_text(scraped);
+    if text != NO_RUBRIC_TEXT {
+        return text;
+    }
+    match scraped.model_text.as_deref().filter(|t| !t.is_empty()) {
+        Some(model_text) => format!("{MODEL_RESPONSE_MARKER}\n{model_text}"),
+        None => String::new(),
+    }
+}
+
+/// The lines of edited rubric text that grading will not use: neither a
+/// requirement nor a heading, and not part of the exemplar answer. A teacher
+/// who typed a requirement without its `(2pts)` finds it here.
+///
+/// Empty for text in a table layout, where lines cannot be judged one by one.
+pub fn unread_rubric_lines(text: &str) -> Vec<String> {
+    if !is_line_layout(text) {
+        return Vec::new();
+    }
+    let body = match text.find(MODEL_RESPONSE_MARKER) {
+        Some(marker) => &text[..marker],
+        None => text,
+    };
+    let lines = || body.split('\n').map(js::trim).filter(|l| !l.is_empty());
+    if lines().any(is_rubric_line) {
+        return lines()
+            .filter(|line| !is_rubric_line(line))
+            .map(str::to_owned)
+            .collect();
+    }
+
+    // No criteria: the text is read as `[Category]` lines with `- item` lines
+    // under them, as `bracketed_items` does.
+    let mut unread = Vec::new();
+    let mut category_open = false;
+    for line in lines() {
+        if line == "--- Rubric Targets ---" || line == "--- Grading Checklist ---" {
+            category_open = false;
+        } else if line.starts_with('[') && line.ends_with(']') {
+            category_open = true;
+        } else if !(category_open && line.starts_with('-')) {
+            unread.push(line.to_owned());
+        }
+    }
+    unread
+}
+
+/// The rubric to grade against when the teacher has changed the rubric text.
+///
+/// Unlike [`rubric_from_text`], nothing is taken from the page behind the
+/// teacher's back: requirements and an exemplar answer they deleted stay
+/// deleted. Weights are filled in as [`with_default_weights`] does. The
+/// question and the maximum score still come from `scraped`.
+pub fn rubric_from_edited_text(scraped: &Rubric, text: &str, mode: WeightMode) -> Rubric {
+    let only_the_page_facts = Rubric {
+        checklist_items: Vec::new(),
+        rubric_items: Vec::new(),
+        model_text: None,
+        ..scraped.clone()
+    };
+    let mut rubric = rubric_from_text(
+        &only_the_page_facts,
+        &with_default_weights(text, mode),
+        mode,
+    );
+    // Filling in weights rewrites the text without its exemplar answer.
+    rubric.model_text = extract_model_text(text);
+    rubric
 }
 
 /// The scraped maximum, or "10" where JavaScript finds it falsy.

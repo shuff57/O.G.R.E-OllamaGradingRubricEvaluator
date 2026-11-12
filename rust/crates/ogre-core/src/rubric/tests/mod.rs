@@ -1,6 +1,7 @@
 //! The desktop's `rubric-utils.test.ts`, ported case by case, plus a
 //! differential test against the TypeScript itself.
 
+mod editing;
 mod golden;
 mod utils_test;
 

@@ -54,6 +54,7 @@ impl AuditLog {
     pub fn graded(&mut self, report: &GradeReport) {
         self.append(json!({
             "event": "graded",
+            "rubric": report.rubric_text,
             "cancelled": report.cancelled,
             "warnings": report.warnings,
             "results": report.rows.iter().map(|row| match &row.outcome {

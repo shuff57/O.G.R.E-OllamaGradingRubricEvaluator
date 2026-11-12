@@ -187,6 +187,7 @@ fn reads_grades_fills_verifies_and_saves_a_page() {
     });
     let request = GradeRequest {
         rubric,
+        rubric_text: None,
         students,
         provider: ProviderSettings {
             service: Service::Ollama,
@@ -376,6 +377,7 @@ fn a_real_model_grades_the_saved_page() {
     let started = Instant::now();
     worker.send(Command::Grade(Box::new(GradeRequest {
         rubric: read.rubric.unwrap(),
+        rubric_text: None,
         students,
         provider,
         api_key: None,

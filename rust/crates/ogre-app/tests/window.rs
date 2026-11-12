@@ -5,6 +5,7 @@
 
 use std::path::PathBuf;
 
+use eframe::egui;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use ogre_app::{
@@ -157,6 +158,7 @@ fn graded() -> Event {
         }),
     };
     Event::Graded(GradeReport {
+        rubric_text: None,
         rows: vec![
             grade(
                 1,
@@ -261,6 +263,7 @@ fn grades_fills_and_saves_one_explicit_step_at_a_time() {
     assert_eq!(names, ["Brook, Kai", "Diaz, Remy"]);
     assert_eq!(request.provider.model, "gemma4:31b");
     assert_eq!(request.rubric.checklist_items.len(), 2);
+    assert_eq!(request.rubric_text, None, "the rubric was not edited");
     assert!(
         harness.query_by_label_contains("Fill in").is_none(),
         "nothing to write yet"
@@ -344,6 +347,58 @@ fn grades_fills_and_saves_one_explicit_step_at_a_time() {
 }
 
 #[test]
+fn the_rubric_can_be_edited_before_grading() {
+    const EDITOR: &str = "Requirements and model response";
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    stand_in.events.send(read()).unwrap();
+    frames(&mut harness);
+
+    harness.get_by_label("Rubric").click();
+    frames(&mut harness);
+    harness.get_by_label("3 requirements in 2 categories, no model response.");
+    assert!(harness.query_by_label("Edited").is_none());
+
+    // A requirement typed without its points, on a line of its own.
+    harness.get_by_label(EDITOR).click();
+    frames(&mut harness);
+    harness.key_press(egui::Key::End);
+    harness.key_press(egui::Key::Enter);
+    harness.get_by_label(EDITOR).type_text("Shows every step");
+    frames(&mut harness);
+    harness.get_by_label("Edited");
+    harness.get_by_label_contains("This line will not be used for grading: “Shows every step”.");
+    shot(&mut harness, "12-rubric-edited");
+
+    // Given points, it counts.
+    harness.get_by_label(EDITOR).type_text(" (2pts)");
+    frames(&mut harness);
+    harness.get_by_label("4 requirements in 2 categories, no model response.");
+    assert!(
+        harness
+            .query_by_label_contains("will not be used")
+            .is_none()
+    );
+
+    harness.get_by_label("Grade 2 students").click();
+    frames(&mut harness);
+    let Command::Grade(request) = sent(&mut stand_in) else {
+        panic!("expected a grading request");
+    };
+    let text = request.rubric_text.expect("the edited rubric is sent");
+    assert!(text.contains("\nShows every step (2pts)\n"), "{text}");
+    assert!(text.starts_with("## Concept\n"), "{text}");
+    stand_in.events.send(graded()).unwrap();
+    frames(&mut harness);
+
+    // Going back to the page's rubric sends none of the edits.
+    harness.get_by_label("Use the page\u{2019}s rubric").click();
+    frames(&mut harness);
+    assert!(harness.query_by_label("Edited").is_none());
+    harness.get_by_label("3 requirements in 2 categories, no model response.");
+}
+
+#[test]
 fn a_write_the_page_did_not_keep_blocks_saving() {
     let (mut harness, mut stand_in) = window(local_model());
     stand_in.events.send(Event::ChromeStarted).unwrap();
@@ -400,6 +455,7 @@ fn a_running_grade_can_be_stopped_and_failures_are_shown() {
     stand_in
         .events
         .send(Event::Graded(GradeReport {
+            rubric_text: None,
             rows: vec![GradedRow {
                 index: 1,
                 outcome: Err("grading was cancelled first".into()),

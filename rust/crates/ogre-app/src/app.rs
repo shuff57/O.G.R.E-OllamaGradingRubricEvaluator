@@ -10,7 +10,7 @@ use crate::agent_run::{
 use crate::keys::KeyStore;
 use crate::kit;
 use crate::profiles::ProfileSummary;
-use crate::session::{Note, Session, Status, count, score_text};
+use crate::session::{Note, RubricOutline, Session, Status, count, score_text};
 use crate::settings::{STORAGE_KEY, Service, Settings};
 use crate::theme::{self, icon, pal, ty};
 use crate::worker::{Command, Event, GradeRequest, MapReport, Worker};
@@ -251,6 +251,7 @@ impl OgreApp {
                 let Some(session) = &self.session else { return };
                 let request = GradeRequest {
                     rubric: session.rubric_for_grading(),
+                    rubric_text: session.edited_rubric_text(),
                     students: session.to_grade(),
                     provider: self.settings.provider.clone(),
                     api_key: self.key(),
@@ -604,50 +605,47 @@ impl OgreApp {
                         pal().warn,
                     );
                 }
-                let rubric = &session.rubric;
                 ui.label(theme::meta(format!(
                     "Out of {}",
-                    format_score(rubric.max_score_value())
+                    format_score(session.rubric.max_score_value())
                 )));
-                if let Some(prompt) = rubric.essay_prompt.as_deref().filter(|p| !p.is_empty()) {
+                if let Some(prompt) = session
+                    .rubric
+                    .essay_prompt
+                    .as_deref()
+                    .filter(|p| !p.is_empty())
+                {
                     kit::section_label(ui, "Question");
                     ui.label(theme::body(prompt));
                 }
-                for (title, groups) in [
-                    (
-                        "Checklist",
-                        rubric
-                            .checklist_items
-                            .iter()
-                            .map(|item| (item.category.as_deref(), &item.items))
-                            .collect::<Vec<_>>(),
-                    ),
-                    (
-                        "Targets",
-                        rubric
-                            .rubric_items
-                            .iter()
-                            .map(|item| (item.category.as_deref(), &item.items))
-                            .collect::<Vec<_>>(),
-                    ),
-                ] {
-                    if groups.is_empty() {
-                        continue;
-                    }
-                    kit::section_label(ui, title);
-                    for (category, items) in groups {
-                        let category = category.unwrap_or("Uncategorized");
-                        ui.label(theme::body(format!("{category}: {}", items.join("; "))));
-                    }
+
+                let label = kit::section_label(ui, "Requirements and model response");
+                let editor = ui
+                    .add(
+                        egui::TextEdit::multiline(&mut session.rubric_text)
+                            .hint_text(RUBRIC_HINT)
+                            .desired_rows(6)
+                            .desired_width(f32::INFINITY),
+                    )
+                    .labelled_by(label.id);
+                if editor.changed() {
+                    session.rubric_text_changed();
                 }
-                if let Some(model) = rubric.model_text.as_deref().filter(|m| !m.is_empty()) {
-                    kit::section_label(ui, "Model response");
-                    ui.label(theme::body(model));
+                let mut restore = false;
+                ui.horizontal_wrapped(|ui| {
+                    if session.rubric_edited() {
+                        kit::marker_pill(ui, "Edited");
+                    }
+                    ui.label(theme::muted(rubric_summary(session.rubric_outline())));
+                    if session.rubric_edited() {
+                        restore = kit::ghost(ui, "Use the page\u{2019}s rubric", true).clicked();
+                    }
+                });
+                if restore {
+                    session.restore_rubric_text();
                 }
-                if rubric.checklist_items.is_empty() && rubric.rubric_items.is_empty() {
-                    ui.label(theme::muted(
-                        "This question carries no checklist or targets.",
-                    ));
+                if let Some(warning) = unread_warning(&session.rubric_outline().unread) {
+                    kit::icon_line(ui, icon::WARNING, &warning, pal().warn);
                 }
                 let label = kit::section_label(ui, "Your instructions to the grader");
                 ui.add(
@@ -1347,6 +1345,53 @@ impl eframe::App for OgreApp {
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, STORAGE_KEY, &self.settings);
     }
+}
+
+/// Shown in the empty rubric editor.
+const RUBRIC_HINT: &str = "One requirement per line, under headings if you like:\n\
+## Method\n\
+Sets up the equation (2pts): Uses the rate given in the question.";
+
+/// One line saying what the grader will find in the rubric text.
+fn rubric_summary(outline: &RubricOutline) -> String {
+    let exemplar = if outline.exemplar {
+        "a model response"
+    } else {
+        "no model response"
+    };
+    if outline.requirements == 0 {
+        return format!(
+            "No requirements, {exemplar}. The AI grades against the question and your instructions."
+        );
+    }
+    format!(
+        "{} in {}, {exemplar}.",
+        count(outline.requirements, "requirement"),
+        count_of(outline.categories, "category", "categories"),
+    )
+}
+
+fn count_of(n: usize, one: &str, many: &str) -> String {
+    format!("{n} {}", if n == 1 { one } else { many })
+}
+
+/// Tells the teacher which lines of their rubric will be left out, if any.
+fn unread_warning(unread: &[String]) -> Option<String> {
+    let first: String = unread.first()?.chars().take(60).collect();
+    let ellipsis = if unread[0].chars().count() > 60 {
+        "…"
+    } else {
+        ""
+    };
+    let which = match unread.len() {
+        1 => format!("This line will not be used for grading: “{first}{ellipsis}”."),
+        n => {
+            format!("{n} lines will not be used for grading, the first being “{first}{ellipsis}”.")
+        }
+    };
+    Some(format!(
+        "{which} Write a requirement as “Name (2pts): what to look for”."
+    ))
 }
 
 fn summary(session: &Session) -> String {

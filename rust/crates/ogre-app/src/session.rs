@@ -5,8 +5,9 @@
 //! written can be tested directly.
 
 use ogre_core::{
-    GradeWrite, GradingPage, Rubric, SkipReason, StudentWork, Submission, WritePolicy,
-    format_score, plan_write, skip_reason,
+    DEFAULT_WEIGHT_MODE, GradeWrite, GradingPage, Rubric, SkipReason, StudentWork, Submission,
+    WritePolicy, editable_rubric_text, format_score, plan_write, rubric_from_edited_text,
+    skip_reason, unread_rubric_lines,
 };
 use ogre_harness::feedback;
 
@@ -19,9 +20,15 @@ pub struct Session {
     pub saves_on_write: bool,
     /// OGRE cannot confirm a save on this site; the teacher saves in the browser.
     pub manual_save: bool,
+    /// The rubric as read from the page.
     pub rubric: Rubric,
     /// Why the rubric could not be read from the page, if it could not.
     pub rubric_problem: Option<String>,
+    /// The requirements and exemplar answer as text, which the teacher may
+    /// edit. Tell [`Session::rubric_text_changed`] after changing it.
+    pub rubric_text: String,
+    rubric_text_as_read: String,
+    outline: RubricOutline,
     /// The teacher's own instructions to the grader for this question.
     pub instructions: String,
     /// One per student, in page order.
@@ -34,6 +41,30 @@ pub struct Session {
     pub unsaved: bool,
     /// The last write left the page in a state that must not be saved.
     pub blocked: bool,
+}
+
+/// What the rubric text holds, as the grader will read it.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct RubricOutline {
+    pub categories: usize,
+    pub requirements: usize,
+    pub exemplar: bool,
+    /// Lines the teacher wrote that grading will not use.
+    pub unread: Vec<String>,
+}
+
+impl RubricOutline {
+    fn of(scraped: &Rubric, text: &str) -> Self {
+        let rubric = rubric_from_edited_text(scraped, text, DEFAULT_WEIGHT_MODE);
+        let checklist = rubric.checklist_items.iter().map(|item| item.items.len());
+        let targets = rubric.rubric_items.iter().map(|item| item.items.len());
+        Self {
+            categories: rubric.checklist_items.len() + rubric.rubric_items.len(),
+            requirements: checklist.chain(targets).sum(),
+            exemplar: rubric.model_text.is_some(),
+            unread: unread_rubric_lines(text),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -142,6 +173,7 @@ impl Session {
             Ok(rubric) => (rubric, None),
             Err(problem) => (Rubric::default(), Some(problem)),
         };
+        let rubric_text = editable_rubric_text(&rubric);
         Self {
             rows: read
                 .page
@@ -150,6 +182,9 @@ impl Session {
                 .map(|_| Row::default())
                 .collect(),
             instructions: rubric.custom_instructions.clone().unwrap_or_default(),
+            outline: RubricOutline::of(&rubric, &rubric_text),
+            rubric_text_as_read: rubric_text.clone(),
+            rubric_text,
             page: read.page,
             site: read.site,
             saves_on_write: read.saves_on_write,
@@ -170,6 +205,33 @@ impl Session {
         let instructions = self.instructions.trim();
         rubric.custom_instructions = (!instructions.is_empty()).then(|| instructions.to_owned());
         rubric
+    }
+
+    /// True when the teacher has changed the rubric text.
+    pub fn rubric_edited(&self) -> bool {
+        self.rubric_text != self.rubric_text_as_read
+    }
+
+    /// The rubric text to grade against in place of the page's, if the
+    /// teacher changed it.
+    pub fn edited_rubric_text(&self) -> Option<String> {
+        self.rubric_edited().then(|| self.rubric_text.clone())
+    }
+
+    /// Call after the rubric text was changed.
+    pub fn rubric_text_changed(&mut self) {
+        self.outline = RubricOutline::of(&self.rubric, &self.rubric_text);
+    }
+
+    /// Puts the rubric text back to what the page gave.
+    pub fn restore_rubric_text(&mut self) {
+        self.rubric_text.clone_from(&self.rubric_text_as_read);
+        self.rubric_text_changed();
+    }
+
+    /// What the grader will find in the rubric text.
+    pub fn rubric_outline(&self) -> &RubricOutline {
+        &self.outline
     }
 
     /// A zero with feedback is a grade someone gave, not a blank.
@@ -480,9 +542,53 @@ mod tests {
     fn report(rows: Vec<GradedRow>) -> GradeReport {
         GradeReport {
             rows,
-            warnings: Vec::new(),
-            cancelled: false,
+            ..GradeReport::default()
         }
+    }
+
+    #[test]
+    fn rubric_edits_are_sent_only_while_they_differ_from_the_page() {
+        let rubric: Rubric = serde_json::from_value(serde_json::json!({
+            "checklistItems": [{ "category": "Concept", "items": ["Names the theorem"] }],
+            "modelText": "The Central Limit Theorem.",
+        }))
+        .unwrap();
+        let mut s = Session::new(ReadReport {
+            page: page(),
+            rubric: Ok(rubric),
+            site: "MyOpenMath",
+            saves_on_write: false,
+            manual_save: false,
+        });
+        assert_eq!(s.edited_rubric_text(), None);
+        let as_read = s.rubric_outline().clone();
+        assert_eq!((as_read.categories, as_read.requirements), (1, 1));
+        assert!(as_read.exemplar && as_read.unread.is_empty());
+
+        s.rubric_text.push_str("\nand a stray thought");
+        s.rubric_text_changed();
+        assert!(s.rubric_edited());
+        assert!(s.edited_rubric_text().unwrap().ends_with("a stray thought"));
+        // The stray line became part of the exemplar answer, which is fine.
+        assert!(s.rubric_outline().unread.is_empty());
+
+        s.rubric_text = "Names the theorem".into();
+        s.rubric_text_changed();
+        assert_eq!(s.rubric_outline().requirements, 0);
+        assert!(!s.rubric_outline().exemplar);
+        assert_eq!(s.rubric_outline().unread, ["Names the theorem"]);
+
+        s.restore_rubric_text();
+        assert_eq!(s.edited_rubric_text(), None);
+        assert_eq!(*s.rubric_outline(), as_read);
+    }
+
+    #[test]
+    fn a_page_without_a_rubric_offers_an_empty_editor() {
+        let s = session();
+        assert_eq!(s.rubric_text, "");
+        assert!(!s.rubric_edited());
+        assert_eq!(*s.rubric_outline(), RubricOutline::default());
     }
 
     #[test]
@@ -663,6 +769,7 @@ mod tests {
     fn a_cancelled_run_keeps_what_was_graded_and_says_so() {
         let mut s = session();
         s.apply_grades(GradeReport {
+            rubric_text: None,
             rows: vec![graded(1, 7.0, "<p>a</p>")],
             warnings: vec!["Chunk 2 was not graded.".into()],
             cancelled: true,

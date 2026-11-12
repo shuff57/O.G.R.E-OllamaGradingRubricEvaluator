@@ -3,7 +3,8 @@
 
 use ogre_core::format_score;
 use ogre_grader::{
-    BatchOutcome, CancelFlag, GradeEvent, GradeOptions, GradeStatus, grade_batch, prepare_rubric,
+    BatchOutcome, CancelFlag, GradeEvent, GradeOptions, GradeStatus, grade_batch,
+    prepare_edited_rubric, prepare_rubric,
 };
 use ogre_llm::HttpProvider;
 
@@ -13,6 +14,10 @@ use crate::worker::GradeRequest;
 /// What a grading run produced, one row per student that was sent.
 #[derive(Debug, Default)]
 pub struct GradeReport {
+    /// The rubric text the students were graded against, after the teacher's
+    /// edits, any rewording for leniency and the filling in of weights.
+    /// `None` when grading never started.
+    pub rubric_text: Option<String>,
     pub rows: Vec<GradedRow>,
     pub warnings: Vec<String>,
     pub cancelled: bool,
@@ -44,6 +49,7 @@ pub async fn grade(
 ) -> GradeReport {
     let indices: Vec<usize> = request.students.iter().map(|s| s.index).collect();
     let nobody_graded = |reason: String| GradeReport {
+        rubric_text: None,
         rows: indices
             .iter()
             .map(|&index| GradedRow {
@@ -71,7 +77,12 @@ pub async fn grade(
     // What the page gave is first shaped the way the teacher's settings ask:
     // reworded for leniency, with category weights filled in. The teacher's
     // own instructions ride along unchanged.
-    let prepared = prepare_rubric(&provider, &request.rubric, request.leniency).await;
+    let prepared = match &request.rubric_text {
+        Some(text) => {
+            prepare_edited_rubric(&provider, &request.rubric, text, request.leniency).await
+        }
+        None => prepare_rubric(&provider, &request.rubric, request.leniency).await,
+    };
     let mut rubric = prepared.rubric;
     rubric.custom_instructions = request.rubric.custom_instructions.clone();
 
@@ -87,6 +98,7 @@ pub async fn grade(
     match outcome {
         Ok(outcome) => {
             let mut report = report(outcome);
+            report.rubric_text = Some(prepared.text);
             if let Some(problem) = prepared.rewrite_problem {
                 report.warnings.insert(
                     0,
@@ -154,6 +166,7 @@ fn report(outcome: BatchOutcome) -> GradeReport {
     }
 
     GradeReport {
+        rubric_text: None,
         rows,
         warnings: outcome.warnings,
         cancelled: outcome.cancelled,

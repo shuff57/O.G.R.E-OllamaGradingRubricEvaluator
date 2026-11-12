@@ -57,7 +57,11 @@ pub enum Command {
 
 #[derive(Debug)]
 pub struct GradeRequest {
+    /// The rubric as read from the page, with the teacher's instructions.
     pub rubric: Rubric,
+    /// The rubric text as the teacher left it, if they changed it. It then
+    /// replaces the page's requirements and exemplar answer.
+    pub rubric_text: Option<String>,
     pub students: Vec<StudentWork>,
     pub provider: ProviderSettings,
     pub api_key: Option<String>,

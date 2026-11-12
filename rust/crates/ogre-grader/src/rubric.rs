@@ -2,8 +2,9 @@
 //! does between reading a page and pressing Grade.
 
 use ogre_core::{
-    DEFAULT_WEIGHT_MODE, NEUTRAL_LENIENCY, Rubric, accept_rewrite, leniency_rewrite_prompt,
-    restore_category_weights, rubric_from_text, rubric_text, with_default_weights,
+    DEFAULT_WEIGHT_MODE, NEUTRAL_LENIENCY, Rubric, accept_rewrite, extract_model_text,
+    leniency_rewrite_prompt, restore_category_weights, rubric_from_edited_text, rubric_from_text,
+    rubric_text, text_to_criteria, with_default_weights,
 };
 use ogre_llm::{ChatProvider, ChatRequest, Message};
 
@@ -30,26 +31,60 @@ pub async fn prepare_rubric(
     scraped: &Rubric,
     leniency: u8,
 ) -> PreparedRubric {
-    let original = rubric_text(scraped);
-    let (text, rewrite_problem) = match leniency_rewrite_prompt(&original, leniency) {
-        None => (original, None),
-        Some(prompt) => {
-            let reply = provider
-                .chat(&ChatRequest::new([Message::user(prompt)]))
-                .await
-                .map_err(|error| error.to_string())
-                .and_then(|reply| accept_rewrite(&original, &reply).map_err(|e| e.to_string()));
-            match reply {
-                Ok(rewritten) => (restore_category_weights(&rewritten, &original), None),
-                Err(problem) => (original, Some(problem)),
-            }
-        }
-    };
+    let (text, rewrite_problem) = reword(provider, rubric_text(scraped), leniency).await;
     let text = with_default_weights(&text, DEFAULT_WEIGHT_MODE);
     PreparedRubric {
         rubric: rubric_from_text(scraped, &text, DEFAULT_WEIGHT_MODE),
         text,
         rewrite_problem,
+    }
+}
+
+/// Prepares a rubric whose text the teacher has changed. `text` is what they
+/// left in the editor, and it alone decides the requirements and the exemplar
+/// answer; `scraped` supplies the question and the maximum score.
+///
+/// Leniency rewords the requirements as in [`prepare_rubric`], but never the
+/// teacher's exemplar answer.
+pub async fn prepare_edited_rubric(
+    provider: &dyn ChatProvider,
+    scraped: &Rubric,
+    text: &str,
+    leniency: u8,
+) -> PreparedRubric {
+    let (reworded, rewrite_problem) = if text_to_criteria(text).is_empty() {
+        // Nothing the rewrite could keep; it would refuse or invent a rubric.
+        (text.to_owned(), None)
+    } else {
+        reword(provider, text.to_owned(), leniency).await
+    };
+    let mut rubric = rubric_from_edited_text(scraped, &reworded, DEFAULT_WEIGHT_MODE);
+    rubric.model_text = extract_model_text(text);
+    PreparedRubric {
+        rubric,
+        text: with_default_weights(&reworded, DEFAULT_WEIGHT_MODE),
+        rewrite_problem,
+    }
+}
+
+/// Asks the AI to reword `original` for `leniency`. Returns the text to use
+/// and, when the rewrite was asked for and failed, why.
+async fn reword(
+    provider: &dyn ChatProvider,
+    original: String,
+    leniency: u8,
+) -> (String, Option<String>) {
+    let Some(prompt) = leniency_rewrite_prompt(&original, leniency) else {
+        return (original, None);
+    };
+    let reply = provider
+        .chat(&ChatRequest::new([Message::user(prompt)]))
+        .await
+        .map_err(|error| error.to_string())
+        .and_then(|reply| accept_rewrite(&original, &reply).map_err(|e| e.to_string()));
+    match reply {
+        Ok(rewritten) => (restore_category_weights(&rewritten, &original), None),
+        Err(problem) => (original, Some(problem)),
     }
 }
 

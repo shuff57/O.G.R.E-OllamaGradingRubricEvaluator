@@ -3,8 +3,8 @@
 mod common;
 
 use common::{ScriptedProvider, timeout_error};
-use ogre_core::{Rubric, WeightMode};
-use ogre_grader::{prepare_rubric, rewrites_rubric};
+use ogre_core::{Rubric, WeightMode, editable_rubric_text};
+use ogre_grader::{prepare_edited_rubric, prepare_rubric, rewrites_rubric};
 
 fn scraped() -> Rubric {
     serde_json::from_value(serde_json::json!({
@@ -108,4 +108,78 @@ async fn a_failed_or_unusable_rewrite_falls_back_to_the_rubric_as_written() {
         .expect("the reply dropped every criterion");
     assert!(problem.contains("lost too many criteria"), "{problem}");
     assert_eq!(prepared.rubric, neutral.rubric);
+}
+
+#[tokio::test]
+async fn text_the_teacher_did_not_change_prepares_the_same_rubric() {
+    let text = editable_rubric_text(&scraped());
+    let edited = prepare_edited_rubric(&ScriptedProvider::new(), &scraped(), &text, 50).await;
+    let as_read = prepare_rubric(&ScriptedProvider::new(), &scraped(), 50).await;
+    assert_eq!(edited, as_read);
+}
+
+#[tokio::test]
+async fn the_teachers_edits_are_what_is_graded() {
+    let text = editable_rubric_text(&scraped())
+        .replace(
+            "Say each trial has two outcomes, success or failure.",
+            "Name the two outcomes.",
+        )
+        .replace("There are 20 seeds", "There are 25 seeds");
+    let provider = ScriptedProvider::new();
+
+    let prepared = prepare_edited_rubric(&provider, &scraped(), &text, 50).await;
+
+    assert_eq!(provider.calls(), 0);
+    let items = &prepared.rubric.checklist_items[0].items;
+    assert!(
+        items
+            .iter()
+            .any(|item| item.contains("Name the two outcomes."))
+    );
+    assert!(!items.iter().any(|item| item.contains("success or failure")));
+    assert_eq!(
+        prepared.rubric.model_text.as_deref(),
+        Some("There are 25 seeds, each sprouts or not.")
+    );
+    assert_eq!(weights(&prepared.rubric).len(), 2);
+    assert_eq!(prepared.rubric.max_score_value(), 14.0);
+}
+
+#[tokio::test]
+async fn leniency_rewords_the_edited_criteria_but_not_the_teachers_exemplar() {
+    let text = editable_rubric_text(&scraped()).replace("20 seeds", "25 seeds");
+    // The AI softens a requirement and, unasked, rewrites the exemplar too.
+    let reply = text
+        .replace(
+            "Say there is a fixed number of trials, and how many.",
+            "Mention that the number of trials is set.",
+        )
+        .replace("25 seeds", "some seeds");
+    let provider = ScriptedProvider::new().reply(reply);
+
+    let prepared = prepare_edited_rubric(&provider, &scraped(), &text, 0).await;
+
+    assert_eq!(provider.calls(), 1);
+    assert_eq!(prepared.rewrite_problem, None);
+    assert!(
+        prepared.rubric.checklist_items[0]
+            .items
+            .iter()
+            .any(|item| item.contains("Mention that the number of trials is set."))
+    );
+    assert_eq!(
+        prepared.rubric.model_text.as_deref(),
+        Some("There are 25 seeds, each sprouts or not.")
+    );
+}
+
+#[tokio::test]
+async fn an_emptied_rubric_is_not_sent_for_rewording() {
+    let provider = ScriptedProvider::new();
+    let prepared = prepare_edited_rubric(&provider, &scraped(), "  \n", 0).await;
+    assert_eq!(provider.calls(), 0);
+    assert_eq!(prepared.rewrite_problem, None);
+    assert!(prepared.rubric.checklist_items.is_empty());
+    assert_eq!(prepared.rubric.model_text, None);
 }

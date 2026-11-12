@@ -158,20 +158,39 @@ pub fn criteria_to_text(criteria: &[RubricCriterion]) -> String {
     lines.join("\n")
 }
 
+/// `Name (10pts, 25%): Description`.
+static LINE: LazyLock<Regex> = LazyLock::new(|| {
+    pattern(&format!(
+        r"^({DOT}+?){WS}*\(({NUMBER}){WS}*(?i-u:pts?)(?:,{WS}*({NUMBER})%{WS}*)?\){WS}*(?::{WS}*({DOT}*))?$"
+    ))
+});
+/// `## Category Name [40%]`.
+static CATEGORY: LazyLock<Regex> = LazyLock::new(|| {
+    pattern(&format!(
+        r"^##{WS}+({DOT}+?)(?:{WS}*\[({NUMBER})%\])?{WS}*$"
+    ))
+});
+
+/// True when `text` is laid out one criterion per line, which is the layout
+/// in which a line can be told apart from its neighbours. The checkbox and
+/// indented layouts are read as tables instead.
+pub(super) fn is_line_layout(text: &str) -> bool {
+    let text = match text.find(MODEL_RESPONSE_MARKER) {
+        Some(marker) => &text[..marker],
+        None => text,
+    };
+    !text.contains("\t\u{2610}") && !is_indented_category_format(text)
+}
+
+/// True when a trimmed line of rubric text is a category header or a
+/// criterion that [`text_to_criteria`] reads.
+pub(super) fn is_rubric_line(line: &str) -> bool {
+    CATEGORY.is_match(line) || LINE.is_match(line)
+}
+
 /// Reads rubric text back into criteria. Lines that are not criteria are
 /// skipped, and so is everything from the model response marker on.
 pub fn text_to_criteria(text: &str) -> Vec<RubricCriterion> {
-    static LINE: LazyLock<Regex> = LazyLock::new(|| {
-        pattern(&format!(
-            r"^({DOT}+?){WS}*\(({NUMBER}){WS}*(?i-u:pts?)(?:,{WS}*({NUMBER})%{WS}*)?\){WS}*(?::{WS}*({DOT}*))?$"
-        ))
-    });
-    static CATEGORY: LazyLock<Regex> = LazyLock::new(|| {
-        pattern(&format!(
-            r"^##{WS}+({DOT}+?)(?:{WS}*\[({NUMBER})%\])?{WS}*$"
-        ))
-    });
-
     let text = match text.find(MODEL_RESPONSE_MARKER) {
         Some(marker) => &text[..marker],
         None => text,
