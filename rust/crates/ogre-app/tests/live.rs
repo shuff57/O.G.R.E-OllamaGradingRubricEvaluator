@@ -17,8 +17,9 @@
 //! service. The session is recorded in the app's data folder as any session
 //! is. Students are numbered in the output; no name or answer is printed.
 //!
-//!   OGRE_LIVE_LENIENCY       0 most lenient (default, what the Electron app
-//!                            was set to), 50 as written, 100 most strict
+//!   OGRE_LIVE_LENIENCY       the app's leniency setting. 50 (default) grades
+//!                            as the Electron app did at its most lenient,
+//!                            75 uses the rubric as written, 100 is strict
 //!   OGRE_LIVE_LOGIN_MINUTES  how long to wait for a login (default 15)
 //!   OGRE_LIVE_ONLY_READ=1    stop once the students are read; nothing is
 //!                            sent to the AI service
@@ -429,7 +430,7 @@ fn a_real_page_is_read_and_graded_without_writing() {
     let leniency: u8 = std::env::var("OGRE_LIVE_LENIENCY")
         .ok()
         .and_then(|value| value.parse().ok())
-        .unwrap_or(0);
+        .unwrap_or(50);
     let login_minutes: u64 = std::env::var("OGRE_LIVE_LOGIN_MINUTES")
         .ok()
         .and_then(|value| value.parse().ok())

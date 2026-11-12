@@ -2,9 +2,10 @@
 //! harder to meet, before anything is graded against it.
 //!
 //! A port of `lib/rubric-leniency.ts`. Only the prompt and the checks on the
-//! reply live here; sending the prompt is the caller's job. The scale runs
-//! from 0 (most lenient) through 50 (the rubric as written) to 100 (most
-//! strict).
+//! reply live here; sending the prompt is the caller's job. The scale is the
+//! Electron app's: from 0 (its most lenient) through 50 (the rubric as
+//! written) to 100 (most strict). Values below 0 ask for more leniency than
+//! the Electron app could: -50 is "100% more lenient".
 
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -14,7 +15,7 @@ use regex::Regex;
 use crate::grading::js;
 
 /// The setting at which the rubric is used as written.
-pub const NEUTRAL_LENIENCY: u8 = 50;
+pub const NEUTRAL_LENIENCY: i16 = 50;
 
 /// A line carrying a point value, such as `Name (2pts): ...`.
 static CRITERION_LINE: LazyLock<Regex> = LazyLock::new(|| {
@@ -60,7 +61,7 @@ impl std::error::Error for RewriteError {}
 
 /// The request that asks an AI to reword `rubric_text` for `leniency`.
 /// `None` at the neutral setting, where there is nothing to rewrite.
-pub fn leniency_rewrite_prompt(rubric_text: &str, leniency: u8) -> Option<String> {
+pub fn leniency_rewrite_prompt(rubric_text: &str, leniency: i16) -> Option<String> {
     if leniency == NEUTRAL_LENIENCY {
         return None;
     }

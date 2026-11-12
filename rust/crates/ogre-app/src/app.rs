@@ -12,7 +12,9 @@ use crate::keys::KeyStore;
 use crate::kit;
 use crate::profiles::ProfileSummary;
 use crate::session::{Note, RubricOutline, Session, Status, count, score_text};
-use crate::settings::{STORAGE_KEY, Service, Settings};
+use crate::settings::{
+    AS_WRITTEN_LENIENCY, DEFAULT_LENIENCY, STORAGE_KEY, Service, Settings, engine_leniency,
+};
 use crate::theme::{self, icon, pal, ty};
 use crate::worker::{Command, Event, GradeRequest, MapReport, Worker};
 
@@ -276,7 +278,7 @@ impl OgreApp {
                     students: session.to_grade(),
                     provider: self.settings.provider.clone(),
                     api_key: self.key(),
-                    leniency: self.settings.leniency,
+                    leniency: engine_leniency(self.settings.leniency),
                     score_from_verdicts: self.settings.score_from_verdicts,
                     cancel: CancelFlag::new(),
                 };
@@ -552,13 +554,7 @@ impl OgreApp {
             if slider.changed() {
                 actions.push(Action::SetLeniency(leniency));
             }
-            ui.label(theme::muted(match leniency {
-                50 => "The rubric is used as written.",
-                0..50 => {
-                    "More lenient: the AI rewords the rubric to be easier to meet before grading."
-                }
-                _ => "More strict: the AI rewords the rubric to be harder to meet before grading.",
-            }));
+            ui.label(theme::muted(leniency_note(leniency)));
         });
         if let Some(problem) = provider_problem {
             kit::icon_line(ui, icon::WARNING, problem, pal().warn);
@@ -1551,6 +1547,23 @@ impl eframe::App for OgreApp {
 fn host(url: &str) -> &str {
     let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
     rest.split(['/', '?', '#']).next().unwrap_or(rest)
+}
+
+/// What a leniency setting does, in a line.
+fn leniency_note(setting: u8) -> &'static str {
+    match setting {
+        DEFAULT_LENIENCY => {
+            "The usual setting: the AI rewords the rubric to be easier to meet before grading."
+        }
+        AS_WRITTEN_LENIENCY => "The rubric is used as written.",
+        s if s < DEFAULT_LENIENCY => {
+            "More lenient than usual: the AI rewords the rubric to be easier still to meet."
+        }
+        s if s < AS_WRITTEN_LENIENCY => {
+            "Less lenient than usual: the AI rewords the rubric to be a little easier to meet."
+        }
+        _ => "Strict: the AI rewords the rubric to be harder to meet before grading.",
+    }
 }
 
 /// Shown in the empty rubric editor.

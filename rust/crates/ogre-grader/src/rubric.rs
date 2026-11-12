@@ -22,14 +22,15 @@ pub struct PreparedRubric {
 
 /// Prepares `scraped` for grading.
 ///
-/// At a `leniency` other than 50 the AI is first asked to reword the rubric
-/// (0 is most lenient, 100 most strict). A rewrite that fails or comes back
+/// At a `leniency` other than 50 the AI is first asked to reword the rubric.
+/// The scale is the Electron app's: 0 is its most lenient, 100 most strict,
+/// and values below 0 are more lenient still. A rewrite that fails or comes back
 /// unusable is not fatal: the rubric is used as written and the reason is
 /// reported. Category weights are then filled in as the desktop app does.
 pub async fn prepare_rubric(
     provider: &dyn ChatProvider,
     scraped: &Rubric,
-    leniency: u8,
+    leniency: i16,
 ) -> PreparedRubric {
     let (text, rewrite_problem) = reword(provider, rubric_text(scraped), leniency).await;
     let text = with_default_weights(&text, DEFAULT_WEIGHT_MODE);
@@ -50,7 +51,7 @@ pub async fn prepare_edited_rubric(
     provider: &dyn ChatProvider,
     scraped: &Rubric,
     text: &str,
-    leniency: u8,
+    leniency: i16,
 ) -> PreparedRubric {
     // Every line the teacher wrote is a requirement from here on. What the
     // AI adds while rewording is not: that text is read as it stands.
@@ -75,7 +76,7 @@ pub async fn prepare_edited_rubric(
 async fn reword(
     provider: &dyn ChatProvider,
     original: String,
-    leniency: u8,
+    leniency: i16,
 ) -> (String, Option<String>) {
     let Some(prompt) = leniency_rewrite_prompt(&original, leniency) else {
         return (original, None);
@@ -92,6 +93,6 @@ async fn reword(
 }
 
 /// True when [`prepare_rubric`] would ask the AI to reword the rubric.
-pub fn rewrites_rubric(leniency: u8) -> bool {
+pub fn rewrites_rubric(leniency: i16) -> bool {
     leniency != NEUTRAL_LENIENCY
 }

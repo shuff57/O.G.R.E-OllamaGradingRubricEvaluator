@@ -265,6 +265,10 @@ fn grades_fills_and_saves_one_explicit_step_at_a_time() {
     assert_eq!(request.provider.model, "gemma4:31b");
     assert_eq!(request.rubric.checklist_items.len(), 2);
     assert_eq!(request.rubric_text, None, "the rubric was not edited");
+    // The usual leniency is the Electron app's most lenient, which is 0 on
+    // the grading engine's scale.
+    assert_eq!(request.leniency, 0);
+    harness.get_by_label_contains("The usual setting: the AI rewords the rubric");
     assert!(
         harness.query_by_label_contains("Fill in").is_none(),
         "nothing to write yet"

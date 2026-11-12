@@ -75,8 +75,9 @@ pub struct GradeRequest {
     pub students: Vec<StudentWork>,
     pub provider: ProviderSettings,
     pub api_key: Option<String>,
-    /// 0 most lenient, 50 the rubric as written, 100 most strict.
-    pub leniency: u8,
+    /// On the grading engine's scale, not the setting's: 0 the Electron
+    /// app's most lenient, 50 the rubric as written, 100 most strict.
+    pub leniency: i16,
     /// Work each score out from the feedback's verdicts.
     pub score_from_verdicts: bool,
     /// Stops the run after the AI call in flight.

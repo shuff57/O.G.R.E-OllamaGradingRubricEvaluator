@@ -12,9 +12,8 @@ pub struct Settings {
     pub provider: ProviderSettings,
     /// Use the dark palette.
     pub dark: bool,
-    /// How the rubric is read when grading: 0 is most lenient, 50 is as
-    /// written, 100 is most strict. Away from 50 the AI rewords the rubric
-    /// before grading.
+    /// How the rubric is read when grading, from 0 (most lenient) to 100
+    /// (most strict). See [`engine_leniency`] for what each setting does.
     pub leniency: u8,
     /// Work each score out from the verdicts in the feedback instead of
     /// taking the AI's own score. Off unless the teacher turns it on.
@@ -26,9 +25,36 @@ impl Default for Settings {
         Self {
             provider: ProviderSettings::default(),
             dark: false,
-            leniency: ogre_core::NEUTRAL_LENIENCY,
+            leniency: DEFAULT_LENIENCY,
             score_from_verdicts: false,
         }
+    }
+}
+
+/// The leniency a new teacher starts with. It grades as the Electron app did
+/// at its most lenient, which is how its teacher had it set.
+pub const DEFAULT_LENIENCY: u8 = 50;
+
+/// The setting at which the rubric is used as written.
+pub const AS_WRITTEN_LENIENCY: u8 = 75;
+
+/// The app's leniency setting on the grading engine's scale, which is the
+/// Electron app's: 0 its most lenient, 50 the rubric as written, 100 most
+/// strict, below 0 more lenient still.
+///
+/// | Setting | Engine | The AI rewords the rubric to be |
+/// |---|---|---|
+/// | 0 | -50 | 100% more lenient |
+/// | 50 | 0 | 50% more lenient (the Electron app's most lenient) |
+/// | 75 | 50 | nothing: used as written |
+/// | 100 | 100 | 50% more strict |
+pub fn engine_leniency(setting: u8) -> i16 {
+    let setting = i16::from(setting.min(100));
+    let default = i16::from(DEFAULT_LENIENCY);
+    if setting <= default {
+        setting - default
+    } else {
+        (setting - default) * 2
     }
 }
 
@@ -178,6 +204,22 @@ mod tests {
         assert_eq!(config.api_key.as_deref(), Some("sk-secret"));
         assert!(!format!("{config:?}").contains("sk-secret"));
         assert_eq!(provider.to_config(Some("  ")).api_key, None);
+    }
+
+    #[test]
+    fn the_usual_leniency_grades_as_the_electron_app_did_at_its_most_lenient() {
+        assert_eq!(Settings::default().leniency, 50);
+        assert_eq!(engine_leniency(50), 0);
+        // The rubric as written sits three quarters of the way along.
+        assert_eq!(engine_leniency(AS_WRITTEN_LENIENCY), 50);
+        assert_eq!(engine_leniency(100), 100);
+        // Below the usual setting the rubric is reworded further still.
+        assert_eq!(engine_leniency(0), -50);
+        assert_eq!(engine_leniency(25), -25);
+        assert_eq!(engine_leniency(60), 20);
+        // The scale never runs backwards.
+        assert!((0..100u8).all(|s| engine_leniency(s) < engine_leniency(s + 1)));
+        assert_eq!(engine_leniency(250), 100);
     }
 
     #[test]

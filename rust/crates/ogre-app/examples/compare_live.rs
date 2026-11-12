@@ -16,7 +16,8 @@
 //!                         app is set up with (its `ogre-server.json`), which
 //!                         sends student names and answers to that service
 //!   OGRE_COMPARE_LIMIT    grade at most this many students per page
-//!   OGRE_COMPARE_LENIENCY 0 most lenient, 50 as written (default), 100 most strict
+//!   OGRE_COMPARE_LENIENCY on the Electron app's scale: 0 its most lenient,
+//!                         50 as written (default), 100 most strict
 //!   OGRE_COMPARE_READ_ONLY=1  read and describe the page, do not grade
 //!   OGRE_COMPARE_ANCHORS=1  first have the AI write example answers at each
 //!                         score level and grade with them as calibration,
@@ -358,7 +359,7 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         .ok()
         .and_then(|n| n.parse().ok())
         .unwrap_or(usize::MAX);
-    let leniency: u8 = std::env::var("OGRE_COMPARE_LENIENCY")
+    let leniency: i16 = std::env::var("OGRE_COMPARE_LENIENCY")
         .ok()
         .and_then(|n| n.parse().ok())
         .unwrap_or(50);

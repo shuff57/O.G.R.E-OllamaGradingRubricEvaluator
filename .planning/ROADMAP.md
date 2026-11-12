@@ -140,7 +140,7 @@ OGRE rebuilt in Rust with egui/eframe as one desktop program. It drives the teac
 | `ogre-agent` | Agent mode and skills, with forced approvals |
 | `ogre-app` | The window: Grade, Agent, Sites, History, Settings |
 
-Decisions: desktop only for now (code kept web-compilable), Linux only for now, default leniency 50, UI follows the verSHion design.
+Decisions: desktop only for now (code kept web-compilable), Linux only for now, UI follows the verSHion design. The leniency setting starts at 50, and 50 grades as the Electron app did at its most lenient (75 is the rubric as written). Scores are the AI's own by default, with a Settings switch to work them out from the feedback's verdicts.
 
 ## Done
 
@@ -153,7 +153,7 @@ Decisions: desktop only for now (code kept web-compilable), Linux only for now, 
 
 ## Checked on real MyOpenMath pages (read-only)
 
-- Three already-graded pages, 69 students, Ollama Cloud `gemma4:31b`, leniency 0: average gap to the grades on the page about 1.0 of 14; 57 to 60 of 69 within one score step.
+- Three already-graded pages, 69 students, Ollama Cloud `gemma4:31b`, the Electron app's leniency 0: average gap to the grades on the page about 1.0 of 14; 57 to 60 of 69 within one score step.
 - Through the app's own window and Chrome (`rust/crates/ogre-app/tests/live.rs`): one page, 18 students, average gap 0.42, 17 of 18 within one step, page unchanged afterwards.
 - Question 360745106 stays about 1.4 away. The two sets of feedback agree on which requirements are correct for 95% of verdicts; the difference is points taken off per missed requirement. That page carries the mark of the Electron app before its 28 October fix (students marked all correct but given 12.5 of 14), so its grades are not a clean target.
 
