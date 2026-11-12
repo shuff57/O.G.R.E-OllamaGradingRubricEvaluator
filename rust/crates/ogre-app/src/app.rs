@@ -3,6 +3,7 @@ use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use egui_extras::{Column, TableBuilder};
 use ogre_core::format_score;
 use ogre_grader::CancelFlag;
+use ogre_harness::cdp::{DialogKind, Held, MouseAction, MouseButton, ViewSize};
 
 use crate::agent_run::{
     AgentAnswer, AgentLine, AgentQuestion, AgentRequest, AgentSummary, LineKind, SkillSummary,
@@ -18,6 +19,7 @@ use crate::settings::{
     AS_WRITTEN_LENIENCY, DEFAULT_LENIENCY, STORAGE_KEY, Service, Settings, engine_leniency,
     old_app_provider,
 };
+use crate::tab_view::ViewInput;
 use crate::theme::{self, icon, pal, ty};
 use crate::worker::{Command, Event, ExamplesRequest, GradeRequest, MapReport, Worker};
 
@@ -66,7 +68,31 @@ pub struct OgreApp {
     /// The past session whose details are shown, by when it was read.
     history_open: Option<u64>,
     agent: AgentView,
+    browser: BrowserView,
 }
+
+/// The Browser screen's state: the page as last drawn, and where the mouse
+/// stands with it.
+#[derive(Default)]
+struct BrowserView {
+    /// The newest picture of the page.
+    picture: Option<egui::TextureHandle>,
+    /// The size the page was last asked to be drawn at.
+    size: Option<ViewSize>,
+    /// The address the page was last known to be at, to notice it moving.
+    address: String,
+    /// The mouse button that went down on the page and is still down, with
+    /// its place in a run of clicks.
+    down: Option<(MouseButton, u32)>,
+    /// When and where the last press was, to tell a double click.
+    last_press: Option<(f64, egui::Pos2, u32)>,
+}
+
+/// Two presses this close in time and place are a double click.
+const DOUBLE_CLICK_SECONDS: f64 = 0.4;
+const DOUBLE_CLICK_DISTANCE: f32 = 5.0;
+/// How far one notch of a mouse wheel scrolls, in the page's own pixels.
+const WHEEL_LINE: f32 = 40.0;
 
 /// The Agent screen's state.
 #[derive(Default)]
@@ -90,6 +116,8 @@ struct AgentView {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Screen {
     Grade,
+    /// The page Chrome is on, where Chrome has no window of its own.
+    Browser,
     Agent,
     Sites,
     History,
@@ -122,6 +150,7 @@ fn clock(seconds: f64) -> String {
 /// carried out afterwards, so drawing code never needs the whole app.
 enum Action {
     StartChrome,
+    StopChrome,
     Open(String),
     Read,
     /// Take the grading tab to another question of the assignment.
@@ -216,6 +245,7 @@ impl OgreApp {
             history_open: None,
             mapping: None,
             agent: AgentView::default(),
+            browser: BrowserView::default(),
         }
     }
 
@@ -274,7 +304,17 @@ impl OgreApp {
                 self.busy = None;
             }
             match event {
-                Event::ChromeStarted => self.chrome_running = true,
+                Event::ChromeStarted => {
+                    self.chrome_running = true;
+                    // Where the page is, which is where signing in happens.
+                    if self.settings.page_inside && self.screen == Screen::Grade {
+                        self.screen = Screen::Browser;
+                    }
+                }
+                Event::ChromeClosed => {
+                    self.chrome_running = false;
+                    self.browser = BrowserView::default();
+                }
                 Event::Opened(url) => self.address = url,
                 Event::Read(mut read) => {
                     self.selected = None;
@@ -407,7 +447,11 @@ impl OgreApp {
 
     fn carry_out(&mut self, ctx: &egui::Context, action: Action) {
         match action {
-            Action::StartChrome => self.send(Command::StartChrome, "Starting Chrome…"),
+            Action::StartChrome => {
+                let inside = self.settings.page_inside;
+                self.send(Command::StartChrome { inside }, "Starting Chrome…");
+            }
+            Action::StopChrome => self.send(Command::StopChrome, "Stopping Chrome…"),
             Action::Open(address) => self.send(Command::Open(address), "Opening the page…"),
             Action::Read => self.send(Command::ReadStudents, "Reading the page…"),
             Action::GoTo(address) => {
@@ -644,13 +688,20 @@ impl OgreApp {
                     .color(theme::DOCK_TEXT),
             );
             ui.add_space(14.0);
-            for (screen, glyph, label) in [
-                (Screen::Grade, icon::GRADE, "Grade"),
-                (Screen::Agent, icon::AGENT, "Agent"),
-                (Screen::Sites, icon::SITES, "Sites"),
-                (Screen::History, icon::HISTORY, "History"),
-                (Screen::Settings, icon::SETTINGS, "Settings"),
-            ] {
+            let browser =
+                self.settings
+                    .page_inside
+                    .then_some((Screen::Browser, icon::BROWSER, "Browser"));
+            for (screen, glyph, label) in [(Screen::Grade, icon::GRADE, "Grade")]
+                .into_iter()
+                .chain(browser)
+                .chain([
+                    (Screen::Agent, icon::AGENT, "Agent"),
+                    (Screen::Sites, icon::SITES, "Sites"),
+                    (Screen::History, icon::HISTORY, "History"),
+                    (Screen::Settings, icon::SETTINGS, "Settings"),
+                ])
+            {
                 if kit::dock_item(ui, glyph, label, self.screen == screen) {
                     actions.push(Action::Show(screen));
                 }
@@ -693,6 +744,319 @@ impl OgreApp {
         if let Some(notice) = &self.notice {
             kit::icon_line(ui, icon::CHECK, notice, pal().accent);
         }
+        self.page_question(ui);
+    }
+
+    /// What the page shown inside the window is asking, with its answers. A
+    /// page that asks stands still until it is told, on whatever screen the
+    /// teacher happens to be.
+    fn page_question(&self, ui: &mut egui::Ui) {
+        let view = self.worker.view();
+        let Some(dialog) = view.state().dialog.clone() else {
+            return;
+        };
+        let (question, yes, no) = match dialog.kind {
+            DialogKind::Alert => (format!("The page says: {}", dialog.message), "OK", None),
+            DialogKind::Leave => (
+                "The page says you may have changes that are not saved. Leave it?".to_owned(),
+                "Leave the page",
+                Some("Stay on it"),
+            ),
+            DialogKind::Confirm | DialogKind::Prompt => (
+                format!("The page asks: {}", dialog.message),
+                "OK",
+                Some("Cancel"),
+            ),
+        };
+        kit::icon_line(ui, icon::WARNING, &question, pal().warn);
+        ui.horizontal(|ui| {
+            if kit::ghost(ui, yes, true).clicked() {
+                view.send(ViewInput::Answer(true));
+            }
+            if let Some(no) = no
+                && kit::ghost(ui, no, true).clicked()
+            {
+                view.send(ViewInput::Answer(false));
+            }
+        });
+    }
+
+    fn browser_screen(&mut self, ui: &mut egui::Ui, actions: &mut Vec<Action>) {
+        let idle = self.busy.is_none();
+        egui::CentralPanel::default()
+            .frame(Frame::new().inner_margin(CONTENT_MARGIN))
+            .show(ui, |ui| {
+                if !self.chrome_running {
+                    kit::page_header(
+                        ui,
+                        "OGRE  /  Browser",
+                        "Browser",
+                        Some(
+                            "The page Chrome is on, shown here instead of in a window of its own.",
+                        ),
+                    );
+                    self.browser_card(ui, actions);
+                    return;
+                }
+                // The address box follows the page, except while it is typed in.
+                let at = self.worker.view().state().address.clone();
+                if at != self.browser.address {
+                    self.browser.address.clone_from(&at);
+                    self.address = at;
+                }
+                kit::card().show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    ui.horizontal(|ui| {
+                        let view = self.worker.view();
+                        if kit::icon_button(ui, icon::BACK, "Back", true).clicked() {
+                            view.send(ViewInput::Back);
+                        }
+                        if kit::icon_button(ui, icon::FORWARD, "Forward", true).clicked() {
+                            view.send(ViewInput::Forward);
+                        }
+                        if kit::icon_button(ui, icon::RELOAD, "Reload the page", true).clicked() {
+                            view.send(ViewInput::Reload);
+                        }
+                        let stop = ui
+                            .with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                let stop = kit::ghost(ui, "Stop Chrome", idle);
+                                let go = kit::ghost(ui, "Go", idle);
+                                let address = ui.add(
+                                    egui::TextEdit::singleline(&mut self.address)
+                                        .hint_text("Address")
+                                        .desired_width(f32::INFINITY),
+                                );
+                                let entered = address.lost_focus()
+                                    && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                                let address = self.address.trim();
+                                if idle && !address.is_empty() && (go.clicked() || entered) {
+                                    actions.push(Action::Open(address.to_owned()));
+                                }
+                                stop.clicked()
+                            })
+                            .inner;
+                        if stop {
+                            actions.push(Action::StopChrome);
+                        }
+                    });
+                    self.messages(ui, actions);
+                });
+                ui.add_space(4.0);
+                self.page(ui);
+            });
+    }
+
+    /// The page itself: its picture, and the teacher's mouse and keyboard
+    /// passed on to it.
+    fn page(&mut self, ui: &mut egui::Ui) {
+        let view = self.worker.view().clone();
+        let rect = ui.available_rect_before_wrap();
+        let response = ui.allocate_rect(rect, egui::Sense::click_and_drag());
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(egui::Role::Canvas, true, "The page in Chrome")
+        });
+        ui.painter().rect_filled(rect, 0, pal().card);
+
+        let size = ViewSize {
+            width: rect.width().round().max(1.0) as u32,
+            height: rect.height().round().max(1.0) as u32,
+            scale: f64::from(ui.ctx().pixels_per_point()),
+        };
+        if self.browser.size != Some(size) {
+            self.browser.size = Some(size);
+            view.send(ViewInput::Size(size));
+        }
+
+        let (picture, showing, copied) = {
+            let mut state = view.state();
+            (state.picture.take(), state.showing, state.copied.take())
+        };
+        if let Some(copied) = copied {
+            ui.ctx().copy_text(copied);
+        }
+        if let Some(picture) = picture {
+            let image = egui::ColorImage::from_rgba_unmultiplied(picture.size, &picture.rgba);
+            let options = egui::TextureOptions::LINEAR;
+            match &mut self.browser.picture {
+                Some(texture) => texture.set(image, options),
+                None => {
+                    self.browser.picture = Some(ui.ctx().load_texture("page", image, options));
+                }
+            }
+        }
+        if !showing {
+            self.browser.picture = None;
+        }
+        match &self.browser.picture {
+            Some(texture) => {
+                let whole = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+                ui.painter()
+                    .image(texture.id(), rect, whole, egui::Color32::WHITE);
+            }
+            None => {
+                ui.painter().text(
+                    rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    "Waiting for Chrome to draw the page\u{2026}",
+                    egui::FontId::proportional(ty::BODY),
+                    pal().muted,
+                );
+            }
+        }
+        ui.painter().rect_stroke(
+            rect,
+            0,
+            egui::Stroke::new(1.0, pal().border),
+            egui::StrokeKind::Inside,
+        );
+        if response.has_focus() {
+            // Tab, the arrows and Escape belong to the page while it is typed in.
+            let keys = egui::EventFilter {
+                tab: true,
+                horizontal_arrows: true,
+                vertical_arrows: true,
+                escape: true,
+            };
+            ui.memory_mut(|memory| memory.set_focus_lock_filter(response.id, keys));
+        }
+
+        let (events, now, pointer) =
+            ui.input(|i| (i.events.clone(), i.time, i.pointer.latest_pos()));
+        let on_page =
+            |pos: egui::Pos2| (f64::from(pos.x - rect.min.x), f64::from(pos.y - rect.min.y));
+        let held = |m: egui::Modifiers| Held {
+            alt: m.alt,
+            ctrl: m.ctrl,
+            meta: m.mac_cmd,
+            shift: m.shift,
+        };
+        for event in events {
+            match event {
+                egui::Event::PointerMoved(pos)
+                    if self.browser.down.is_some() || response.contains_pointer() =>
+                {
+                    let (x, y) = on_page(pos);
+                    let action = MouseAction::Move {
+                        held: matches!(self.browser.down, Some((MouseButton::Left, _))),
+                    };
+                    view.send(ViewInput::Mouse {
+                        action,
+                        x,
+                        y,
+                        held: Held::default(),
+                    });
+                }
+                egui::Event::PointerButton {
+                    pos,
+                    button,
+                    pressed,
+                    modifiers,
+                } => {
+                    let button = match button {
+                        egui::PointerButton::Primary => MouseButton::Left,
+                        egui::PointerButton::Secondary => MouseButton::Right,
+                        egui::PointerButton::Middle => MouseButton::Middle,
+                        _ => continue,
+                    };
+                    let (x, y) = on_page(pos);
+                    let action = if pressed {
+                        if !response.contains_pointer() {
+                            continue;
+                        }
+                        let clicks = match self.browser.last_press {
+                            Some((when, at, clicks))
+                                if now - when <= DOUBLE_CLICK_SECONDS
+                                    && at.distance(pos) <= DOUBLE_CLICK_DISTANCE =>
+                            {
+                                clicks + 1
+                            }
+                            _ => 1,
+                        };
+                        self.browser.last_press = Some((now, pos, clicks));
+                        self.browser.down = Some((button, clicks));
+                        response.request_focus();
+                        MouseAction::Press { button, clicks }
+                    } else {
+                        // Only a button that went down on the page comes up on it.
+                        let Some((down, clicks)) = self.browser.down.take() else {
+                            continue;
+                        };
+                        if down != button {
+                            self.browser.down = Some((down, clicks));
+                            continue;
+                        }
+                        MouseAction::Release { button, clicks }
+                    };
+                    view.send(ViewInput::Mouse {
+                        action,
+                        x,
+                        y,
+                        held: held(modifiers),
+                    });
+                }
+                egui::Event::MouseWheel {
+                    unit,
+                    delta,
+                    modifiers,
+                    ..
+                } if response.contains_pointer() => {
+                    let step = match unit {
+                        egui::MouseWheelUnit::Point => 1.0,
+                        egui::MouseWheelUnit::Line => WHEEL_LINE,
+                        egui::MouseWheelUnit::Page => rect.height(),
+                    };
+                    let (x, y) = on_page(pointer.unwrap_or(rect.center()));
+                    view.send(ViewInput::Mouse {
+                        // The wheel says which way the content moves; the page
+                        // is told which way to scroll.
+                        action: MouseAction::Wheel {
+                            dx: f64::from(-delta.x * step),
+                            dy: f64::from(-delta.y * step),
+                        },
+                        x,
+                        y,
+                        held: held(modifiers),
+                    });
+                }
+                _ if !response.has_focus() => {}
+                egui::Event::Text(text) => {
+                    let mut characters = text.chars();
+                    match (characters.next(), characters.next()) {
+                        // One character is a key, so that the page sees it
+                        // being pressed, as pages that watch the keyboard need.
+                        (Some(_), None) => {
+                            for pressed in [true, false] {
+                                view.send(ViewInput::Key {
+                                    name: text.clone(),
+                                    pressed,
+                                    held: Held::default(),
+                                });
+                            }
+                        }
+                        (None, _) => {}
+                        _ => view.send(ViewInput::Text(text)),
+                    }
+                }
+                egui::Event::Key {
+                    key,
+                    pressed,
+                    modifiers,
+                    ..
+                } => {
+                    if let Some(name) = key_name(key, modifiers) {
+                        view.send(ViewInput::Key {
+                            name,
+                            pressed,
+                            held: held(modifiers),
+                        });
+                    }
+                }
+                egui::Event::Copy => view.send(ViewInput::Copy),
+                egui::Event::Cut => view.send(ViewInput::Cut),
+                egui::Event::Paste(text) => view.send(ViewInput::Text(text)),
+                _ => {}
+            }
+        }
     }
 
     fn browser_card(&mut self, ui: &mut egui::Ui, actions: &mut Vec<Action>) {
@@ -704,10 +1068,14 @@ impl OgreApp {
                     if self.step_button(ui, Step::StartChrome, "Start Chrome", idle) {
                         actions.push(Action::StartChrome);
                     }
-                    ui.label(theme::muted(
+                    ui.label(theme::muted(if self.settings.page_inside {
+                        "Starts Chrome without a window of its own, with its own profile. \
+                         Its page is shown on the Browser screen: log in to your grading \
+                         site there once."
+                    } else {
                         "Opens a separate Chrome window with its own profile. \
-                         Log in to your grading site there once.",
-                    ));
+                         Log in to your grading site there once."
+                    }));
                 });
             } else {
                 ui.horizontal(|ui| {
@@ -2122,6 +2490,22 @@ impl OgreApp {
                 ui.add_space(4.0);
                 kit::card().show(ui, |ui| {
                     ui.set_max_width(560.0);
+                    kit::panel_title(ui, "Where the page is shown");
+                    ui.add_space(4.0);
+                    ui.checkbox(
+                        &mut self.settings.page_inside,
+                        "Show the page inside OGRE (an experiment)",
+                    );
+                    ui.label(theme::muted(
+                        "Chrome then runs without a window of its own and its page is drawn \
+                         on a Browser screen here. It answers a click or a key a little \
+                         late, and it cannot show a file picker or Chrome\u{2019}s own \
+                         pop-ups. Takes effect the next time Chrome is started.",
+                    ));
+                });
+                ui.add_space(4.0);
+                kit::card().show(ui, |ui| {
+                    ui.set_max_width(560.0);
                     kit::panel_title(ui, "Scores");
                     ui.add_space(4.0);
                     ui.checkbox(
@@ -2167,6 +2551,7 @@ impl eframe::App for OgreApp {
 
         match self.screen {
             Screen::Grade => self.grade_screen(ui, &mut actions),
+            Screen::Browser => self.browser_screen(ui, &mut actions),
             Screen::Agent => self.agent_screen(ui, &mut actions),
             Screen::Sites => self.sites_screen(ui, &mut actions),
             Screen::History => self.history_screen(ui, &mut actions),
@@ -2185,6 +2570,41 @@ impl eframe::App for OgreApp {
 }
 
 /// The host of an address, for telling sites apart: "www.myopenmath.com".
+/// The DOM name of a key the page is to be told about as a key: one that
+/// types nothing, or any key pressed as a shortcut. A key that types comes
+/// as text instead, already what the keyboard layout makes of it.
+fn key_name(key: egui::Key, modifiers: egui::Modifiers) -> Option<String> {
+    use egui::Key;
+    let named = match key {
+        Key::ArrowDown => "ArrowDown",
+        Key::ArrowLeft => "ArrowLeft",
+        Key::ArrowRight => "ArrowRight",
+        Key::ArrowUp => "ArrowUp",
+        Key::Escape => "Escape",
+        Key::Tab => "Tab",
+        Key::Backspace => "Backspace",
+        Key::Enter => "Enter",
+        Key::Insert => "Insert",
+        Key::Delete => "Delete",
+        Key::Home => "Home",
+        Key::End => "End",
+        Key::PageUp => "PageUp",
+        Key::PageDown => "PageDown",
+        _ => "",
+    };
+    if !named.is_empty() {
+        return Some(named.to_owned());
+    }
+    let name = key.name();
+    if name.len() > 1 && name.starts_with('F') && name[1..].parse::<u8>().is_ok() {
+        return Some(name.to_owned());
+    }
+    // Copy, cut and paste arrive as events of their own.
+    let shortcut = (modifiers.ctrl || modifiers.mac_cmd) && !modifiers.alt;
+    let clipboard = matches!(key, Key::C | Key::X | Key::V);
+    (shortcut && !clipboard && name.len() == 1).then(|| name.to_lowercase())
+}
+
 fn host(url: &str) -> &str {
     let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
     rest.split(['/', '?', '#']).next().unwrap_or(rest)

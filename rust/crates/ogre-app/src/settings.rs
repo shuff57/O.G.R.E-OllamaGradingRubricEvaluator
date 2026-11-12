@@ -21,6 +21,9 @@ pub struct Settings {
     pub score_from_verdicts: bool,
     /// The agent's skills the teacher has switched on or off, by id.
     pub skills: BTreeMap<String, bool>,
+    /// Run Chrome without a window of its own and show its page inside
+    /// OGRE's, on the Browser screen. An experiment: off unless asked for.
+    pub page_inside: bool,
 }
 
 impl Default for Settings {
@@ -31,6 +34,7 @@ impl Default for Settings {
             leniency: DEFAULT_LENIENCY,
             score_from_verdicts: false,
             skills: BTreeMap::new(),
+            page_inside: false,
         }
     }
 }
@@ -333,6 +337,7 @@ mod tests {
             leniency: 20,
             score_from_verdicts: true,
             skills: BTreeMap::from([("my-skill".to_owned(), false)]),
+            page_inside: true,
         };
         let json = serde_json::to_string(&settings).unwrap();
         assert_eq!(serde_json::from_str::<Settings>(&json).unwrap(), settings);

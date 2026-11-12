@@ -22,7 +22,10 @@ TEXT = (
     "U+2300-23FF,U+25A0-25FF,U+2600-26FF,U+FB00-FB06"
 )
 # The icons named in src/theme.rs.
-ICONS = "U+E742,U+E762,U+E28E,U+E1A0,U+E270,U+E472,U+E330,U+E4E0,U+E184"
+ICONS = (
+    "U+E742,U+E762,U+E28E,U+E1A0,U+E270,U+E472,U+E330,U+E4E0,U+E184,"
+    "U+E0F4,U+E058,U+E06C,U+E036"
+)
 
 FACES = [
     ("SourceSans3-Regular.ttf", "OgreSans-Regular.ttf", "OGRE Sans", "Regular"),

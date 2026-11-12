@@ -326,15 +326,22 @@ impl TabView {
 
     /// The next thing that happened. `None` once the tab is closed or Chrome
     /// has gone.
+    ///
+    /// Safe to drop while it waits: nothing is lost, and the next call
+    /// picks up where this one was.
     pub async fn next(&mut self) -> Option<ViewEvent> {
         loop {
             let Event { method, params } = self.events.recv().await?;
             match method.as_str() {
                 "Page.screencastFrame" => {
                     // Chrome sends the next picture only after this one is
-                    // acknowledged.
+                    // acknowledged. Not waited for, so that giving up on
+                    // this call half way loses nothing.
                     let seen = json!({ "sessionId": params["sessionId"] });
-                    let _ = self.page.call("Page.screencastFrameAck", seen).await;
+                    let page = self.page.clone();
+                    tokio::spawn(async move {
+                        let _ = page.call("Page.screencastFrameAck", seen).await;
+                    });
                     let picture = params["data"]
                         .as_str()
                         .and_then(|data| BASE64.decode(data).ok());

@@ -157,6 +157,10 @@ pub mod icon {
     pub const MOON: &str = "\u{E330}";
     pub const WARNING: &str = "\u{E4E0}";
     pub const CHECK: &str = "\u{E184}";
+    pub const BROWSER: &str = "\u{E0F4}";
+    pub const BACK: &str = "\u{E058}";
+    pub const FORWARD: &str = "\u{E06C}";
+    pub const RELOAD: &str = "\u{E036}";
 }
 
 const SERIF: &str = "ogre-serif";

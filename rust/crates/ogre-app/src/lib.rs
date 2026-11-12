@@ -11,6 +11,7 @@ mod profiles;
 mod rubrics;
 mod session;
 mod settings;
+mod tab_view;
 mod theme;
 mod worker;
 
@@ -25,6 +26,7 @@ pub use profiles::ProfileSummary;
 pub use rubrics::SavedRubric;
 pub use settings::engine_leniency;
 pub use settings::{ProviderSettings, STORAGE_KEY, Service, Settings, old_app_settings_file};
+pub use tab_view::{Picture, ViewInput, ViewLink, ViewState};
 pub use worker::{
     Command, Event, ExamplesRequest, GradeRequest, MapReport, OutsideRubric, ReadReport, StandIn,
     Worker, WriteReport,

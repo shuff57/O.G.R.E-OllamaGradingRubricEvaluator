@@ -158,7 +158,7 @@ Decisions: desktop only for now (code kept web-compilable), Linux only for now, 
 - Three deliberate departures from the Electron scoring: category scores are always read out of 10; a sub-maximum score is raised to full only when every verdict says "Correct"; category weights are used only when the weights of the categories the AI scored add up to 100 (before, a rubric with one category named differently from the rest scored a perfect answer 3 of 14).
 - A rubric drafted by the AI from the question, for a question that has none. Checked against Ollama Cloud `gemma4:31b`.
 - The Agent screen lists what the agent knows: the built-in site guides and the teacher's own skill files, each skill with a switch that is remembered.
-- 946 tests pass by default; 71 more need Chrome, a local model or the AI service.
+- 949 tests pass by default; 77 more need Chrome, a local model or the AI service.
 
 ## Checked on real MyOpenMath pages (read-only)
 
@@ -189,12 +189,16 @@ Four ungraded students on one MyOpenMath question, supervised step by step with 
 
 ## Embedded browser
 
-Not planned. The decision of 2026-11-11 was to drive the teacher's own Chrome, so the teacher works in two windows. Looked at on 2026-11-12, on this computer (Fedora, Wayland):
+The decision of 2026-11-11 was to drive the teacher's own Chrome, so the teacher worked in two windows. On 2026-11-12 the teacher asked for the page inside OGRE's window, and chose the first of three ways to try:
 
 | Way | What it takes | Catch |
 |---|---|---|
-| Show the Chrome tab inside OGRE (Chrome runs out of sight, its picture is drawn in a panel, clicks and keys are passed on) | No new dependency; the Chrome driver, sign-ins and site adapters stay as they are | Measured with a throwaway test: 24 pictures a second while a page moves, none while it is still, and 0.2 to 0.4 seconds from a click or a keystroke to the picture showing it. Good for watching and the odd click, slow to type in. File pickers, pop-up windows, the password manager and copy and paste each need work of their own |
+| **Built, behind a switch.** Show the Chrome tab inside OGRE: Chrome runs without a window, its picture is drawn on a Browser screen, clicks and keys are passed on | No new dependency; the Chrome driver, sign-ins and site adapters stay as they are | Measured: 24 pictures a second while a page moves, none while it is still, and 0.2 to 0.4 seconds from a click or a keystroke to the picture showing it |
 | Chromium inside the window (CEF, the `cef` crate) | A real browser in a panel, and the Chrome driver could still talk to it | Adds Chromium to the program, which is 17 MB today, and a much harder build and packaging |
 | The system web view (`wry`, WebKitGTK) | Small | Its child window works on X11 only, not Wayland; it is not Chrome, so sign-ins start over and the driver would be rewritten |
 
-If one is wanted, the first row is the one to try: it can be built behind a switch and dropped without touching the rest.
+What the built one does: Settings, "Show the page inside OGRE (an experiment)", off by default. With it on, Start Chrome starts Chrome without a window and a Browser screen appears in the dock with back, forward, reload, an address box and Stop Chrome. The page takes the mouse (move, click, double click, drag, wheel) and the keyboard (typing, Tab, arrows, Enter, Ctrl+A, undo, redo, copy, cut, paste). A link that opens a new tab is followed. A question the page asks (`alert`, `confirm`, "Leave site?") is shown on every screen with its answers.
+
+What it does not do: the file picker, Chrome's own pop-ups (permission prompts, the password manager), the pointer changing shape over a link, a row of tabs, text entry by an input method. A windowless Chrome says so to the sites it visits ("HeadlessChrome"), and a site may refuse it for that; OGRE does not disguise it. The way round is to sign in with the switch off, in Chrome's own window: both use the same profile, so the sign-in carries over.
+
+Checked: against real Chrome in `rust/crates/ogre-harness/tests/view.rs` and, through the app's own worker, `rust/crates/ogre-app/tests/page_inside.rs`; MyOpenMath's public front page draws correctly. Not checked: a signed-in grading session through it, and the window itself by hand.

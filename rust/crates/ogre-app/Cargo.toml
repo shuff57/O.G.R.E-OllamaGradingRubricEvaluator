@@ -19,6 +19,8 @@ ogre-llm.workspace = true
 
 async-trait.workspace = true
 eframe.workspace = true
+# The page shown inside the window arrives as JPEG pictures.
+image = { workspace = true, features = ["jpeg"] }
 egui_commonmark.workspace = true
 egui_extras.workspace = true
 keyring.workspace = true
@@ -34,4 +36,3 @@ libc = "0.2"
 [dev-dependencies]
 async-trait.workspace = true
 egui_kittest.workspace = true
-image.workspace = true

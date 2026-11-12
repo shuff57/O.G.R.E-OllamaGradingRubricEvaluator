@@ -11,13 +11,14 @@ use egui_kittest::kittest::Queryable;
 use ogre_app::{
     AgentAnswer, AgentLine, AgentQuestion, AgentSummary, Command, Event, Grade, GradeReport,
     GradedRow, LineKind, MapReport, MemoryKeys, OgreApp, OutsideRubric, PastProposal, PastSession,
-    PastStudent, ProfileSummary, ProviderSettings, ReadReport, SavedRubric, Service, SessionEnd,
-    Settings, SkillSummary, StandIn, Suggestion, Worker, WriteReport,
+    PastStudent, Picture, ProfileSummary, ProviderSettings, ReadReport, SavedRubric, Service,
+    SessionEnd, Settings, SkillSummary, StandIn, Suggestion, ViewInput, Worker, WriteReport,
 };
 use ogre_core::{
     FeedbackField, FeedbackKind, GradingPage, Position, QuestionLink, Rubric, ScoreField,
     Submission,
 };
+use ogre_harness::cdp::{DialogKind, Held, MouseAction, MouseButton, PageDialog};
 use ogre_harness::sites::Mismatch;
 use ogre_harness::sites::generic::{PageMap, SiteProfile, StudentSample, UrlRule};
 
@@ -207,7 +208,10 @@ fn starts_by_offering_to_start_chrome() {
 
     harness.get_by_label("Start Chrome").click();
     frames(&mut harness);
-    assert!(matches!(sent(&mut stand_in), Command::StartChrome));
+    assert!(matches!(
+        sent(&mut stand_in),
+        Command::StartChrome { inside: false }
+    ));
     harness.get_by_label("Starting Chrome…");
 }
 
@@ -1742,4 +1746,178 @@ fn a_page_without_a_question_has_nothing_to_draft_a_rubric_from() {
     press_in_rubric(&mut harness, "Draft a rubric from the question");
     assert!(stand_in.commands.try_recv().is_err());
     harness.get_by_label("OGRE read no question on this page to draft a rubric from.");
+}
+
+/// Settings that show the page inside OGRE's window.
+fn page_inside() -> Settings {
+    Settings {
+        page_inside: true,
+        ..local_model()
+    }
+}
+
+/// Everything the teacher has done on the page shown inside the window.
+fn page_inputs(stand_in: &mut StandIn) -> Vec<ViewInput> {
+    std::iter::from_fn(|| stand_in.view_input.try_recv().ok()).collect()
+}
+
+#[test]
+fn the_browser_screen_is_offered_only_once_the_teacher_asks_for_it() {
+    let (mut harness, mut stand_in) = window(local_model());
+    frames(&mut harness);
+    assert!(harness.query_by_label("Browser").is_none());
+
+    harness.get_by_label("Settings").click();
+    frames(&mut harness);
+    let switch = "Show the page inside OGRE (an experiment)";
+    harness.get_by_label(switch).scroll_to_me();
+    frames(&mut harness);
+    harness.get_by_label(switch).click();
+    frames(&mut harness);
+    shot(&mut harness, "25-settings-page-inside");
+    harness.get_by_label("Browser").click();
+    frames(&mut harness);
+
+    // Chrome is then started without a window of its own.
+    harness.get_by_label("Start Chrome").click();
+    frames(&mut harness);
+    assert!(matches!(
+        sent(&mut stand_in),
+        Command::StartChrome { inside: true }
+    ));
+}
+
+#[test]
+fn the_page_is_drawn_in_the_window_and_takes_the_mouse_and_keyboard() {
+    const PAGE: &str = "The page in Chrome";
+    let (mut harness, mut stand_in) = window(page_inside());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    frames(&mut harness);
+    // Chrome starting brings the page up, since that is where to sign in.
+    harness.get_by_label("Back");
+    let inputs = page_inputs(&mut stand_in);
+    let [ViewInput::Size(size)] = inputs.as_slice() else {
+        panic!("expected the page's size to be sent once, got {inputs:?}");
+    };
+    assert!(size.width > 800 && size.height > 400, "{size:?}");
+
+    {
+        let mut state = stand_in.view.state();
+        state.showing = true;
+        state.address = "https://www.myopenmath.com/".into();
+        // A small picture of plain green stands for the page.
+        let pixel = [45, 106, 79, 255];
+        state.picture = Some(Picture {
+            size: [8, 6],
+            rgba: pixel.repeat(48),
+        });
+    }
+    frames(&mut harness);
+    assert!(
+        harness
+            .query_all_by_value("https://www.myopenmath.com/")
+            .next()
+            .is_some(),
+        "the address box follows the page"
+    );
+    assert!(stand_in.view.state().picture.is_none(), "it was drawn");
+    shot(&mut harness, "26-page-inside");
+
+    harness.get_by_label(PAGE).click();
+    frames(&mut harness);
+    let clicks: Vec<MouseAction> = page_inputs(&mut stand_in)
+        .into_iter()
+        .filter_map(|input| match input {
+            ViewInput::Mouse { action, x, y, .. } => {
+                assert!(
+                    x > 0.0 && y > 0.0,
+                    "inside the page, measured from its corner"
+                );
+                Some(action)
+            }
+            _ => None,
+        })
+        .filter(|action| !matches!(action, MouseAction::Move { .. }))
+        .collect();
+    let button = MouseButton::Left;
+    assert_eq!(
+        clicks,
+        [
+            MouseAction::Press { button, clicks: 1 },
+            MouseAction::Release { button, clicks: 1 }
+        ]
+    );
+
+    // The click gave the page the keyboard.
+    harness.get_by_label(PAGE).type_text("h");
+    harness.key_press(egui::Key::Tab);
+    frames(&mut harness);
+    let key = |name: &str, pressed| ViewInput::Key {
+        name: name.into(),
+        pressed,
+        held: Held::default(),
+    };
+    assert_eq!(
+        page_inputs(&mut stand_in),
+        [
+            key("h", true),
+            key("h", false),
+            key("Tab", true),
+            key("Tab", false)
+        ]
+    );
+
+    harness.get_by_label("Reload the page").click();
+    frames(&mut harness);
+    assert_eq!(page_inputs(&mut stand_in), [ViewInput::Reload]);
+
+    // Text the teacher copied on the page reaches the window's clipboard,
+    // and is handed over once.
+    stand_in.view.state().copied = Some("standard error".into());
+    frames(&mut harness);
+    assert!(stand_in.view.state().copied.is_none());
+
+    harness.get_by_label("Stop Chrome").click();
+    frames(&mut harness);
+    assert!(matches!(sent(&mut stand_in), Command::StopChrome));
+    stand_in.events.send(Event::ChromeClosed).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Start Chrome");
+}
+
+#[test]
+fn what_the_page_asks_can_be_answered_from_any_screen() {
+    let (mut harness, mut stand_in) = window(page_inside());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    stand_in.events.send(read()).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Grade").click();
+    frames(&mut harness);
+    page_inputs(&mut stand_in);
+
+    stand_in.view.state().dialog = Some(PageDialog {
+        kind: DialogKind::Confirm,
+        message: "Really submit these grades?".into(),
+    });
+    frames(&mut harness);
+    harness.get_by_label("The page asks: Really submit these grades?");
+    shot(&mut harness, "27-page-asks");
+    harness.get_by_label("Cancel").click();
+    frames(&mut harness);
+    assert_eq!(page_inputs(&mut stand_in), [ViewInput::Answer(false)]);
+
+    // Leaving a page with unsaved changes is put in OGRE's own words.
+    stand_in.view.state().dialog = Some(PageDialog {
+        kind: DialogKind::Leave,
+        message: String::new(),
+    });
+    frames(&mut harness);
+    harness.get_by_label_contains("you may have changes that are not saved");
+    harness.get_by_label("Leave the page").click();
+    frames(&mut harness);
+    assert_eq!(page_inputs(&mut stand_in), [ViewInput::Answer(true)]);
+
+    stand_in.view.state().dialog = None;
+    frames(&mut harness);
+    assert!(harness.query_by_label_contains("The page asks").is_none());
 }

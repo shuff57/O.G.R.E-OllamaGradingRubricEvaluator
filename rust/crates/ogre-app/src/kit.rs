@@ -104,6 +104,52 @@ fn button(
     .inner
 }
 
+/// A square button that shows only an icon. `label` is what it is called
+/// for a screen reader and on hover.
+pub fn icon_button(ui: &mut Ui, icon: &str, label: &str, enabled: bool) -> Response {
+    let p = pal();
+    let sense = if enabled {
+        Sense::click()
+    } else {
+        Sense::hover()
+    };
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(BUTTON_HEIGHT), sense);
+    let radius = CornerRadius::same(R_FIELD);
+    let fill = if !enabled {
+        p.field
+    } else if response.is_pointer_button_down_on() {
+        p.accent_wash
+    } else if response.hovered() {
+        p.hover
+    } else {
+        p.card
+    };
+    ui.painter().rect_filled(rect, radius, fill);
+    if enabled {
+        ui.painter()
+            .rect_stroke(rect, radius, Stroke::new(1.0, p.edge), StrokeKind::Inside);
+    }
+    if response.has_focus() {
+        ui.painter().rect_stroke(
+            rect.expand(1.0),
+            CornerRadius::same(R_FIELD + 1),
+            Stroke::new(2.0, p.accent),
+            StrokeKind::Outside,
+        );
+    }
+    ui.painter().text(
+        rect.center(),
+        Align2::CENTER_CENTER,
+        icon,
+        theme::icon_font(18.0),
+        if enabled { p.ink } else { p.muted },
+    );
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, label));
+    response
+        .on_hover_text(label)
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
 /// A card: the surface content sits on. Hairline border, no shadow.
 pub fn card() -> Frame {
     Frame::new()

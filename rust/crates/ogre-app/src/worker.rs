@@ -26,6 +26,7 @@ use crate::history::{self, PastSession};
 use crate::profiles::{ProfileStore, ProfileSummary};
 use crate::rubrics::{RubricStore, SavedRubric};
 use crate::settings::ProviderSettings;
+use crate::tab_view::{self, Control, Shown, ViewInput, ViewLink};
 
 /// Writes are checked against the page after this many students.
 const WRITE_BATCH: usize = 5;
@@ -39,7 +40,12 @@ const SETTLE_STEP: Duration = Duration::from_millis(400);
 /// Something the window asks the worker to do.
 #[derive(Debug)]
 pub enum Command {
-    StartChrome,
+    /// `inside`: without a window of its own, to be shown in OGRE's.
+    StartChrome {
+        inside: bool,
+    },
+    /// Shut Chrome down. With a window of its own the teacher closes that.
+    StopChrome,
     /// Open this address in a new tab.
     Open(String),
     ReadStudents,
@@ -131,6 +137,8 @@ pub struct ExamplesRequest {
 #[derive(Debug)]
 pub enum Event {
     ChromeStarted,
+    /// Chrome was shut down because the teacher asked.
+    ChromeClosed,
     Opened(String),
     Read(ReadReport),
     Models(std::result::Result<Vec<String>, String>),
@@ -248,6 +256,7 @@ pub struct Worker {
     /// How to stop the long-running command in progress, if there is one.
     running: Mutex<Option<Running>>,
     answers: mpsc::UnboundedSender<AgentAnswer>,
+    view: ViewLink,
     thread: Option<JoinHandle<()>>,
 }
 
@@ -262,6 +271,10 @@ pub struct StandIn {
     pub commands: mpsc::UnboundedReceiver<Command>,
     /// The teacher's answers to the agent's questions.
     pub answers: mpsc::UnboundedReceiver<AgentAnswer>,
+    /// The page shown inside the window: set what it shows through this.
+    pub view: ViewLink,
+    /// What the teacher did on the page shown inside the window.
+    pub view_input: mpsc::UnboundedReceiver<ViewInput>,
 }
 
 impl Worker {
@@ -278,15 +291,24 @@ impl Worker {
         let (commands, inbox) = mpsc::unbounded_channel();
         let (outbox, events) = std_mpsc::channel();
         let (answers, answer_inbox) = mpsc::unbounded_channel();
+        let (view, view_input) = ViewLink::new();
+        let wires = Wires {
+            commands: inbox,
+            answers: answer_inbox,
+            view: view.clone(),
+            view_input,
+            events: outbox,
+        };
         let thread = std::thread::Builder::new()
             .name("ogre-worker".into())
-            .spawn(move || run(chrome, sites, data_dir, inbox, answer_inbox, outbox, wake))
+            .spawn(move || run(chrome, sites, data_dir, wires, wake))
             .expect("the operating system can start a thread");
         Self {
             commands: Some(commands),
             events,
             running: Mutex::new(None),
             answers,
+            view,
             thread: Some(thread),
         }
     }
@@ -297,17 +319,21 @@ impl Worker {
         let (commands, inbox) = mpsc::unbounded_channel();
         let (outbox, events) = std_mpsc::channel();
         let (answers, answer_inbox) = mpsc::unbounded_channel();
+        let (view, view_input) = ViewLink::new();
         let worker = Self {
             commands: Some(commands),
             events,
             running: Mutex::new(None),
             answers,
+            view: view.clone(),
             thread: None,
         };
         let stand_in = StandIn {
             events: outbox,
             commands: inbox,
             answers: answer_inbox,
+            view,
+            view_input,
         };
         (worker, stand_in)
     }
@@ -351,6 +377,11 @@ impl Worker {
     }
 
     /// Events that have arrived since the last call.
+    /// The page shown inside the window, where Chrome runs without one.
+    pub fn view(&self) -> &ViewLink {
+        &self.view
+    }
+
     pub fn poll(&self) -> impl Iterator<Item = Event> + '_ {
         self.events.try_iter()
     }
@@ -368,23 +399,49 @@ impl Drop for Worker {
     }
 }
 
+/// The worker's ends of everything it shares with the window.
+struct Wires {
+    commands: mpsc::UnboundedReceiver<Command>,
+    answers: mpsc::UnboundedReceiver<AgentAnswer>,
+    view: ViewLink,
+    view_input: mpsc::UnboundedReceiver<ViewInput>,
+    events: std_mpsc::Sender<Event>,
+}
+
 fn run(
     launch: LaunchOptions,
     sites: Sites,
     data_dir: PathBuf,
-    mut inbox: mpsc::UnboundedReceiver<Command>,
-    answers: mpsc::UnboundedReceiver<AgentAnswer>,
-    outbox: std_mpsc::Sender<Event>,
+    wires: Wires,
     wake: impl Fn() + Send + Sync + 'static,
 ) {
+    let Wires {
+        commands: mut inbox,
+        answers,
+        view,
+        view_input,
+        events: outbox,
+    } = wires;
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
         .build()
         .expect("the async runtime starts");
-    let wake = Arc::new(wake);
+    let wake: Arc<dyn Fn() + Send + Sync> = Arc::new(wake);
     runtime.block_on(async move {
+        let (view_control, controls) = mpsc::unbounded_channel();
+        let shown = Shown::default();
+        let showing = tokio::spawn(tab_view::run(
+            view,
+            view_input,
+            controls,
+            shown.clone(),
+            wake.clone(),
+        ));
         let mut task = Task {
+            inside: false,
+            view_control,
+            shown,
             launch,
             sites,
             profiles: ProfileStore::open(data_dir.clone()),
@@ -409,6 +466,7 @@ fn run(
             }
             wake();
         }
+        showing.abort();
         if let Some(chrome) = task.chrome.take() {
             let _ = chrome.close().await;
         }
@@ -462,6 +520,12 @@ struct Task {
     audit: AuditLog,
     report: Reporter,
     prepared: PreparedCache,
+    /// Chrome runs without a window and its page is shown in OGRE's.
+    inside: bool,
+    /// Tells the task that shows the page which tab to show.
+    view_control: mpsc::UnboundedSender<Control>,
+    /// The tab that task is showing.
+    shown: Shown,
 }
 
 impl Task {
@@ -475,9 +539,7 @@ impl Task {
                     _ => false,
                 };
                 if lost {
-                    self.chrome = None;
-                    self.opened = None;
-                    self.target = None;
+                    self.forget_chrome();
                     Event::ChromeStopped(message)
                 } else {
                     Event::Failed(message)
@@ -488,17 +550,48 @@ impl Task {
 
     async fn run(&mut self, command: Command) -> Result<Event> {
         match command {
-            Command::StartChrome => {
+            Command::StartChrome { inside } => {
                 if self.chrome.is_none() {
                     std::fs::create_dir_all(&self.launch.profile_dir).map_err(|e| {
                         Error::Browser(format!("cannot create profile folder: {e}"))
                     })?;
-                    self.chrome = Some(Chrome::launch(self.launch.clone()).await?);
+                    let launch = LaunchOptions {
+                        headless: inside || self.launch.headless,
+                        ..self.launch.clone()
+                    };
+                    let chrome = Chrome::launch(launch).await?;
+                    self.inside = inside;
+                    if inside {
+                        // The tab Chrome starts with is the one to show.
+                        let first = match chrome.pages().await?.into_iter().next() {
+                            Some(first) => first,
+                            None => chrome.open("about:blank").await?,
+                        };
+                        self.show(&first);
+                        self.opened = Some(first);
+                    }
+                    self.chrome = Some(chrome);
                 }
                 Ok(Event::ChromeStarted)
             }
+            Command::StopChrome => {
+                let chrome = self.chrome.take();
+                self.forget_chrome();
+                if let Some(chrome) = chrome {
+                    chrome.close().await?;
+                }
+                Ok(Event::ChromeClosed)
+            }
             Command::Open(address) => {
-                let page = self.chrome()?.open(&address).await?;
+                // Shown inside the window there is one tab the teacher looks
+                // at, and that is the one to send somewhere.
+                let page = match tab_view::shown_tab(&self.shown).filter(|_| self.inside) {
+                    Some(page) => {
+                        page.navigate(&address).await?;
+                        page
+                    }
+                    None => self.chrome()?.open(&address).await?,
+                };
                 let url = page.url().await?;
                 self.opened = Some(page);
                 self.opened_at = Some(Instant::now());
@@ -621,6 +714,21 @@ impl Task {
         }
     }
 
+    /// Has `page` shown inside the window, where pages are shown there.
+    fn show(&self, page: &CdpPage) {
+        if self.inside {
+            let _ = self.view_control.send(Control::Show(page.clone()));
+        }
+    }
+
+    /// Chrome is gone: nothing that was held of it is good any more.
+    fn forget_chrome(&mut self) {
+        self.chrome = None;
+        self.opened = None;
+        self.target = None;
+        let _ = self.view_control.send(Control::Hide);
+    }
+
     fn skills(&self) -> Event {
         Event::Skills {
             folder: self.skills_dir.display().to_string(),
@@ -677,6 +785,8 @@ impl Task {
             page: read.clone(),
             saved_rubrics: self.rubrics.all(),
         };
+        // The page that was read is the one the teacher will want to see.
+        self.show(&page);
         self.target = Some(Target {
             page,
             adapter,
@@ -730,6 +840,11 @@ impl Task {
     /// The tab a new mapping is worked out on: the one OGRE opened last, or
     /// failing that the first tab showing a web page.
     async fn current_tab(&self) -> Result<CdpPage> {
+        if let Some(page) = tab_view::shown_tab(&self.shown).filter(|_| self.inside)
+            && page.url().await.is_ok()
+        {
+            return Ok(page);
+        }
         if let Some(page) = &self.opened
             && page.url().await.is_ok()
         {

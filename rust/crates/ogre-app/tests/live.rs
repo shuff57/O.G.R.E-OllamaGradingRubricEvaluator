@@ -788,7 +788,7 @@ fn the_real_service_reads_a_rubric_from_a_picture_of_the_page() {
         }
     };
 
-    worker.send(Command::StartChrome);
+    worker.send(Command::StartChrome { inside: false });
     assert!(matches!(
         next(&worker, "starting Chrome"),
         Event::ChromeStarted

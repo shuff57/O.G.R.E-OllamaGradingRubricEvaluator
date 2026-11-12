@@ -129,7 +129,7 @@ fn a_read_straight_after_opening_waits_for_the_page_to_arrive() {
             let _ = wake.send(());
         },
     );
-    let (event, _) = ask(&worker, &woken, Command::StartChrome);
+    let (event, _) = ask(&worker, &woken, Command::StartChrome { inside: false });
     assert!(matches!(event, Event::ChromeStarted), "{event:?}");
 
     let (event, _) = ask(
@@ -199,7 +199,7 @@ fn reads_grades_fills_verifies_and_saves_a_page() {
         matches!(&event, Event::Failed(m) if m.contains("Chrome is not running")),
         "{event:?}"
     );
-    let (event, _) = ask(&worker, &woken, Command::StartChrome);
+    let (event, _) = ask(&worker, &woken, Command::StartChrome { inside: false });
     assert!(matches!(event, Event::ChromeStarted), "{event:?}");
     let (event, _) = ask(&worker, &woken, Command::ReadStudents);
     assert!(
@@ -423,7 +423,7 @@ fn a_real_model_grades_the_saved_page() {
         "{model} is not installed; have {models:?}"
     );
 
-    ask(&worker, &woken, Command::StartChrome);
+    ask(&worker, &woken, Command::StartChrome { inside: false });
     ask(
         &worker,
         &woken,
@@ -520,7 +520,7 @@ fn maps_an_unknown_site_then_reads_and_fills_it() {
     };
     let worker = spawn(wake.clone());
 
-    ask(&worker, &woken, Command::StartChrome);
+    ask(&worker, &woken, Command::StartChrome { inside: false });
     let (event, _) = ask(&worker, &woken, Command::ListProfiles);
     assert!(
         matches!(&event, Event::Profiles(list) if list.is_empty()),
@@ -569,7 +569,7 @@ fn maps_an_unknown_site_then_reads_and_fills_it() {
     // The mapping survives a restart of the app.
     drop(worker);
     let worker = spawn(wake);
-    ask(&worker, &woken, Command::StartChrome);
+    ask(&worker, &woken, Command::StartChrome { inside: false });
     let (event, _) = ask(&worker, &woken, Command::ListProfiles);
     assert!(
         matches!(&event, Event::Profiles(list) if list.len() == 1),
@@ -653,7 +653,7 @@ fn the_agent_asks_before_it_changes_a_score() {
             let _ = wake.send(());
         },
     );
-    ask(&worker, &woken, Command::StartChrome);
+    ask(&worker, &woken, Command::StartChrome { inside: false });
     ask(
         &worker,
         &woken,
