@@ -5,13 +5,13 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use ogre_core::{
     BridgeResponse, CalibrationExamples, CheckedResult, Chunk, Rubric, StudentResult, StudentWork,
     build_batch_prompt, chunk_students_by_prompt, detect_outliers, extract_first_name,
-    merge_results,
+    merge_results, score_from_verdicts,
 };
 use ogre_llm::ChatProvider;
 
 use crate::bridge::build_bridge_responses;
 use crate::error::GraderError;
-use crate::options::{CancelFlag, GradeOptions};
+use crate::options::{CancelFlag, GradeOptions, ScoreSource, SweepMode};
 use crate::outcome::{
     BatchOutcome, Grade, GradeEvent, GradeSource, GradeStatus, NotGradedReason, StudentOutcome,
     Summary, SweepOutcome,
@@ -59,7 +59,8 @@ pub async fn grade_batch(
         return Err(GraderError::DuplicateStudentIndex(repeated.index));
     }
 
-    let job = Job::new(rubric);
+    let mut job = Job::new(rubric);
+    job.score_source = options.score_source;
     // A rubric that cannot be turned into a prompt fails every chunk alike.
     // Building a prompt for nobody finds that out before anything is sent.
     build_batch_prompt(rubric, &[], &job.anchors, None, None)?;
@@ -207,7 +208,12 @@ pub async fn grade_batch(
             &students,
             &results,
             &chunk_map,
-            options.sweep,
+            // The check evens out the AI's own scores. Scores worked out
+            // from the verdicts are even already.
+            match options.score_source {
+                ScoreSource::Ai => options.sweep,
+                ScoreSource::Verdicts => SweepMode::None,
+            },
         )
         .await?
     };
@@ -313,10 +319,22 @@ async fn grade_chunk(
     }
 
     let mut statuses: Vec<GradeStatus> = Vec::with_capacity(students.len());
+    let mut kept_ai_score = 0;
     for (checked, student) in results.into_iter().zip(students) {
-        if checked.score_given {
+        let from_verdicts = match job.score_source {
+            ScoreSource::Ai => None,
+            ScoreSource::Verdicts => score_from_verdicts(&checked.result.feedback, job.rubric),
+        };
+        if from_verdicts.is_some() || checked.score_given {
+            // A blank answer has no verdicts to read and no need of them.
+            if job.score_source == ScoreSource::Verdicts
+                && from_verdicts.is_none()
+                && !is_blank(&student.response)
+            {
+                kept_ai_score += 1;
+            }
             statuses.push(GradeStatus::Graded(Grade {
-                score: checked.result.score,
+                score: from_verdicts.unwrap_or(checked.result.score),
                 feedback: checked.result.feedback,
                 source: GradeSource::Ai,
                 revised_from: None,
@@ -329,6 +347,13 @@ async fn grade_chunk(
             ));
             statuses.push(GradeStatus::NotGraded(NotGradedReason::NoScore));
         }
+    }
+    if kept_ai_score > 0 {
+        session.warn(format!(
+            "{label}: the feedback for {} does not have one verdict per requirement, \
+             so the AI's own score was kept there.",
+            plural(kept_ai_score, "student"),
+        ));
     }
     statuses.resize(students.len(), GradeStatus::NotGraded(missing_reason));
     Ok(statuses)

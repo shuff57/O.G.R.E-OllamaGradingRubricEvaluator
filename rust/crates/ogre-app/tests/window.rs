@@ -888,3 +888,45 @@ fn history_lists_past_sessions_and_shows_one_in_detail() {
     assert!(address.contains("gradeallq2.php"));
     harness.get_by_label("Read students");
 }
+
+#[test]
+fn scores_come_from_the_ai_unless_the_teacher_chooses_the_feedback() {
+    const SWITCH: &str = "Work out each score from the feedback";
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    stand_in.events.send(read()).unwrap();
+    frames(&mut harness);
+
+    harness.get_by_label("Grade 2 students").click();
+    frames(&mut harness);
+    let Command::Grade(request) = sent(&mut stand_in) else {
+        panic!("expected a grading request");
+    };
+    assert!(
+        !request.score_from_verdicts,
+        "the AI's score is the default"
+    );
+    stand_in.events.send(graded()).unwrap();
+    frames(&mut harness);
+
+    harness.get_by_label("Settings").click();
+    frames(&mut harness);
+    harness.get_by_label_contains("Each score is the AI\u{2019}s own judgment");
+    harness.get_by_label(SWITCH).click();
+    frames(&mut harness);
+    harness.get_by_label_contains("The same feedback always gives the same score.");
+    shot(&mut harness, "15-settings-scores");
+
+    harness.get_by_label("Grade").click();
+    frames(&mut harness);
+    harness
+        .get_by_label("Include students who are already graded")
+        .click();
+    frames(&mut harness);
+    harness.get_by_label("Grade 3 students").click();
+    frames(&mut harness);
+    let Command::Grade(request) = sent(&mut stand_in) else {
+        panic!("expected a grading request");
+    };
+    assert!(request.score_from_verdicts);
+}

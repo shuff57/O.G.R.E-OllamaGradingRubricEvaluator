@@ -415,7 +415,7 @@ fn weighted_score(
 
 /// Rounds to steps that suit the maximum, so that low-point questions keep
 /// finer precision than half points.
-fn snap_score(score: f64, max_score: f64) -> f64 {
+pub(super) fn snap_score(score: f64, max_score: f64) -> f64 {
     let steps_per_point = if max_score >= 5.0 {
         2.0
     } else if max_score >= 2.0 {

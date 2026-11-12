@@ -3,7 +3,7 @@
 
 use ogre_core::format_score;
 use ogre_grader::{
-    BatchOutcome, CancelFlag, GradeEvent, GradeOptions, GradeStatus, grade_batch,
+    BatchOutcome, CancelFlag, GradeEvent, GradeOptions, GradeStatus, ScoreSource, grade_batch,
     prepare_edited_rubric, prepare_rubric,
 };
 use ogre_llm::HttpProvider;
@@ -86,11 +86,19 @@ pub async fn grade(
     let mut rubric = prepared.rubric;
     rubric.custom_instructions = request.rubric.custom_instructions.clone();
 
+    let options = GradeOptions {
+        score_source: if request.score_from_verdicts {
+            ScoreSource::Verdicts
+        } else {
+            ScoreSource::Ai
+        },
+        ..GradeOptions::default()
+    };
     let outcome = grade_batch(
         &provider,
         &rubric,
         request.students,
-        &GradeOptions::default(),
+        &options,
         cancel,
         &mut on_event,
     )

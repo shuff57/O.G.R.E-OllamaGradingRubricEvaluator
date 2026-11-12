@@ -16,6 +16,9 @@ pub struct Settings {
     /// written, 100 is most strict. Away from 50 the AI rewords the rubric
     /// before grading.
     pub leniency: u8,
+    /// Work each score out from the verdicts in the feedback instead of
+    /// taking the AI's own score. Off unless the teacher turns it on.
+    pub score_from_verdicts: bool,
 }
 
 impl Default for Settings {
@@ -24,6 +27,7 @@ impl Default for Settings {
             provider: ProviderSettings::default(),
             dark: false,
             leniency: ogre_core::NEUTRAL_LENIENCY,
+            score_from_verdicts: false,
         }
     }
 }
@@ -186,12 +190,20 @@ mod tests {
             },
             dark: true,
             leniency: 20,
+            score_from_verdicts: true,
         };
         let json = serde_json::to_string(&settings).unwrap();
         assert_eq!(serde_json::from_str::<Settings>(&json).unwrap(), settings);
         assert_eq!(
             serde_json::from_str::<Settings>("{}").unwrap(),
             Settings::default()
+        );
+        // Settings saved before the scoring choice existed keep the AI's score.
+        let older = r#"{"dark":true,"leniency":20}"#;
+        assert!(
+            !serde_json::from_str::<Settings>(older)
+                .unwrap()
+                .score_from_verdicts
         );
     }
 

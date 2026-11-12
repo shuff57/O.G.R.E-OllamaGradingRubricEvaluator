@@ -237,6 +237,7 @@ fn reads_grades_fills_verifies_and_saves_a_page() {
         },
         api_key: None,
         leniency: 50,
+        score_from_verdicts: false,
         cancel: CancelFlag::new(),
     };
     let (event, progress) = ask(&worker, &woken, Command::Grade(Box::new(request)));
@@ -423,6 +424,7 @@ fn a_real_model_grades_the_saved_page() {
         provider,
         api_key: None,
         leniency: 50,
+        score_from_verdicts: false,
         cancel: CancelFlag::new(),
     })));
     // A local model can take minutes; wait longer than `ask` does.

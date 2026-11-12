@@ -582,6 +582,64 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             compare_verdicts(&feedback_pairs);
         }
 
+        // The other way to score: from the feedback's verdicts. Shown beside
+        // the AI's own score, for choosing between the two.
+        let line = |what: &str, a: &[f64], b: &[f64]| {
+            let gaps: Vec<f64> = a.iter().zip(b).map(|(a, b)| (b - a).abs()).collect();
+            println!(
+                "{what}: {} students | means {:.2} and {:.2} | mean gap {:.2} | identical {} | within 1.5: {} | correlation {}",
+                a.len(),
+                mean(a),
+                mean(b),
+                mean(&gaps),
+                gaps.iter().filter(|gap| **gap == 0.0).count(),
+                gaps.iter().filter(|gap| **gap <= 1.5).count(),
+                correlation(a, b).map_or("n/a".to_owned(), |r| format!("{r:.2}")),
+            );
+        };
+        let (mut page_side, mut from_ogre_feedback) = (Vec::new(), Vec::new());
+        for student in &outcome.students {
+            let submission = &read.submissions[student.student_index];
+            let existing = submission
+                .score()
+                .filter(|_| submission.has_nonzero_score() || submission.has_feedback());
+            if let (GradeStatus::Graded(grade), Some(existing)) = (&student.status, existing)
+                && let Some(score) = ogre_core::score_from_verdicts(&grade.feedback, &rubric)
+            {
+                page_side.push(existing);
+                from_ogre_feedback.push(score);
+            }
+        }
+        line(
+            "page score against OGRE's feedback scored by its verdicts",
+            &page_side,
+            &from_ogre_feedback,
+        );
+        let (mut page_scores, mut page_by_verdicts, mut ogre_by_verdicts) =
+            (Vec::new(), Vec::new(), Vec::new());
+        for (existing, theirs, _, ours) in &feedback_pairs {
+            if let (Some(page), Some(ogre)) = (
+                ogre_core::score_from_verdicts(theirs, &rubric),
+                ogre_core::score_from_verdicts(ours, &rubric),
+            ) {
+                page_scores.push(*existing);
+                page_by_verdicts.push(page);
+                ogre_by_verdicts.push(ogre);
+            }
+        }
+        if !page_scores.is_empty() {
+            line(
+                "page score against the page's own feedback scored by its verdicts",
+                &page_scores,
+                &page_by_verdicts,
+            );
+            line(
+                "both sets of feedback scored by their verdicts",
+                &page_by_verdicts,
+                &ogre_by_verdicts,
+            );
+        }
+
         // The Electron app offers the consistency check's suggestions for the
         // teacher to accept. Had every one been accepted:
         let adjustments = &outcome.sweep.adjustments;

@@ -10,7 +10,7 @@ use ogre_core::{
 use ogre_llm::{ChatProvider, ChatRequest, LlmError, Message};
 use tokio::time::{Instant, timeout};
 
-use crate::options::CancelFlag;
+use crate::options::{CancelFlag, ScoreSource};
 use crate::outcome::GradeEvent;
 
 /// How often a pending request looks at the cancel flag.
@@ -143,6 +143,7 @@ pub(crate) struct Job<'a> {
     pub(crate) anchors: ScoringAnchors,
     pub(crate) max_score: f64,
     weighting: Option<CategoryWeighting>,
+    pub(crate) score_source: ScoreSource,
 }
 
 impl<'a> Job<'a> {
@@ -152,6 +153,7 @@ impl<'a> Job<'a> {
             anchors: generate_scoring_anchors(rubric),
             max_score: rubric.max_score_value(),
             weighting: rubric.category_weighting(),
+            score_source: ScoreSource::Ai,
         }
     }
 

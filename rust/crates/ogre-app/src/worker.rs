@@ -77,6 +77,8 @@ pub struct GradeRequest {
     pub api_key: Option<String>,
     /// 0 most lenient, 50 the rubric as written, 100 most strict.
     pub leniency: u8,
+    /// Work each score out from the feedback's verdicts.
+    pub score_from_verdicts: bool,
     /// Stops the run after the AI call in flight.
     pub cancel: CancelFlag,
 }

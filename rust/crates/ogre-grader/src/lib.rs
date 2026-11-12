@@ -31,8 +31,8 @@ pub use batch::{blank_response_feedback, grade_batch};
 pub use bridge::build_bridge_responses;
 pub use error::GraderError;
 pub use options::{
-    CancelFlag, GradeOptions, MAX_CHUNK_SIZE, MIN_CHUNK_SIZE, MIN_SWEEP_STUDENTS, SweepKind,
-    SweepMode,
+    CancelFlag, GradeOptions, MAX_CHUNK_SIZE, MIN_CHUNK_SIZE, MIN_SWEEP_STUDENTS, ScoreSource,
+    SweepKind, SweepMode,
 };
 pub use outcome::{
     BatchOutcome, Grade, GradeEvent, GradeSource, GradeStatus, NotGradedReason, PriorGrade,

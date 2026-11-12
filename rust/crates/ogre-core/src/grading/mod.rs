@@ -14,6 +14,7 @@ pub(crate) mod js;
 mod parse;
 mod prompts;
 mod types;
+mod verdicts;
 
 #[cfg(test)]
 mod tests;
@@ -43,6 +44,8 @@ pub use types::{
     Outlier, OutlierReport, OutlierStudent, PeerResult, Rubric, RubricItem, ScaleDescriptor,
     ScoreBand, ScoringAnchors, SingleGrade, StudentResult, StudentWork, WeightMap, WeightMode,
 };
+
+pub use verdicts::{Verdict, feedback_verdicts, score_from_verdicts};
 
 /// A decimal number as the original's `/-?\d+(?:\.\d+)?/` matches it.
 const NUMBER: &str = r"-?[0-9]+(?:\.[0-9]+)?";

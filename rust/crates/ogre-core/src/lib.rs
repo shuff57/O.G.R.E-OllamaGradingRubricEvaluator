@@ -20,6 +20,7 @@ pub use grading::{
     generate_scoring_anchors, merge_results, parse_batch_response, parse_batch_response_checked,
     parse_single_grade_response, reconcile_explained_score, reconcile_score_with_feedback,
 };
+pub use grading::{Verdict, feedback_verdicts, score_from_verdicts};
 pub use rubric::{
     DEFAULT_WEIGHT_MODE, RowType, RubricCriterion, WeightValidation, auto_fill_weights,
     criteria_to_text, editable_rubric_text, equalize_weights, extract_model_text,

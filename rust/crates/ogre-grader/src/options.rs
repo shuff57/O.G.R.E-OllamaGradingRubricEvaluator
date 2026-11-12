@@ -16,6 +16,8 @@ pub const MIN_SWEEP_STUDENTS: usize = 5;
 /// the desktop app sent no options.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GradeOptions {
+    /// Where each student's score comes from.
+    pub score_source: ScoreSource,
     /// Students per request. Zero means the default of 30; other values are
     /// clamped to [`MIN_CHUNK_SIZE`]..=[`MAX_CHUNK_SIZE`].
     pub chunk_size: usize,
@@ -36,6 +38,7 @@ pub struct GradeOptions {
 impl Default for GradeOptions {
     fn default() -> Self {
         Self {
+            score_source: ScoreSource::Ai,
             chunk_size: DEFAULT_PROMPT_CHUNK_SIZE,
             sweep: SweepMode::Auto,
             outlier_review: false,
@@ -53,6 +56,19 @@ impl GradeOptions {
             size => size.clamp(MIN_CHUNK_SIZE, MAX_CHUNK_SIZE),
         }
     }
+}
+
+/// Where a student's score comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ScoreSource {
+    /// The AI's own 0 to 10 judgment, as the Electron app uses.
+    #[default]
+    Ai,
+    /// Worked out from the verdicts in the feedback, so that the same
+    /// feedback always gives the same score. The AI's score is kept only for
+    /// feedback that cannot be read that way. The consistency check, which
+    /// exists to even out the AI's own scores, is not run.
+    Verdicts,
 }
 
 /// The consistency sweep a caller asks for.

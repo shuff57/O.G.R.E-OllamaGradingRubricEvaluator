@@ -277,6 +277,7 @@ impl OgreApp {
                     provider: self.settings.provider.clone(),
                     api_key: self.key(),
                     leniency: self.settings.leniency,
+                    score_from_verdicts: self.settings.score_from_verdicts,
                     cancel: CancelFlag::new(),
                 };
                 self.send(Command::Grade(Box::new(request)), "Grading…");
@@ -1384,7 +1385,7 @@ impl OgreApp {
                     ui,
                     "OGRE  /  Settings",
                     "Settings",
-                    Some("Which AI grades, and how it is reached."),
+                    Some("Which AI grades, how it is reached, and how scores are worked out."),
                 );
                 kit::card().show(ui, |ui| {
                     ui.set_max_width(560.0);
@@ -1480,6 +1481,25 @@ impl OgreApp {
                         kit::icon_line(ui, icon::WARNING, note, pal().warn);
                     }
                     self.messages(ui, actions);
+                });
+                ui.add_space(4.0);
+                kit::card().show(ui, |ui| {
+                    ui.set_max_width(560.0);
+                    kit::panel_title(ui, "Scores");
+                    ui.add_space(4.0);
+                    ui.checkbox(
+                        &mut self.settings.score_from_verdicts,
+                        "Work out each score from the feedback",
+                    );
+                    ui.label(theme::muted(if self.settings.score_from_verdicts {
+                        "Each requirement is an equal share of its category: marked Correct \
+                         it earns the share, Incomplete half, anything else none. The same \
+                         feedback always gives the same score. The consistency check is not run."
+                    } else {
+                        "Each score is the AI\u{2019}s own judgment out of 10, scaled to the \
+                         question. Turn this on to have the score follow from what the \
+                         feedback says about each requirement instead."
+                    }));
                 });
             });
     }
