@@ -26,6 +26,10 @@
 //!   OGRE_LIVE_QUESTIONS=1    after reading, go to the previous question and
 //!                            back with the app's own buttons, reading each;
 //!                            nothing is graded or written
+//!   OGRE_LIVE_INSIDE=1       Chrome runs without a window and the page is
+//!                            shown inside OGRE, as with the Settings switch
+//!                            on. There is then no Chrome window to log in
+//!                            in: if the site asks, the run stops and says so
 //!
 //! # A supervised first write
 //!
@@ -456,19 +460,22 @@ fn a_real_page_is_read_and_graded_without_writing() {
     keys.store(Service::OllamaCloud, &key).unwrap();
     drop(key);
 
+    let inside = std::env::var_os("OGRE_LIVE_INSIDE").is_some();
     let worker = Worker::spawn(
         LaunchOptions {
             profile_dir: data_dir.join("chrome-profile"),
-            headless: false,
+            headless: inside,
             executable: None,
         },
         Sites::built_in(),
         data_dir.clone(),
         || {},
     );
+    let view = worker.view().clone();
     let settings = Settings {
         provider,
         leniency,
+        page_inside: inside,
         ..Settings::default()
     };
     let mut window: Window = Harness::builder()
@@ -477,6 +484,24 @@ fn a_real_page_is_read_and_graded_without_writing() {
     window.run_steps(2);
 
     window.get_by_label("Start Chrome").click();
+    if inside {
+        // The app turns to the Browser screen, where the page is drawn.
+        wait_until(
+            &mut window,
+            "Chrome to start without a window",
+            Duration::from_secs(60),
+            |w| shows(w, "Stop Chrome"),
+        );
+        wait_until(
+            &mut window,
+            "the page to be shown inside OGRE",
+            Duration::from_secs(30),
+            |_| view.state().showing,
+        );
+        println!("INSIDE: Chrome has no window and its tab is shown in OGRE");
+        window.get_by_label("Grade").click();
+        window.run_steps(2);
+    }
     wait_until(
         &mut window,
         "Chrome to start",
@@ -514,6 +539,14 @@ fn a_real_page_is_read_and_graded_without_writing() {
                 "another problem (see the app's message)"
             }
         );
+        if inside && shows(&window, "is asking you to sign in") {
+            // No Chrome window to log in in, and a page drawn in a test's
+            // window is not one a person can type into.
+            panic!(
+                "the site asks for a sign-in. Sign in in the OGRE app itself (Browser \
+                 screen, with the page shown inside OGRE), close the app, and run this again"
+            );
+        }
         if !asked {
             println!("IF THE SITE ASKS FOR A LOGIN: log in in the OGRE Chrome window");
             asked = true;
@@ -528,6 +561,18 @@ fn a_real_page_is_read_and_graded_without_writing() {
         }
     }
     println!("READ: the students were read");
+    if inside {
+        // What the Browser screen would show. The picture itself holds
+        // student work, so only its size is looked at.
+        let state = view.state();
+        let on_the_site = state.address.starts_with("https://www.myopenmath.com/");
+        println!(
+            "INSIDE: showing {}, on the site's page {on_the_site}, newest picture {:?}",
+            state.showing,
+            state.picture.as_ref().map(|picture| picture.size)
+        );
+        assert!(state.showing, "the grading tab is the one shown");
+    }
     if std::env::var_os("OGRE_LIVE_QUESTIONS").is_some() {
         let place = |w: &Window| {
             w.query_by(|node| node.label().is_some_and(|l| l.starts_with("Question ")))
