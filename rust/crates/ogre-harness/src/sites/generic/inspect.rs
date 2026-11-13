@@ -29,6 +29,20 @@ pub(super) struct Inspection {
     pub sections: Sections,
     pub students: Vec<Student>,
     pub save: Option<Save>,
+    /// The buttons to the next and the previous student, where mapped.
+    #[serde(default)]
+    pub next: Option<StepButton>,
+    #[serde(default)]
+    pub previous: Option<StepButton>,
+}
+
+/// What a rule for a button to another student found on the page.
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub(super) struct StepButton {
+    pub count: usize,
+    pub invalid: bool,
+    /// True if there is exactly one and it can be pressed.
+    pub enabled: bool,
 }
 
 #[derive(Debug, Deserialize)]

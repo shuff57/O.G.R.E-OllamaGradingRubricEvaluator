@@ -27,7 +27,7 @@ use ogre_core::{
 use ogre_harness::cdp::{DialogKind, Held, MouseAction, MouseButton, PageDialog};
 use ogre_harness::sites::Mismatch;
 use ogre_harness::sites::generic::{
-    Element, ElementCheck, MaxScoreRule, PageMap, PickFor, Problem, SaveButton, SaveRule,
+    ButtonRule, Element, ElementCheck, MaxScoreRule, PageMap, PickFor, Problem, SaveRule,
     SaveSuccess, Severity, SiteProfile, StudentSample, UrlRule,
 };
 
@@ -3121,13 +3121,13 @@ fn the_maximum_score_and_the_save_button_of_a_mapping_are_set_in_the_form() {
     harness.get_by_label("Saving").scroll_to_me();
     frames(&mut harness);
     choose(&mut harness, "Saving", "The button with this label");
-    harness.get_by_label_contains("Give the save button\u{2019}s label");
+    harness.get_by_label_contains("Say which button saves");
     type_into(&mut harness, "Label of the save button", "Save All Grades");
     let tried = mapping_proven(&mut harness, &mut stand_in);
     assert_eq!(
         tried.page.save,
         Some(SaveRule {
-            button: SaveButton::Text {
+            button: ButtonRule::Text {
                 text: "Save All Grades".into()
             },
             success: None,
@@ -3159,7 +3159,7 @@ fn the_maximum_score_and_the_save_button_of_a_mapping_are_set_in_the_form() {
     type_into(&mut harness, "What it has to say", "^Saved");
     let tried = mapping_tried(&mut harness, &mut stand_in);
     let with_save = Some(SaveRule {
-        button: SaveButton::Text {
+        button: ButtonRule::Text {
             text: "Save All Grades".into(),
         },
         success: Some(SaveSuccess {
@@ -3196,6 +3196,100 @@ fn the_maximum_score_and_the_save_button_of_a_mapping_are_set_in_the_form() {
 }
 
 #[test]
+fn the_button_to_the_next_student_is_mapped_for_a_page_that_shows_one_student() {
+    let Event::Mapped(report) = found_mapping() else {
+        unreachable!()
+    };
+    // A page that lists its students has no next student to go to.
+    let listed = report.profile;
+    let (harness, _stand_in) = mapping_form(&listed);
+    assert!(harness.query_by_label("Next student").is_none());
+
+    let mut alone = listed;
+    alone.page.student_section = None;
+    let (mut harness, mut stand_in) = mapping_form(&alone);
+    harness.get_by_label("Next student").scroll_to_me();
+    frames(&mut harness);
+    harness.get_by_label_contains("OGRE reads every student from the one shown to the last");
+    assert!(harness.query_by_label("Previous student").is_none());
+    choose(&mut harness, "Next student", "The button at this selector");
+    harness.get_by_label_contains("Say which button goes to the other student");
+
+    // The button is picked anywhere on the page.
+    harness
+        .query_all_by_label("Pick on the page")
+        .last()
+        .unwrap()
+        .scroll_to_me();
+    frames(&mut harness);
+    harness
+        .query_all_by_label("Pick on the page")
+        .last()
+        .unwrap()
+        .click();
+    frames(&mut harness);
+    let Command::PickElement(what) = sent(&mut stand_in) else {
+        panic!("expected to wait for a click on the page");
+    };
+    assert_eq!(what, PickFor::WholePage);
+    stand_in
+        .events
+        .send(Event::Picked(Some("#next-student".into())))
+        .unwrap();
+    frames(&mut harness);
+
+    // The way back is offered once there is a way on, here by its label.
+    harness.get_by_label("Previous student").scroll_to_me();
+    frames(&mut harness);
+    choose(
+        &mut harness,
+        "Previous student",
+        "The button with this label",
+    );
+    type_into(
+        &mut harness,
+        "Label of the button to the previous student",
+        "Previous",
+    );
+    let tried = mapping_tried(&mut harness, &mut stand_in);
+    assert_eq!(
+        tried.page.next_student,
+        Some(ButtonRule::Selector {
+            selector: "#next-student".into()
+        })
+    );
+    assert_eq!(
+        tried.page.previous_student,
+        Some(ButtonRule::Text {
+            text: "Previous".into()
+        })
+    );
+    assert!(tried.page.steps_through_students());
+
+    // The check says what it found for the button, and what follows from
+    // going through the students one by one.
+    let mut check = checked(&tried, 3);
+    if let Event::ProfileChecked(check) = &mut check {
+        check.checks.push(ElementCheck {
+            element: Element::NextStudent,
+            rule: "`#next-student`".into(),
+            none: 0,
+            one: 1,
+            several: 0,
+        });
+        check.problems.push(Problem {
+            element: Element::NextStudent,
+            severity: Severity::Warning,
+            message: "every student is read, but none can be written".into(),
+        });
+    }
+    stand_in.events.send(check).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("every student is read, but none can be written");
+    shot(&mut harness, "41-mapping-editor-next-student");
+}
+
+#[test]
 fn a_mapping_opened_in_the_form_is_the_mapping_the_form_gives_back() {
     let Event::Mapped(report) = found_mapping() else {
         unreachable!()
@@ -3205,7 +3299,7 @@ fn a_mapping_opened_in_the_form_is_the_mapping_the_form_gives_back() {
         (
             Some(MaxScoreRule::Fixed { value: 10.0 }),
             Some(SaveRule {
-                button: SaveButton::Selector {
+                button: ButtonRule::Selector {
                     selector: "#save".into(),
                 },
                 success: None,
@@ -3216,7 +3310,7 @@ fn a_mapping_opened_in_the_form_is_the_mapping_the_form_gives_back() {
                 pattern: r"of (\d+)".into(),
             }),
             Some(SaveRule {
-                button: SaveButton::Text {
+                button: ButtonRule::Text {
                     text: "Save".into(),
                 },
                 success: Some(SaveSuccess {

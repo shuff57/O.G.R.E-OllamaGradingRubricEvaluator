@@ -25,6 +25,7 @@ mod pick;
 mod profile;
 mod snapshot;
 mod validate;
+mod walk;
 
 pub use adapter::ProfileAdapter;
 pub use discovery::{
@@ -35,7 +36,7 @@ pub use discovery::{
 pub use heuristics::{Candidates, Detection, Mode, detect, draft_profile};
 pub use pick::{PICK_SECONDS, PickFor, pick_element};
 pub use profile::{
-    FeedbackBox, MaxScoreRule, PROFILE_VERSION, PageMap, ProfileError, SaveButton, SaveRule,
+    ButtonRule, FeedbackBox, MaxScoreRule, PROFILE_VERSION, PageMap, ProfileError, SaveRule,
     SaveSuccess, SiteProfile, UrlRule,
 };
 pub use snapshot::{

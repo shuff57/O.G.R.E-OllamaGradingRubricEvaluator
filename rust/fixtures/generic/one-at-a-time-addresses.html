@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Essay 2: one student at a time</title>
+</head>
+<body>
+  <!--
+    A made-up grading site that shows one student per address (?student=2).
+    Written for OGRE's tests; the students are invented.
+    The links to the next and the previous student load a new page. The first
+    student has no "previous" and the last no "next".
+    A grade is kept only once "Save grade" is pressed: it goes into
+    sessionStorage, which stands in for the site's server, and anything only
+    typed is gone after moving on.
+  -->
+  <header>
+    <h1>Essay 2</h1>
+    <p id="place"></p>
+    <nav>
+      <a id="prev" href="#">&laquo; Previous student</a>
+      <a id="next" href="#">Next student &raquo;</a>
+    </nav>
+  </header>
+  <main>
+    <h2 id="student-name"></h2>
+    <section id="answer"></section>
+    <form id="grade">
+      <label for="points">Score</label>
+      <input id="points" name="points" type="number" step="0.5">
+      <span class="out-of">/ 10</span>
+      <label for="comment">Feedback</label>
+      <textarea id="comment" name="comment" rows="4" cols="50"></textarea>
+      <button type="button" id="save">Save grade</button>
+      <span id="status" hidden></span>
+    </form>
+  </main>
+  <script>
+    const STUDENTS = [
+      { name: 'Avery, Sam', answer: 'A larger sample makes the margin of error smaller.' },
+      { name: 'Brook, Kai', answer: 'The margin of error depends on the sample size and the spread.' },
+      { name: 'Casey, Lin', answer: '' },
+      { name: 'Drew, Pat', answer: 'Doubling the sample halves the margin of error.' },
+    ];
+    const asked = parseInt(new URLSearchParams(location.search).get('student') || '1', 10);
+    const at = Math.min(Math.max(asked || 1, 1), STUDENTS.length);
+    const student = STUDENTS[at - 1];
+    const grades = () => JSON.parse(sessionStorage.getItem('grades') || '{}');
+
+    document.getElementById('place').textContent = `Student ${at} of ${STUDENTS.length}`;
+    document.getElementById('student-name').textContent = student.name;
+    document.getElementById('answer').textContent = student.answer;
+    const kept = grades()[at];
+    if (kept) {
+      document.getElementById('points').value = kept.points;
+      document.getElementById('comment').value = kept.comment;
+    }
+    const link = (id, to) => {
+      const el = document.getElementById(id);
+      if (to < 1 || to > STUDENTS.length) el.hidden = true;
+      else el.href = '?student=' + to;
+    };
+    link('prev', at - 1);
+    link('next', at + 1);
+
+    document.getElementById('save').addEventListener('click', () => {
+      const status = document.getElementById('status');
+      status.hidden = true;
+      setTimeout(() => {
+        const all = grades();
+        all[at] = {
+          points: document.getElementById('points').value,
+          comment: document.getElementById('comment').value,
+        };
+        sessionStorage.setItem('grades', JSON.stringify(all));
+        status.textContent = 'Saved for ' + student.name;
+        status.hidden = false;
+      }, 60);
+    });
+  </script>
+</body>
+</html>

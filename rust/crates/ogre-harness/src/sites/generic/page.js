@@ -232,18 +232,36 @@
     return { value: null };
   };
 
-  // The page's save button: { els, invalid }.
-  const saveButton = () => {
-    const rule = map.save && map.save.button;
+  // The shown buttons a button rule finds: { els, invalid }. A link counts
+  // as a button when it is found by its label.
+  const button = (rule) => {
     if (!rule) return { els: [], invalid: false };
     if (rule.by === 'selector') {
       const found = query(document, rule.selector);
       return { els: found.els.filter(visible), invalid: found.invalid };
     }
     const wanted = squash(rule.text).toLowerCase();
-    const buttons = query(document, 'button, input[type="submit"], input[type="button"], [role="button"]').els;
+    const buttons = query(document, 'button, input[type="submit"], input[type="button"], [role="button"], a[href]').els;
     const label = (el) => squash(el.tagName === 'INPUT' ? el.value : el.textContent).toLowerCase();
     return { els: buttons.filter((el) => visible(el) && label(el) === wanted), invalid: false };
+  };
+
+  // The page's save button: { els, invalid }.
+  const saveButton = () => button(map.save && map.save.button);
+
+  // Whether a button can be pressed as it stands.
+  const pressable = (el) => !el.disabled && el.getAttribute('aria-disabled') !== 'true';
+
+  // A button to another student, for inspect(): how many the rule finds and
+  // whether the one it finds can be pressed.
+  const stepFacts = (rule) => {
+    if (!rule) return null;
+    const found = button(rule);
+    return {
+      count: found.els.length,
+      invalid: found.invalid,
+      enabled: found.els.length === 1 && pressable(found.els[0]),
+    };
   };
 
   // Everything the profile points at, for every student shown. Changes nothing.
@@ -345,11 +363,13 @@
       },
       students,
       save,
+      next: stepFacts(map.next_student),
+      previous: stepFacts(map.previous_student),
     };
   };
 
   return {
     map, squash, visible, query, regex, sections, locate, studentName, scoreFacts,
-    feedbackFacts, saveButton, inspect,
+    feedbackFacts, button, pressable, saveButton, inspect,
   };
 }

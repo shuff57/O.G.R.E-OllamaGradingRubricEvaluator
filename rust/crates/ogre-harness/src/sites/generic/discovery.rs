@@ -12,7 +12,7 @@ use ogre_llm::{ChatProvider, ChatRequest, LlmError, Message};
 use serde_json::Value;
 
 use super::heuristics::{self, Mode};
-use super::profile::{FeedbackBox, MaxScoreRule, PageMap, SaveButton, SaveRule, SiteProfile};
+use super::profile::{ButtonRule, FeedbackBox, MaxScoreRule, PageMap, SaveRule, SiteProfile};
 use super::snapshot::{Snapshot, SnapshotOptions, capture_snapshot};
 use super::validate::{Element, ValidatedProfile, ValidationReport, validate_profile};
 use crate::PageDriver;
@@ -380,6 +380,12 @@ fn draft_from(answer: &Value) -> Result<DiscoveryDraft, DiscoveryParseError> {
             .filter(|_| kind == FeedbackKind::RichText),
     });
 
+    let step = |field: &str| {
+        text("navigation", field)
+            .filter(|_| mode == Mode::Sequential)
+            .map(|selector| ButtonRule::Selector { selector })
+    };
+
     Ok(DiscoveryDraft {
         mode,
         page: PageMap {
@@ -394,9 +400,12 @@ fn draft_from(answer: &Value) -> Result<DiscoveryDraft, DiscoveryParseError> {
             response,
             prompt: None,
             save: text("save", "buttonText").map(|text| SaveRule {
-                button: SaveButton::Text { text },
+                button: ButtonRule::Text { text },
                 success: None,
             }),
+            // Only a page that shows one student has a next one to go to.
+            next_student: step("nextButton"),
+            previous_student: step("prevButton"),
         },
         fallback_save_text: text("save", "fallbackText"),
         confidence: answer["confidence"].as_str().map(str::to_owned),
@@ -587,7 +596,7 @@ async fn settle(
         if report.has_error(Element::SaveButton) || report.has_error(Element::SaveConfirmation) {
             profile.page.save = match (profile.page.save.take(), fallback_save_text.take()) {
                 (Some(mut rule), Some(text)) => {
-                    rule.button = SaveButton::Text { text };
+                    rule.button = ButtonRule::Text { text };
                     Some(rule)
                 }
                 _ => {
@@ -616,6 +625,8 @@ fn ai_name(element: Element) -> Option<&'static str> {
         Element::Feedback => Some("selectors.feedbackBox"),
         Element::FeedbackHiddenField => Some("selectors.feedbackHidden"),
         Element::Response => Some("selectors.questionRegion"),
+        Element::NextStudent => Some("navigation.nextButton"),
+        Element::PreviousStudent => Some("navigation.prevButton"),
         Element::MaxScore | Element::Prompt | Element::SaveButton | Element::SaveConfirmation => {
             None
         }
@@ -707,7 +718,7 @@ mod tests {
         assert_eq!(
             draft.page.save,
             Some(SaveRule {
-                button: SaveButton::Text {
+                button: ButtonRule::Text {
                     text: "Save".into()
                 },
                 success: None
@@ -726,6 +737,14 @@ mod tests {
         assert_eq!(draft.mode, Mode::Sequential);
         assert_eq!(draft.page.student_section, None);
         assert_eq!(draft.page.student_name, ".student-name");
+        // The way to the next student is kept, so that every student is read.
+        assert_eq!(
+            draft.page.next_student,
+            Some(ButtonRule::Selector {
+                selector: "button.next".into()
+            })
+        );
+        assert_eq!(draft.page.previous_student, None);
         assert_eq!(draft.page.feedback, None);
 
         let bare = format!("Here you go:\n```\n{BATCH}\n```\nDone.");
@@ -808,7 +827,7 @@ mod tests {
         assert_eq!(draft.mode, Mode::Batch);
         assert_eq!(
             draft.page.save.map(|s| s.button),
-            Some(SaveButton::Text {
+            Some(ButtonRule::Text {
                 text: "Save".into()
             })
         );

@@ -39,6 +39,17 @@ pub trait SiteAdapter: Send + Sync {
     /// Stores what was written, and returns once the site has confirmed it.
     async fn save(&self, page: &dyn PageDriver) -> Result<()>;
 
+    /// Reads again the students that were just written, to check that the
+    /// grades are there. Most sites show everyone on one page and read it
+    /// whole; a site that shows one student at a time visits only these.
+    async fn read_back(
+        &self,
+        page: &dyn PageDriver,
+        _written: &[(GradeWrite, WriteReceipt)],
+    ) -> Result<GradingPage> {
+        self.read_page(page).await
+    }
+
     /// The questions of the assignment the page belongs to, in the site's
     /// order, for moving from one question to the next. Changes nothing.
     /// Empty where the site has no such list or the adapter cannot read it.
@@ -101,7 +112,7 @@ pub async fn verify_writes(
     page: &dyn PageDriver,
     written: &[(GradeWrite, WriteReceipt)],
 ) -> Result<Vec<Mismatch>> {
-    let now = adapter.read_page(page).await?;
+    let now = adapter.read_back(page, written).await?;
     let mut mismatches = Vec::new();
     for (write, receipt) in written {
         let mismatch = |problem: String| Mismatch {

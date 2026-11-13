@@ -5,7 +5,7 @@
 use eframe::egui;
 use ogre_core::FeedbackKind;
 use ogre_harness::sites::generic::{
-    Element, FeedbackBox, MaxScoreRule, PickFor, SaveButton, SaveRule, SaveSuccess, Severity,
+    ButtonRule, Element, FeedbackBox, MaxScoreRule, PickFor, SaveRule, SaveSuccess, Severity,
     SiteProfile,
 };
 
@@ -29,6 +29,8 @@ pub(super) enum Field {
     MaxScore,
     SaveButton,
     SaveConfirmation,
+    NextStudent,
+    PreviousStudent,
 }
 
 impl Field {
@@ -41,7 +43,7 @@ impl Field {
         Self::Prompt,
         Self::Feedback,
     ];
-    const COUNT: usize = 9;
+    const COUNT: usize = 11;
 
     fn label(self) -> &'static str {
         match self {
@@ -54,6 +56,8 @@ impl Field {
             Self::MaxScore => "Where the maximum score is shown",
             Self::SaveButton => "Save button",
             Self::SaveConfirmation => "What the page shows once it has saved",
+            Self::NextStudent => "Button to the next student",
+            Self::PreviousStudent => "Button to the previous student",
         }
     }
 
@@ -65,6 +69,7 @@ impl Field {
                 "A selector, looked up in each block"
             }
             Self::SaveButton => "A selector for the page\u{2019}s one save button",
+            Self::NextStudent | Self::PreviousStudent => "A selector for that one button",
             Self::SaveConfirmation => "Empty, and OGRE leaves the saving to you",
         }
     }
@@ -81,6 +86,8 @@ impl Field {
             Self::MaxScore => Element::MaxScore,
             Self::SaveButton => Element::SaveButton,
             Self::SaveConfirmation => Element::SaveConfirmation,
+            Self::NextStudent => Element::NextStudent,
+            Self::PreviousStudent => Element::PreviousStudent,
         }
     }
 }
@@ -107,22 +114,74 @@ impl MaxFrom {
     }
 }
 
-/// How the page's save button is found.
+/// How one of the page's buttons is found, if the mapping has it at all.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SaveBy {
-    Teacher,
+enum ButtonBy {
+    Unmapped,
     Label,
     Selector,
 }
 
-impl SaveBy {
-    const ALL: [Self; 3] = [Self::Teacher, Self::Label, Self::Selector];
+impl ButtonBy {
+    const ALL: [Self; 3] = [Self::Unmapped, Self::Label, Self::Selector];
 
-    fn label(self) -> &'static str {
+    /// `unmapped` says what going without the button means.
+    fn label(self, unmapped: &'static str) -> &'static str {
         match self {
-            Self::Teacher => "No button: I save in the browser",
+            Self::Unmapped => unmapped,
             Self::Label => "The button with this label",
             Self::Selector => "The button at this selector",
+        }
+    }
+}
+
+/// One button of the page as the form holds it. Its selector, when it is
+/// found by one, is in the form's selectors under `field`.
+struct ButtonForm {
+    field: Field,
+    by: ButtonBy,
+    label: String,
+}
+
+impl ButtonForm {
+    fn of(field: Field, rule: Option<&ButtonRule>, selectors: &mut [String]) -> Self {
+        let mut form = Self {
+            field,
+            by: ButtonBy::Unmapped,
+            label: String::new(),
+        };
+        match rule {
+            None => {}
+            Some(ButtonRule::Text { text }) => {
+                form.by = ButtonBy::Label;
+                form.label.clone_from(text);
+            }
+            Some(ButtonRule::Selector { selector }) => {
+                form.by = ButtonBy::Selector;
+                selectors[field as usize].clone_from(selector);
+            }
+        }
+        form
+    }
+
+    fn rule(&self, selectors: &[String]) -> Option<ButtonRule> {
+        match self.by {
+            ButtonBy::Unmapped => None,
+            ButtonBy::Label => Some(ButtonRule::Text {
+                text: self.label.trim().to_owned(),
+            }),
+            ButtonBy::Selector => Some(ButtonRule::Selector {
+                selector: selectors[self.field as usize].trim().to_owned(),
+            }),
+        }
+    }
+
+    /// True if the way chosen still needs its label or selector.
+    fn unfinished(&self, selectors: &[String]) -> bool {
+        match self.by {
+            ButtonBy::Unmapped => false,
+            ButtonBy::Label => self.label.trim().is_empty(),
+            ButtonBy::Selector => selectors[self.field as usize].trim().is_empty(),
         }
     }
 }
@@ -148,8 +207,9 @@ pub(super) struct MappingEdit {
     own_pattern: String,
     /// The maximum where it is the same for every student.
     max_value: String,
-    save_by: SaveBy,
-    save_label: String,
+    save: ButtonForm,
+    next: ButtonForm,
+    previous: ButtonForm,
     /// What the confirmation has to say, where its being shown is not enough.
     saved_pattern: String,
     /// What the last check against the page found.
@@ -165,25 +225,37 @@ impl MappingEdit {
             .feedback
             .as_ref()
             .map(|feedback| feedback.selector.clone());
+        let mut selectors = [
+            page.student_section.clone().unwrap_or_default(),
+            page.student_name.clone(),
+            page.score_input.clone(),
+            page.response.clone(),
+            page.prompt.clone().unwrap_or_default(),
+            feedback.unwrap_or_default(),
+            String::new(),
+            String::new(),
+            String::new(),
+            String::new(),
+            String::new(),
+        ];
+        let button = |field, rule: &Option<ButtonRule>, selectors: &mut [String]| {
+            ButtonForm::of(field, rule.as_ref(), selectors)
+        };
+        let save = page.save.as_ref().map(|save| save.button.clone());
         let mut edit = Self {
             name: profile.name.clone(),
-            selectors: [
-                page.student_section.clone().unwrap_or_default(),
-                page.student_name.clone(),
-                page.score_input.clone(),
-                page.response.clone(),
-                page.prompt.clone().unwrap_or_default(),
-                feedback.unwrap_or_default(),
-                String::new(),
-                String::new(),
-                String::new(),
-            ],
+            save: button(Field::SaveButton, &save, &mut selectors),
+            next: button(Field::NextStudent, &page.next_student, &mut selectors),
+            previous: button(
+                Field::PreviousStudent,
+                &page.previous_student,
+                &mut selectors,
+            ),
+            selectors,
             max_from: MaxFrom::NotShown,
             near_pattern: MaxScoreRule::USUAL_PATTERN.to_owned(),
             own_pattern: String::new(),
             max_value: String::new(),
-            save_by: SaveBy::Teacher,
-            save_label: String::new(),
             saved_pattern: String::new(),
             checked: None,
             picking: None,
@@ -205,21 +277,9 @@ impl MappingEdit {
                 edit.max_value = value.to_string();
             }
         }
-        if let Some(save) = edit.base.page.save.clone() {
-            match save.button {
-                SaveButton::Text { text } => {
-                    edit.save_by = SaveBy::Label;
-                    edit.save_label = text;
-                }
-                SaveButton::Selector { selector } => {
-                    edit.save_by = SaveBy::Selector;
-                    edit.selectors[Field::SaveButton as usize] = selector;
-                }
-            }
-            if let Some(success) = save.success {
-                edit.selectors[Field::SaveConfirmation as usize] = success.selector;
-                edit.saved_pattern = success.pattern.unwrap_or_default();
-            }
+        if let Some(success) = edit.base.page.save.clone().and_then(|save| save.success) {
+            edit.selectors[Field::SaveConfirmation as usize] = success.selector;
+            edit.saved_pattern = success.pattern.unwrap_or_default();
         }
         edit
     }
@@ -260,16 +320,9 @@ impl MappingEdit {
             }),
             MaxFrom::Same => self.same_max().map(|value| MaxScoreRule::Fixed { value }),
         };
-        let button = match self.save_by {
-            SaveBy::Teacher => None,
-            SaveBy::Label => Some(SaveButton::Text {
-                text: self.save_label.trim().to_owned(),
-            }),
-            SaveBy::Selector => Some(SaveButton::Selector {
-                selector: self.selector(Field::SaveButton).to_owned(),
-            }),
-        };
-        page.save = button.map(|button| SaveRule {
+        page.next_student = self.next.rule(&self.selectors);
+        page.previous_student = self.previous.rule(&self.selectors);
+        page.save = self.save.rule(&self.selectors).map(|button| SaveRule {
             button,
             success: at(Field::SaveConfirmation).map(|selector| SaveSuccess {
                 selector,
@@ -298,15 +351,13 @@ impl MappingEdit {
             }
             _ => {}
         }
-        match self.save_by {
-            SaveBy::Label if self.save_label.trim().is_empty() => {
-                Some("Give the save button\u{2019}s label, or choose to save in the browser.")
-            }
-            SaveBy::Selector if self.selector(Field::SaveButton).is_empty() => {
-                Some("Say where the save button is, or choose to save in the browser.")
-            }
-            _ => None,
+        if self.save.unfinished(&self.selectors) {
+            return Some("Say which button saves, or choose to save in the browser.");
         }
+        if self.next.unfinished(&self.selectors) || self.previous.unfinished(&self.selectors) {
+            return Some("Say which button goes to the other student, or choose to go without it.");
+        }
+        None
     }
 
     /// What to look for when the teacher points at `field` on the page.
@@ -314,7 +365,10 @@ impl MappingEdit {
         self.picking = Some(field);
         match field {
             Field::Section => PickFor::StudentSection,
-            Field::SaveButton | Field::SaveConfirmation => PickFor::WholePage,
+            Field::SaveButton
+            | Field::SaveConfirmation
+            | Field::NextStudent
+            | Field::PreviousStudent => PickFor::WholePage,
             _ => PickFor::InsideSection(
                 Some(self.selector(Field::Section).to_owned()).filter(|s| !s.is_empty()),
             ),
@@ -364,8 +418,11 @@ fn finding(check: &ProfileCheck, field: Field) -> (Option<String>, Vec<(Severity
         .map(|found| match field {
             Field::Section if found.one == 1 => format!("Finds {}.", count(students, "student")),
             Field::Section => "Finds no student.".to_owned(),
-            Field::SaveButton if found.one == 1 => "Found on the page.".to_owned(),
+            Field::SaveButton | Field::NextStudent | Field::PreviousStudent if found.one == 1 => {
+                "Found on the page.".to_owned()
+            }
             Field::SaveButton => "Not found as the page\u{2019}s one save button.".to_owned(),
+            Field::NextStudent | Field::PreviousStudent => "Not on this page.".to_owned(),
             // A maximum is only looked for where there is a score box.
             _ if found.none == 0 && found.several == 0 => {
                 format!("Found for all {}.", count(found.one, "student"))
@@ -412,6 +469,59 @@ fn selector_line(
         )
         .labelled_by(label.id);
     });
+}
+
+/// Which of the form's buttons.
+#[derive(Clone, Copy)]
+enum Button {
+    Save,
+    Next,
+    Previous,
+}
+
+/// One of the page's buttons: whether the mapping has it, and its label or
+/// its selector. `picking` is whether a page is open to pick on, and where
+/// a pick is asked for.
+fn button_lines(
+    ui: &mut egui::Ui,
+    edit: &mut MappingEdit,
+    which: Button,
+    title: &str,
+    unmapped: &'static str,
+    label_title: &str,
+    picking: (bool, &mut Vec<Action>),
+) {
+    fn form(edit: &mut MappingEdit, which: Button) -> &mut ButtonForm {
+        match which {
+            Button::Save => &mut edit.save,
+            Button::Next => &mut edit.next,
+            Button::Previous => &mut edit.previous,
+        }
+    }
+    let title_label = kit::section_label(ui, title);
+    let (by, field) = (form(edit, which).by, form(edit, which).field);
+    let mut chosen = by;
+    egui::ComboBox::from_id_salt(("mapping-button", field as usize))
+        .selected_text(theme::body(by.label(unmapped)))
+        .width(320.0)
+        .show_ui(ui, |ui| {
+            for way in ButtonBy::ALL {
+                ui.selectable_value(&mut chosen, way, way.label(unmapped));
+            }
+        })
+        .response
+        .labelled_by(title_label.id);
+    form(edit, which).by = chosen;
+    match chosen {
+        ButtonBy::Unmapped => {}
+        ButtonBy::Label => text_line(
+            ui,
+            label_title,
+            &mut form(edit, which).label,
+            "The whole label, as the button shows it. Capitals do not matter.",
+        ),
+        ButtonBy::Selector => selector_line(ui, edit, field, picking.0, picking.1),
+    }
 }
 
 /// Something of the mapping that is typed and cannot be picked.
@@ -504,29 +614,17 @@ impl OgreApp {
         }
         show_finding(ui, check, Field::MaxScore);
 
-        let label = kit::section_label(ui, "Saving");
-        egui::ComboBox::from_id_salt("mapping-save")
-            .selected_text(theme::body(edit.save_by.label()))
-            .width(320.0)
-            .show_ui(ui, |ui| {
-                for way in SaveBy::ALL {
-                    ui.selectable_value(&mut edit.save_by, way, way.label());
-                }
-            })
-            .response
-            .labelled_by(label.id);
-        match edit.save_by {
-            SaveBy::Teacher => {}
-            SaveBy::Label => text_line(
-                ui,
-                "Label of the save button",
-                &mut edit.save_label,
-                "The whole label, as the button shows it. Capitals do not matter.",
-            ),
-            SaveBy::Selector => selector_line(ui, edit, Field::SaveButton, on_a_page, actions),
-        }
+        button_lines(
+            ui,
+            edit,
+            Button::Save,
+            "Saving",
+            "No button: I save in the browser",
+            "Label of the save button",
+            (on_a_page, &mut *actions),
+        );
         show_finding(ui, check, Field::SaveButton);
-        if edit.save_by != SaveBy::Teacher {
+        if edit.save.by != ButtonBy::Unmapped {
             selector_line(ui, edit, Field::SaveConfirmation, on_a_page, actions);
             text_line(
                 ui,
@@ -536,6 +634,37 @@ impl OgreApp {
                  text has to match.",
             );
             show_finding(ui, check, Field::SaveConfirmation);
+        }
+
+        // Only a page that shows one student has others to go to.
+        if edit.selector(Field::Section).is_empty() {
+            ui.label(theme::muted(
+                "This page shows one student. With the button to the next student mapped, \
+                 OGRE reads every student from the one shown to the last, and saves each \
+                 grade as it writes it.",
+            ));
+            button_lines(
+                ui,
+                edit,
+                Button::Next,
+                "Next student",
+                "None: only the student shown is read",
+                "Label of the button to the next student",
+                (on_a_page, &mut *actions),
+            );
+            show_finding(ui, check, Field::NextStudent);
+            if edit.next.by != ButtonBy::Unmapped {
+                button_lines(
+                    ui,
+                    edit,
+                    Button::Previous,
+                    "Previous student",
+                    "None: each student has their own address",
+                    "Label of the button to the previous student",
+                    (on_a_page, &mut *actions),
+                );
+                show_finding(ui, check, Field::PreviousStudent);
+            }
         }
 
         let missing = edit.missing();

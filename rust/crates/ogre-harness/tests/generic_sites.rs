@@ -20,9 +20,9 @@ use ogre_core::{
 };
 use ogre_harness::cdp::{CdpPage, Chrome, LaunchOptions};
 use ogre_harness::sites::generic::{
-    DiscoverOptions, DiscoveryError, DiscoverySource, Element, FeedbackBox, MaxScoreRule, PageMap,
-    PickFor, ProfileAdapter, SaveButton, SaveRule, SaveSuccess, Severity, SiteProfile, Snapshot,
-    SnapshotNode, SnapshotOptions, ValidatedProfile, capture_snapshot, detect, discover,
+    ButtonRule, DiscoverOptions, DiscoveryError, DiscoverySource, Element, FeedbackBox,
+    MaxScoreRule, PageMap, PickFor, ProfileAdapter, SaveRule, SaveSuccess, Severity, SiteProfile,
+    Snapshot, SnapshotNode, SnapshotOptions, ValidatedProfile, capture_snapshot, detect, discover,
     draft_profile, pick_element, validate_profile,
 };
 use ogre_harness::sites::{SiteAdapter, verify_writes};
@@ -244,7 +244,7 @@ fn max_in(selector: &str) -> Option<MaxScoreRule> {
 
 fn save_by(selector: &str) -> Option<SaveRule> {
     Some(SaveRule {
-        button: SaveButton::Selector {
+        button: ButtonRule::Selector {
             selector: selector.into(),
         },
         success: None,
@@ -267,6 +267,8 @@ async fn simple_batch_is_mapped_read_and_written() {
                 response: "div.question-region".into(),
                 prompt: None,
                 save: save_by("#save-all"),
+                next_student: None,
+                previous_student: None,
             },
             names: &["Alice Johnson", "Bob Smith", "Carol Davis"],
             answers: &["by expanding", "I factored", "I think it equals"],
@@ -294,6 +296,8 @@ async fn a_table_layout_is_mapped_read_and_written() {
                 response: "td.response-col".into(),
                 prompt: None,
                 save: save_by("#save-all-btn"),
+                next_student: None,
+                previous_student: None,
             },
             names: &["Alice Johnson", "Bob Smith", "Carol Davis"],
             answers: &["L'Hôpital", "squeeze theorem", "maybe it's infinity"],
@@ -322,6 +326,8 @@ async fn deeply_wrapped_rows_are_mapped_read_and_written() {
                 response: "div.response-container".into(),
                 prompt: None,
                 save: None,
+                next_student: None,
+                previous_student: None,
             },
             names: &["Alice Johnson", "Bob Smith"],
             answers: &["Student wrote: 42", "Student wrote: 7"],
@@ -350,6 +356,8 @@ async fn an_unknown_lms_is_mapped_read_and_written() {
                 prompt: None,
                 // Each student has a "Grade" button; none saves the page.
                 save: None,
+                next_student: None,
+                previous_student: None,
             },
             names: &["Emily Wilson", "Frank Martinez"],
             answers: &["abolition of feudalism", "storming of the Bastille"],
@@ -428,7 +436,7 @@ async fn a_wrong_profile_fails_validation_with_a_list_of_what_is_wrong() {
     });
     wrong.page.response = ".question-region > *".into();
     wrong.page.save = Some(SaveRule {
-        button: SaveButton::Text {
+        button: ButtonRule::Text {
             text: "Save".into(),
         },
         success: Some(SaveSuccess {
@@ -656,7 +664,7 @@ async fn saving_waits_for_the_confirmation_the_profile_describes() {
     // The teacher says what a finished save looks like.
     let mut profile = drafted.into_profile();
     profile.page.save = Some(SaveRule {
-        button: SaveButton::Text {
+        button: ButtonRule::Text {
             text: "save all grades".into(),
         },
         success: Some(SaveSuccess {
@@ -727,7 +735,7 @@ async fn a_save_confirmed_by_a_notice_that_appears_is_recognized() {
     let s = open("save-notice", "batch-grading-complex.html").await;
     let mut profile = heuristic_profile(&s.page).await.into_profile();
     profile.page.save = Some(SaveRule {
-        button: SaveButton::Selector {
+        button: ButtonRule::Selector {
             selector: "#save-all-btn".into(),
         },
         success: Some(SaveSuccess {
@@ -751,7 +759,7 @@ async fn a_save_confirmed_by_a_notice_that_appears_is_recognized() {
 
     // "Save" alone is each row's own button, not the page's.
     profile.page.save = Some(SaveRule {
-        button: SaveButton::Text {
+        button: ButtonRule::Text {
             text: "Save".into(),
         },
         success: None,
@@ -806,6 +814,8 @@ async fn rich_text_feedback_is_written_with_its_hidden_field() {
             response: "div.essay".into(),
             prompt: None,
             save: None,
+            next_student: None,
+            previous_student: None,
         }
     );
     let adapter = ProfileAdapter::new(profile);
@@ -959,15 +969,27 @@ async fn a_page_showing_one_student_is_read_and_written_for_that_student() {
             response: "#student-response".into(),
             prompt: None,
             save: Some(SaveRule {
-                button: SaveButton::Text {
+                button: ButtonRule::Text {
                     text: "Save & Next".into()
                 },
                 success: None
             }),
+            next_student: Some(ButtonRule::Selector {
+                selector: "#next-student".into(),
+            }),
+            previous_student: Some(ButtonRule::Selector {
+                selector: "#prev-student".into(),
+            }),
         }
     );
 
-    let adapter = ProfileAdapter::new(validated(&s.page, draft).await);
+    // With no way on mapped, the page is read and written for the student
+    // it shows, and saving is left to the teacher.
+    let mut alone = draft;
+    alone.page.next_student = None;
+    alone.page.previous_student = None;
+    let adapter = ProfileAdapter::new(validated(&s.page, alone).await);
+    assert!(!adapter.saves_on_write());
     let before = adapter.read_page(&s.page).await.unwrap();
     assert_eq!(before.submissions.len(), 1);
     let student = &before.submissions[0];
@@ -991,6 +1013,262 @@ async fn a_page_showing_one_student_is_read_and_written_for_that_student() {
             .await
             .unwrap(),
         []
+    );
+
+    close(s).await;
+}
+
+/// What says that the made-up sites below kept a grade.
+fn confirmed_by(button: &str, selector: &str, pattern: Option<&str>) -> Option<SaveRule> {
+    Some(SaveRule {
+        button: ButtonRule::Selector {
+            selector: button.into(),
+        },
+        success: Some(SaveSuccess {
+            selector: selector.into(),
+            pattern: pattern.map(str::to_owned),
+        }),
+    })
+}
+
+/// The made-up site that gives each student an address of their own.
+fn by_address() -> PageMap {
+    PageMap {
+        student_section: None,
+        student_name: "#student-name".into(),
+        score_input: "#points".into(),
+        max_score: Some(MaxScoreRule::usual()),
+        feedback: textarea("#comment"),
+        response: "#answer".into(),
+        prompt: None,
+        save: confirmed_by("#save", "#status", Some("^Saved for")),
+        next_student: Some(ButtonRule::Text {
+            text: "Next student \u{bb}".into(),
+        }),
+        previous_student: None,
+    }
+}
+
+const FOUR_STUDENTS: [&str; 4] = ["Avery, Sam", "Brook, Kai", "Casey, Lin", "Drew, Pat"];
+
+/// A profile adapter that does not wait long after the last student.
+fn stepping(profile: ValidatedProfile) -> ProfileAdapter {
+    ProfileAdapter::new(profile).with_settle_time(Duration::from_secs(2))
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs Chrome installed"]
+async fn every_student_of_a_site_that_shows_one_at_a_time_is_read_and_written() {
+    let fixture = "one-at-a-time-addresses.html";
+    let s = open("one-by-address", fixture).await;
+    let profile = SiteProfile::for_page(&fixture_url(fixture), by_address());
+    let adapter = stepping(validated(&s.page, profile).await);
+    assert!(
+        adapter.saves_on_write(),
+        "moving on would lose a grade that is only filled in"
+    );
+
+    // Read: everyone from the student shown to the last, the one with no
+    // answer included, and the page is back where the teacher left it.
+    let read = adapter.read_page(&s.page).await.unwrap();
+    assert_eq!(names(&read), FOUR_STUDENTS);
+    assert_eq!(read.url, fixture_url(fixture));
+    assert!(read.submissions[1].response.contains("sample size"));
+    assert_eq!(read.submissions[2].response, "");
+    for (at, student) in read.submissions.iter().enumerate() {
+        assert_eq!(student.index, at);
+        assert_eq!(student.scores[0].field, format!("{at}/name:points"));
+        assert_eq!(
+            student.feedback.as_ref().unwrap().field,
+            format!("{at}/name:comment")
+        );
+        assert_eq!(student.max_score(), Some(10.0));
+        assert_eq!(student.score(), None);
+    }
+    let shown = "document.getElementById('student-name').textContent";
+    assert_eq!(s.page.eval(shown).await.unwrap(), json!("Avery, Sam"));
+
+    // Write: the last student and then the second, each saved before OGRE
+    // moves on, and each found again to check that the site kept it.
+    let last = planned(&read, 3, 8.5, "<p>Clear and correct.</p>");
+    let second = planned(&read, 1, 6.0, "<p>Say how it depends.</p>");
+    let mut written = Vec::new();
+    for write in [last, second] {
+        let receipt = adapter.write_grade(&s.page, &write).await.unwrap();
+        written.push((write, receipt));
+    }
+    assert_eq!(
+        verify_writes(&adapter, &s.page, &written).await.unwrap(),
+        []
+    );
+    assert_eq!(
+        s.page
+            .eval("JSON.parse(sessionStorage.getItem('grades'))")
+            .await
+            .unwrap(),
+        json!({
+            "4": { "points": "8.5", "comment": "Clear and correct." },
+            "2": { "points": "6", "comment": "Say how it depends." },
+        })
+    );
+
+    // A fresh read shows the two grades and nobody else's.
+    let after = adapter.read_page(&s.page).await.unwrap();
+    let scores: Vec<_> = after.submissions.iter().map(|s| s.score()).collect();
+    assert_eq!(scores, [None, Some(6.0), None, Some(8.5)]);
+    assert_eq!(
+        after.submissions[3].feedback.as_ref().unwrap().text,
+        "Clear and correct."
+    );
+
+    // A score someone gave in the meantime is not written over.
+    let stale = planned(&after, 0, 9.0, "<p>Good.</p>");
+    s.page
+        .eval(
+            "(() => { const all = JSON.parse(sessionStorage.getItem('grades')); \
+             all[1] = { points: '3', comment: 'By hand.' }; \
+             sessionStorage.setItem('grades', JSON.stringify(all)); location.reload(); })()",
+        )
+        .await
+        .unwrap();
+    let refused = adapter.write_grade(&s.page, &stale).await.unwrap_err();
+    assert!(
+        matches!(&refused, Error::Page(reason) if reason.contains("changed on the page since it was read")),
+        "{refused}"
+    );
+    assert_eq!(
+        s.page
+            .eval("JSON.parse(sessionStorage.getItem('grades'))[1]")
+            .await
+            .unwrap(),
+        json!({ "points": "3", "comment": "By hand." })
+    );
+
+    close(s).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs Chrome installed"]
+async fn students_behind_buttons_at_one_address_are_read_and_written() {
+    let fixture = "one-at-a-time-buttons.html";
+    let s = open("one-by-buttons", fixture).await;
+
+    // The page's structure gives the buttons away; what shows that a save
+    // went through, it cannot.
+    let mut draft = draft_profile(&snapshot(&s.page).await).expect("heuristics propose a profile");
+    assert_eq!(
+        draft.page.next_student,
+        Some(ButtonRule::Selector {
+            selector: "#next-student".into()
+        })
+    );
+    assert_eq!(
+        draft.page.previous_student,
+        Some(ButtonRule::Selector {
+            selector: "#prev-student".into()
+        })
+    );
+    assert_eq!(draft.page.student_section, None);
+    draft.page.save = confirmed_by("#save-grade", "#saved-note", None);
+    let report = validate_profile(&s.page, &draft).await.unwrap();
+    // On the first student the button back is there but cannot be pressed.
+    assert!(report.passed(), "{}", report.error_summary());
+    let adapter = stepping(validated(&s.page, draft.clone()).await);
+
+    let read = adapter.read_page(&s.page).await.unwrap();
+    assert_eq!(names(&read), FOUR_STUDENTS);
+    assert!(read.submissions[3].response.contains("bring down the 3"));
+    assert_eq!(read.submissions[0].max_score(), Some(15.0));
+    let shown = "document.getElementById('who').textContent";
+    assert_eq!(s.page.eval(shown).await.unwrap(), json!("Avery, Sam"));
+
+    // Forwards to the third student, then back to the first by the button.
+    let third = planned(&read, 2, 4.0, "<p>The 3 is missing.</p>");
+    let first = planned(&read, 0, 15.0, "<p>Yes.</p>");
+    let mut written = Vec::new();
+    for write in [third, first] {
+        let receipt = adapter.write_grade(&s.page, &write).await.unwrap();
+        written.push((write, receipt));
+    }
+    assert_eq!(
+        verify_writes(&adapter, &s.page, &written).await.unwrap(),
+        []
+    );
+    let kept = "JSON.parse(sessionStorage.getItem('quiz-grades'))";
+    assert_eq!(
+        s.page.eval(kept).await.unwrap(),
+        json!({
+            "2": { "score": "4", "feedback": "The 3 is missing." },
+            "0": { "score": "15", "feedback": "Yes." },
+        })
+    );
+
+    // With no button back mapped, an earlier student is reached by opening
+    // the address again and going forwards from the first.
+    draft.page.previous_student = None;
+    let forwards_only = stepping(validated(&s.page, draft).await);
+    let read = forwards_only.read_page(&s.page).await.unwrap();
+    let last = planned(&read, 3, 12.0, "<p>Right.</p>");
+    let second = planned(&read, 1, 10.0, "<p>Show the rule.</p>");
+    let mut written = Vec::new();
+    for write in [last, second] {
+        let receipt = forwards_only.write_grade(&s.page, &write).await.unwrap();
+        written.push((write, receipt));
+    }
+    assert_eq!(
+        verify_writes(&forwards_only, &s.page, &written)
+            .await
+            .unwrap(),
+        []
+    );
+    let all = s.page.eval(kept).await.unwrap();
+    assert_eq!(all["3"]["score"], "12");
+    assert_eq!(all["1"]["feedback"], "Show the rule.");
+    assert_eq!(all["0"]["score"], "15", "nobody else's grade changed");
+
+    close(s).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs Chrome installed"]
+async fn nothing_is_filled_in_on_a_one_at_a_time_site_that_cannot_confirm_a_save() {
+    let fixture = "one-at-a-time-addresses.html";
+    let s = open("one-no-confirmation", fixture).await;
+    let mut map = by_address();
+    map.save = save_by("#save");
+    let profile = SiteProfile::for_page(&fixture_url(fixture), map);
+    let report = validate_profile(&s.page, &profile).await.unwrap();
+    assert!(report.passed());
+    assert!(
+        report.problems().iter().any(|p| {
+            p.element == Element::NextStudent
+                && p.severity == Severity::Warning
+                && p.message.contains("none can be written")
+        }),
+        "the teacher is told before grading, not after"
+    );
+    let adapter = stepping(report.into_validated().unwrap());
+
+    // Reading still goes through everyone.
+    let read = adapter.read_page(&s.page).await.unwrap();
+    assert_eq!(names(&read), FOUR_STUDENTS);
+
+    let write = planned(&read, 1, 6.0, "<p>Half.</p>");
+    let refused = adapter.write_grade(&s.page, &write).await.unwrap_err();
+    assert!(
+        matches!(&refused, Error::Page(reason) if reason.contains("one student at a time")),
+        "{refused}"
+    );
+    s.page
+        .navigate(&format!("{}?student=2", fixture_url(fixture)))
+        .await
+        .unwrap();
+    assert_eq!(
+        s.page
+            .eval("[document.getElementById('points').value, sessionStorage.getItem('grades')]")
+            .await
+            .unwrap(),
+        json!(["", null])
     );
 
     close(s).await;
@@ -1315,6 +1593,8 @@ async fn discovery_tells_the_ai_which_selectors_failed_and_asks_again() {
             prompt: None,
             // "Grade" is on every submission and nothing is labelled "Save".
             save: None,
+            next_student: None,
+            previous_student: None,
         }
     );
     assert_eq!(found.report.students, 2);
@@ -1483,7 +1763,7 @@ async fn discovery_asks_no_ai_when_the_structure_is_conclusive() {
     assert_eq!(found.report.samples[0].max, Some(15.0));
     assert_eq!(
         page.save.as_ref().map(|save| &save.button),
-        Some(&SaveButton::Text {
+        Some(&ButtonRule::Text {
             text: "Save & Next".into()
         })
     );
@@ -1728,6 +2008,8 @@ async fn a_mapping_is_put_together_by_pointing_at_the_page() {
             response,
             prompt: None,
             save: None,
+            next_student: None,
+            previous_student: None,
         },
     );
     let report = validate_profile(page, &profile).await.unwrap();

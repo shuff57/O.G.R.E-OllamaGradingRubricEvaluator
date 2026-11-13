@@ -1294,7 +1294,17 @@ fn map_report(report: ValidationReport, how: String, notes: Vec<String>) -> MapR
         .map(|problem| problem.message.clone())
         .chain(notes)
         .collect();
-    if !can_confirm_save(report.profile()) {
+    let steps = report.profile().page.steps_through_students();
+    if steps {
+        warnings.push(
+            "This site shows one student at a time. OGRE reads every student from the one \
+             shown to the last, so open the first student before reading. Each grade is \
+             saved as it is written."
+                .into(),
+        );
+    }
+    // A site gone through student by student says so itself, in the check.
+    if !steps && !can_confirm_save(report.profile()) {
         warnings.push(
             "OGRE will fill in grades on this site but will not click Save: \
              it has no way to tell that a save worked. You save in the browser."

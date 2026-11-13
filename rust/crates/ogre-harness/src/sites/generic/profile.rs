@@ -242,6 +242,23 @@ pub struct PageMap {
     /// The question as shown to this student, on sites that show it per student.
     pub prompt: Option<String>,
     pub save: Option<SaveRule>,
+    /// The button that shows the next student, on a site that shows one
+    /// student at a time. With it OGRE reads every student from the one
+    /// shown to the last, and goes back to each to write.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_student: Option<ButtonRule>,
+    /// The button that shows the student before. Only needed on a site
+    /// whose students do not each have an address of their own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_student: Option<ButtonRule>,
+}
+
+impl PageMap {
+    /// True for a page that shows one student and has a way to the next:
+    /// its students are read by going through them.
+    pub fn steps_through_students(&self) -> bool {
+        self.student_section.is_none() && self.next_student.is_some()
+    }
 }
 
 /// How to find the points a question is out of.
@@ -290,16 +307,16 @@ pub struct FeedbackBox {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SaveRule {
-    pub button: SaveButton,
+    pub button: ButtonRule,
     /// How the page shows that a save went through. Without it OGRE never
     /// clicks the button: the teacher saves in the browser.
     pub success: Option<SaveSuccess>,
 }
 
-/// How to find the page's one save button.
+/// How to find one button of the page, such as its save button.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "by", rename_all = "snake_case", deny_unknown_fields)]
-pub enum SaveButton {
+pub enum ButtonRule {
     /// A page-wide selector.
     Selector { selector: String },
     /// The button's whole label, ignoring case.
@@ -341,7 +358,7 @@ mod tests {
                 response: "section.sub-body".into(),
                 prompt: None,
                 save: Some(SaveRule {
-                    button: SaveButton::Text {
+                    button: ButtonRule::Text {
                         text: "Save All Grades".into(),
                     },
                     success: Some(SaveSuccess {
@@ -349,6 +366,8 @@ mod tests {
                         pattern: Some("^Saved".into()),
                     }),
                 }),
+                next_student: None,
+                previous_student: None,
             },
         )
     }

@@ -7,7 +7,7 @@
 
 use ogre_core::FeedbackKind;
 
-use super::profile::{FeedbackBox, MaxScoreRule, PageMap, SaveButton, SaveRule, SiteProfile};
+use super::profile::{ButtonRule, FeedbackBox, MaxScoreRule, PageMap, SaveRule, SiteProfile};
 use super::snapshot::{Snapshot, SnapshotNode as Node};
 
 /// Below this the page does not look like a grading page at all.
@@ -46,7 +46,11 @@ pub struct Candidates {
     pub max_score: Option<MaxScoreRule>,
     pub feedback: Option<FeedbackBox>,
     pub response: Option<String>,
-    pub save_button: Option<SaveButton>,
+    pub save_button: Option<ButtonRule>,
+    /// The buttons to the next and the previous student, on a page that
+    /// shows one student.
+    pub next_student: Option<ButtonRule>,
+    pub previous_student: Option<ButtonRule>,
 }
 
 impl Detection {
@@ -70,6 +74,8 @@ impl Detection {
                 button,
                 success: None,
             }),
+            next_student: found.next_student.clone(),
+            previous_student: found.previous_student.clone(),
         })
     }
 }
@@ -122,6 +128,18 @@ pub fn detect(snapshot: &Snapshot) -> Option<Detection> {
     } else {
         Mode::Batch
     };
+    // A button that saves and moves on is the save button, not the way on.
+    let step = |which: Step| {
+        (mode == Mode::Sequential)
+            .then(|| {
+                page.nodes
+                    .iter()
+                    .copied()
+                    .find(|n| steps(n) == Some(which) && !is_save_button(n))
+            })
+            .flatten()
+            .and_then(|button| button_rule(button, &page))
+    };
     let kind = match mode {
         Mode::Batch => "Batch grading",
         Mode::Sequential => "Sequential grading",
@@ -129,7 +147,9 @@ pub fn detect(snapshot: &Snapshot) -> Option<Detection> {
     Some(Detection {
         mode,
         candidates: Candidates {
-            save_button: save_button.and_then(|button| save_rule(button, &page)),
+            save_button: save_button.and_then(|button| button_rule(button, &page)),
+            next_student: step(Step::Next),
+            previous_student: step(Step::Previous),
             ..found
         },
         confidence: f64::min(confidence, 1.0),
@@ -559,6 +579,28 @@ fn is_nav_button(node: &Node) -> bool {
     is_button(node) && NAV_WORDS.iter().any(|word| label.contains(word))
 }
 
+/// Which way a button moves between students.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Step {
+    Next,
+    Previous,
+}
+
+const NEXT_WORDS: [&str; 5] = ["next", "►", "→", "»", "raquo"];
+
+/// The way `node` moves between students, if it is a button that does.
+fn steps(node: &Node) -> Option<Step> {
+    if !is_nav_button(node) {
+        return None;
+    }
+    let label = button_label(node).to_lowercase();
+    Some(if NEXT_WORDS.iter().any(|word| label.contains(word)) {
+        Step::Next
+    } else {
+        Step::Previous
+    })
+}
+
 fn is_save_button(node: &Node) -> bool {
     let label = button_label(node).to_lowercase();
     is_button(node) && SAVE_WORDS.iter().any(|word| label.contains(word))
@@ -566,10 +608,10 @@ fn is_save_button(node: &Node) -> bool {
 
 /// How to find `button` again: by its id, or by its label if no other
 /// button on the page is labelled the same.
-fn save_rule(button: &Node, page: &Tree<'_>) -> Option<SaveButton> {
+fn button_rule(button: &Node, page: &Tree<'_>) -> Option<ButtonRule> {
     let id = button.attr("id");
     if is_identifier(id) {
-        return Some(SaveButton::Selector {
+        return Some(ButtonRule::Selector {
             selector: format!("#{id}"),
         });
     }
@@ -579,7 +621,7 @@ fn save_rule(button: &Node, page: &Tree<'_>) -> Option<SaveButton> {
         .iter()
         .filter(|n| is_button(n) && button_label(n).eq_ignore_ascii_case(label))
         .count();
-    (!label.is_empty() && alike == 1).then(|| SaveButton::Text {
+    (!label.is_empty() && alike == 1).then(|| ButtonRule::Text {
         text: label.to_owned(),
     })
 }
@@ -885,6 +927,8 @@ fn in_rows(page: &Tree<'_>, rows: &Rows) -> Candidates {
         feedback,
         response: selector(&responses, true),
         save_button: None,
+        next_student: None,
+        previous_student: None,
     }
 }
 
@@ -910,6 +954,8 @@ fn on_page(page: &Tree<'_>) -> Candidates {
         feedback,
         response: pick_response(page, 0, name).map(|i| page_selector(page, i)),
         save_button: None,
+        next_student: None,
+        previous_student: None,
     }
 }
 
@@ -1000,6 +1046,19 @@ mod tests {
             found.pattern_name,
             "Sequential grading (score-input, name-candidate)"
         );
+        // The way on is kept, so that every student can be read.
+        assert_eq!(
+            found.candidates.next_student,
+            Some(ButtonRule::Selector {
+                selector: "#next-student".into()
+            })
+        );
+        assert_eq!(
+            found.candidates.previous_student,
+            Some(ButtonRule::Selector {
+                selector: "#prev-student".into()
+            })
+        );
     }
 
     #[test]
@@ -1060,7 +1119,7 @@ mod tests {
         assert!((with.confidence - without.confidence - 0.1).abs() < 1e-9);
         assert_eq!(
             with.candidates.save_button,
-            Some(SaveButton::Text {
+            Some(ButtonRule::Text {
                 text: "Save & Next".into()
             })
         );
@@ -1157,7 +1216,7 @@ mod tests {
         assert_eq!(
             map.save,
             Some(SaveRule {
-                button: SaveButton::Selector {
+                button: ButtonRule::Selector {
                     selector: "#save-all".into()
                 },
                 success: None,
@@ -1427,7 +1486,7 @@ mod tests {
         // The per-row "Save" buttons are inside the rows; the page's is outside.
         assert_eq!(
             map.save.map(|s| s.button),
-            Some(SaveButton::Selector {
+            Some(ButtonRule::Selector {
                 selector: "#save-all-btn".into()
             })
         );

@@ -14,6 +14,7 @@ use serde_json::json;
 use super::inspect::{self, Inspection, Student, call};
 use super::profile::SiteProfile;
 use super::validate::{self, ValidatedProfile};
+use super::walk::{Route, Walker, field_of, place_and_field};
 use crate::driver::eval_as;
 use crate::sites::{SiteAdapter, WriteReceipt};
 use crate::{Error, PageDriver, Result, feedback};
@@ -23,6 +24,10 @@ const SAVE_SCRIPT: &str = include_str!("save.js");
 
 /// How long to wait for the site to confirm a save.
 const SAVE_TIMEOUT: Duration = Duration::from_secs(30);
+/// How long another student may take to show on a site that shows one at a
+/// time. After the last student this is waited out once, where the site
+/// leaves its button to the next one in place.
+const SETTLE_TIME: Duration = Duration::from_secs(8);
 /// Prompts longer than this are cut, as the grading prompts expect.
 const PROMPT_LIMIT: usize = 1500;
 
@@ -34,12 +39,17 @@ const PROMPT_LIMIT: usize = 1500;
 /// boxes.
 ///
 /// A profile without a student section describes a page that shows one
-/// student at a time. Such a page is read and written for the student it
-/// shows; moving to the next student is not done here.
+/// student at a time. Where it maps the button to the next student, every
+/// student from the one shown to the last is read, and each grade is saved
+/// as it is written, because moving on would lose it. Without that button
+/// the page is read and written for the student it shows.
 pub struct ProfileAdapter {
     profile: SiteProfile,
     name: &'static str,
     save_timeout: Duration,
+    settle_time: Duration,
+    /// The students of the last read of a site that shows one at a time.
+    route: Mutex<Option<Route>>,
 }
 
 impl ProfileAdapter {
@@ -49,6 +59,120 @@ impl ProfileAdapter {
             name: interned(&profile.name),
             profile,
             save_timeout: SAVE_TIMEOUT,
+            settle_time: SETTLE_TIME,
+            route: Mutex::new(None),
+        }
+    }
+
+    /// Changes how long another student may take to show.
+    pub fn with_settle_time(mut self, time: Duration) -> Self {
+        self.settle_time = time;
+        self
+    }
+
+    fn walker(&self) -> Walker<'_> {
+        Walker {
+            profile: &self.profile,
+            settle: self.settle_time,
+        }
+    }
+
+    fn route(&self) -> Option<Route> {
+        self.route
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    fn keep_route(&self, route: Option<Route>) {
+        *self.route.lock().unwrap_or_else(PoisonError::into_inner) = route;
+    }
+
+    /// True if the profile says how a finished save looks.
+    fn confirms_saves(&self) -> bool {
+        self.profile
+            .page
+            .save
+            .as_ref()
+            .is_some_and(|save| save.success.is_some())
+    }
+
+    /// Shows the student a write is for, on a site that shows one at a time,
+    /// and gives the write with its boxes named as that page names them.
+    async fn show_student_of(
+        &self,
+        page: &dyn PageDriver,
+        write: &GradeWrite,
+    ) -> Result<GradeWrite> {
+        let unknown = || {
+            Error::Page(format!(
+                "{}: OGRE no longer knows where this student is. Read the students again.",
+                write.name
+            ))
+        };
+        let (at, score_field) = place_and_field(&write.score.field).ok_or_else(unknown)?;
+        let mut route = self.route().ok_or_else(unknown)?;
+        let went = self.walker().go_to(page, &mut route, at).await;
+        self.keep_route(Some(route));
+        went?;
+        let mut here = write.clone();
+        here.score.field = score_field.to_owned();
+        if let Some(feedback) = &mut here.feedback
+            && let Some((_, field)) = place_and_field(&feedback.field)
+        {
+            feedback.field = field.to_owned();
+        }
+        Ok(here)
+    }
+
+    /// Puts a grade into the page as it stands. Saves nothing.
+    async fn fill(&self, page: &dyn PageDriver, write: &GradeWrite) -> Result<WriteReceipt> {
+        let feedback = write.feedback.as_ref().map(|f| {
+            json!({
+                "field": f.field,
+                "html": feedback::safe_html(&f.html),
+                "text": feedback::plain_text(&f.html),
+            })
+        });
+        let args = json!({
+            "name": write.name,
+            "score": {
+                "field": write.score.field,
+                "expected": write.score.expected,
+                "value": format_score(write.score.value),
+            },
+            "feedback": feedback,
+        });
+        let outcome: WriteOutcome =
+            eval_as(page, &call(WRITE_SCRIPT, &self.profile.page, &args)?).await?;
+        if !outcome.ok {
+            return Err(Error::Page(format!(
+                "{}: {}",
+                write.name,
+                outcome.error.unwrap_or_else(|| "the write failed".into())
+            )));
+        }
+        Ok(WriteReceipt {
+            score: outcome.score.unwrap_or_default(),
+            feedback_text: outcome.feedback_text,
+        })
+    }
+
+    /// Clicks the save button and waits for the site to confirm.
+    async fn click_save(&self, page: &dyn PageDriver) -> Result<()> {
+        let timeout = u64::try_from(self.save_timeout.as_millis()).unwrap_or(u64::MAX);
+        let outcome: SaveOutcome = eval_as(
+            page,
+            &call(SAVE_SCRIPT, &self.profile.page, &json!(timeout))?,
+        )
+        .await?;
+        if outcome.ok {
+            Ok(())
+        } else {
+            Err(Error::Page(format!(
+                "Saving failed: {}. Check the page and save in the browser yourself.",
+                outcome.error.unwrap_or_else(|| "no reason given".into())
+            )))
         }
     }
 
@@ -107,11 +231,77 @@ impl SiteAdapter for ProfileAdapter {
 
     async fn read_page(&self, page: &dyn PageDriver) -> Result<GradingPage> {
         let found = self.inspect(page).await?;
+        if !self.profile.page.steps_through_students() {
+            return Ok(GradingPage {
+                url: found.url,
+                title: found.title,
+                position: None,
+                submissions: found.students.iter().map(submission).collect(),
+            });
+        }
+
+        // Reading the same students again starts where the first read did,
+        // not at whichever of them was written last.
+        let walker = self.walker();
+        let found = match self.route() {
+            Some(mut route) => walker
+                .back_to_first(page, &mut route)
+                .await
+                .unwrap_or(found),
+            None => found,
+        };
+        let (url, title) = (found.url.clone(), found.title.clone());
+        self.keep_route(None);
+        let met = walker.everyone(page, found).await?;
+        let submissions = met
+            .iter()
+            .enumerate()
+            .filter_map(|(at, (shown, _))| Some(student_at(at, shown.students.first()?)))
+            .collect();
+        let mut route = Route::new(met.into_iter().map(|(_, stop)| stop).collect());
+        // Back to where the teacher was. A site that will not go back is
+        // still read; it is a write that then says so.
+        let _ = walker.go_to(page, &mut route, 0).await;
+        self.keep_route(Some(route));
         Ok(GradingPage {
-            url: found.url,
-            title: found.title,
+            url,
+            title,
             position: None,
-            submissions: found.students.iter().map(submission).collect(),
+            submissions,
+        })
+    }
+
+    async fn read_back(
+        &self,
+        page: &dyn PageDriver,
+        written: &[(GradeWrite, WriteReceipt)],
+    ) -> Result<GradingPage> {
+        if !self.profile.page.steps_through_students() {
+            return self.read_page(page).await;
+        }
+        let mut submissions = Vec::new();
+        let mut shown = None;
+        for (write, _) in written {
+            let Some((at, _)) = place_and_field(&write.score.field) else {
+                continue;
+            };
+            let Some(mut route) = self.route() else {
+                continue;
+            };
+            let went = self.walker().go_to(page, &mut route, at).await;
+            self.keep_route(Some(route));
+            let found = went?;
+            if let Some(student) = found.students.first() {
+                submissions.push(student_at(at, student));
+            }
+            shown = Some((found.url, found.title));
+        }
+        let (url, title) = shown.unwrap_or_default();
+        Ok(GradingPage {
+            url,
+            title,
+            position: None,
+            submissions,
         })
     }
 
@@ -135,72 +325,64 @@ impl SiteAdapter for ProfileAdapter {
     }
 
     async fn write_grade(&self, page: &dyn PageDriver, write: &GradeWrite) -> Result<WriteReceipt> {
-        let feedback = write.feedback.as_ref().map(|f| {
-            json!({
-                "field": f.field,
-                "html": feedback::safe_html(&f.html),
-                "text": feedback::plain_text(&f.html),
-            })
-        });
-        let args = json!({
-            "name": write.name,
-            "score": {
-                "field": write.score.field,
-                "expected": write.score.expected,
-                "value": format_score(write.score.value),
-            },
-            "feedback": feedback,
-        });
-        let outcome: WriteOutcome =
-            eval_as(page, &call(WRITE_SCRIPT, &self.profile.page, &args)?).await?;
-        if !outcome.ok {
+        if !self.profile.page.steps_through_students() {
+            return self.fill(page, write).await;
+        }
+        // Moving to the next student would lose a grade that is only filled
+        // in, so nothing is filled in that cannot then be saved.
+        if !self.confirms_saves() {
             return Err(Error::Page(format!(
-                "{}: {}",
-                write.name,
-                outcome.error.unwrap_or_else(|| "the write failed".into())
+                "{}: this site shows one student at a time, so a grade has to be saved before \
+                 OGRE moves on, and the site profile \"{}\" does not say how a finished save \
+                 looks. Nothing was written. Put that right on the Sites screen.",
+                write.name, self.profile.name
             )));
         }
-        Ok(WriteReceipt {
-            score: outcome.score.unwrap_or_default(),
-            feedback_text: outcome.feedback_text,
-        })
+        let here = self.show_student_of(page, write).await?;
+        let receipt = self.fill(page, &here).await?;
+        self.click_save(page).await.map_err(|error| match error {
+            Error::Page(reason) => Error::Page(format!("{}: {reason}", write.name)),
+            other => other,
+        })?;
+        Ok(receipt)
     }
 
+    /// True for a site that shows one student at a time: each grade is
+    /// saved before the next student is shown.
     fn saves_on_write(&self) -> bool {
-        false
+        self.profile.page.steps_through_students()
     }
 
     /// Clicks the profile's save button and waits for the confirmation the
     /// profile describes. A profile that cannot tell a finished save from a
     /// failed one is never used to click anything.
     async fn save(&self, page: &dyn PageDriver) -> Result<()> {
-        let recognizable = self
-            .profile
-            .page
-            .save
-            .as_ref()
-            .is_some_and(|save| save.success.is_some());
-        if !recognizable {
+        if self.profile.page.steps_through_students() {
+            // Every grade was saved as it was written.
+            return Ok(());
+        }
+        if !self.confirms_saves() {
             return Err(Error::Page(format!(
                 "The site profile \"{}\" does not say how a finished save looks, so OGRE has not saved anything. Save in the browser yourself.",
                 self.profile.name
             )));
         }
-        let timeout = u64::try_from(self.save_timeout.as_millis()).unwrap_or(u64::MAX);
-        let outcome: SaveOutcome = eval_as(
-            page,
-            &call(SAVE_SCRIPT, &self.profile.page, &json!(timeout))?,
-        )
-        .await?;
-        if outcome.ok {
-            Ok(())
-        } else {
-            Err(Error::Page(format!(
-                "Saving failed: {}. Check the page and save in the browser yourself.",
-                outcome.error.unwrap_or_else(|| "no reason given".into())
-            )))
-        }
+        self.click_save(page).await
     }
+}
+
+/// Student number `at` of a site that shows one at a time. Every student
+/// has the same boxes there, so each box is named with the student's place.
+fn student_at(at: usize, student: &Student) -> Submission {
+    let mut read = submission(student);
+    read.index = at;
+    for score in &mut read.scores {
+        score.field = field_of(at, &score.field);
+    }
+    if let Some(feedback) = &mut read.feedback {
+        feedback.field = field_of(at, &feedback.field);
+    }
+    read
 }
 
 fn submission(student: &Student) -> Submission {

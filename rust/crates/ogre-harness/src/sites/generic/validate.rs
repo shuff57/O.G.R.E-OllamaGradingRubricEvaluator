@@ -4,8 +4,8 @@ use std::fmt;
 
 use ogre_core::FeedbackKind;
 
-use super::inspect::{self, Inspection, Student};
-use super::profile::{MaxScoreRule, PageMap, SaveButton, SiteProfile};
+use super::inspect::{self, Inspection, StepButton, Student};
+use super::profile::{ButtonRule, MaxScoreRule, PageMap, SiteProfile};
 use crate::{PageDriver, Result};
 
 /// How many students a report shows in full.
@@ -24,6 +24,8 @@ pub enum Element {
     Prompt,
     SaveButton,
     SaveConfirmation,
+    NextStudent,
+    PreviousStudent,
 }
 
 impl Element {
@@ -39,6 +41,8 @@ impl Element {
             Self::Prompt => "question prompt",
             Self::SaveButton => "save button",
             Self::SaveConfirmation => "save confirmation",
+            Self::NextStudent => "next student button",
+            Self::PreviousStudent => "previous student button",
         }
     }
 }
@@ -211,6 +215,7 @@ pub(super) fn report(profile: &SiteProfile, found: &Inspection) -> ValidationRep
         }
     }
     checks.save(map, found);
+    checks.steps(map, found);
 
     ValidationReport {
         profile: profile.clone(),
@@ -633,8 +638,19 @@ impl Checks {
             return;
         }
         if read.iter().all(|c| c.markdown().is_empty()) {
-            let share = self.share(read.len());
-            self.error(element, format!("`{selector}` is empty for {share}"));
+            if self.single_page {
+                // One student who wrote nothing looks the same as a wrong
+                // selector, and must not stop a walk through the students.
+                self.warning(
+                    element,
+                    format!(
+                        "`{selector}` is empty for the student shown; that is right only if they gave no answer"
+                    ),
+                );
+            } else {
+                let share = self.share(read.len());
+                self.error(element, format!("`{selector}` is empty for {share}"));
+            }
         }
     }
 
@@ -647,10 +663,7 @@ impl Checks {
             return;
         };
         let element = Element::SaveButton;
-        let rule_text = match &rule.button {
-            SaveButton::Selector { selector } => format!("`{selector}`"),
-            SaveButton::Text { text } => format!("a button labelled \"{text}\""),
-        };
+        let rule_text = button_text(&rule.button);
         self.elements.push(ElementCheck {
             element,
             rule: rule_text.clone(),
@@ -693,6 +706,78 @@ impl Checks {
     }
 }
 
+/// A button rule in words, for a message.
+fn button_text(rule: &ButtonRule) -> String {
+    match rule {
+        ButtonRule::Selector { selector } => format!("`{selector}`"),
+        ButtonRule::Text { text } => format!("a button labelled \"{text}\""),
+    }
+}
+
+impl Checks {
+    /// The buttons to the next and the previous student. One that is not on
+    /// the page is no fault of the profile: the last student has no next.
+    fn steps(&mut self, map: &PageMap, found: &Inspection) {
+        let buttons = [
+            (Element::NextStudent, &map.next_student, found.next, "next"),
+            (
+                Element::PreviousStudent,
+                &map.previous_student,
+                found.previous,
+                "previous",
+            ),
+        ];
+        for (element, rule, seen, which) in buttons {
+            let (Some(rule), Some(seen)) = (rule, seen) else {
+                continue;
+            };
+            self.step(element, rule, seen, which);
+        }
+        if map.next_student.is_some() && !self.single_page {
+            self.warning(
+                Element::NextStudent,
+                "the page lists its students, so the button to the next student is not used",
+            );
+        }
+        let confirms = map.save.as_ref().is_some_and(|save| save.success.is_some());
+        if map.steps_through_students() && !confirms {
+            self.warning(
+                Element::NextStudent,
+                "every student is read, but none can be written: a grade has to be saved before OGRE moves on to the next student, and nothing says how a finished save looks",
+            );
+        }
+    }
+
+    fn step(&mut self, element: Element, rule: &ButtonRule, seen: StepButton, which: &str) {
+        let rule_text = button_text(rule);
+        self.elements.push(ElementCheck {
+            element,
+            rule: rule_text.clone(),
+            none: usize::from(seen.count == 0),
+            one: usize::from(seen.count == 1),
+            several: usize::from(seen.count > 1),
+        });
+        if seen.invalid {
+            self.error(element, format!("{rule_text} is not a valid CSS selector"));
+        } else if seen.count > 1 {
+            self.error(
+                element,
+                format!(
+                    "{rule_text} matches {} buttons; it has to be the one button to the {which} student",
+                    seen.count
+                ),
+            );
+        } else if seen.count == 0 {
+            self.warning(
+                element,
+                format!(
+                    "{rule_text} is not on this page, as on the first or last student; if this is neither, the rule is wrong"
+                ),
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::{Value, json};
@@ -719,6 +804,8 @@ mod tests {
                 response: ".answer".into(),
                 prompt: None,
                 save: None,
+                next_student: None,
+                previous_student: None,
             },
         )
     }
@@ -742,6 +829,130 @@ mod tests {
             .find(|c| c.element == element)
             .unwrap_or_else(|| panic!("{element:?} was not checked"));
         (found.none, found.one, found.several)
+    }
+
+    /// A profile for a page that shows one student, with a button to the next.
+    fn one_at_a_time() -> SiteProfile {
+        let mut profile = profile();
+        profile.page.student_section = None;
+        profile.page.next_student = Some(ButtonRule::Selector {
+            selector: "#next".into(),
+        });
+        profile.page.save = Some(SaveRule {
+            button: ButtonRule::Text {
+                text: "Save".into(),
+            },
+            success: Some(SaveSuccess {
+                selector: "#status".into(),
+                pattern: None,
+            }),
+        });
+        profile
+    }
+
+    /// The page for [`one_at_a_time`], with `next` as the script reports the
+    /// button to the next student.
+    fn one_student(next: Value) -> Inspection {
+        let mut page = inspection(vec![student(0, "Alice Johnson")]);
+        page["save"] = json!({
+            "count": 1, "invalid": false, "success_invalid": false, "pattern_invalid": false
+        });
+        page["next"] = next;
+        decode(page)
+    }
+
+    fn step(count: usize, enabled: bool) -> Value {
+        json!({ "count": count, "invalid": false, "enabled": enabled })
+    }
+
+    fn warnings(report: &ValidationReport, element: Element) -> Vec<&str> {
+        report
+            .problems()
+            .iter()
+            .filter(|p| p.element == element && p.severity == Severity::Warning)
+            .map(|p| p.message.as_str())
+            .collect()
+    }
+
+    #[test]
+    fn the_button_to_the_next_student_is_checked_on_a_page_that_shows_one() {
+        let found = report(&one_at_a_time(), &one_student(step(1, true)));
+        assert!(found.passed(), "{:?}", errors(&found));
+        assert_eq!(check(&found, Element::NextStudent), (0, 1, 0));
+        assert_eq!(warnings(&found, Element::NextStudent), Vec::<&str>::new());
+
+        // The last student has no next: that is not the profile's fault.
+        let last = report(&one_at_a_time(), &one_student(step(0, false)));
+        assert!(last.passed());
+        assert_eq!(check(&last, Element::NextStudent), (1, 0, 0));
+        assert!(warnings(&last, Element::NextStudent)[0].contains("not on this page"));
+
+        // A rule that finds several buttons could press the wrong one.
+        let several = report(&one_at_a_time(), &one_student(step(2, false)));
+        assert_eq!(
+            errors(&several),
+            [
+                "next student button: `#next` matches 2 buttons; it has to be the one button to the next student"
+            ]
+        );
+        let invalid = report(
+            &one_at_a_time(),
+            &one_student(json!({ "count": 0, "invalid": true, "enabled": false })),
+        );
+        assert_eq!(
+            errors(&invalid),
+            ["next student button: `#next` is not a valid CSS selector"]
+        );
+    }
+
+    #[test]
+    fn going_through_the_students_without_a_confirmed_save_is_warned_about() {
+        let mut unconfirmed = one_at_a_time();
+        unconfirmed.page.save.as_mut().unwrap().success = None;
+        let found = report(&unconfirmed, &one_student(step(1, true)));
+        assert!(found.passed(), "reading is still possible");
+        assert!(
+            warnings(&found, Element::NextStudent)
+                .iter()
+                .any(|message| message.contains("none can be written"))
+        );
+
+        // A page that lists its students never uses the button.
+        let mut listed = profile();
+        listed.page.next_student = one_at_a_time().page.next_student;
+        let mut page = inspection(three());
+        page["next"] = step(1, true);
+        let found = report(&listed, &decode(page));
+        assert!(found.passed());
+        assert!(warnings(&found, Element::NextStudent)[0].contains("is not used"));
+    }
+
+    #[test]
+    fn one_student_with_no_answer_does_not_fail_a_page_that_shows_one() {
+        let mut blank = student(0, "Alice Johnson");
+        blank["response"] = json!({ "count": 1, "invalid": false, "html": "", "blocked": false });
+        let mut page = inspection(vec![blank.clone()]);
+        page["save"] = json!({
+            "count": 1, "invalid": false, "success_invalid": false, "pattern_invalid": false
+        });
+        page["next"] = step(1, true);
+        let found = report(&one_at_a_time(), &decode(page));
+        assert!(found.passed(), "{:?}", errors(&found));
+        assert!(warnings(&found, Element::Response)[0].contains("gave no answer"));
+
+        // Where every student of a list is blank, the selector is wrong.
+        let all_blank = (0..3)
+            .map(|at| {
+                let mut each = blank.clone();
+                each["index"] = json!(at);
+                each
+            })
+            .collect();
+        let found = report(&profile(), &decode(inspection(all_blank)));
+        assert_eq!(
+            errors(&found),
+            ["student response: `.answer` is empty for every student"]
+        );
     }
 
     #[test]
@@ -1077,7 +1288,7 @@ mod tests {
     fn the_save_button_must_be_the_only_one_and_its_confirmation_well_formed() {
         let mut saving = profile();
         saving.page.save = Some(SaveRule {
-            button: SaveButton::Text {
+            button: ButtonRule::Text {
                 text: "Save".into(),
             },
             success: None,
@@ -1097,7 +1308,7 @@ mod tests {
         }));
 
         saving.page.save = Some(SaveRule {
-            button: SaveButton::Selector {
+            button: ButtonRule::Selector {
                 selector: "#save".into(),
             },
             success: Some(SaveSuccess {
