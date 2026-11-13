@@ -148,6 +148,8 @@ enum Action {
     AskToLeave(String),
     Stay,
     Grade,
+    /// After a run that was stopped: grade the students it did not reach.
+    GradeRest,
     /// Run the consistency check again on the grades in the table.
     Sweep,
     StopGrading,
@@ -520,6 +522,11 @@ impl OgreApp {
             Action::Grade => {
                 let Some(session) = &self.session else { return };
                 let request = self.grade_request(session, session.to_grade());
+                self.send(Command::Grade(Box::new(request)), "Grading…");
+            }
+            Action::GradeRest => {
+                let Some(session) = &self.session else { return };
+                let request = self.grade_request(session, session.to_grade_rest());
                 self.send(Command::Grade(Box::new(request)), "Grading…");
             }
             Action::Sweep => {
@@ -993,11 +1000,43 @@ impl OgreApp {
         let provider_problem = self.provider_problem();
         let weight_problem = session.rubric_outline().weight_problem.clone();
 
+        if let Some((at, kept)) = session.unfinished() {
+            let question = format!(
+                "A run on this page on {} proposed {} that never reached the page. Bring \
+                 {} back? They come as the AI proposed them then.",
+                history::when(at),
+                if kept == 1 {
+                    "a grade for 1 student".to_owned()
+                } else {
+                    format!("grades for {kept} students")
+                },
+                if kept == 1 { "it" } else { "them" },
+            );
+            match kit::confirm(ui, &question, "Bring them back", idle, Some("Leave them")) {
+                Some(true) => session.bring_back_unfinished(),
+                Some(false) => session.leave_unfinished(),
+                None => {}
+            }
+        }
+        let can_grade = idle && provider_problem.is_none() && weight_problem.is_none();
+        let rest = session.rest_count();
         ui.horizontal_wrapped(|ui| {
+            // After a stopped run, carrying on comes first; grading everyone
+            // again is still there.
+            if rest > 0 {
+                let label = format!("Grade the {} left", count(rest, "student"));
+                if self.step_button(ui, Step::Grade, &label, can_grade) {
+                    actions.push(Action::GradeRest);
+                }
+            }
             let label = format!("Grade {}", count(to_grade, "student"));
-            let enabled =
-                idle && to_grade > 0 && provider_problem.is_none() && weight_problem.is_none();
-            if self.step_button(ui, Step::Grade, &label, enabled) {
+            let enabled = can_grade && to_grade > 0;
+            let pressed = if rest > 0 {
+                kit::ghost(ui, &label, enabled).clicked()
+            } else {
+                self.step_button(ui, Step::Grade, &label, enabled)
+            };
+            if pressed {
                 actions.push(Action::Grade);
             }
             self.who_to_grade(ui, session);

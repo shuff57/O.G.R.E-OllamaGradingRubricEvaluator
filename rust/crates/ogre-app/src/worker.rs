@@ -257,6 +257,46 @@ pub struct ReadReport {
     /// What the agent knows, for the Grade screen to say which of the
     /// teacher's skills the grader will be given.
     pub skills: Vec<SkillSummary>,
+    /// Grades an earlier run proposed for students who are still ungraded
+    /// on the page, with when that run's page was read. For the teacher to
+    /// bring back or leave.
+    pub unfinished: Option<(u64, Vec<crate::grading::GradedRow>)>,
+}
+
+/// The grades an earlier run on this page proposed that the page does not
+/// show: each for a student who is here now, has an answer and has no grade.
+fn unfinished(
+    sessions_dir: &std::path::Path,
+    page: &GradingPage,
+) -> Option<(u64, Vec<crate::grading::GradedRow>)> {
+    let (at, kept) = history::proposed_before(sessions_dir, &page.url)?;
+    let rows: Vec<_> = page
+        .submissions
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| {
+            !s.response.trim().is_empty() && !s.has_nonzero_score() && !s.has_feedback()
+        })
+        .filter_map(|(index, s)| {
+            // By the site's own id where both have one; a name can be shared.
+            let grade = kept
+                .iter()
+                .find(|grade| match (&grade.student_id, &s.student_id) {
+                    (Some(then), Some(now)) => then == now,
+                    _ => grade.name == s.name,
+                })?;
+            Some(crate::grading::GradedRow {
+                index,
+                outcome: Ok(crate::grading::Grade {
+                    score: grade.score,
+                    feedback_html: grade.feedback_html.clone(),
+                    flag: grade.flag.clone(),
+                    suggestion: None,
+                }),
+            })
+        })
+        .collect();
+    (!rows.is_empty()).then_some((at, rows))
 }
 
 /// A rubric that did not come from the page's own rubric: read from a
@@ -865,9 +905,12 @@ impl Task {
         // Moving between questions is a convenience; a list that cannot be
         // read must not stop the students from being read.
         let questions = adapter.questions(&page).await.unwrap_or_default();
+        // Before this read starts a record of its own.
+        let unfinished = unfinished(self.audit.dir(), &read);
         self.audit
             .begin(&read, adapter.name(), adapter.saves_on_write());
         let report = ReadReport {
+            unfinished,
             rubric,
             questions,
             site: adapter.name(),
@@ -1091,5 +1134,90 @@ fn map_report(report: ValidationReport, how: String, notes: Vec<String>) -> MapR
         students: report.students,
         samples: report.samples.clone(),
         warnings,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn page(students: serde_json::Value) -> GradingPage {
+        serde_json::from_value(serde_json::json!({
+            "url": "https://www.myopenmath.com/course/gradeallq2.php?cid=1",
+            "title": "Unit 4 FRQ",
+            "position": null,
+            "submissions": students,
+        }))
+        .unwrap()
+    }
+
+    fn student(
+        index: usize,
+        id: &str,
+        name: &str,
+        raw: &str,
+        feedback: &str,
+        response: &str,
+    ) -> serde_json::Value {
+        serde_json::json!({
+            "index": index,
+            "student_id": id,
+            "name": name,
+            "scores": [{ "field": format!("ud-{id}"), "label": "Score", "raw": raw, "max": 10.0 }],
+            "feedback": { "field": format!("fb-{id}"), "kind": "rich_text", "text": feedback },
+            "response": response,
+            "prompt": null,
+        })
+    }
+
+    #[test]
+    fn grades_left_by_an_earlier_run_are_matched_to_who_is_still_ungraded() {
+        let dir = std::env::temp_dir().join(format!("ogre-unfinished-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // That run read four students and graded all of them.
+        let read = serde_json::json!({
+            "event": "read",
+            "url": "https://www.myopenmath.com/course/gradeallq2.php?cid=1",
+            "students": [
+                { "index": 0, "id": "1", "name": "Avery, Sam" },
+                { "index": 1, "id": "2", "name": "Brook, Kai" },
+                { "index": 2, "id": "3", "name": "Cruz, Jo" },
+                { "index": 3, "id": "4", "name": "Diaz, Remy" },
+            ],
+        });
+        let graded = serde_json::json!({
+            "event": "graded",
+            "results": (0..4).map(|index| serde_json::json!({
+                "index": index, "score": 5.0 + f64::from(index), "feedback": "<p>ok</p>", "flag": null,
+            })).collect::<Vec<_>>(),
+        });
+        std::fs::write(dir.join("100.jsonl"), format!("{read}\n{graded}\n")).unwrap();
+
+        // Now: Sam's grade was saved, Kai has moved up the list and is still
+        // ungraded, Jo has withdrawn their answer, and Remy has left.
+        let now = page(serde_json::json!([
+            student(0, "2", "Brook, Kai", "0", "", "An answer."),
+            student(1, "1", "Avery, Sam", "5", "ok", "An answer."),
+            student(2, "3", "Cruz, Jo", "", "", ""),
+            student(3, "7", "Ellis, Pat", "", "", "A new student's answer."),
+        ]));
+        let (at, rows) = unfinished(&dir, &now).expect("Kai's grade is still unwritten");
+        assert_eq!(at, 100);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].index, 0, "where Kai is on the page now");
+        assert_eq!(rows[0].outcome.as_ref().unwrap().score, 6.0);
+
+        // Nothing to offer once the page shows a grade for everyone it had.
+        let all_graded = page(serde_json::json!([student(
+            0,
+            "2",
+            "Brook, Kai",
+            "6",
+            "ok",
+            "An answer."
+        )]));
+        assert!(unfinished(&dir, &all_graded).is_none());
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

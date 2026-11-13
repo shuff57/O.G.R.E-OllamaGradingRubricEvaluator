@@ -188,6 +188,93 @@ fn student_at<'a>(session: &'a mut PastSession, index: &Value) -> Option<&'a mut
         .get_mut(usize::try_from(index.as_u64()?).ok()?)
 }
 
+/// A grade a past run proposed, as the record has it: what the AI gave, not
+/// what the teacher may have made of it afterwards.
+#[derive(Debug, Clone, PartialEq)]
+pub struct KeptGrade {
+    pub student_id: Option<String>,
+    pub name: String,
+    pub score: f64,
+    pub feedback_html: String,
+    pub flag: Option<String>,
+}
+
+/// The grades the newest run on the page at `url` proposed, with when that
+/// page was read. `None` if no record of that page proposed any.
+///
+/// Whether they ever reached the page the record cannot say for certain: a
+/// grade filled in and not saved is gone. The page as it reads now says.
+pub fn proposed_before(sessions_dir: &Path, url: &str) -> Option<(u64, Vec<KeptGrade>)> {
+    let mut records: Vec<(u64, std::path::PathBuf)> = std::fs::read_dir(sessions_dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|entry| {
+            let path = entry.path();
+            let at = path.file_stem()?.to_str()?.parse().ok()?;
+            (path.extension()? == "jsonl").then_some((at, path))
+        })
+        .collect();
+    records.sort_by_key(|(at, _)| std::cmp::Reverse(*at));
+    records.into_iter().find_map(|(at, path)| {
+        let grades = kept_grades(&std::fs::read_to_string(path).ok()?, url);
+        (!grades.is_empty()).then_some((at, grades))
+    })
+}
+
+/// The grades a record of the page at `url` proposed, the last word on each
+/// student. Empty for a record of another page.
+fn kept_grades(record: &str, url: &str) -> Vec<KeptGrade> {
+    // By the student's place on the page as that record read it.
+    let mut students: Vec<(Option<String>, String)> = Vec::new();
+    let mut grades: std::collections::BTreeMap<usize, KeptGrade> = Default::default();
+    for event in record
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+    {
+        match event["event"].as_str() {
+            Some("read") => {
+                if event["url"].as_str() != Some(url) {
+                    return Vec::new();
+                }
+                students = list(&event["students"])
+                    .map(|s| (s["id"].as_str().map(str::to_owned), text(&s["name"])))
+                    .collect();
+            }
+            Some("graded") => {
+                for result in list(&event["results"]) {
+                    let Some(at) = result["index"]
+                        .as_u64()
+                        .and_then(|at| usize::try_from(at).ok())
+                    else {
+                        continue;
+                    };
+                    let (Some((student_id, name)), Some(score)) =
+                        (students.get(at), result["score"].as_f64())
+                    else {
+                        // Not graded in a later run: the earlier grade is
+                        // not one to offer again.
+                        grades.remove(&at);
+                        continue;
+                    };
+                    grades.insert(
+                        at,
+                        KeptGrade {
+                            student_id: student_id.clone(),
+                            name: name.clone(),
+                            score,
+                            feedback_html: text(&result["feedback"]),
+                            flag: result["flag"].as_str().map(str::to_owned),
+                        },
+                    );
+                }
+            }
+            _ => {}
+        }
+    }
+    grades.into_values().collect()
+}
+
 /// The sessions recorded under `sessions_dir`, newest first. Records that
 /// cannot be read are left out.
 pub fn load(sessions_dir: &Path) -> Vec<PastSession> {
@@ -334,6 +421,39 @@ mod tests {
         );
         let touched: Vec<_> = session.touched().map(|s| s.name.as_str()).collect();
         assert_eq!(touched, ["Brook, Kai", "Cruz, Jo"]);
+    }
+
+    #[test]
+    fn the_grades_a_run_proposed_can_be_read_back_for_the_same_page() {
+        const URL: &str = "https://www.myopenmath.com/course/gradeallq2.php?cid=1";
+        let kept = kept_grades(&record(&[READ, GRADED]), URL);
+        assert_eq!(
+            kept,
+            [KeptGrade {
+                student_id: Some("2".into()),
+                name: "Brook, Kai".into(),
+                score: 6.0,
+                feedback_html: "<p>ok</p>".into(),
+                flag: None,
+            }]
+        );
+        // Not a record of another page, and not a student a later run in
+        // the same record could not grade.
+        assert!(kept_grades(&record(&[READ, GRADED]), "https://example.edu/other").is_empty());
+        let later = r#"{"event":"graded","results":[{"index":1,"not_graded":"stopped"}],"at":135}"#;
+        assert!(kept_grades(&record(&[READ, GRADED, later]), URL).is_empty());
+
+        // On disk: the newest record of that page that proposed anything.
+        let dir = std::env::temp_dir().join(format!("ogre-kept-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("100.jsonl"), record(&[READ, GRADED])).unwrap();
+        // Read again later, with nothing graded: that record offers nothing.
+        std::fs::write(dir.join("200.jsonl"), READ).unwrap();
+        let (at, kept) = proposed_before(&dir, URL).unwrap();
+        assert_eq!((at, kept.len()), (100, 1));
+        assert_eq!(proposed_before(&dir, "https://example.edu/other"), None);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

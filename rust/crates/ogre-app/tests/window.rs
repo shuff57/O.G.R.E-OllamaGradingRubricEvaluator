@@ -152,6 +152,7 @@ fn read() -> Event {
         questions: Vec::new(),
         saved_rubrics: Vec::new(),
         skills: Vec::new(),
+        unfinished: None,
     }))
 }
 
@@ -695,6 +696,7 @@ fn a_site_ogre_cannot_confirm_saving_on_is_saved_by_the_teacher() {
             questions: Vec::new(),
             saved_rubrics: Vec::new(),
             skills: Vec::new(),
+            unfinished: None,
         })))
         .unwrap();
     stand_in.events.send(graded()).unwrap();
@@ -1363,6 +1365,7 @@ fn read_with_a_loose_requirement() -> Event {
         questions: Vec::new(),
         saved_rubrics: Vec::new(),
         skills: Vec::new(),
+        unfinished: None,
     }))
 }
 
@@ -1531,6 +1534,7 @@ fn read_without_a_rubric(saved_rubrics: Vec<SavedRubric>) -> Event {
         questions: Vec::new(),
         saved_rubrics,
         skills: Vec::new(),
+        unfinished: None,
     }))
 }
 
@@ -2443,6 +2447,7 @@ fn the_consistency_check_can_be_run_again_on_the_grades_in_the_table() {
             questions: Vec::new(),
             saved_rubrics: Vec::new(),
             skills: Vec::new(),
+            unfinished: None,
         })))
         .unwrap();
     stand_in
@@ -2697,4 +2702,107 @@ fn rubrics_are_written_changed_copied_and_deleted_with_no_page_open() {
         (rubric.name.as_str(), rubric.text.as_str()),
         ("Binomial FRQ", "Names n and p")
     );
+}
+
+#[test]
+fn a_stopped_run_is_carried_on_with_the_students_it_did_not_reach() {
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    stand_in.events.send(read()).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Grade 2 students").click();
+    frames(&mut harness);
+    assert!(matches!(sent(&mut stand_in), Command::Grade(_)));
+    // Stopped after Kai.
+    stand_in
+        .events
+        .send(Event::Graded(GradeReport {
+            rubric_text: None,
+            examples: None,
+            skills: Vec::new(),
+            rows: vec![
+                GradedRow {
+                    index: 1,
+                    outcome: Ok(Grade {
+                        score: 6.0,
+                        feedback_html: "<p>Kai, nearly.</p>".into(),
+                        flag: None,
+                        suggestion: None,
+                    }),
+                },
+                GradedRow {
+                    index: 3,
+                    outcome: Err("grading was cancelled first".into()),
+                },
+            ],
+            warnings: Vec::new(),
+            cancelled: true,
+        }))
+        .unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Grading was stopped before it finished.");
+    shot(&mut harness, "37-stopped-run");
+    // Grading everyone again is still offered, beside carrying on.
+    harness.get_by_label("Grade 2 students");
+    harness.get_by_label("Grade the 1 student left").click();
+    frames(&mut harness);
+    let Command::Grade(request) = sent(&mut stand_in) else {
+        panic!("expected the rest to be graded");
+    };
+    let names: Vec<&str> = request.students.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(names, ["Diaz, Remy"]);
+}
+
+#[test]
+fn grades_a_run_left_unwritten_are_offered_when_the_page_is_read_again() {
+    let read_with_grades_left = || {
+        let Event::Read(mut report) = read() else {
+            unreachable!()
+        };
+        report.unfinished = Some((
+            1_794_000_000,
+            vec![GradedRow {
+                index: 1,
+                outcome: Ok(Grade {
+                    score: 6.0,
+                    feedback_html: "<p>Kai, nearly.</p>".into(),
+                    flag: None,
+                    suggestion: None,
+                }),
+            }],
+        ));
+        Event::Read(report)
+    };
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    stand_in.events.send(read_with_grades_left()).unwrap();
+    frames(&mut harness);
+    harness.get_by_label_contains("proposed a grade for 1 student that never reached the page");
+    assert!(harness.query_by_label("Ready to write").is_none());
+    shot(&mut harness, "38-grades-left");
+
+    harness.get_by_label("Bring them back").click();
+    frames(&mut harness);
+    assert!(stand_in.commands.try_recv().is_err(), "nothing is written");
+    harness.get_by_label("Ready to write");
+    harness.get_by_label_contains("as the AI proposed them then");
+    assert!(harness.query_by_label("Bring them back").is_none());
+    // Remy was not graded then: carrying on takes only Remy.
+    harness.get_by_label("Grade the 1 student left").click();
+    frames(&mut harness);
+    let Command::Grade(request) = sent(&mut stand_in) else {
+        panic!("expected the rest to be graded");
+    };
+    assert_eq!(request.students.len(), 1);
+
+    // Left where they are, the page is as any other.
+    let (mut harness, stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    stand_in.events.send(read_with_grades_left()).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Leave them").click();
+    frames(&mut harness);
+    assert!(harness.query_by_label("Bring them back").is_none());
+    assert!(harness.query_by_label("Ready to write").is_none());
+    harness.get_by_label("Grade 2 students");
 }

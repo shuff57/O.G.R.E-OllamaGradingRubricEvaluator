@@ -57,6 +57,11 @@ pub struct Session {
     /// Students with no response and no grade are proposed a zero.
     zero_blank: bool,
     pub warnings: Vec<String>,
+    /// The last grading run was stopped before every student was graded.
+    stopped_short: bool,
+    /// Grades an earlier run proposed for students still ungraded on the
+    /// page, and when: the teacher's to bring back or leave.
+    unfinished: Option<(u64, Vec<GradedRow>)>,
     /// Grades are in the page's form but the site has not stored them yet.
     pub unsaved: bool,
     /// The last write left the page in a state that must not be saved.
@@ -368,9 +373,72 @@ impl Session {
             who: Who::default(),
             zero_blank: false,
             warnings: Vec::new(),
+            stopped_short: false,
+            unfinished: read.unfinished,
             unsaved: false,
             blocked: false,
         }
+    }
+
+    /// How many grades an earlier run left unwritten for this page's
+    /// ungraded students, and when that run's page was read.
+    pub fn unfinished(&self) -> Option<(u64, usize)> {
+        self.unfinished.as_ref().map(|(at, rows)| (*at, rows.len()))
+    }
+
+    /// Puts the earlier run's grades in the table as proposals, as the AI
+    /// gave them then. Students it did not reach are left for
+    /// [`Self::to_grade_rest`].
+    pub fn bring_back_unfinished(&mut self) {
+        let Some((at, rows)) = self.unfinished.take() else {
+            return;
+        };
+        for graded in rows {
+            self.grade_arrived(graded);
+        }
+        for row in &mut self.rows {
+            row.early = false;
+        }
+        // That run did not reach everyone: the rest can be carried on with.
+        self.stopped_short = true;
+        self.stopped_short = self.rest_count() > 0;
+        self.warnings = vec![format!(
+            "These grades are from the run of {}, as the AI proposed them then. Changes \
+             you made to them were not kept, and a student may have changed their answer \
+             since: read them before filling them in.",
+            crate::history::when(at)
+        )];
+    }
+
+    /// Leaves the earlier run's grades where they are, in its record.
+    pub fn leave_unfinished(&mut self) {
+        self.unfinished = None;
+    }
+
+    /// True for a student the run would take who has no proposal yet.
+    fn left(&self, at: usize, submission: &Submission) -> bool {
+        self.gradable(at, submission) && self.rows[at].proposal.is_none()
+    }
+
+    /// After a run that was stopped: how many students it did not reach.
+    /// Zero after a run that finished.
+    pub fn rest_count(&self) -> usize {
+        if !self.stopped_short {
+            return 0;
+        }
+        let submissions = self.page.submissions.iter().enumerate();
+        submissions.filter(|(at, s)| self.left(*at, s)).count()
+    }
+
+    /// The students a stopped run did not reach, to carry on with.
+    pub fn to_grade_rest(&self) -> Vec<StudentWork> {
+        self.page
+            .submissions
+            .iter()
+            .enumerate()
+            .filter(|(at, s)| self.left(*at, s))
+            .map(|(_, s)| StudentWork::from(s))
+            .collect()
     }
 
     /// Takes over what the teacher set up in `earlier`, a session on the same
@@ -855,6 +923,9 @@ impl Session {
 
     pub fn apply_grades(&mut self, report: GradeReport) {
         self.warnings = report.warnings;
+        self.stopped_short = report.cancelled;
+        // Whatever an earlier run left is behind this one now.
+        self.unfinished = None;
         if report.cancelled {
             self.warnings
                 .insert(0, "Grading was stopped before it finished.".into());
@@ -1076,6 +1147,7 @@ mod tests {
             questions: Vec::new(),
             saved_rubrics: Vec::new(),
             skills: Vec::new(),
+            unfinished: None,
         })
     }
 
@@ -1114,6 +1186,7 @@ mod tests {
             questions: Vec::new(),
             saved_rubrics: Vec::new(),
             skills: Vec::new(),
+            unfinished: None,
         });
         assert_eq!(s.leniency_for_grading(50), 50);
         // A rewording nobody asked for is not taken.
@@ -1155,6 +1228,7 @@ mod tests {
             questions: Vec::new(),
             saved_rubrics: Vec::new(),
             skills: Vec::new(),
+            unfinished: None,
         });
         assert_eq!(s.edited_rubric_text(), None);
         let as_read = s.rubric_outline().clone();
@@ -1432,6 +1506,7 @@ mod tests {
             questions: Vec::new(),
             saved_rubrics: Vec::new(),
             skills: Vec::new(),
+            unfinished: None,
         })
     }
 
@@ -1551,6 +1626,7 @@ mod tests {
             questions: Vec::new(),
             saved_rubrics: Vec::new(),
             skills: Vec::new(),
+            unfinished: None,
         });
         s.set_requirements("## Thesis [40%]\nStates a position\n## Evidence [60%]\nCites sources");
         assert!(s.rubric_edited());
@@ -1611,6 +1687,7 @@ mod tests {
             questions: Vec::new(),
             saved_rubrics: Vec::new(),
             skills: Vec::new(),
+            unfinished: None,
         })
     }
 
@@ -1687,6 +1764,7 @@ mod tests {
             questions: Vec::new(),
             saved_rubrics: Vec::new(),
             skills: Vec::new(),
+            unfinished: None,
         });
         let names: Vec<_> = s.to_grade().into_iter().map(|w| w.name).collect();
         assert_eq!(names, ["Diaz, Remy"], "Kai was given a zero on purpose");
@@ -1854,6 +1932,82 @@ mod tests {
         assert_eq!(s.warnings.len(), 2);
         assert_eq!(s.status(1), Status::Ready);
         assert_eq!(s.status(3), Status::Ungraded);
+    }
+
+    #[test]
+    fn a_stopped_run_can_be_carried_on_with_the_students_it_did_not_reach() {
+        let mut s = session();
+        assert_eq!(s.rest_count(), 0);
+        s.apply_grades(GradeReport {
+            rubric_text: None,
+            examples: None,
+            skills: Vec::new(),
+            rows: vec![
+                graded(1, 7.0, "<p>a</p>"),
+                GradedRow {
+                    index: 3,
+                    outcome: Err("grading was cancelled first".into()),
+                },
+            ],
+            warnings: Vec::new(),
+            cancelled: true,
+        });
+        // Remy was not reached; Kai's grade stands and is not asked for again.
+        assert_eq!(s.rest_count(), 1);
+        let rest: Vec<String> = s.to_grade_rest().into_iter().map(|w| w.name).collect();
+        assert_eq!(rest, ["Diaz, Remy"]);
+        assert_eq!(s.grade_count(), 2, "grading everyone again is still there");
+
+        // The rest comes in, and there is nothing left to carry on with.
+        s.apply_grades(report(vec![graded(3, 9.0, "<p>b</p>")]));
+        assert_eq!(s.rest_count(), 0);
+        assert_eq!(s.status(1), Status::Ready);
+        assert_eq!(s.status(3), Status::Ready);
+    }
+
+    #[test]
+    fn grades_an_earlier_run_left_are_brought_back_only_when_asked() {
+        let kept = || Some((1_794_000_000, vec![graded(1, 7.0, "<p>From before.</p>")]));
+        let with = |unfinished| {
+            Session::new(ReadReport {
+                page: page(),
+                rubric: Ok(Rubric::default()),
+                site: "MyOpenMath",
+                saves_on_write: false,
+                manual_save: false,
+                questions: Vec::new(),
+                saved_rubrics: Vec::new(),
+                skills: Vec::new(),
+                unfinished,
+            })
+        };
+        let mut s = with(kept());
+        assert_eq!(s.unfinished(), Some((1_794_000_000, 1)));
+        assert_eq!(s.status(1), Status::Ungraded, "nothing is proposed unasked");
+
+        s.bring_back_unfinished();
+        assert_eq!(s.unfinished(), None);
+        assert_eq!(s.status(1), Status::Ready);
+        assert_eq!(s.to_write()[0].score.value, 7.0);
+        assert!(
+            s.warnings[0].contains("as the AI proposed them then"),
+            "{:?}",
+            s.warnings
+        );
+        // The student that run never reached is the one left.
+        assert_eq!(s.rest_count(), 1);
+        let rest: Vec<String> = s.to_grade_rest().into_iter().map(|w| w.name).collect();
+        assert_eq!(rest, ["Diaz, Remy"]);
+
+        let mut s = with(kept());
+        s.leave_unfinished();
+        assert_eq!(s.unfinished(), None);
+        assert_eq!(s.status(1), Status::Ungraded);
+
+        // A fresh run puts whatever was left behind it.
+        let mut s = with(kept());
+        s.apply_grades(report(vec![graded(1, 5.0, "<p>New.</p>")]));
+        assert_eq!(s.unfinished(), None);
     }
 
     #[test]
