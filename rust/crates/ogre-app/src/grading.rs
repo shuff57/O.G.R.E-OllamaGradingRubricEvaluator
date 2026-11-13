@@ -7,7 +7,7 @@ use ogre_agent::{Skill, build_skill_injection};
 use ogre_core::{ExtractedRubric, Rubric, StudentResult, imported_rubric_text};
 use ogre_grader::{
     BatchOutcome, CancelFlag, GradeEvent, GradeOptions, GradeStatus, GraderError,
-    MIN_SWEEP_STUDENTS, PreparedRubric, ScoreSource, draft_rubric as draft,
+    MIN_SWEEP_STUDENTS, PreparedRubric, ScoreSource, StudentOutcome, draft_rubric as draft,
     generate_anchor_examples, grade_batch, prepare_edited_rubric, prepare_rubric,
     read_rubric_from_image, sweep_grades,
 };
@@ -145,15 +145,16 @@ pub struct Suggestion {
     pub reason: Option<String>,
 }
 
-/// Grades the request's students. `progress` is called with the number of
-/// students finished so far. Never fails as a whole: a run that could not
+/// Grades the request's students. `progress` is called as each student is
+/// finished, with how many are and that student's grade as it then stands:
+/// the consistency check, which comes last, has not looked at it yet. Never fails as a whole: a run that could not
 /// start reports every student as not graded, with the reason.
 pub async fn grade(
     request: GradeRequest,
     skills: &[Skill],
     cancel: &CancelFlag,
     cache: &mut PreparedCache,
-    mut progress: impl FnMut(usize) + Send,
+    mut progress: impl FnMut(usize, GradedRow) + Send,
 ) -> GradeReport {
     let indices: Vec<usize> = request.students.iter().map(|s| s.index).collect();
     let nobody_graded = |reason: String| GradeReport {
@@ -179,9 +180,9 @@ pub async fn grade(
 
     let mut done = 0;
     let mut on_event = |event: GradeEvent| {
-        if matches!(event, GradeEvent::Student(_)) {
+        if let GradeEvent::Student(student) = &event {
             done += 1;
-            progress(done);
+            progress(done, graded_row(student));
         }
     };
     let ready = Ready::make(&provider, &request, skills, cache).await;
@@ -329,23 +330,24 @@ pub async fn sweep(
         .collect())
 }
 
+/// One student's outcome as a row of the review table.
+fn graded_row(student: &StudentOutcome) -> GradedRow {
+    GradedRow {
+        index: student.student_index,
+        outcome: match &student.status {
+            GradeStatus::Graded(grade) => Ok(Grade {
+                score: grade.score,
+                feedback_html: grade.feedback.clone(),
+                flag: None,
+                suggestion: None,
+            }),
+            GradeStatus::NotGraded(reason) => Err(reason.to_string()),
+        },
+    }
+}
+
 fn report(outcome: BatchOutcome) -> GradeReport {
-    let mut rows: Vec<GradedRow> = outcome
-        .students
-        .iter()
-        .map(|student| GradedRow {
-            index: student.student_index,
-            outcome: match &student.status {
-                GradeStatus::Graded(grade) => Ok(Grade {
-                    score: grade.score,
-                    feedback_html: grade.feedback.clone(),
-                    flag: None,
-                    suggestion: None,
-                }),
-                GradeStatus::NotGraded(reason) => Err(reason.to_string()),
-            },
-        })
-        .collect();
+    let mut rows: Vec<GradedRow> = outcome.students.iter().map(graded_row).collect();
 
     let mut flag = |index: usize, text: String| {
         let grade = rows

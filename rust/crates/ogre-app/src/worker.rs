@@ -171,6 +171,9 @@ pub enum Event {
         done: usize,
         total: usize,
     },
+    /// One student's grade, as soon as it is there. The run goes on, and
+    /// [`Event::Graded`] has the last word on every student.
+    StudentGraded(crate::grading::GradedRow),
     Graded(GradeReport),
     /// What the consistency check suggests for the grades it was given, by
     /// the student's place on the page, or why it suggests nothing.
@@ -219,6 +222,7 @@ impl Event {
         matches!(
             self,
             Self::GradeProgress { .. }
+                | Self::StudentGraded(_)
                 | Self::WriteProgress { .. }
                 | Self::AgentLine(_)
                 | Self::AgentAsks(_)
@@ -669,7 +673,8 @@ impl Task {
                     &skills,
                     &cancel,
                     &mut self.prepared,
-                    move |done| {
+                    move |done, row| {
+                        report.progress(Event::StudentGraded(row));
                         report.progress(Event::GradeProgress { done, total });
                     },
                 )

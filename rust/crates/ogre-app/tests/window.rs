@@ -2499,3 +2499,56 @@ fn the_consistency_check_can_be_run_again_on_the_grades_in_the_table() {
     harness.get_by_label("The consistency check found nothing to change.");
     assert!(harness.query_by_label("Has a suggestion").is_none());
 }
+
+#[test]
+fn grades_show_in_the_table_as_they_arrive_and_can_be_looked_at_meanwhile() {
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    stand_in.events.send(read()).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Grade 2 students").click();
+    frames(&mut harness);
+    assert!(matches!(sent(&mut stand_in), Command::Grade(_)));
+
+    // Kai's grade is there; Remy is still with the AI.
+    stand_in
+        .events
+        .send(Event::StudentGraded(GradedRow {
+            index: 1,
+            outcome: Ok(Grade {
+                score: 6.0,
+                feedback_html:
+                    "<p>Kai, you have the right idea. Name the <strong>standard error</strong>.</p>"
+                        .into(),
+                flag: None,
+                suggestion: None,
+            }),
+        }))
+        .unwrap();
+    stand_in
+        .events
+        .send(Event::GradeProgress { done: 1, total: 2 })
+        .unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Stop");
+    harness.get_by_label("Ready to write");
+    assert!(
+        harness.query_by_label_contains("Fill in").is_none()
+            || harness.query_all_by_label("Ungraded").count() == 1,
+        "Remy is not graded yet"
+    );
+    shot(&mut harness, "34-grades-arriving");
+
+    // The teacher holds Kai back while waiting. The end of the run adds
+    // Remy and leaves that as it is.
+    harness.get_by_label("Brook, Kai").click();
+    frames(&mut harness);
+    harness.get_by_label("Write this one").click();
+    frames(&mut harness);
+    stand_in.events.send(graded()).unwrap();
+    frames(&mut harness);
+    assert!(harness.query_by_label("Stop").is_none());
+    assert!(harness.query_all_by_label("Held back").next().is_some());
+    harness.get_by_label("Has a suggestion");
+    harness.get_by_label("Fill in 1 grade");
+}

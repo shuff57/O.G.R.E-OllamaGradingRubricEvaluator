@@ -339,6 +339,11 @@ impl OgreApp {
                         busy.progress = Some((done, total));
                     }
                 }
+                Event::StudentGraded(row) => {
+                    if let Some(session) = &mut self.session {
+                        session.grade_arrived(row);
+                    }
+                }
                 Event::Graded(report) => {
                     if let Some(session) = &mut self.session {
                         session.apply_grades(report);

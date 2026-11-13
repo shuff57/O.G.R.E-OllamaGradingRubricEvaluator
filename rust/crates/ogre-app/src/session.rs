@@ -13,7 +13,7 @@ use ogre_core::{
 };
 use ogre_harness::feedback;
 
-use crate::grading::{Grade, GradeReport, Suggestion};
+use crate::grading::{Grade, GradeReport, GradedRow, Suggestion};
 use crate::rubrics::SavedRubric;
 use crate::settings::AS_WRITTEN_LENIENCY;
 use crate::worker::{ReadReport, WriteReport};
@@ -134,6 +134,8 @@ impl RubricOutline {
 pub struct Row {
     pub proposal: Option<Proposal>,
     pub note: Option<Note>,
+    /// The proposal arrived while the run that made it is still going.
+    early: bool,
 }
 
 /// A score and feedback waiting for the teacher's decision.
@@ -829,6 +831,22 @@ impl Session {
             .collect()
     }
 
+    /// Takes one student's grade as it arrives, while the rest of the class
+    /// is still being graded. Why a student was not graded waits for the
+    /// end of the run, which may yet ask about them again.
+    pub fn grade_arrived(&mut self, graded: GradedRow) {
+        let Some(row) = self.rows.get_mut(graded.index) else {
+            return;
+        };
+        if let Ok(grade) = graded.outcome {
+            *row = Row {
+                proposal: Some(Proposal::new(grade)),
+                note: None,
+                early: true,
+            };
+        }
+    }
+
     pub fn apply_grades(&mut self, report: GradeReport) {
         self.warnings = report.warnings;
         if report.cancelled {
@@ -841,7 +859,22 @@ impl Session {
             };
             match graded.outcome {
                 Ok(grade) => {
-                    row.proposal = Some(Proposal::new(grade));
+                    // A grade that was already shown may have been changed
+                    // or held back by the teacher since. That stands; what
+                    // the end of the run adds is the flag and the suggestion.
+                    match row
+                        .proposal
+                        .as_mut()
+                        .filter(|shown| row.early && shown.original_html == grade.feedback_html)
+                    {
+                        Some(shown) => {
+                            shown.flag = grade.flag;
+                            shown.suggestion = grade
+                                .suggestion
+                                .filter(|s| s.score != shown.score || s.feedback_html.is_some());
+                        }
+                        None => row.proposal = Some(Proposal::new(grade)),
+                    }
                     row.note = None;
                 }
                 Err(reason) => {
@@ -849,6 +882,10 @@ impl Session {
                     row.note = Some(Note::NotGraded(reason));
                 }
             }
+        }
+        // The run is over: nothing is early any more.
+        for row in &mut self.rows {
+            row.early = false;
         }
     }
 
@@ -868,6 +905,7 @@ impl Session {
                     Row {
                         proposal: row.proposal.take(),
                         note: Some(Note::Written),
+                        early: false,
                     }
                 };
             }
@@ -1288,6 +1326,43 @@ mod tests {
             )]),
             0
         );
+    }
+
+    #[test]
+    fn a_grade_that_arrived_early_keeps_what_the_teacher_did_to_it() {
+        let mut s = session();
+        s.grade_arrived(graded(1, 7.0, "<p>First thoughts.</p>"));
+        assert_eq!(s.status(1), Status::Ready);
+        assert_eq!(s.status(3), Status::Ungraded, "still being graded");
+        // A student the run could not grade yet is not marked so until the
+        // run is over: it may ask about them again.
+        s.grade_arrived(GradedRow {
+            index: 3,
+            outcome: Err("the AI gave no score".into()),
+        });
+        assert_eq!(s.status(3), Status::Ungraded);
+
+        // The teacher lowers the score and holds it back while the rest of
+        // the class is graded.
+        let kai = s.rows[1].proposal.as_mut().unwrap();
+        kai.score = 6.0;
+        kai.accepted = false;
+        s.apply_grades(report(vec![
+            suggested(1, 7.0, 5.5, None),
+            graded(3, 9.0, "<p>Fine.</p>"),
+        ]));
+        let kai = s.rows[1].proposal.as_ref().unwrap();
+        assert_eq!((kai.score, kai.accepted), (6.0, false));
+        assert!(
+            kai.suggestion.is_some(),
+            "the end of the run adds its suggestion"
+        );
+        assert_eq!(s.status(3), Status::Ready);
+
+        // A later run starts afresh.
+        s.apply_grades(report(vec![graded(1, 8.0, "<p>First thoughts.</p>")]));
+        let kai = s.rows[1].proposal.as_ref().unwrap();
+        assert_eq!((kai.score, kai.accepted), (8.0, true));
     }
 
     #[test]
