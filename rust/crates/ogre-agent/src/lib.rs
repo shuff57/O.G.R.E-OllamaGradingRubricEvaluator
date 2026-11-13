@@ -27,6 +27,7 @@ mod script;
 mod site_guide;
 mod skill_interview;
 pub mod skills;
+mod tasks;
 
 #[cfg(test)]
 mod agent_tests;
@@ -56,3 +57,4 @@ pub use skills::{
     build_skill_injection, bundled_site_profiles, find_matching_profiles, load_skills_dir,
     parse_skill_markdown, select_best_profile, skill_context_for,
 };
+pub use tasks::find_grading_page_task;

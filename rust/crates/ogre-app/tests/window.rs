@@ -15,10 +15,11 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use ogre_agent::{InterviewTurn, SkillDraft};
 use ogre_app::{
-    AgentAnswer, AgentLine, AgentQuestion, AgentSummary, Command, Event, Grade, GradeReport,
-    GradedRow, LineKind, MapReport, MemoryKeys, OgreApp, OutsideRubric, PastProposal, PastSession,
-    PastStudent, ProfileCheck, ProfileSummary, ProviderSettings, ReadReport, SavedRubric, Service,
-    SessionEnd, Settings, SkillSummary, StandIn, Suggestion, ViewInput, Worker, WriteReport,
+    AgentAnswer, AgentLine, AgentQuestion, AgentRequest, AgentSummary, Command, Event, Grade,
+    GradeReport, GradedRow, LineKind, MapReport, MemoryKeys, OgreApp, OutsideRubric, PastProposal,
+    PastSession, PastStudent, ProfileCheck, ProfileSummary, ProviderSettings, ReadReport,
+    SavedRubric, Service, SessionEnd, Settings, SkillSummary, StandIn, Suggestion, ViewInput,
+    Worker, WriteReport,
 };
 use ogre_core::{
     FeedbackField, FeedbackKind, GradingPage, Position, QuestionLink, Rubric, ScoreField,
@@ -805,6 +806,112 @@ fn the_agent_screen_lists_what_the_agent_knows_and_skills_can_be_switched_on() {
     harness.get_by_label("Open the skills folder").click();
     frames(&mut harness);
     assert!(matches!(sent(&mut stand_in), Command::OpenSkillsFolder));
+}
+
+/// The Sites screen, with Chrome running and no mapping saved.
+fn sites_screen() -> (Harness<'static, OgreApp>, StandIn) {
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Sites").click();
+    frames(&mut harness);
+    assert!(matches!(sent(&mut stand_in), Command::ListProfiles));
+    stand_in.events.send(Event::Profiles(Vec::new())).unwrap();
+    frames(&mut harness);
+    (harness, stand_in)
+}
+
+/// Sends the agent to find a page from the Sites screen and gives what it
+/// was asked to do.
+fn agent_sent_to_find(
+    harness: &mut Harness<'_, OgreApp>,
+    stand_in: &mut StandIn,
+    what: &str,
+) -> AgentRequest {
+    type_into(harness, "Not on the grading page yet?", what);
+    shot(harness, "42-find-the-page");
+    scroll_to_and_press(harness, "Find it, then map");
+    match sent(stand_in) {
+        Command::RunAgent(request) => *request,
+        other => panic!("expected the agent to be started, got {other:?}"),
+    }
+}
+
+#[test]
+fn the_agent_finds_a_grading_page_and_the_page_it_stops_on_is_mapped() {
+    let (mut harness, mut stand_in) = sites_screen();
+    // Nothing to find until the teacher says which page.
+    scroll_to_and_press(&mut harness, "Find it, then map");
+    assert!(stand_in.commands.try_recv().is_err());
+
+    let request = agent_sent_to_find(&mut harness, &mut stand_in, "Quiz 4 in Algebra 2");
+    assert!(request.task.contains("for: Quiz 4 in Algebra 2"));
+    assert!(
+        request.task.contains("Do not type a score"),
+        "it is sent to look, not to grade: {}",
+        request.task
+    );
+    assert!(
+        !request.auto,
+        "it asks before each step unless told otherwise"
+    );
+    // Its steps and its questions are on the Agent screen.
+    harness.get_by_label("Task");
+    harness.get_by_label_contains("The agent is working");
+
+    // It says it got there: the page it stopped on is mapped, with the AI
+    // to fall back on, and the teacher is back on the Sites screen.
+    stand_in
+        .events
+        .send(Event::AgentDone(AgentSummary {
+            finished: true,
+            message: "On the grading page for Quiz 4.".into(),
+        }))
+        .unwrap();
+    frames(&mut harness);
+    assert!(matches!(
+        sent(&mut stand_in),
+        Command::MapPage { ai: Some(_) }
+    ));
+    stand_in.events.send(found_mapping()).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Save this mapping");
+    shot(&mut harness, "43-found-then-mapped");
+
+    // An agent run of the teacher's own afterwards maps nothing.
+    harness.get_by_label("Agent").click();
+    frames(&mut harness);
+    assert!(matches!(sent(&mut stand_in), Command::ListSkills));
+    stand_in.events.send(skills()).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Start").click();
+    frames(&mut harness);
+    assert!(matches!(sent(&mut stand_in), Command::RunAgent(_)));
+    stand_in
+        .events
+        .send(Event::AgentDone(AgentSummary {
+            finished: true,
+            message: "Done.".into(),
+        }))
+        .unwrap();
+    frames(&mut harness);
+    assert!(stand_in.commands.try_recv().is_err());
+}
+
+#[test]
+fn nothing_is_mapped_when_the_agent_does_not_get_to_a_grading_page() {
+    let (mut harness, mut stand_in) = sites_screen();
+    agent_sent_to_find(&mut harness, &mut stand_in, "Quiz 4 in Algebra 2");
+    stand_in
+        .events
+        .send(Event::AgentDone(AgentSummary {
+            finished: false,
+            message: "The course asks for a sign-in.".into(),
+        }))
+        .unwrap();
+    frames(&mut harness);
+    assert!(stand_in.commands.try_recv().is_err());
+    harness.get_by_label_contains("nothing was mapped. It said: The course asks for a sign-in.");
 }
 
 #[test]

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Grade quiz 4: quadratics</title>
+</head>
+<body>
+  <!-- A made-up school site, written for OGRE's tests: the grading page the
+       agent is sent to find. The students are invented. -->
+  <header><strong>Riverside High</strong> <a href="home.html">My courses</a> <a href="course.html">Algebra 2, period 3</a></header>
+  <h1>Grade quiz 4: quadratics</h1>
+  <p>Question 2: solve x^2 - 5x + 6 = 0 and say how you know.</p>
+  <div class="submission">
+    <span class="student-name">Avery, Sam</span>
+    <div class="answer">x = 2 or x = 3, because (x - 2)(x - 3) = 0.</div>
+    <label>Score <input type="number" name="score_1" class="score"></label> <span>/ 10</span>
+    <label>Feedback <textarea name="feedback_1"></textarea></label>
+  </div>
+  <div class="submission">
+    <span class="student-name">Brook, Kai</span>
+    <div class="answer">x = 6.</div>
+    <label>Score <input type="number" name="score_2" class="score"></label> <span>/ 10</span>
+    <label>Feedback <textarea name="feedback_2"></textarea></label>
+  </div>
+  <div class="submission">
+    <span class="student-name">Casey, Lin</span>
+    <div class="answer">I used the quadratic formula and got 3 and 2.</div>
+    <label>Score <input type="number" name="score_3" class="score"></label> <span>/ 10</span>
+    <label>Feedback <textarea name="feedback_3"></textarea></label>
+  </div>
+  <button type="button" id="save-all">Save all grades</button>
+</body>
+</html>

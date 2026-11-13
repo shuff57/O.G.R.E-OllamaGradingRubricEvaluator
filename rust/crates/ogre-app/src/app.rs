@@ -115,6 +115,12 @@ struct AgentView {
     /// What to tell the AI when declining its action.
     note: String,
     result: Option<AgentSummary>,
+    /// The grading page the teacher asked the agent to find, on the Sites
+    /// screen, in their own words.
+    find: String,
+    /// True while the agent is finding that page: the page it ends on is
+    /// then mapped.
+    then_map: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -212,6 +218,8 @@ enum Action {
     SaveEditedMapping,
     DeleteProfile(String),
     StartAgent,
+    /// Send the agent to find a grading page, and map the page it stops on.
+    FindAndMap,
     AnswerAgent(AgentAnswer),
     SetLeniency(u8),
     /// Remember whether students with no response are proposed a zero.
@@ -543,10 +551,27 @@ impl OgreApp {
                 Event::AgentDone(summary) => {
                     self.agent.running = false;
                     self.agent.question = None;
+                    let found = summary.finished;
+                    let message = summary.message.clone();
                     self.agent.result = Some(summary);
                     // Whatever was read before may no longer match the page.
                     self.session = None;
                     self.selected = None;
+                    // Sent to find a grading page: the page it stopped on
+                    // is mapped, and only if it says it got there.
+                    if std::mem::take(&mut self.agent.then_map) {
+                        if found {
+                            self.screen = Screen::Sites;
+                            self.mapping = None;
+                            let ai = Some((self.settings.provider.clone(), self.key()));
+                            self.send(Command::MapPage { ai }, "Working out the page…");
+                        } else {
+                            self.error = Some(format!(
+                                "The agent did not get to a grading page, so nothing was \
+                                 mapped. It said: {message}"
+                            ));
+                        }
+                    }
                 }
                 Event::Profiles(profiles) => {
                     self.profiles = profiles;
@@ -856,6 +881,13 @@ impl OgreApp {
             }
             Action::SetLeniency(leniency) => self.settings.leniency = leniency,
             Action::SetZeroBlank(on) => self.settings.zero_for_no_response = on,
+            Action::FindAndMap => {
+                self.agent.task = ogre_agent::find_grading_page_task(&self.agent.find);
+                self.agent.then_map = true;
+                // Where the agent's steps and its questions are shown.
+                self.screen = Screen::Agent;
+                self.carry_out(ctx, Action::StartAgent);
+            }
             Action::StartAgent => {
                 let request = AgentRequest {
                     task: self.agent.task.trim().to_owned(),
@@ -2201,6 +2233,29 @@ impl OgreApp {
                         if !self.chrome_running {
                             ui.label(theme::muted("Start Chrome on the Grade screen first."));
                         }
+                        let label = kit::section_label(ui, "Not on the grading page yet?");
+                        ui.label(theme::muted(
+                            "Say which page you mean, as you would to a colleague, and the \
+                             agent finds its way there from the page that is open. It only \
+                             follows links and menus. The page it stops on is then mapped.",
+                        ));
+                        ui.horizontal(|ui| {
+                            let asked = !self.agent.find.trim().is_empty();
+                            let find = kit::ghost(
+                                ui,
+                                "Find it, then map",
+                                can_map && asked && provider_problem.is_none(),
+                            );
+                            if find.clicked() {
+                                actions.push(Action::FindAndMap);
+                            }
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.agent.find)
+                                    .hint_text("Quiz 4 in Algebra 2, period 3")
+                                    .desired_width(f32::INFINITY),
+                            )
+                            .labelled_by(label.id);
+                        });
                         let service = self.settings.provider.service;
                         ui.label(theme::muted(if service.is_remote() {
                             format!(
@@ -2213,6 +2268,13 @@ impl OgreApp {
                              model is asked; nothing leaves this computer."
                                 .to_owned()
                         }));
+                        if service.is_remote() {
+                            ui.label(theme::muted(format!(
+                                "Finding the page with the agent sends what is on each page it \
+                                 passes, including any student names and scores there, to {}.",
+                                service.label()
+                            )));
+                        }
                         self.messages(ui, actions);
                     });
                 });
