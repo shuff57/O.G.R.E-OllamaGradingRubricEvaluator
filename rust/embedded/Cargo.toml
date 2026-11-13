@@ -26,17 +26,21 @@ name = "ogre-embedded"
 path = "src/main.rs"
 
 [dependencies]
+# For the kinds of question a page asks, which the browser passes on.
+ogre-harness = { path = "../crates/ogre-harness" }
 ogre-app = { path = "../crates/ogre-app" }
 egui_webview = { path = "egui_webview", features = ["cef"] }
 eframe = { version = "0.37", default-features = false }
 egui = { version = "0.37", default-features = false }
+# For OGRE_SHOT, which saves a picture of OGRE's own window.
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 [dev-dependencies]
 # For examples/bridge_check.rs, which reads a practice page with the real
 # MyOpenMath reader through the built-in browser.
 ogre-core = { path = "../crates/ogre-core" }
-ogre-harness = { path = "../crates/ogre-harness" }
 tokio = { version = "1", features = ["rt"] }
+serde_json = "1"
 
 # egui 0.37.0 plus what `egui_webview` needs and no release has yet, pinned
 # to the commit the copy of that crate here was written against. Every egui

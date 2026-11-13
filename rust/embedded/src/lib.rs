@@ -4,6 +4,7 @@
 use eframe::egui;
 use egui_webview::{WebViewEvent, WebViewInstance, WebViewSource};
 use ogre_app::{BuiltInBrowser, PageNews};
+use ogre_harness::cdp::{DialogKind, PageDialog};
 
 /// The page of Chromium that OGRE's window shows. Made when it is first
 /// wanted: a teacher who works in Chrome never starts it.
@@ -13,6 +14,9 @@ pub struct Chromium {
     /// Why the page could not be made, said once.
     failed: Option<String>,
     news: Vec<PageNews>,
+    /// The text a `prompt` the page is showing suggests, which is what it
+    /// is answered with.
+    suggested: Option<String>,
 }
 
 impl Chromium {
@@ -23,6 +27,7 @@ impl Chromium {
             page: None,
             failed: None,
             news: Vec::new(),
+            suggested: None,
         }
     }
 
@@ -49,13 +54,34 @@ impl Chromium {
     }
 
     fn take(&mut self, events: Vec<WebViewEvent>) {
-        self.news
-            .extend(events.into_iter().filter_map(|event| match event {
-                WebViewEvent::Loading { url } => Some(PageNews::Loading(url)),
-                WebViewEvent::Loaded { url } => Some(PageNews::Loaded(url)),
-                WebViewEvent::Message(text) => Some(PageNews::Message(text)),
-                _ => None,
-            }));
+        for event in events {
+            let news = match event {
+                WebViewEvent::Loading { url } => PageNews::Loading(url),
+                WebViewEvent::Loaded { url } => PageNews::Loaded(url),
+                WebViewEvent::DevTools(message) => PageNews::DevTools(message),
+                WebViewEvent::Asks {
+                    kind,
+                    message,
+                    default_text,
+                } => {
+                    let kind = match kind {
+                        egui_webview::DialogKind::Alert => DialogKind::Alert,
+                        egui_webview::DialogKind::Confirm => DialogKind::Confirm,
+                        egui_webview::DialogKind::Prompt => DialogKind::Prompt,
+                        egui_webview::DialogKind::Leave => DialogKind::Leave,
+                    };
+                    self.suggested = (kind == DialogKind::Prompt).then_some(default_text);
+                    PageNews::Asks(PageDialog { kind, message })
+                }
+                WebViewEvent::AsksNoMore => {
+                    self.suggested = None;
+                    PageNews::AsksNoMore
+                }
+                // OGRE's pages are not given a way to post messages.
+                _ => continue,
+            };
+            self.news.push(news);
+        }
     }
 }
 
@@ -86,9 +112,16 @@ impl BuiltInBrowser for Chromium {
             .map_err(|error| error.to_string())
     }
 
-    fn run_script(&mut self, script: &str) -> Result<(), String> {
+    fn answer(&mut self, accept: bool) {
+        let text = self.suggested.take();
+        if let Some(page) = &mut self.page {
+            page.answer_dialog(accept, text.as_deref());
+        }
+    }
+
+    fn send_devtools(&mut self, message: &[u8]) -> Result<(), String> {
         self.page()?
-            .evaluate_script(script)
+            .send_devtools_message(message)
             .map_err(|error| error.to_string())
     }
 

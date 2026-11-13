@@ -67,6 +67,22 @@ pub trait Backend {
     /// reported.
     fn evaluate_script(&mut self, script: &str) -> Result<(), Error>;
 
+    /// OGRE: sends one message of the DevTools protocol, as JSON, to the browser's own
+    /// debugging channel. Replies and events come back as [`WebViewEvent::DevTools`].
+    ///
+    /// # Errors
+    /// If the backend has no such channel, which is every backend but CEF, or if the browser
+    /// does not take the message.
+    fn send_devtools_message(&mut self, message: &[u8]) -> Result<(), Error> {
+        Err(Error::backend(
+            "this backend has no debugging channel to the page",
+        ))
+    }
+
+    /// OGRE: answers what the page is asking (see [`WebViewEvent::Asks`]). `text` is the answer
+    /// to a `prompt`. Does nothing if the page is asking nothing.
+    fn answer_dialog(&mut self, accept: bool, text: Option<&str>) {}
+
     /// Reloads the current page. See [`crate::WebViewInstance::reload`].
     fn reload(&mut self);
 

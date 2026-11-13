@@ -1,6 +1,8 @@
 //! Reads a practice grading page with OGRE's real MyOpenMath reader, through
 //! the built-in browser, and says what it found. A check that pages can be
-//! read and written this way before anyone grades with it.
+//! read and written this way before anyone grades with it, and that the
+//! built-in page takes real clicks and keys, gives a picture of itself and
+//! passes on what it asks, which the agent and the window need.
 //!
 //!     cargo run --example bridge_check
 //!
@@ -12,25 +14,31 @@ use std::sync::atomic::{AtomicI32, Ordering};
 use std::time::{Duration, Instant};
 
 use eframe::egui;
-use ogre_app::{BuiltIn, BuiltInPage, Requests};
+use ogre_app::{BuiltIn, PageChannel};
 use ogre_embedded::Chromium;
-use ogre_harness::PageDriver;
+use ogre_harness::cdp::CdpPage;
 use ogre_harness::sites::SiteAdapter;
 use ogre_harness::sites::imathas::IMathAs;
+use ogre_harness::{InputDriver, PageDriver};
 
 /// Not finished yet.
 const RUNNING: i32 = -1;
 
 struct Check {
     built_in: BuiltIn,
-    requests: Requests,
+    channel: PageChannel,
     outcome: Arc<AtomicI32>,
     started: Instant,
 }
 
 impl eframe::App for Check {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        self.built_in.pump(&self.requests);
+        self.built_in.pump(&self.channel);
+        // What the window does with a question: here, say yes to it.
+        if let Some(asked) = self.built_in.asking.clone() {
+            println!("the page asks: {:?} ({:?})", asked.message, asked.kind);
+            self.built_in.answer(true);
+        }
         egui::CentralPanel::default().show(ui, |ui| {
             let size = ui.available_size();
             self.built_in.browser().show(ui, size);
@@ -52,8 +60,9 @@ impl eframe::App for Check {
 }
 
 /// What the worker would do: go to the page, then read it with the adapter.
-async fn read(page: BuiltInPage, address: String) -> Result<(), String> {
+async fn read(page: CdpPage, address: String) -> Result<(), String> {
     let say = |error: ogre_harness::Error| error.to_string();
+    page.prepare().await.map_err(say)?;
     page.navigate(&address).await.map_err(say)?;
     println!("at {}", page.url().await.map_err(say)?);
     println!("1 + 1 = {}", page.eval("1 + 1").await.map_err(say)?);
@@ -108,6 +117,79 @@ async fn read(page: BuiltInPage, address: String) -> Result<(), String> {
         ));
     }
     println!("a fresh read of the page shows the grade and the feedback");
+
+    // What the agent needs: a click and a key the page takes for a
+    // person's, and a picture of the page.
+    let spot = page
+        .eval(
+            "(() => { window.__clicks = []; \
+             document.addEventListener('click', (e) => window.__clicks.push(e.isTrusted), true); \
+             const box = document.querySelector('input[id^=scorebox]'); \
+             box.scrollIntoView({ block: 'center' }); \
+             const at = box.getBoundingClientRect(); \
+             return [at.x + at.width / 2, at.y + at.height / 2, box.id]; })()",
+        )
+        .await
+        .map_err(say)?;
+    let (x, y) = (
+        spot[0].as_f64().unwrap_or(0.0),
+        spot[1].as_f64().unwrap_or(0.0),
+    );
+    page.click_at(x, y).await.map_err(say)?;
+    let clicked = page
+        .eval("[window.__clicks, document.activeElement.id]")
+        .await
+        .map_err(say)?;
+    println!("a real click: {clicked}");
+    if clicked[0] != serde_json::json!([true]) || clicked[1] != spot[2] {
+        return Err(format!(
+            "the click did not land as a person's would: {clicked}"
+        ));
+    }
+    page.press_key("Tab").await.map_err(say)?;
+    let moved = page.eval("document.activeElement.id").await.map_err(say)?;
+    println!("the Tab key moved on to: {moved}");
+    if moved == spot[2] {
+        return Err("the Tab key did nothing".into());
+    }
+    let picture = page.screenshot_png().await.map_err(say)?;
+    println!("a picture of the page: {} bytes", picture.len());
+    if !picture.starts_with(b"\x89PNG") || picture.len() < 2000 {
+        return Err("the picture of the page is not a picture".into());
+    }
+
+    // What the window needs: a question the page asks comes through, and
+    // the answer goes back.
+    page.eval("(setTimeout(() => { window.__answer = confirm('Leave the page?'); }, 50), null)")
+        .await
+        .map_err(say)?;
+    let mut answer = serde_json::Value::Null;
+    for _ in 0..50 {
+        answer = page.eval("window.__answer ?? null").await.map_err(say)?;
+        if !answer.is_null() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    println!("the page was answered: {answer}");
+    if answer != serde_json::json!(true) {
+        return Err(format!("the answer did not reach the page: {answer}"));
+    }
+
+    // A grading tool that a school's site shows in a frame is reached too.
+    let framed = address.replace("imathas-gradeallq2.html", "generic/tool-in-a-frame.html");
+    page.navigate(&framed).await.map_err(say)?;
+    let inside = page
+        .eval_in_frame(
+            "document.getElementById('tool_content')",
+            "[document.title, document.querySelectorAll('input[type=number]').length]",
+        )
+        .await
+        .map_err(say)?;
+    println!("inside the frame: {inside}");
+    if inside[1] != serde_json::json!(3) {
+        return Err(format!("the frame was not read: {inside}"));
+    }
     Ok(())
 }
 
@@ -126,7 +208,7 @@ fn main() -> eframe::Result {
         eframe::NativeOptions::default(),
         Box::new(move |cc| {
             let ctx = cc.egui_ctx.clone();
-            let (page, inbox) = BuiltInPage::new(Arc::new(move || ctx.request_repaint()));
+            let (link, channel) = ogre_app::page_link();
             let outcome = Arc::new(AtomicI32::new(RUNNING));
             let result = outcome.clone();
             std::thread::spawn(move || {
@@ -134,7 +216,14 @@ fn main() -> eframe::Result {
                     .enable_time()
                     .build()
                     .expect("the async runtime starts");
-                let code = match runtime.block_on(read(page, address)) {
+                let checked = runtime.block_on(async move {
+                    // As the worker does: the window is woken for each
+                    // message the page is sent.
+                    let wake = Arc::new(move || ctx.request_repaint());
+                    tokio::spawn(ogre_app::carry(link.outgoing, wake));
+                    read(link.page, address).await
+                });
+                let code = match checked {
                     Ok(()) => {
                         println!("PASSED");
                         0
@@ -148,7 +237,7 @@ fn main() -> eframe::Result {
             });
             Ok(Box::new(Check {
                 built_in: BuiltIn::new(Box::new(Chromium::new(&cc.egui_ctx))),
-                requests: std::sync::Mutex::new(inbox),
+                channel,
                 outcome,
                 started: Instant::now(),
             }))

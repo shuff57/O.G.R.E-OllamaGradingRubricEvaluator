@@ -80,6 +80,40 @@ pub enum WebViewEvent {
     /// On the web, a page loaded from a URL has no `window.ipc`. It sends messages with
     /// `window.parent.postMessage(text, "*")` instead, and only string messages are reported.
     Message(String),
+
+    /// OGRE: one message from the browser's own debugging channel (the DevTools protocol), as
+    /// the JSON the browser wrote: the reply to a message sent with
+    /// [`WebViewInstance::send_devtools_message`], or an event. Only the CEF backend sends it,
+    /// and only once a first message has been sent.
+    DevTools(Vec<u8>),
+
+    /// OGRE: the page asks something with `alert`, `confirm` or `prompt`, or the browser asks
+    /// whether to leave a page with unsaved changes. The page stands still until it is answered
+    /// with [`WebViewInstance::answer_dialog`]. Only the CEF backend sends it.
+    Asks {
+        /// Which kind of question it is.
+        kind: DialogKind,
+        /// The question's text.
+        message: String,
+        /// The text a `prompt` suggests as the answer.
+        default_text: String,
+    },
+
+    /// OGRE: what the page asked was answered, or the page went away while it was asking.
+    AsksNoMore,
+}
+
+/// OGRE: the kind of question in a [`WebViewEvent::Asks`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DialogKind {
+    /// Something to read. There is only one answer.
+    Alert,
+    /// Yes or no.
+    Confirm,
+    /// Asks for text.
+    Prompt,
+    /// The browser's "Leave site?" for a page with unsaved changes.
+    Leave,
 }
 
 /// Logs a warning for a failed call whose error isn't returned to the caller.

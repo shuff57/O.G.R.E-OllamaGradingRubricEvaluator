@@ -21,7 +21,9 @@ pub use agent_run::{
     AgentAnswer, AgentLine, AgentQuestion, AgentRequest, AgentSummary, LineKind, SkillSummary,
 };
 pub use app::OgreApp;
-pub use built_in::{BuiltIn, BuiltInBrowser, BuiltInPage, PageNews, Requests};
+pub use built_in::{
+    BuiltIn, BuiltInBrowser, PageChannel, PageLink, PageNews, PageOut, carry, page_link,
+};
 pub use grading::{Grade, GradeReport, GradedRow, Suggestion};
 pub use history::{PastProposal, PastSession, PastStudent, SessionEnd};
 pub use keys::{KeyStore, Keyring, MemoryKeys};

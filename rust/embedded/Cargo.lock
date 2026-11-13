@@ -3146,9 +3146,11 @@ dependencies = [
  "eframe",
  "egui",
  "egui_webview",
+ "image",
  "ogre-app",
  "ogre-core",
  "ogre-harness",
+ "serde_json",
  "tokio",
 ]
 

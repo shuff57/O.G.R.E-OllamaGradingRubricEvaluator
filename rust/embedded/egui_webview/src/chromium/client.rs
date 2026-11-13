@@ -17,6 +17,12 @@ use cef::{
     sys, wrap_client, wrap_context_menu_handler, wrap_display_handler, wrap_focus_handler,
     wrap_life_span_handler, wrap_load_handler, wrap_render_handler,
 };
+// OGRE: for the observer of the browser's debugging channel and for the page's questions, below.
+use cef::{
+    DevToolsMessageObserver, ImplDevToolsMessageObserver, ImplJsdialogHandler, JsdialogCallback,
+    JsdialogHandler, JsdialogType, WrapDevToolsMessageObserver, WrapJsdialogHandler,
+    wrap_dev_tools_message_observer, wrap_jsdialog_handler,
+};
 use egui::{
     Color32, ColorImage, Context, CursorIcon, FocusDirection, Pos2, Rect, TextureHandle,
     TextureOptions, Vec2, ViewportId, pos2,
@@ -60,6 +66,8 @@ pub struct Shared {
     pub text_cursor: Mutex<Option<Rect>>,
     /// The context menu CEF asked to show, until egui closes it.
     pub context_menu: Mutex<Option<ContextMenu>>,
+    /// OGRE: where the answer to what the page is asking goes, until it is answered.
+    pub dialog: Mutex<Option<JsdialogCallback>>,
     /// Which way Tab left the page, until [`crate::Backend::poll_focus_left`] picks it up.
     pub took_focus_away: Mutex<Option<FocusDirection>>,
 
@@ -96,6 +104,7 @@ impl Shared {
             editable: AtomicBool::new(false),
             text_cursor: Mutex::new(None),
             context_menu: Mutex::new(None),
+            dialog: Mutex::new(None),
             took_focus_away: Mutex::new(None),
             inbox: Mutex::default(),
             shown_pass: Mutex::new(None),
@@ -128,7 +137,105 @@ impl Shared {
             EguiLifeSpanHandler::new(),
             EguiContextMenuHandler::new(Arc::clone(&shared)),
             EguiFocusHandler::new(Arc::clone(&shared)),
+            EguiJsDialogHandler::new(Arc::clone(&shared)),
         )
+    }
+
+    /// OGRE: keeps the way to answer a question of the page, and tells the host about it.
+    fn asks(
+        &self,
+        kind: crate::DialogKind,
+        message: Option<&CefString>,
+        default_text: Option<&CefString>,
+        callback: Option<&mut JsdialogCallback>,
+    ) -> ::std::os::raw::c_int {
+        let Some(callback) = callback else {
+            return 0;
+        };
+        let text = |text: Option<&CefString>| text.map(ToString::to_string).unwrap_or_default();
+        *self.dialog.lock() = Some(callback.clone());
+        self.send(WebViewEvent::Asks {
+            kind,
+            message: text(message),
+            default_text: text(default_text),
+        });
+        // Handled: the callback is called once the host has the answer.
+        1
+    }
+
+    /// OGRE: what hears the browser's debugging channel and passes each message on as a
+    /// [`WebViewEvent::DevTools`].
+    pub fn devtools_observer(self: &Arc<Self>) -> DevToolsMessageObserver {
+        EguiDevToolsObserver::new(Arc::clone(self))
+    }
+}
+
+// OGRE: what the page asks with `alert`, `confirm` and `prompt`, and the browser's "Leave
+// site?". A windowless browser has no window to ask in, so the host is told and answers.
+wrap_jsdialog_handler! {
+    struct EguiJsDialogHandler {
+        shared: Arc<Shared>,
+    }
+
+    impl JsdialogHandler {
+        fn on_jsdialog(
+            &self,
+            _browser: Option<&mut Browser>,
+            _origin_url: Option<&CefString>,
+            dialog_type: JsdialogType,
+            message_text: Option<&CefString>,
+            default_prompt_text: Option<&CefString>,
+            callback: Option<&mut JsdialogCallback>,
+            _suppress_message: Option<&mut ::std::os::raw::c_int>,
+        ) -> ::std::os::raw::c_int {
+            use sys::cef_jsdialog_type_t as T;
+            let kind = match *dialog_type.as_ref() {
+                T::JSDIALOGTYPE_CONFIRM => crate::DialogKind::Confirm,
+                T::JSDIALOGTYPE_PROMPT => crate::DialogKind::Prompt,
+                _ => crate::DialogKind::Alert,
+            };
+            self.shared.asks(kind, message_text, default_prompt_text, callback)
+        }
+
+        fn on_before_unload_dialog(
+            &self,
+            _browser: Option<&mut Browser>,
+            message_text: Option<&CefString>,
+            _is_reload: ::std::os::raw::c_int,
+            callback: Option<&mut JsdialogCallback>,
+        ) -> ::std::os::raw::c_int {
+            self.shared.asks(crate::DialogKind::Leave, message_text, None, callback)
+        }
+
+        /// The page went away, or was reloaded, while it was asking.
+        fn on_reset_dialog_state(&self, _browser: Option<&mut Browser>) {
+            if self.shared.dialog.lock().take().is_some() {
+                self.shared.send(WebViewEvent::AsksNoMore);
+            }
+        }
+    }
+}
+
+// OGRE: the browser's debugging channel, for a host that drives the page with the DevTools
+// protocol.
+wrap_dev_tools_message_observer! {
+    struct EguiDevToolsObserver {
+        shared: Arc<Shared>,
+    }
+
+    impl DevToolsMessageObserver {
+        /// Takes every message whole. Returning 1 says so, and CEF then does not also call
+        /// the methods that would hand over the same message in parts.
+        fn on_dev_tools_message(
+            &self,
+            _browser: Option<&mut Browser>,
+            message: Option<&[u8]>,
+        ) -> ::std::os::raw::c_int {
+            if let Some(message) = message {
+                self.shared.send(WebViewEvent::DevTools(message.to_vec()));
+            }
+            1
+        }
     }
 }
 
@@ -582,6 +689,7 @@ wrap_client! {
         life_span: LifeSpanHandler,
         context_menu: ContextMenuHandler,
         focus: FocusHandler,
+        jsdialog: JsdialogHandler,
     }
 
     impl Client {
@@ -607,6 +715,10 @@ wrap_client! {
 
         fn focus_handler(&self) -> Option<FocusHandler> {
             Some(self.focus.clone())
+        }
+
+        fn jsdialog_handler(&self) -> Option<JsdialogHandler> {
+            Some(self.jsdialog.clone())
         }
 
         /// Turns the text that the main frame passed to `window.ipc.postMessage(text)` into a

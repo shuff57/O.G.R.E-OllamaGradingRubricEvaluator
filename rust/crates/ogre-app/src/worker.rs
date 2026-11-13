@@ -22,7 +22,7 @@ use crate::agent_run::{
     self, AgentAnswer, AgentLine, AgentQuestion, AgentRequest, AgentSummary, SkillSummary,
 };
 use crate::audit::AuditLog;
-use crate::built_in::{BuiltInPage, Requests};
+use crate::built_in::{self, PageChannel, PageLink};
 use crate::grading::{self, GradeReport, PreparedCache};
 use crate::history::{self, PastSession};
 use crate::profiles::{ProfileStore, ProfileSummary};
@@ -384,7 +384,7 @@ pub struct Worker {
     view: ViewLink,
     /// What the worker asks of the built-in browser's page, for the window
     /// to carry out.
-    page_requests: Requests,
+    page_channel: PageChannel,
     thread: Option<JoinHandle<()>>,
 }
 
@@ -403,8 +403,6 @@ pub struct StandIn {
     pub view: ViewLink,
     /// What the teacher did on the page shown inside the window.
     pub view_input: mpsc::UnboundedReceiver<ViewInput>,
-    /// The built-in browser's page, to ask things of as the worker would.
-    pub built_in_page: BuiltInPage,
 }
 
 impl Worker {
@@ -423,14 +421,14 @@ impl Worker {
         let (answers, answer_inbox) = mpsc::unbounded_channel();
         let (view, view_input) = ViewLink::new();
         let wake: Arc<dyn Fn() + Send + Sync> = Arc::new(wake);
-        let (built_in_page, page_requests) = BuiltInPage::new(wake.clone());
+        let (built_in, page_channel) = built_in::page_link();
         let wires = Wires {
             commands: inbox,
             answers: answer_inbox,
             view: view.clone(),
             view_input,
             events: outbox,
-            built_in_page,
+            built_in,
         };
         let thread = std::thread::Builder::new()
             .name("ogre-worker".into())
@@ -442,7 +440,7 @@ impl Worker {
             running: Mutex::new(None),
             answers,
             view,
-            page_requests: Mutex::new(page_requests),
+            page_channel,
             thread: Some(thread),
         }
     }
@@ -454,14 +452,15 @@ impl Worker {
         let (outbox, events) = std_mpsc::channel();
         let (answers, answer_inbox) = mpsc::unbounded_channel();
         let (view, view_input) = ViewLink::new();
-        let (built_in_page, page_requests) = BuiltInPage::new(Arc::new(|| {}));
+        // Nothing drives the built-in page here: what is asked of it fails.
+        let (_, page_channel) = built_in::page_link();
         let worker = Self {
             commands: Some(commands),
             events,
             running: Mutex::new(None),
             answers,
             view: view.clone(),
-            page_requests: Mutex::new(page_requests),
+            page_channel,
             thread: None,
         };
         let stand_in = StandIn {
@@ -470,7 +469,6 @@ impl Worker {
             answers: answer_inbox,
             view,
             view_input,
-            built_in_page,
         };
         (worker, stand_in)
     }
@@ -521,8 +519,8 @@ impl Worker {
     }
 
     /// What the worker has asked of the built-in browser's page.
-    pub(crate) fn page_requests(&self) -> &Requests {
-        &self.page_requests
+    pub(crate) fn page_channel(&self) -> &PageChannel {
+        &self.page_channel
     }
 
     /// Events that have arrived since the last call.
@@ -550,7 +548,7 @@ struct Wires {
     view: ViewLink,
     view_input: mpsc::UnboundedReceiver<ViewInput>,
     events: std_mpsc::Sender<Event>,
-    built_in_page: BuiltInPage,
+    built_in: PageLink,
 }
 
 fn run(
@@ -566,7 +564,7 @@ fn run(
         view,
         view_input,
         events: outbox,
-        built_in_page,
+        built_in,
     } = wires;
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
@@ -583,9 +581,11 @@ fn run(
             shown.clone(),
             wake.clone(),
         ));
+        // The window hands the built-in browser what its page is asked.
+        tokio::spawn(built_in::carry(built_in.outgoing, wake.clone()));
         let mut task = Task {
             built_in: false,
-            built_in_page,
+            built_in_page: built_in.page,
             inside: false,
             view_control,
             shown,
@@ -639,53 +639,40 @@ impl Reporter {
 #[derive(Clone)]
 enum Tab {
     Chrome(CdpPage),
-    BuiltIn(BuiltInPage),
+    /// Driven as a tab of Chrome is, over the built-in browser's own
+    /// debugging channel.
+    BuiltIn(CdpPage),
 }
 
 impl Tab {
-    /// The page as something to click and type on and take a picture of.
-    /// Only a Chrome tab is one so far.
-    fn input(&self) -> Result<&dyn InputDriver> {
+    fn page(&self) -> &CdpPage {
         match self {
-            Self::Chrome(page) => Ok(page),
-            Self::BuiltIn(_) => Err(Error::Page(
-                "The built-in browser cannot do this yet. In Settings, have the page \
-                 shown in Chrome\u{2019}s own window, or as a picture of Chrome, and start \
-                 the browser again."
-                    .into(),
-            )),
+            Self::Chrome(page) | Self::BuiltIn(page) => page,
         }
+    }
+
+    /// The page as something to click and type on and take a picture of.
+    fn input(&self) -> Result<&dyn InputDriver> {
+        Ok(self.page())
     }
 }
 
 #[async_trait::async_trait]
 impl PageDriver for Tab {
     async fn url(&self) -> Result<String> {
-        match self {
-            Self::Chrome(page) => page.url().await,
-            Self::BuiltIn(page) => page.url().await,
-        }
+        self.page().url().await
     }
 
     async fn navigate(&self, url: &str) -> Result<()> {
-        match self {
-            Self::Chrome(page) => page.navigate(url).await,
-            Self::BuiltIn(page) => page.navigate(url).await,
-        }
+        self.page().navigate(url).await
     }
 
     async fn eval(&self, expression: &str) -> Result<serde_json::Value> {
-        match self {
-            Self::Chrome(page) => page.eval(expression).await,
-            Self::BuiltIn(page) => page.eval(expression).await,
-        }
+        self.page().eval(expression).await
     }
 
     async fn eval_in_frame(&self, frame: &str, expression: &str) -> Result<serde_json::Value> {
-        match self {
-            Self::Chrome(page) => page.eval_in_frame(frame, expression).await,
-            Self::BuiltIn(page) => page.eval_in_frame(frame, expression).await,
-        }
+        self.page().eval_in_frame(frame, expression).await
     }
 }
 
@@ -719,7 +706,7 @@ struct Task {
     /// The teacher works in the browser built into the window, and no
     /// Chrome is running.
     built_in: bool,
-    built_in_page: BuiltInPage,
+    built_in_page: CdpPage,
     /// When the last page was opened from the app.
     opened_at: Option<Instant>,
     target: Option<Target>,
@@ -781,7 +768,10 @@ impl Task {
                 Ok(Event::ChromeStarted)
             }
             Command::StartBuiltIn => {
-                // The browser is the window's own: there is nothing to start.
+                // The browser is the window's own, and starts when it is
+                // first asked something: here, for the events a page load
+                // is known by. A browser that cannot start says so now.
+                self.built_in_page.prepare().await?;
                 self.built_in = true;
                 Ok(Event::ChromeStarted)
             }

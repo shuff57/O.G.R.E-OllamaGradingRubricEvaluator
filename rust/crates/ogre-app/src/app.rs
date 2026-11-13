@@ -217,6 +217,8 @@ enum Action {
     /// Save the mapping in the form, once the page has proven it.
     SaveEditedMapping,
     DeleteProfile(String),
+    /// The teacher's answer to what the page is asking.
+    AnswerPage(bool),
     StartAgent,
     /// Send the agent to find a grading page, and map the page it stops on.
     FindAndMap,
@@ -881,6 +883,12 @@ impl OgreApp {
             }
             Action::SetLeniency(leniency) => self.settings.leniency = leniency,
             Action::SetZeroBlank(on) => self.settings.zero_for_no_response = on,
+            Action::AnswerPage(accept) => {
+                match self.built_in.as_mut().filter(|page| page.asking.is_some()) {
+                    Some(page) => page.answer(accept),
+                    None => self.worker.view().send(ViewInput::Answer(accept)),
+                }
+            }
             Action::FindAndMap => {
                 self.agent.task = ogre_agent::find_grading_page_task(&self.agent.find);
                 self.agent.then_map = true;
@@ -1088,15 +1096,21 @@ impl OgreApp {
         if let Some(notice) = &self.notice {
             kit::icon_line(ui, icon::CHECK, notice, pal().accent);
         }
-        self.page_question(ui);
+        self.page_question(ui, actions);
     }
 
     /// What the page shown inside the window is asking, with its answers. A
     /// page that asks stands still until it is told, on whatever screen the
     /// teacher happens to be.
-    fn page_question(&self, ui: &mut egui::Ui) {
-        let view = self.worker.view();
-        let Some(dialog) = view.state().dialog.clone() else {
+    fn page_question(&self, ui: &mut egui::Ui, actions: &mut Vec<Action>) {
+        // The built-in browser's page asks through the browser; a tab of
+        // Chrome that is drawn in the window asks through the worker.
+        let asked = self
+            .built_in
+            .as_ref()
+            .and_then(|page| page.asking.clone())
+            .or_else(|| self.worker.view().state().dialog.clone());
+        let Some(dialog) = asked else {
             return;
         };
         let (question, yes, no) = match dialog.kind {
@@ -1113,7 +1127,7 @@ impl OgreApp {
             ),
         };
         if let Some(accept) = kit::confirm(ui, &question, yes, true, no) {
-            view.send(ViewInput::Answer(accept));
+            actions.push(Action::AnswerPage(accept));
         }
     }
 
@@ -2462,7 +2476,7 @@ impl eframe::App for OgreApp {
         // What the worker wants of the built-in browser's page is done here,
         // between frames, and its answers go back.
         if let Some(built_in) = &mut self.built_in
-            && built_in.pump(self.worker.page_requests())
+            && built_in.pump(self.worker.page_channel())
         {
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(30));

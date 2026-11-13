@@ -27,7 +27,7 @@ use std::sync::atomic::Ordering;
 
 use cef::{
     BrowserSettings, ImplBrowser as _, ImplBrowserHost as _, ImplFrame as _,
-    ImplRunContextMenuCallback as _, WindowInfo,
+    ImplJsdialogCallback as _, ImplRunContextMenuCallback as _, WindowInfo,
 };
 use egui::{
     Color32, Context, EmbeddedViewOutput, EventFilter, FocusDirection, Id, Pos2, Rect, Sense, Ui,
@@ -66,6 +66,10 @@ pub struct CefBackend {
 
     /// The view's size in points and the pixels per point that the browser was last told.
     told_size: Option<(Vec2, f32)>,
+
+    /// OGRE: keeps the observer of the browser's debugging channel registered. `None` until a
+    /// first message is sent there, so a page nobody drives that way has no debugger attached.
+    devtools: Option<cef::Registration>,
 }
 
 impl CefBackend {
@@ -110,6 +114,7 @@ impl CefBackend {
             input: input::Input::default(),
             hidden: false,
             told_size: None,
+            devtools: None,
         })
     }
 }
@@ -316,6 +321,38 @@ impl Backend for CefBackend {
             frame.execute_java_script(Some(&script.into()), None, 0);
         }
         Ok(())
+    }
+
+    /// OGRE: see [`Backend::send_devtools_message`].
+    fn send_devtools_message(&mut self, message: &[u8]) -> Result<(), Error> {
+        let host = self
+            .browser
+            .host()
+            .ok_or_else(|| Error::backend("the browser is gone"))?;
+        if self.devtools.is_none() {
+            let mut observer = self.shared.devtools_observer();
+            self.devtools = host.add_dev_tools_message_observer(Some(&mut observer));
+            if self.devtools.is_none() {
+                return Err(Error::backend(
+                    "CEF did not let the debugging channel be listened to",
+                ));
+            }
+        }
+        if host.send_dev_tools_message(Some(message)) == 1 {
+            Ok(())
+        } else {
+            Err(Error::backend("CEF did not take the DevTools message"))
+        }
+    }
+
+    /// OGRE: see [`Backend::answer_dialog`].
+    fn answer_dialog(&mut self, accept: bool, text: Option<&str>) {
+        let Some(callback) = self.shared.dialog.lock().take() else {
+            return;
+        };
+        let text = text.map(cef::CefString::from);
+        callback.cont(i32::from(accept), text.as_ref());
+        self.shared.send(WebViewEvent::AsksNoMore);
     }
 
     fn reload(&mut self) {

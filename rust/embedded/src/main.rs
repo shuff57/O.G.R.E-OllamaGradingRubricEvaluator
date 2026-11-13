@@ -5,25 +5,87 @@
 //! it, which the teacher can choose to work in instead: Settings, "Where the
 //! page is shown". Everything else is the same program.
 
+use std::path::PathBuf;
+use std::time::{Duration, Instant};
+
 use eframe::egui;
 use ogre_app::OgreApp;
 use ogre_embedded::Chromium;
 
 /// OGRE's window, with the one thing a built-in page adds: it is told
 /// after every frame where it is.
-struct Embedded(OgreApp);
+struct Embedded {
+    app: OgreApp,
+    shot: Option<Shot>,
+}
+
+/// A picture of OGRE's own window to save, for checking this build without
+/// a tool that takes pictures of the screen: `OGRE_SHOT=<file.png>`, taken
+/// `OGRE_SHOT_AFTER` seconds after the start (10 if not said). OGRE ends
+/// once the picture is saved.
+struct Shot {
+    file: PathBuf,
+    at: Instant,
+    asked: bool,
+}
+
+impl Shot {
+    fn from_env() -> Option<Self> {
+        let file = std::env::var_os("OGRE_SHOT").filter(|file| !file.is_empty())?;
+        let after = std::env::var("OGRE_SHOT_AFTER")
+            .ok()
+            .and_then(|seconds| seconds.parse().ok())
+            .unwrap_or(10.0);
+        Some(Self {
+            file: file.into(),
+            at: Instant::now() + Duration::from_secs_f64(after),
+            asked: false,
+        })
+    }
+
+    /// Asks for the picture when it is time. It is saved when it arrives,
+    /// and OGRE ends there.
+    fn step(&mut self, ctx: &egui::Context) {
+        if !self.asked && Instant::now() >= self.at {
+            self.asked = true;
+            let file = self.file.clone();
+            let save = egui::ScreenshotCallback::new(move |picture| {
+                let [width, height] = picture.resolution();
+                let saved = image::RgbaImage::from_raw(
+                    u32::try_from(width).unwrap_or(0),
+                    u32::try_from(height).unwrap_or(0),
+                    picture.as_raw().to_vec(),
+                )
+                .ok_or_else(|| "the picture has no pixels".to_owned())
+                .and_then(|pixels| pixels.save(&file).map_err(|error| error.to_string()));
+                match saved {
+                    Ok(()) => std::process::exit(0),
+                    Err(problem) => {
+                        eprintln!("The picture could not be saved: {problem}");
+                        std::process::exit(1);
+                    }
+                }
+            });
+            ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(save));
+        }
+        ctx.request_repaint_after(Duration::from_millis(100));
+    }
+}
 
 impl eframe::App for Embedded {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
-        self.0.ui(ui, frame);
+        self.app.ui(ui, frame);
+        if let Some(shot) = &mut self.shot {
+            shot.step(ui.ctx());
+        }
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        self.0.save(storage);
+        self.app.save(storage);
     }
 
     fn output_hook(&mut self, ctx: &egui::Context, output: &mut egui::FullOutput) {
-        self.0.after_frame(ctx, output);
+        self.app.after_frame(ctx, output);
     }
 }
 
@@ -48,7 +110,10 @@ fn main() -> eframe::Result {
             if let Some(address) = std::env::var("OGRE_OPEN").ok().filter(|a| !a.is_empty()) {
                 app = app.working_in_built_in_browser().opening(address);
             }
-            Ok(Box::new(Embedded(app)))
+            Ok(Box::new(Embedded {
+                app,
+                shot: Shot::from_env(),
+            }))
         }),
     )
 }

@@ -17,7 +17,21 @@ changes again. Each is marked in the code with a comment that starts "OGRE:".
    `WAYLAND_DISPLAY` is set. On a Wayland display at a fractional scale (1.7, KDE) the page then
    filled only 1/1.7 of its place in each direction. `--ozone-platform=…` on the command line
    still overrides either.
-4. `Cargo.toml` is OGRE's own: the original inherits from its workspace.
+4. The browser's own debugging channel (the DevTools protocol), CEF only:
+   `WebViewInstance::send_devtools_message` and `Backend::send_devtools_message` send one
+   message, and replies and events come back as the new `WebViewEvent::DevTools`
+   (`src/lib.rs`, `src/backend.rs`, `src/instance.rs`, `src/chromium/mod.rs`,
+   `src/chromium/client.rs`). OGRE drives the page through it with the driver it has for
+   Chrome, which gives the built-in browser real clicks and keys, pictures of the page, the
+   page's pop-up questions and frames. The observer is only registered once a first message
+   is sent.
+5. What the page asks, CEF only: `alert`, `confirm`, `prompt` and the browser's "Leave site?"
+   arrive as the new `WebViewEvent::Asks` (with the new `DialogKind`) and are answered with
+   `WebViewInstance::answer_dialog`; `WebViewEvent::AsksNoMore` says a question is over
+   (`src/lib.rs`, `src/backend.rs`, `src/instance.rs`, `src/chromium/mod.rs`,
+   `src/chromium/client.rs`). A windowless browser has no window of its own to ask in. The
+   DevTools channel reports such a question too, but cannot answer it in CEF.
+6. `Cargo.toml` is OGRE's own: the original inherits from its workspace.
 
-Not changed, and missing for OGRE: JavaScript dialogs (`alert`, `confirm`), file pickers and
-drag and drop are not supported by the crate yet.
+Not changed, and missing for OGRE: file pickers and drag and drop are not supported by the
+crate yet.

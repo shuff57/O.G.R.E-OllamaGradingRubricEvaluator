@@ -217,6 +217,22 @@ impl WebViewInstance {
         self.backend.evaluate_script(script)
     }
 
+    /// OGRE: sends one message of the DevTools protocol, as JSON, to the browser's own
+    /// debugging channel. Replies and events come back as [`WebViewEvent::DevTools`].
+    ///
+    /// # Errors
+    /// If the backend has no such channel, which is every backend but CEF, or if the browser
+    /// does not take the message.
+    pub fn send_devtools_message(&mut self, message: &[u8]) -> Result<(), Error> {
+        self.backend.send_devtools_message(message)
+    }
+
+    /// OGRE: answers what the page is asking (see [`WebViewEvent::Asks`]). `text` is the answer
+    /// to a `prompt`. Does nothing if the page is asking nothing.
+    pub fn answer_dialog(&mut self, accept: bool, text: Option<&str>) {
+        self.backend.answer_dialog(accept, text);
+    }
+
     /// Reloads the current page.
     ///
     /// A page given as [`WebViewSource::Html`] is loaded again from that HTML.

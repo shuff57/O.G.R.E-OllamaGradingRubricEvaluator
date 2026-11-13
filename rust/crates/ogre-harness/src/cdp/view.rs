@@ -124,6 +124,26 @@ pub struct TabView {
     size: ViewSize,
 }
 
+/// What a page event says, for the events that are not pictures.
+fn page_event(method: &str, params: &Value) -> Option<ViewEvent> {
+    match method {
+        "Page.javascriptDialogOpening" => Some(ViewEvent::Asks(PageDialog {
+            kind: match params["type"].as_str() {
+                Some("confirm") => DialogKind::Confirm,
+                Some("prompt") => DialogKind::Prompt,
+                Some("beforeunload") => DialogKind::Leave,
+                _ => DialogKind::Alert,
+            },
+            message: params["message"].as_str().unwrap_or_default().to_owned(),
+        })),
+        "Page.javascriptDialogClosed" => Some(ViewEvent::Answered),
+        "Page.frameNavigated" if params["frame"]["parentId"].is_null() => {
+            address(&params["frame"]["url"]).map(ViewEvent::Moved)
+        }
+        _ => None,
+    }
+}
+
 impl CdpPage {
     /// Starts showing this tab at `size`.
     pub async fn view(&self, size: ViewSize) -> Result<TabView> {
@@ -360,24 +380,11 @@ impl TabView {
                         return Some(ViewEvent::Picture(picture));
                     }
                 }
-                "Page.javascriptDialogOpening" => {
-                    return Some(ViewEvent::Asks(PageDialog {
-                        kind: match params["type"].as_str() {
-                            Some("confirm") => DialogKind::Confirm,
-                            Some("prompt") => DialogKind::Prompt,
-                            Some("beforeunload") => DialogKind::Leave,
-                            _ => DialogKind::Alert,
-                        },
-                        message: params["message"].as_str().unwrap_or_default().to_owned(),
-                    }));
-                }
-                "Page.javascriptDialogClosed" => return Some(ViewEvent::Answered),
-                "Page.frameNavigated" if params["frame"]["parentId"].is_null() => {
-                    if let Some(url) = address(&params["frame"]["url"]) {
-                        return Some(ViewEvent::Moved(url));
+                other => {
+                    if let Some(event) = page_event(other, &params) {
+                        return Some(event);
                     }
                 }
-                _ => {}
             }
         }
     }
