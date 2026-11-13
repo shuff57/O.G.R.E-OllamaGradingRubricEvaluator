@@ -27,6 +27,9 @@ pub struct Settings {
     /// Propose a zero for students with no response and no grade. Off
     /// unless the teacher turns it on.
     pub zero_for_no_response: bool,
+    /// AI services that were set up and are not the one in use, each as it
+    /// was left, to switch back to. Their keys are in the keyring.
+    pub other_services: Vec<ProviderSettings>,
 }
 
 impl Default for Settings {
@@ -39,7 +42,43 @@ impl Default for Settings {
             skills: BTreeMap::new(),
             page_inside: false,
             zero_for_no_response: false,
+            other_services: Vec::new(),
         }
+    }
+}
+
+impl Settings {
+    /// Makes `service` the one in use. The one that was in use is kept as it
+    /// was left, and `service` comes back as it was last set up, or blank if
+    /// it never was.
+    pub fn switch_service(&mut self, service: Service) {
+        if service == self.provider.service {
+            return;
+        }
+        let returning = match self
+            .other_services
+            .iter()
+            .position(|other| other.service == service)
+        {
+            Some(at) => self.other_services.remove(at),
+            None => ProviderSettings {
+                service,
+                ..ProviderSettings::default()
+            },
+        };
+        let left = std::mem::replace(&mut self.provider, returning);
+        // A service nothing was entered for is not one to switch back to.
+        if !left.model.trim().is_empty() || !left.base_url.trim().is_empty() {
+            self.other_services.push(left);
+        }
+    }
+
+    /// The services that have a model chosen: the one in use first, if it
+    /// has, then the others in the order they were left.
+    pub fn services_set_up(&self) -> impl Iterator<Item = &ProviderSettings> {
+        std::iter::once(&self.provider)
+            .chain(&self.other_services)
+            .filter(|provider| !provider.model.trim().is_empty())
     }
 }
 
@@ -343,6 +382,11 @@ mod tests {
             skills: BTreeMap::from([("my-skill".to_owned(), false)]),
             page_inside: true,
             zero_for_no_response: true,
+            other_services: vec![ProviderSettings {
+                service: Service::Ollama,
+                base_url: String::new(),
+                model: "gemma4:31b".into(),
+            }],
         };
         let json = serde_json::to_string(&settings).unwrap();
         assert_eq!(serde_json::from_str::<Settings>(&json).unwrap(), settings);
@@ -363,5 +407,35 @@ mod tests {
     fn the_rubric_is_used_as_written_unless_the_teacher_moves_leniency() {
         assert_eq!(Settings::default().leniency, 50);
         assert_eq!(serde_json::from_str::<Settings>("{}").unwrap().leniency, 50);
+    }
+
+    #[test]
+    fn switching_services_keeps_each_as_it_was_left() {
+        let mut settings = Settings::default();
+        settings.provider.model = "gemma4:31b".into();
+        settings.switch_service(Service::OllamaCloud);
+        assert_eq!(settings.provider.service, Service::OllamaCloud);
+        assert_eq!(settings.provider.model, "", "never set up, so blank");
+        settings.provider.model = "gemma4:31b-cloud".into();
+        settings.provider.base_url = "https://ollama.example".into();
+
+        // Back, and each is as it was left.
+        settings.switch_service(Service::Ollama);
+        assert_eq!(settings.provider.model, "gemma4:31b");
+        assert_eq!(settings.other_services.len(), 1);
+        settings.switch_service(Service::OllamaCloud);
+        assert_eq!(settings.provider.model, "gemma4:31b-cloud");
+        assert_eq!(settings.provider.base_url, "https://ollama.example");
+        assert_eq!(settings.other_services.len(), 1);
+        let set_up: Vec<Service> = settings.services_set_up().map(|p| p.service).collect();
+        assert_eq!(set_up, [Service::OllamaCloud, Service::Ollama]);
+
+        // A service looked at and left blank is not kept, and choosing the
+        // one in use changes nothing.
+        settings.switch_service(Service::Gemini);
+        settings.switch_service(Service::Gemini);
+        settings.switch_service(Service::Ollama);
+        let set_up: Vec<Service> = settings.services_set_up().map(|p| p.service).collect();
+        assert_eq!(set_up, [Service::Ollama, Service::OllamaCloud]);
     }
 }

@@ -2552,3 +2552,52 @@ fn grades_show_in_the_table_as_they_arrive_and_can_be_looked_at_meanwhile() {
     harness.get_by_label("Has a suggestion");
     harness.get_by_label("Fill in 1 grade");
 }
+
+#[test]
+fn several_ai_services_stay_set_up_and_the_grade_screen_switches_between_them() {
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    stand_in.events.send(read()).unwrap();
+    frames(&mut harness);
+    // With one service there is nothing to switch to.
+    assert!(harness.query_by_label("Graded by").is_none());
+
+    // A second service is set up in Settings. The first is not lost.
+    harness.get_by_label("Settings").click();
+    frames(&mut harness);
+    choose(&mut harness, "Service", "OpenAI or compatible");
+    assert!(
+        harness.query_all_by_value("gemma4:31b").next().is_none(),
+        "a service that was never set up starts blank"
+    );
+    harness.get_by_label("Model").click();
+    frames(&mut harness);
+    harness.get_by_label("Model").type_text("gpt-test");
+    frames(&mut harness);
+    choose(&mut harness, "Service", "Ollama on this computer");
+    assert!(harness.query_all_by_value("gemma4:31b").next().is_some());
+
+    // Both are offered where grading starts.
+    harness.get_by_label("Grade").click();
+    frames(&mut harness);
+    choose(
+        &mut harness,
+        "Graded by",
+        "OpenAI or compatible \u{b7} gpt-test",
+    );
+    // OpenAI needs a key, which this teacher has not entered.
+    harness.get_by_label("Enter an API key in Settings first.");
+    choose(
+        &mut harness,
+        "Graded by",
+        "Ollama on this computer \u{b7} gemma4:31b",
+    );
+    shot(&mut harness, "35-graded-by");
+    harness.get_by_label("Grade 2 students").click();
+    frames(&mut harness);
+    let Command::Grade(request) = sent(&mut stand_in) else {
+        panic!("expected grading to start");
+    };
+    assert_eq!(request.provider.service, Service::Ollama);
+    assert_eq!(request.provider.model, "gemma4:31b");
+}

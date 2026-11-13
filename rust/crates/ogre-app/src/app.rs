@@ -15,8 +15,8 @@ use crate::kit;
 use crate::profiles::ProfileSummary;
 use crate::session::{Note, Session, Status, Who, count, score_text};
 use crate::settings::{
-    AS_WRITTEN_LENIENCY, DEFAULT_LENIENCY, STORAGE_KEY, Service, Settings, engine_leniency,
-    old_app_provider,
+    AS_WRITTEN_LENIENCY, DEFAULT_LENIENCY, ProviderSettings, STORAGE_KEY, Service, Settings,
+    engine_leniency, old_app_provider,
 };
 use crate::tab_view::ViewInput;
 use crate::theme::{self, icon, pal, ty};
@@ -162,7 +162,8 @@ enum Action {
     Save,
     ListModels,
     CopyFromOldApp,
-    ServiceChanged,
+    /// Use another AI service, as it was last set up.
+    SwitchService(Service),
     KeyChanged,
     Show(Screen),
     ListSkills,
@@ -261,6 +262,8 @@ impl OgreApp {
             return;
         };
         self.models.clear();
+        // Whatever was set up here before stays, to switch back to.
+        self.settings.switch_service(found.provider.service);
         self.settings.provider = found.provider;
         self.api_key = found.api_key.unwrap_or_default();
         let stored = self
@@ -597,11 +600,10 @@ impl OgreApp {
                 self.send(command, "Asking for the model list…");
             }
             Action::CopyFromOldApp => self.copy_from_old_app(),
-            Action::ServiceChanged => {
+            Action::SwitchService(service) => {
                 self.models.clear();
                 self.settings_note = None;
-                self.settings.provider.base_url.clear();
-                self.settings.provider.model.clear();
+                self.settings.switch_service(service);
                 self.api_key = self
                     .keys
                     .load(self.settings.provider.service)
@@ -1044,6 +1046,7 @@ impl OgreApp {
                 self.settings.provider.service.label()
             )));
         }
+        self.graded_by(ui, actions);
 
         if session.rows.iter().any(|row| row.proposal.is_some()) {
             ui.horizontal_wrapped(|ui| {
@@ -1126,6 +1129,41 @@ impl OgreApp {
         for warning in &session.warnings {
             kit::warning(ui, warning);
         }
+    }
+
+    /// Which AI service grades, with a way to another that is set up. Not
+    /// drawn while there is only the one.
+    fn graded_by(&self, ui: &mut egui::Ui, actions: &mut Vec<Action>) {
+        let name = |provider: &ProviderSettings| {
+            format!(
+                "{} \u{b7} {}",
+                provider.service.label(),
+                provider.model.trim()
+            )
+        };
+        let set_up: Vec<&ProviderSettings> = self.settings.services_set_up().collect();
+        if set_up.len() < 2 {
+            return;
+        }
+        ui.horizontal_wrapped(|ui| {
+            let label = ui.label(theme::muted("Graded by"));
+            let mut service = self.settings.provider.service;
+            ui.add_enabled_ui(self.busy.is_none(), |ui| {
+                egui::ComboBox::from_id_salt("graded-by")
+                    .selected_text(theme::body(name(&self.settings.provider)))
+                    .width(280.0)
+                    .show_ui(ui, |ui| {
+                        for provider in &set_up {
+                            ui.selectable_value(&mut service, provider.service, name(provider));
+                        }
+                    })
+                    .response
+                    .labelled_by(label.id);
+            });
+            if service != self.settings.provider.service {
+                actions.push(Action::SwitchService(service));
+            }
+        });
     }
 
     /// The choice of which students a grading run takes.
@@ -1985,23 +2023,19 @@ impl OgreApp {
                         .spacing([14.0, 10.0])
                         .show(ui, |ui| {
                             let label = ui.label(theme::body("Service"));
-                            let before = provider.service;
+                            let mut service = provider.service;
                             egui::ComboBox::from_id_salt("service")
                                 .selected_text(provider.service.label())
                                 .width(300.0)
                                 .show_ui(ui, |ui| {
-                                    for service in Service::ALL {
-                                        ui.selectable_value(
-                                            &mut provider.service,
-                                            service,
-                                            service.label(),
-                                        );
+                                    for choice in Service::ALL {
+                                        ui.selectable_value(&mut service, choice, choice.label());
                                     }
                                 })
                                 .response
                                 .labelled_by(label.id);
-                            if provider.service != before {
-                                actions.push(Action::ServiceChanged);
+                            if service != provider.service {
+                                actions.push(Action::SwitchService(service));
                             }
                             ui.end_row();
 

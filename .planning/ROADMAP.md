@@ -161,7 +161,17 @@ Decisions: desktop only for now (code kept web-compilable), Linux only for now, 
 - A skill written by talking it over with the AI: the Electron app's interview, one question at a time, then the skill as a Markdown block. What the AI writes goes to the editor's form; nothing is saved until the teacher saves it there. Checked against Ollama Cloud `gemma4:31b` with a made-up teacher.
 - A ticked skill is given to the grader as well as to the agent, as in the Electron app: after the teacher's own instructions, each between `--- SKILL: name ---` lines. Guides to a site are not. The rubric card names the skills the grader will be given, and the session record and History keep their names.
 - Scoring examples lead the instructions sent to the grader, so that they calibrate and are not read as instructions (they were joined after the teacher's instructions and then were).
-- 968 tests pass by default; 78 more need Chrome, a local model or the AI service.
+- From the comparison with the Electron app of 2026-11-12 (the teacher chose all twelve gaps it found; nine are built):
+  - Who to grade: students with no grade yet, late work (at zero or blank and answered now), everyone with an answer, or one student.
+  - A zero for no response, as a switch that is off until asked for. Each zero is a proposal in the table, written only with the other grades. The Electron app wrote them unasked.
+  - A consistency suggestion's rewritten feedback is shown before it is taken, and taking it can be undone.
+  - Edited feedback keeps its lists, bold and emphasis. Nothing is escaped into what students read: before, an edit, and every feedback put into a plain text box such as a Canvas comment, turned `x_1` into `x\_1`.
+  - "Reword the rubric now": the leniency rewording goes into the editor to read and change before grading, and is then graded as it stands.
+  - "Run the consistency check again" on the grades in the table, without regrading.
+  - Grades show in the table as each student is finished, and can be changed or held back meanwhile.
+  - Several AI services stay set up, each with its address and model, with a switch on the Grade screen.
+  - Still to build: a rubric library screen, pause and resume across a restart, fixing a site mapping by hand.
+- 989 tests pass by default; 80 more need Chrome, a local model or the AI service.
 
 ## Checked on real MyOpenMath pages (read-only)
 
