@@ -12,6 +12,7 @@ publish = false
 [workspace.dependencies]
 ogre-agent = { path = "crates/ogre-agent" }
 ogre-core = { path = "crates/ogre-core" }
+ogre-examples = { path = "crates/ogre-examples" }
 ogre-grader = { path = "crates/ogre-grader" }
 ogre-harness = { path = "crates/ogre-harness" }
 ogre-llm = { path = "crates/ogre-llm" }

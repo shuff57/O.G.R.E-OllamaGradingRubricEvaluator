@@ -9,15 +9,16 @@ use crate::agent_run::{
     AgentAnswer, AgentLine, AgentQuestion, AgentRequest, AgentSummary, LineKind, SkillSummary,
 };
 use crate::built_in::{BuiltIn, BuiltInBrowser};
+use crate::examples::{ExamplesFor, ExamplesPlace, KeepRequest};
 use crate::grading::Suggestion;
 use crate::history::{self, PastProposal, PastSession, SessionEnd};
-use crate::keys::KeyStore;
+use crate::keys::{EXAMPLES_SERVER_KEY, KeyStore};
 use crate::kit;
 use crate::profiles::ProfileSummary;
 use crate::session::{Note, Session, Status, Who, count, score_text};
 use crate::settings::{
-    AS_WRITTEN_LENIENCY, DEFAULT_LENIENCY, ProviderSettings, STORAGE_KEY, Service, Settings,
-    engine_leniency, old_app_provider,
+    AS_WRITTEN_LENIENCY, DEFAULT_LENIENCY, KeepExamples, ProviderSettings, STORAGE_KEY, Service,
+    Settings, engine_leniency, old_app_provider,
 };
 use crate::tab_view::ViewInput;
 use crate::theme::{self, icon, pal, ty};
@@ -51,6 +52,12 @@ pub struct OgreApp {
     /// Model names the service reported.
     models: Vec<String>,
     settings_note: Option<String>,
+    /// The key of the teacher's examples server. It lives in the keyring.
+    examples_key: String,
+    /// What the last look at the kept examples found, or why it failed.
+    examples_note: Option<Result<String, String>>,
+    /// The teacher asked to delete the examples and has not confirmed yet.
+    examples_deleting: bool,
     chrome_running: bool,
     busy: Option<Busy>,
     address: String,
@@ -228,6 +235,19 @@ enum Action {
     SetLeniency(u8),
     /// Remember whether students with no response are proposed a zero.
     SetZeroBlank(bool),
+    /// Remember the key of the examples server.
+    ExamplesKeyChanged,
+    /// Ask how many examples are kept.
+    CountExamples,
+    /// Delete every example that is kept.
+    DeleteExamples,
+}
+
+/// Seconds since 1970.
+fn now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs())
 }
 
 /// The one step the teacher would take next. Its button is the primary one.
@@ -256,7 +276,11 @@ impl OgreApp {
     ) -> Self {
         theme::setup(ctx, settings.dark);
         let api_key = keys.load(settings.provider.service).unwrap_or_default();
+        let examples_key = keys.load_named(EXAMPLES_SERVER_KEY).unwrap_or_default();
         Self {
+            examples_key,
+            examples_note: None,
+            examples_deleting: false,
             old_app: None,
             worker,
             keys,
@@ -510,9 +534,10 @@ impl OgreApp {
                         self.shelf.pick = Some(name);
                     }
                 }
-                Event::Written(report) => {
+                Event::Written(mut report) => {
                     if let Some(session) = &mut self.session {
                         let written = report.written.len();
+                        let kept = report.kept.take();
                         self.error = session.apply_write(report);
                         if self.error.is_none() {
                             self.notice = Some(if session.saves_on_write {
@@ -525,7 +550,46 @@ impl OgreApp {
                                 )
                             });
                         }
+                        let about_examples = match kept {
+                            Some(Ok(kept)) if kept > 0 => Some(format!(
+                                "{} kept as {} for the next time this question is graded.",
+                                count(kept, "grade"),
+                                if kept == 1 { "an example" } else { "examples" },
+                            )),
+                            Some(Err(problem)) => Some(format!(
+                                "The grades could not be kept as examples: {problem}"
+                            )),
+                            _ => None,
+                        };
+                        if let Some(about) = about_examples {
+                            let said = self.notice.as_mut().or(self.error.as_mut());
+                            if let Some(said) = said {
+                                said.push(' ');
+                                said.push_str(&about);
+                            }
+                        }
                     }
+                }
+                Event::ExamplesCounted(counted) => {
+                    let on_server = self.settings.examples.keep == KeepExamples::Server;
+                    self.examples_note = Some(counted.map(|kept| {
+                        let kept = match kept {
+                            0 => "No examples are".to_owned(),
+                            1 => "1 example is".to_owned(),
+                            n => format!("{n} examples are"),
+                        };
+                        if on_server {
+                            format!("The server answered. {kept} kept there.")
+                        } else {
+                            format!("{kept} kept on this computer.")
+                        }
+                    }));
+                }
+                Event::ExamplesDeleted(deleted) => {
+                    self.examples_note = Some(deleted.map(|deleted| match deleted {
+                        0 => "There were no examples to delete.".to_owned(),
+                        n => format!("Deleted {}.", count(n, "example")),
+                    }));
                 }
                 Event::Saved(page) => {
                     if let Some(session) = &mut self.session {
@@ -766,7 +830,18 @@ impl OgreApp {
             Action::Write => {
                 let Some(session) = &self.session else { return };
                 let writes = session.to_write();
-                self.send(Command::Write(writes), "Writing grades…");
+                let keep = self
+                    .examples_for(session)
+                    .map(|examples_for| KeepRequest {
+                        examples_for,
+                        examples: session.examples_to_keep(now()),
+                    })
+                    .filter(|keep| !keep.examples.is_empty());
+                let command = match keep {
+                    Some(keep) => Command::WriteAndKeep(writes, Box::new(keep)),
+                    None => Command::Write(writes),
+                };
+                self.send(command, "Writing grades…");
             }
             Action::Save => self.send(Command::Save, "Saving on the site…"),
             Action::ListModels => {
@@ -898,6 +973,29 @@ impl OgreApp {
             }
             Action::SetLeniency(leniency) => self.settings.leniency = leniency,
             Action::SetZeroBlank(on) => self.settings.zero_for_no_response = on,
+            Action::ExamplesKeyChanged => {
+                let stored = self
+                    .keys
+                    .store_named(EXAMPLES_SERVER_KEY, self.examples_key.trim());
+                self.examples_note = stored.err().map(|problem| {
+                    Err(format!(
+                        "The key will be used now but could not be remembered: {problem}"
+                    ))
+                });
+            }
+            Action::CountExamples => {
+                if let Some(place) = self.examples_place() {
+                    self.examples_note = None;
+                    self.send(Command::CountExamples(place), "Looking at your examples…");
+                }
+            }
+            Action::DeleteExamples => {
+                self.examples_deleting = false;
+                if let Some(place) = self.examples_place() {
+                    self.examples_note = None;
+                    self.send(Command::DeleteExamples(place), "Deleting your examples…");
+                }
+            }
             Action::AnswerPage(accept) => {
                 match self.built_in.as_mut().filter(|page| page.asking.is_some()) {
                     Some(page) => page.answer(accept),
@@ -988,8 +1086,34 @@ impl OgreApp {
             score_from_verdicts: self.settings.score_from_verdicts,
             examples: session.examples_for_grading(),
             skill_choices: self.settings.skills.clone(),
+            earlier: self.examples_for(session),
             cancel: CancelFlag::new(),
         }
+    }
+
+    /// Where approved grades are kept as examples, if the teacher has them
+    /// kept.
+    fn examples_place(&self) -> Option<ExamplesPlace> {
+        match self.settings.examples.keep {
+            KeepExamples::No => None,
+            KeepExamples::ThisComputer => Some(ExamplesPlace::ThisComputer),
+            KeepExamples::Server => {
+                let key = self.examples_key.trim();
+                Some(ExamplesPlace::Server {
+                    address: self.settings.examples.server.trim().to_owned(),
+                    key: (!key.is_empty()).then(|| key.to_owned()),
+                })
+            }
+        }
+    }
+
+    /// Where the examples for the session's question are, if examples are
+    /// kept and the page says enough to tell the question from others.
+    fn examples_for(&self, session: &Session) -> Option<ExamplesFor> {
+        Some(ExamplesFor {
+            place: self.examples_place()?,
+            rubric: session.examples_id()?,
+        })
     }
 
     /// Why the AI service cannot be asked anything yet, if it cannot.
@@ -1398,6 +1522,17 @@ impl OgreApp {
         }
         for warning in &session.warnings {
             kit::warning(ui, warning);
+        }
+        if session.earlier_shown > 0 {
+            ui.label(theme::muted(format!(
+                "The grader was shown {} of your earlier {} for this question.",
+                session.earlier_shown,
+                if session.earlier_shown == 1 {
+                    "grade"
+                } else {
+                    "grades"
+                },
+            )));
         }
     }
 
@@ -2310,6 +2445,114 @@ impl OgreApp {
             });
     }
 
+    /// Whether approved grades are kept as examples, and where.
+    fn examples_card(&mut self, ui: &mut egui::Ui, actions: &mut Vec<Action>) {
+        let idle = self.busy.is_none();
+        kit::card().show(ui, |ui| {
+            ui.set_width(560.0);
+            kit::panel_title(ui, "Your earlier grades");
+            ui.add_space(4.0);
+            ui.label(theme::muted(
+                "OGRE can keep the grades you approve and show the grader a few of them \
+                 the next time the same question is graded, so that it scores the way you \
+                 did. What is kept is a score and its feedback, with the student\u{2019}s \
+                 name taken out. No answer is kept, though feedback can quote from one.",
+            ));
+            ui.add_space(2.0);
+            let examples = &mut self.settings.examples;
+            let before = examples.keep;
+            ui.radio_value(
+                &mut examples.keep,
+                KeepExamples::No,
+                "Don\u{2019}t keep them",
+            );
+            ui.radio_value(
+                &mut examples.keep,
+                KeepExamples::ThisComputer,
+                "Keep them on this computer",
+            );
+            ui.radio_value(
+                &mut examples.keep,
+                KeepExamples::Server,
+                "Keep them on a server of mine",
+            );
+            if examples.keep != before {
+                // What was said was about the other place.
+                self.examples_note = None;
+                self.examples_deleting = false;
+            }
+            let keep = examples.keep;
+            if keep == KeepExamples::Server {
+                ui.add_space(4.0);
+                egui::Grid::new("examples server")
+                    .num_columns(2)
+                    .spacing([14.0, 10.0])
+                    .show(ui, |ui| {
+                        let label = ui.label(theme::body("Server address"));
+                        ui.add(
+                            egui::TextEdit::singleline(&mut examples.server)
+                                .hint_text("https://")
+                                .desired_width(300.0),
+                        )
+                        .labelled_by(label.id);
+                        ui.end_row();
+
+                        let label = ui.label(theme::body("Server key"));
+                        let key = ui
+                            .add(
+                                egui::TextEdit::singleline(&mut self.examples_key)
+                                    .password(true)
+                                    .desired_width(300.0),
+                            )
+                            .labelled_by(label.id);
+                        if key.lost_focus() {
+                            actions.push(Action::ExamplesKeyChanged);
+                        }
+                        ui.end_row();
+                    });
+                ui.label(theme::muted(
+                    "The scores and feedback are sent to that server, which runs the \
+                     ogre-examples-server program. With the same address and key on \
+                     another computer, OGRE there grades from the same examples.",
+                ));
+            }
+            if keep != KeepExamples::No {
+                ui.add_space(6.0);
+                if self.examples_deleting {
+                    let question = if keep == KeepExamples::Server {
+                        "Delete every example on the server? This cannot be undone."
+                    } else {
+                        "Delete every example on this computer? This cannot be undone."
+                    };
+                    match kit::confirm(ui, question, "Delete them", idle, Some("Keep them")) {
+                        Some(true) => actions.push(Action::DeleteExamples),
+                        Some(false) => self.examples_deleting = false,
+                        None => {}
+                    }
+                } else {
+                    ui.horizontal_wrapped(|ui| {
+                        let check = if keep == KeepExamples::Server {
+                            "Check the server"
+                        } else {
+                            "Count them"
+                        };
+                        if kit::ghost(ui, check, idle).clicked() {
+                            actions.push(Action::CountExamples);
+                        }
+                        if kit::ghost(ui, "Delete all examples", idle).clicked() {
+                            self.examples_deleting = true;
+                        }
+                    });
+                }
+            }
+            match &self.examples_note {
+                Some(Ok(note)) => kit::icon_line(ui, icon::CHECK, note, pal().accent),
+                Some(Err(problem)) => kit::icon_line(ui, icon::WARNING, problem, pal().danger),
+                None => {}
+            }
+        });
+    }
+
     fn settings_screen(&mut self, ui: &mut egui::Ui, actions: &mut Vec<Action>) {
         let idle = self.busy.is_none();
         egui::CentralPanel::default()
@@ -2319,168 +2562,181 @@ impl OgreApp {
                     ui,
                     "OGRE  /  Settings",
                     "Settings",
-                    Some("Which AI grades, how it is reached, and how scores are worked out."),
+                    Some(
+                        "Which AI grades, how it is reached, how scores are worked out, and \
+                         what is kept.",
+                    ),
                 );
-                kit::card().show(ui, |ui| {
-                    ui.set_max_width(560.0);
-                    kit::panel_title(ui, "AI service");
-                    ui.add_space(4.0);
-                    let copy_offered = self.old_app.is_some();
-                    let provider = &mut self.settings.provider;
-                    egui::Grid::new("provider")
-                        .num_columns(2)
-                        .spacing([14.0, 10.0])
-                        .show(ui, |ui| {
-                            let label = ui.label(theme::body("Service"));
-                            let mut service = provider.service;
-                            egui::ComboBox::from_id_salt("service")
-                                .selected_text(provider.service.label())
-                                .width(300.0)
-                                .show_ui(ui, |ui| {
-                                    for choice in Service::ALL {
-                                        ui.selectable_value(&mut service, choice, choice.label());
-                                    }
-                                })
-                                .response
-                                .labelled_by(label.id);
-                            if service != provider.service {
-                                actions.push(Action::SwitchService(service));
-                            }
-                            ui.end_row();
-
-                            let label = ui.label(theme::body("Address"));
-                            ui.add(
-                                egui::TextEdit::singleline(&mut provider.base_url)
-                                    .hint_text(provider.service.kind().default_base_url())
-                                    .desired_width(300.0),
-                            )
-                            .labelled_by(label.id);
-                            ui.end_row();
-
-                            if provider.service.needs_key() {
-                                let label = ui.label(theme::body("API key"));
-                                let key = ui
-                                    .add(
-                                        egui::TextEdit::singleline(&mut self.api_key)
-                                            .password(true)
-                                            .desired_width(300.0),
-                                    )
-                                    .labelled_by(label.id);
-                                if key.lost_focus() {
-                                    actions.push(Action::KeyChanged);
-                                }
-                                ui.end_row();
-                            }
-
-                            let label = ui.label(theme::body("Model"));
-                            ui.horizontal(|ui| {
-                                ui.add(
-                                    egui::TextEdit::singleline(&mut provider.model)
-                                        .hint_text("Model name")
-                                        .desired_width(190.0),
-                                )
-                                .labelled_by(label.id);
-                                if !self.models.is_empty() {
-                                    egui::ComboBox::from_id_salt("models")
-                                        .selected_text("Choose")
+                egui::ScrollArea::vertical()
+                    .auto_shrink(false)
+                    .show(ui, |ui| {
+                        kit::card().show(ui, |ui| {
+                            ui.set_width(560.0);
+                            kit::panel_title(ui, "AI service");
+                            ui.add_space(4.0);
+                            let copy_offered = self.old_app.is_some();
+                            let provider = &mut self.settings.provider;
+                            egui::Grid::new("provider")
+                                .num_columns(2)
+                                .spacing([14.0, 10.0])
+                                .show(ui, |ui| {
+                                    let label = ui.label(theme::body("Service"));
+                                    let mut service = provider.service;
+                                    egui::ComboBox::from_id_salt("service")
+                                        .selected_text(provider.service.label())
+                                        .width(300.0)
                                         .show_ui(ui, |ui| {
-                                            for model in &self.models {
+                                            for choice in Service::ALL {
                                                 ui.selectable_value(
-                                                    &mut provider.model,
-                                                    model.clone(),
-                                                    model,
+                                                    &mut service,
+                                                    choice,
+                                                    choice.label(),
                                                 );
                                             }
                                         })
                                         .response
                                         .labelled_by(label.id);
+                                    if service != provider.service {
+                                        actions.push(Action::SwitchService(service));
+                                    }
+                                    ui.end_row();
+
+                                    let label = ui.label(theme::body("Address"));
+                                    ui.add(
+                                        egui::TextEdit::singleline(&mut provider.base_url)
+                                            .hint_text(provider.service.kind().default_base_url())
+                                            .desired_width(300.0),
+                                    )
+                                    .labelled_by(label.id);
+                                    ui.end_row();
+
+                                    if provider.service.needs_key() {
+                                        let label = ui.label(theme::body("API key"));
+                                        let key = ui
+                                            .add(
+                                                egui::TextEdit::singleline(&mut self.api_key)
+                                                    .password(true)
+                                                    .desired_width(300.0),
+                                            )
+                                            .labelled_by(label.id);
+                                        if key.lost_focus() {
+                                            actions.push(Action::KeyChanged);
+                                        }
+                                        ui.end_row();
+                                    }
+
+                                    let label = ui.label(theme::body("Model"));
+                                    ui.horizontal(|ui| {
+                                        ui.add(
+                                            egui::TextEdit::singleline(&mut provider.model)
+                                                .hint_text("Model name")
+                                                .desired_width(190.0),
+                                        )
+                                        .labelled_by(label.id);
+                                        if !self.models.is_empty() {
+                                            egui::ComboBox::from_id_salt("models")
+                                                .selected_text("Choose")
+                                                .show_ui(ui, |ui| {
+                                                    for model in &self.models {
+                                                        ui.selectable_value(
+                                                            &mut provider.model,
+                                                            model.clone(),
+                                                            model,
+                                                        );
+                                                    }
+                                                })
+                                                .response
+                                                .labelled_by(label.id);
+                                        }
+                                    });
+                                    ui.end_row();
+                                });
+                            ui.add_space(6.0);
+                            ui.horizontal_wrapped(|ui| {
+                                if kit::ghost(ui, "List models", idle).clicked() {
+                                    actions.push(Action::ListModels);
+                                }
+                                if copy_offered
+                                    && kit::ghost(ui, "Copy from the old OGRE app", idle).clicked()
+                                {
+                                    actions.push(Action::CopyFromOldApp);
                                 }
                             });
-                            ui.end_row();
+                            let where_it_runs = if provider.service.is_remote() {
+                                "Student names and answers are sent to this service for grading."
+                            } else {
+                                "Grading runs on this computer. Nothing is sent anywhere else."
+                            };
+                            ui.label(theme::muted(where_it_runs));
+                            if let Some(note) = &self.settings_note {
+                                kit::warning(ui, note);
+                            }
+                            self.messages(ui, actions);
                         });
-                    ui.add_space(6.0);
-                    ui.horizontal_wrapped(|ui| {
-                        if kit::ghost(ui, "List models", idle).clicked() {
-                            actions.push(Action::ListModels);
-                        }
-                        if copy_offered
-                            && kit::ghost(ui, "Copy from the old OGRE app", idle).clicked()
-                        {
-                            actions.push(Action::CopyFromOldApp);
-                        }
-                    });
-                    let where_it_runs = if provider.service.is_remote() {
-                        "Student names and answers are sent to this service for grading."
-                    } else {
-                        "Grading runs on this computer. Nothing is sent anywhere else."
-                    };
-                    ui.label(theme::muted(where_it_runs));
-                    if let Some(note) = &self.settings_note {
-                        kit::warning(ui, note);
-                    }
-                    self.messages(ui, actions);
-                });
-                ui.add_space(4.0);
-                kit::card().show(ui, |ui| {
-                    ui.set_max_width(560.0);
-                    kit::panel_title(ui, "Where the page is shown");
-                    ui.add_space(4.0);
-                    if self.built_in.is_some() {
-                        // This build has a browser of its own: three ways.
-                        let settings = &mut self.settings;
-                        let mut way = match (settings.built_in_browser, settings.page_inside) {
-                            (true, _) => 2,
-                            (false, true) => 1,
-                            (false, false) => 0,
-                        };
-                        ui.radio_value(&mut way, 0, "In Chrome\u{2019}s own window");
-                        ui.radio_value(&mut way, 1, "As a picture of Chrome, inside OGRE");
-                        ui.radio_value(
-                            &mut way,
-                            2,
-                            "In the browser built into OGRE (an experiment)",
-                        );
-                        settings.built_in_browser = way == 2;
-                        settings.page_inside = way == 1;
-                        ui.label(theme::muted(
-                            "The built-in browser is a real one inside this window, with a \
-                             sign-in of its own, apart from Chrome\u{2019}s. The agent and \
-                             reading a rubric from a picture of the page do not work with it \
-                             yet. A choice takes effect the next time the browser is started.",
-                        ));
-                    } else {
-                        ui.checkbox(
-                            &mut self.settings.page_inside,
-                            "Show the page inside OGRE (an experiment)",
-                        );
-                        ui.label(theme::muted(
-                            "Chrome then runs without a window of its own and its page is \
+                        ui.add_space(4.0);
+                        kit::card().show(ui, |ui| {
+                            ui.set_width(560.0);
+                            kit::panel_title(ui, "Where the page is shown");
+                            ui.add_space(4.0);
+                            if self.built_in.is_some() {
+                                // This build has a browser of its own: three ways.
+                                let settings = &mut self.settings;
+                                let mut way =
+                                    match (settings.built_in_browser, settings.page_inside) {
+                                        (true, _) => 2,
+                                        (false, true) => 1,
+                                        (false, false) => 0,
+                                    };
+                                ui.radio_value(&mut way, 0, "In Chrome\u{2019}s own window");
+                                ui.radio_value(&mut way, 1, "As a picture of Chrome, inside OGRE");
+                                ui.radio_value(
+                                    &mut way,
+                                    2,
+                                    "In the browser built into OGRE (an experiment)",
+                                );
+                                settings.built_in_browser = way == 2;
+                                settings.page_inside = way == 1;
+                                ui.label(theme::muted(
+                                    "The built-in browser is a real one inside this window, with a \
+                             sign-in of its own, apart from Chrome\u{2019}s. A choice takes \
+                             effect the next time the browser is started.",
+                                ));
+                            } else {
+                                ui.checkbox(
+                                    &mut self.settings.page_inside,
+                                    "Show the page inside OGRE (an experiment)",
+                                );
+                                ui.label(theme::muted(
+                                    "Chrome then runs without a window of its own and its page is \
                              drawn on a Browser screen here. It answers a click or a key a \
                              little late, and it cannot show a file picker or \
                              Chrome\u{2019}s own pop-ups. Takes effect the next time Chrome is \
                              started.",
-                        ));
-                    }
-                });
-                ui.add_space(4.0);
-                kit::card().show(ui, |ui| {
-                    ui.set_max_width(560.0);
-                    kit::panel_title(ui, "Scores");
-                    ui.add_space(4.0);
-                    ui.checkbox(
-                        &mut self.settings.score_from_verdicts,
-                        "Work out each score from the feedback",
-                    );
-                    ui.label(theme::muted(if self.settings.score_from_verdicts {
-                        "Each requirement is an equal share of its category: marked Correct \
+                                ));
+                            }
+                        });
+                        ui.add_space(4.0);
+                        kit::card().show(ui, |ui| {
+                            ui.set_width(560.0);
+                            kit::panel_title(ui, "Scores");
+                            ui.add_space(4.0);
+                            ui.checkbox(
+                                &mut self.settings.score_from_verdicts,
+                                "Work out each score from the feedback",
+                            );
+                            ui.label(theme::muted(if self.settings.score_from_verdicts {
+                            "Each requirement is an equal share of its category: marked Correct \
                          it earns the share, Incomplete half, anything else none. The same \
                          feedback always gives the same score. The consistency check is not run."
-                    } else {
-                        "Each score is the AI\u{2019}s own judgment out of 10, scaled to the \
+                        } else {
+                            "Each score is the AI\u{2019}s own judgment out of 10, scaled to the \
                          question. Turn this on to have the score follow from what the \
                          feedback says about each requirement instead."
-                    }));
-                });
+                        }));
+                        });
+                        ui.add_space(4.0);
+                        self.examples_card(ui, actions);
+                    });
             });
     }
 }

@@ -11,6 +11,7 @@ use ogre_core::{
     rubric_from_edited_text, skip_reason, unread_rubric_lines, with_category_weight,
     with_equal_category_weights, with_requirements, without_category_weights,
 };
+use ogre_examples::{GradedExample, rubric_id, without_name};
 use ogre_harness::feedback;
 
 use crate::grading::{Grade, GradeReport, GradedRow, Suggestion};
@@ -57,6 +58,9 @@ pub struct Session {
     /// Students with no response and no grade are proposed a zero.
     zero_blank: bool,
     pub warnings: Vec<String>,
+    /// How many of the teacher's earlier grades for this question the last
+    /// grading run showed the grader.
+    pub earlier_shown: usize,
     /// The last grading run was stopped before every student was graded.
     stopped_short: bool,
     /// Grades an earlier run proposed for students still ungraded on the
@@ -152,6 +156,9 @@ pub struct Row {
 /// A score and feedback waiting for the teacher's decision.
 pub struct Proposal {
     pub score: f64,
+    /// The score as the AI gave it, to tell whether the teacher changed it.
+    /// `None` for a score the AI had no part in.
+    ai_score: Option<f64>,
     /// Feedback as the AI wrote it.
     original_html: String,
     /// Feedback as text the teacher may edit: paragraphs, `- ` lists,
@@ -175,6 +182,7 @@ pub struct Proposal {
 /// suggestion.
 struct BeforeSuggestion {
     score: f64,
+    ai_score: Option<f64>,
     /// The feedback that the suggestion's replaced, where it replaced any.
     feedback: Option<(String, String)>,
     suggestion: Suggestion,
@@ -184,6 +192,7 @@ impl Proposal {
     fn new(grade: Grade) -> Self {
         Self {
             score: grade.score,
+            ai_score: Some(grade.score),
             text: feedback::editable_text(&grade.feedback_html),
             original_html: grade.feedback_html,
             edited: false,
@@ -202,6 +211,7 @@ impl Proposal {
     fn zero_for_no_response() -> Self {
         Self {
             score: 0.0,
+            ai_score: None,
             original_html: String::new(),
             text: String::new(),
             edited: false,
@@ -222,10 +232,13 @@ impl Proposal {
         };
         let mut before = BeforeSuggestion {
             score: self.score,
+            ai_score: self.ai_score,
             feedback: None,
             suggestion: suggestion.clone(),
         };
         self.score = suggestion.score;
+        // The suggestion is the AI's too: taking it is not changing a score.
+        self.ai_score = Some(suggestion.score);
         if let Some(html) = suggestion.feedback_html.filter(|_| !self.edited) {
             let text = std::mem::replace(&mut self.text, feedback::editable_text(&html));
             let original = std::mem::replace(&mut self.original_html, html);
@@ -247,6 +260,7 @@ impl Proposal {
             return;
         };
         self.score = before.score;
+        self.ai_score = before.ai_score;
         if let Some((html, text)) = before.feedback.filter(|_| !self.edited) {
             self.original_html = html;
             self.text = text;
@@ -271,6 +285,11 @@ impl Proposal {
     /// Call after the teacher changes [`Self::text`].
     pub fn mark_edited(&mut self) {
         self.edited = true;
+    }
+
+    /// True when the score is not the one the AI gave.
+    pub fn score_changed(&self) -> bool {
+        self.ai_score.is_some_and(|ai| ai != self.score)
     }
 
     /// The feedback to write: the AI's own until the teacher edits the
@@ -373,6 +392,7 @@ impl Session {
             who: Who::default(),
             zero_blank: false,
             warnings: Vec::new(),
+            earlier_shown: 0,
             stopped_short: false,
             unfinished: read.unfinished,
             unsaved: false,
@@ -918,6 +938,48 @@ impl Session {
             .collect()
     }
 
+    /// The name this question's examples are kept under. `None` where the
+    /// page gives too little to tell the question from any other.
+    pub fn examples_id(&self) -> Option<String> {
+        rubric_id(
+            self.question_text().unwrap_or_default(),
+            &self.rubric_text,
+            self.rubric.max_score_value(),
+        )
+    }
+
+    /// The grades [`Self::to_write`] would write, as examples to keep: a
+    /// score and its feedback, with the student's name taken out of it, by
+    /// the student's place on the page. A zero for no response is no example.
+    pub fn examples_to_keep(&self, now: u64) -> Vec<(usize, GradedExample)> {
+        let max_score = self.rubric.max_score_value();
+        self.page
+            .submissions
+            .iter()
+            .zip(&self.rows)
+            .filter(|(_, row)| row.note.is_none())
+            .filter_map(|(submission, row)| {
+                let proposal = row
+                    .proposal
+                    .as_ref()
+                    .filter(|p| p.accepted && !p.for_no_response)?;
+                let write = self.plan(submission, proposal).ok()?;
+                let example = GradedExample {
+                    score: proposal.score,
+                    max_score,
+                    feedback: without_name(
+                        &feedback::plain_text(&proposal.html()),
+                        &submission.name,
+                    ),
+                    changed: proposal.score_changed(),
+                    at: now,
+                }
+                .tidy()?;
+                Some((write.index, example))
+            })
+            .collect()
+    }
+
     /// Takes one student's grade as it arrives, while the rest of the class
     /// is still being graded. Why a student was not graded waits for the
     /// end of the run, which may yet ask about them again.
@@ -936,6 +998,7 @@ impl Session {
 
     pub fn apply_grades(&mut self, report: GradeReport) {
         self.warnings = report.warnings;
+        self.earlier_shown = report.earlier;
         self.stopped_short = report.cancelled;
         // Whatever an earlier run left is behind this one now.
         self.unfinished = None;
@@ -1874,6 +1937,7 @@ mod tests {
             failed: vec![(3, "the score changed on the page".into())],
             mismatches: vec![],
             page: Some(after_write),
+            kept: None,
         });
         assert_eq!(
             message.as_deref(),
@@ -1902,6 +1966,7 @@ mod tests {
             failed: vec![],
             mismatches: vec![],
             page: Some(after_write),
+            kept: None,
         });
         assert_eq!(message, None);
         assert!(!s.unsaved);
@@ -1921,6 +1986,7 @@ mod tests {
                     problem: "score should be 7 but the page shows 2".into(),
                 }],
                 page: None,
+                kept: None,
             })
             .unwrap();
         assert!(
@@ -1940,6 +2006,7 @@ mod tests {
             rows: vec![graded(1, 7.0, "<p>a</p>")],
             warnings: vec!["Chunk 2 was not graded.".into()],
             cancelled: true,
+            earlier: 0,
         });
         assert_eq!(s.warnings[0], "Grading was stopped before it finished.");
         assert_eq!(s.warnings.len(), 2);
@@ -1964,6 +2031,7 @@ mod tests {
             ],
             warnings: Vec::new(),
             cancelled: true,
+            earlier: 0,
         });
         // Remy was not reached; Kai's grade stands and is not asked for again.
         assert_eq!(s.rest_count(), 1);
@@ -2021,6 +2089,88 @@ mod tests {
         let mut s = with(kept());
         s.apply_grades(report(vec![graded(1, 5.0, "<p>New.</p>")]));
         assert_eq!(s.unfinished(), None);
+    }
+
+    #[test]
+    fn approved_grades_become_examples_without_the_students_name() {
+        let mut s = session();
+        s.apply_grades(report(vec![
+            graded(
+                1,
+                6.0,
+                "<p>Kai, name the <strong>standard error</strong>.</p>",
+            ),
+            graded(3, 8.0, "<p>Clear and correct, Remy Diaz.</p>"),
+        ]));
+        // The teacher gives Kai a point more than the AI did.
+        s.rows[1].proposal.as_mut().unwrap().score = 7.0;
+
+        let kept = s.examples_to_keep(1_700_000_000);
+        assert_eq!(kept.len(), 2);
+        let (at, kai) = &kept[0];
+        assert_eq!(*at, 1);
+        assert_eq!(
+            (kai.score, kai.max_score, kai.changed, kai.at),
+            (7.0, 10.0, true, 1_700_000_000)
+        );
+        assert_eq!(kai.feedback, "[STUDENT], name the standard error.");
+        let (at, remy) = &kept[1];
+        assert_eq!(*at, 3);
+        assert!(!remy.changed, "the AI's own score stood");
+        assert_eq!(remy.feedback, "Clear and correct, [STUDENT] [STUDENT].");
+    }
+
+    #[test]
+    fn only_grades_that_would_be_written_are_examples() {
+        let mut s = session();
+        s.set_zero_blank(true);
+        s.apply_grades(report(vec![
+            graded(1, 6.0, "<p>Good.</p>"),
+            graded(3, 8.0, "<p>Better.</p>"),
+        ]));
+        // Jo gave no response: the zero is written, and teaches nothing.
+        assert_eq!(s.to_write().len(), 3);
+        assert_eq!(s.examples_to_keep(1).len(), 2);
+
+        // A grade the teacher holds back is not written and not kept.
+        s.rows[3].proposal.as_mut().unwrap().accepted = false;
+        let kept: Vec<usize> = s
+            .examples_to_keep(1)
+            .into_iter()
+            .map(|(at, _)| at)
+            .collect();
+        assert_eq!(kept, [1]);
+    }
+
+    #[test]
+    fn taking_the_consistency_checks_score_is_not_changing_the_ais() {
+        let mut s = session();
+        s.apply_grades(report(vec![suggested(1, 6.0, 8.0, None)]));
+        let proposal = s.rows[1].proposal.as_mut().unwrap();
+        assert!(!proposal.score_changed());
+        proposal.use_suggestion();
+        assert!(!proposal.score_changed(), "the suggestion is the AI's too");
+        proposal.score = 9.0;
+        assert!(proposal.score_changed());
+        proposal.undo_suggestion();
+        assert!(!proposal.score_changed(), "back at the first proposal");
+    }
+
+    #[test]
+    fn examples_go_by_the_question_and_not_by_the_rubrics_wording() {
+        let mut s = session();
+        assert_eq!(
+            s.examples_id(),
+            None,
+            "a page with no question and no rubric cannot be told from another"
+        );
+        s.rubric.essay_prompt = Some("Explain the standard error.".into());
+        let id = s.examples_id().expect("the question names it");
+        s.rubric_text = "## Concept\nNames the standard error".into();
+        s.rubric_text_changed();
+        assert_eq!(s.examples_id().as_ref(), Some(&id));
+        s.rubric.essay_prompt = Some("Explain the margin of error.".into());
+        assert_ne!(s.examples_id(), Some(id));
     }
 
     #[test]

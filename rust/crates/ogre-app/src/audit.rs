@@ -64,6 +64,7 @@ impl AuditLog {
             "rubric": report.rubric_text,
             "examples": report.examples,
             "skills": report.skills,
+            "earlier_examples": report.earlier,
             "cancelled": report.cancelled,
             "warnings": report.warnings,
             "results": report.rows.iter().map(|row| match &row.outcome {

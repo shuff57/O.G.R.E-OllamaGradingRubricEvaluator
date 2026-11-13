@@ -5,6 +5,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use ogre_agent::{Skill, build_skill_injection};
 use ogre_core::{ExtractedRubric, Rubric, StudentResult, imported_rubric_text};
+use ogre_examples::{Chosen, GradedExample, choose};
 use ogre_grader::{
     BatchOutcome, CancelFlag, GradeEvent, GradeOptions, GradeStatus, GraderError,
     MIN_SWEEP_STUDENTS, PreparedRubric, ScoreSource, StudentOutcome, draft_rubric as draft,
@@ -13,6 +14,7 @@ use ogre_grader::{
 };
 use ogre_llm::{HttpProvider, Image};
 
+use crate::examples;
 use crate::settings::ProviderSettings;
 use crate::worker::{ExamplesRequest, GradeRequest, OutsideRubric};
 
@@ -111,6 +113,9 @@ pub struct GradeReport {
     pub examples: Option<String>,
     /// The teacher's skills the grader was given, by name.
     pub skills: Vec<String>,
+    /// How many of the teacher's earlier grades for this question the
+    /// grader was shown.
+    pub earlier: usize,
     pub rows: Vec<GradedRow>,
     pub warnings: Vec<String>,
     pub cancelled: bool,
@@ -149,8 +154,13 @@ pub struct Suggestion {
 /// finished, with how many are and that student's grade as it then stands:
 /// the consistency check, which comes last, has not looked at it yet. Never fails as a whole: a run that could not
 /// start reports every student as not graded, with the reason.
+///
+/// `earlier` is the teacher's earlier grades for this question, or why they
+/// could not be fetched; `None` when none are kept. A few are shown to the
+/// grader. Without them the run goes on as it would have.
 pub async fn grade(
     request: GradeRequest,
+    earlier: Option<Result<Vec<GradedExample>, String>>,
     skills: &[Skill],
     cancel: &CancelFlag,
     cache: &mut PreparedCache,
@@ -161,6 +171,7 @@ pub async fn grade(
         rubric_text: None,
         examples: None,
         skills: Vec::new(),
+        earlier: 0,
         rows: indices
             .iter()
             .map(|&index| GradedRow {
@@ -185,7 +196,12 @@ pub async fn grade(
             progress(done, graded_row(student));
         }
     };
-    let ready = Ready::make(&provider, &request, skills, cache).await;
+    let (chosen, earlier_problem) = match earlier {
+        Some(Ok(kept)) => (Some(choose(&kept)), None),
+        Some(Err(problem)) => (None, Some(problem)),
+        None => (None, None),
+    };
+    let ready = Ready::make(&provider, &request, skills, cache, chosen.as_ref()).await;
     let outcome = grade_batch(
         &provider,
         &ready.rubric,
@@ -201,6 +217,16 @@ pub async fn grade(
             report.rubric_text = Some(ready.text);
             report.examples = ready.examples;
             report.skills = skills.iter().map(|skill| skill.name.clone()).collect();
+            report.earlier = chosen.as_ref().map_or(0, Chosen::shown);
+            if let Some(problem) = earlier_problem {
+                report.warnings.insert(
+                    0,
+                    format!(
+                        "Your earlier grades for this question could not be fetched, so \
+                         the grader was not shown them: {problem}"
+                    ),
+                );
+            }
             if let Some(problem) = ready.rewrite_problem {
                 report.warnings.insert(
                     0,
@@ -235,6 +261,7 @@ impl Ready {
         request: &GradeRequest,
         skills: &[Skill],
         cache: &mut PreparedCache,
+        earlier: Option<&Chosen>,
     ) -> Self {
         let prepared = cache
             .prepare(
@@ -266,6 +293,7 @@ impl Ready {
                 },
                 // Weights the rubric text names are meant to count.
                 weights_by_name: prepared.weights_given,
+                calibration_examples: earlier.and_then(examples::for_grader),
                 ..GradeOptions::default()
             },
             text: prepared.text,
@@ -294,7 +322,7 @@ pub async fn sweep(
         ));
     }
     let provider = provider(&request.provider, request.api_key.as_deref())?;
-    let ready = Ready::make(&provider, &request, skills, cache).await;
+    let ready = Ready::make(&provider, &request, skills, cache, None).await;
     let mut ignore = |_: GradeEvent| {};
     let report = sweep_grades(
         &provider,
@@ -386,6 +414,7 @@ fn report(outcome: BatchOutcome) -> GradeReport {
         rubric_text: None,
         examples: None,
         skills: Vec::new(),
+        earlier: 0,
         rows,
         warnings: outcome.warnings,
         cancelled: outcome.cancelled,

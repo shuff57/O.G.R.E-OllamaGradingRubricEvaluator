@@ -6,89 +6,22 @@
 
 mod common;
 
-use std::io::{BufRead, BufReader, Read, Write};
-use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use common::{fixture, saved_page_sites};
+use common::{ask, fake_ollama, fixture, saved_page_sites};
 use ogre_app::{
-    AgentAnswer, AgentRequest, Command, Event, GradeRequest, LineKind, ProviderSettings, Service,
-    Worker,
+    AgentAnswer, AgentRequest, Command, Event, ExamplesFor, ExamplesPlace, GradeRequest,
+    KeepRequest, LineKind, ProviderSettings, Service, Worker,
 };
 use ogre_core::{StudentWork, WritePolicy, plan_write};
+use ogre_examples::{FolderStore, GradedExample, rubric_id};
 use ogre_grader::CancelFlag;
 use ogre_harness::cdp::LaunchOptions;
 use ogre_harness::sites::Sites;
 use serde_json::{Value, json};
-
-/// Sends one command and waits for the event that ends it. Progress events
-/// seen on the way are returned too.
-fn ask(worker: &Worker, woken: &mpsc::Receiver<()>, command: Command) -> (Event, Vec<Event>) {
-    worker.send(command);
-    let deadline = Instant::now() + Duration::from_secs(60);
-    let mut progress = Vec::new();
-    loop {
-        for event in worker.poll() {
-            if event.is_progress() {
-                progress.push(event);
-            } else {
-                return (event, progress);
-            }
-        }
-        let left = deadline.saturating_duration_since(Instant::now());
-        woken
-            .recv_timeout(left)
-            .expect("the worker answers in time");
-    }
-}
-
-/// An HTTP server that answers chat requests the way Ollama would, with
-/// `reply(request)` as the model's text. Returns its address and the request
-/// bodies it received.
-fn fake_ollama(
-    reply: impl Fn(&Value) -> String + Send + 'static,
-) -> (String, Arc<Mutex<Vec<Value>>>) {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let address = format!("http://{}", listener.local_addr().unwrap());
-    let seen = Arc::new(Mutex::new(Vec::new()));
-    let record = seen.clone();
-    std::thread::spawn(move || {
-        for stream in listener.incoming() {
-            let Ok(mut stream) = stream else { continue };
-            let mut reader = BufReader::new(stream.try_clone().unwrap());
-            let mut length = 0;
-            let mut line = String::new();
-            while reader.read_line(&mut line).is_ok_and(|n| n > 0) && line != "\r\n" {
-                if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
-                    length = value.trim().parse().unwrap_or(0);
-                }
-                line.clear();
-            }
-            let mut body = vec![0; length];
-            if reader.read_exact(&mut body).is_err() {
-                continue;
-            }
-            let request = serde_json::from_slice(&body).unwrap_or(Value::Null);
-            let content = reply(&request);
-            record.lock().unwrap().push(request);
-            let answer = json!({
-                "model": "stand-in",
-                "message": { "role": "assistant", "content": content },
-                "done": true,
-            })
-            .to_string();
-            let _ = write!(
-                stream,
-                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{answer}",
-                answer.len()
-            );
-        }
-    });
-    (address, seen)
-}
 
 fn audit_events(data_dir: &Path) -> Vec<Value> {
     let mut files: Vec<PathBuf> = std::fs::read_dir(data_dir.join("sessions"))
@@ -266,6 +199,7 @@ fn reads_grades_fills_verifies_and_saves_a_page() {
         examples: None,
         skill_choices: Default::default(),
         cancel: CancelFlag::new(),
+        earlier: None,
     };
     let (event, progress) = ask(&worker, &woken, Command::Grade(Box::new(request)));
     let Event::Graded(graded) = event else {
@@ -312,11 +246,47 @@ fn reads_grades_fills_verifies_and_saves_a_page() {
             .unwrap()
         })
         .collect();
-    let (event, progress) = ask(&worker, &woken, Command::Write(writes.clone()));
+    // The grades that reach the page are kept as examples. One for a
+    // student nothing was written for is not.
+    let example = |score: f64, feedback: &str| GradedExample {
+        score,
+        max_score: 10.0,
+        feedback: feedback.into(),
+        changed: false,
+        at: 1,
+    };
+    let question = rubric_id("Explain the standard error.", "", 10.0).unwrap();
+    let keep = KeepRequest {
+        examples_for: ExamplesFor {
+            place: ExamplesPlace::ThisComputer,
+            rubric: question.clone(),
+        },
+        examples: vec![
+            (0, example(10.0, "Never written.")),
+            (1, example(6.0, "Name the standard error.")),
+            (3, example(8.0, "Clear and correct.")),
+        ],
+    };
+    let kept_on_disk = || {
+        let scores: Vec<f64> = FolderStore::new(data_dir.join("examples"))
+            .for_rubric(&question)
+            .unwrap()
+            .iter()
+            .map(|example| example.score)
+            .collect();
+        scores
+    };
+    let (event, progress) = ask(
+        &worker,
+        &woken,
+        Command::WriteAndKeep(writes.clone(), Box::new(keep.clone())),
+    );
     let Event::Written(written) = event else {
         panic!("expected a write report, got {event:?}");
     };
     assert_eq!(written.written, [1, 3]);
+    assert_eq!(written.kept, Some(Ok(2)));
+    assert_eq!(kept_on_disk(), [6.0, 8.0]);
     assert!(written.failed.is_empty(), "{:?}", written.failed);
     assert!(written.mismatches.is_empty(), "{:?}", written.mismatches);
     assert!(matches!(
@@ -337,12 +307,18 @@ fn reads_grades_fills_verifies_and_saves_a_page() {
     );
 
     // Writing the same thing again is refused: the scores are no longer what was read.
-    let (event, _) = ask(&worker, &woken, Command::Write(writes));
+    let (event, _) = ask(
+        &worker,
+        &woken,
+        Command::WriteAndKeep(writes, Box::new(keep)),
+    );
     let Event::Written(again) = event else {
         panic!("expected a write report, got {event:?}");
     };
     assert!(again.written.is_empty());
     assert_eq!(again.failed.len(), 2);
+    assert_eq!(again.kept, None, "what was not written is not kept");
+    assert_eq!(kept_on_disk(), [6.0, 8.0]);
     assert!(
         again.failed[0].1.contains("changed on the page"),
         "{:?}",
@@ -455,6 +431,7 @@ fn a_real_model_grades_the_saved_page() {
         examples: None,
         skill_choices: Default::default(),
         cancel: CancelFlag::new(),
+        earlier: None,
     })));
     // A local model can take minutes; wait longer than `ask` does.
     let graded = loop {

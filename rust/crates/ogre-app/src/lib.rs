@@ -4,6 +4,7 @@ mod agent_run;
 mod app;
 mod audit;
 mod built_in;
+mod examples;
 mod grading;
 mod history;
 mod keys;
@@ -24,14 +25,18 @@ pub use app::OgreApp;
 pub use built_in::{
     BuiltIn, BuiltInBrowser, PageChannel, PageLink, PageNews, PageOut, carry, page_link,
 };
+pub use examples::{ExamplesFor, ExamplesPlace, KeepRequest};
 pub use grading::{Grade, GradeReport, GradedRow, Suggestion};
 pub use history::{PastProposal, PastSession, PastStudent, SessionEnd};
-pub use keys::{KeyStore, Keyring, MemoryKeys};
+pub use keys::{EXAMPLES_SERVER_KEY, KeyStore, Keyring, MemoryKeys};
 pub use launch::{APP_ID, data_dir, native_options, start};
 pub use profiles::ProfileSummary;
 pub use rubrics::SavedRubric;
 pub use settings::engine_leniency;
-pub use settings::{ProviderSettings, STORAGE_KEY, Service, Settings, old_app_settings_file};
+pub use settings::{
+    ExamplesSettings, KeepExamples, ProviderSettings, STORAGE_KEY, Service, Settings,
+    old_app_settings_file,
+};
 pub use tab_view::{ViewInput, ViewLink, ViewState};
 pub use worker::{
     Command, Event, ExamplesRequest, GradeRequest, MapReport, OutsideRubric, ProfileCheck,

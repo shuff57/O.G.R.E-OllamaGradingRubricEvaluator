@@ -13,6 +13,7 @@ path = "src/main.rs"
 base64 = "0.22"
 ogre-agent.workspace = true
 ogre-core.workspace = true
+ogre-examples.workspace = true
 ogre-grader.workspace = true
 ogre-harness.workspace = true
 ogre-llm.workspace = true

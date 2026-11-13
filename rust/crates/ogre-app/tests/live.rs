@@ -1211,6 +1211,7 @@ fn the_real_service_runs_the_consistency_check_again_on_given_grades() {
             examples: None,
             skill_choices: Default::default(),
             cancel: ogre_grader::CancelFlag::new(),
+            earlier: None,
         }),
         grades,
     ));

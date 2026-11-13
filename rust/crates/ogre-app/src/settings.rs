@@ -33,6 +33,9 @@ pub struct Settings {
     /// AI services that were set up and are not the one in use, each as it
     /// was left, to switch back to. Their keys are in the keyring.
     pub other_services: Vec<ProviderSettings>,
+    /// Whether grades the teacher approves are kept as examples for later
+    /// sessions, and where. Not kept unless the teacher asks.
+    pub examples: ExamplesSettings,
 }
 
 impl Default for Settings {
@@ -47,6 +50,7 @@ impl Default for Settings {
             zero_for_no_response: false,
             built_in_browser: false,
             other_services: Vec::new(),
+            examples: ExamplesSettings::default(),
         }
     }
 }
@@ -84,6 +88,30 @@ impl Settings {
             .chain(&self.other_services)
             .filter(|provider| !provider.model.trim().is_empty())
     }
+}
+
+/// Grades the teacher approved can be shown to the grader the next time the
+/// same question is graded. An example is a score and its feedback: no
+/// student's name and no answer.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ExamplesSettings {
+    pub keep: KeepExamples,
+    /// The address of the teacher's examples server. Its key is in the
+    /// keyring.
+    pub server: String,
+}
+
+/// Where approved grades are kept as examples.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum KeepExamples {
+    /// Nowhere: nothing is kept and the grader is shown nothing.
+    #[default]
+    No,
+    /// In the app's data folder.
+    ThisComputer,
+    /// On [`ExamplesSettings::server`].
+    Server,
 }
 
 /// The AI service the Electron app was set up with, for a teacher moving
@@ -392,6 +420,10 @@ mod tests {
                 base_url: String::new(),
                 model: "gemma4:31b".into(),
             }],
+            examples: ExamplesSettings {
+                keep: KeepExamples::Server,
+                server: "https://school.example".into(),
+            },
         };
         let json = serde_json::to_string(&settings).unwrap();
         assert_eq!(serde_json::from_str::<Settings>(&json).unwrap(), settings);
@@ -401,11 +433,10 @@ mod tests {
         );
         // Settings saved before the scoring choice existed keep the AI's score.
         let older = r#"{"dark":true,"leniency":20}"#;
-        assert!(
-            !serde_json::from_str::<Settings>(older)
-                .unwrap()
-                .score_from_verdicts
-        );
+        let older = serde_json::from_str::<Settings>(older).unwrap();
+        assert!(!older.score_from_verdicts);
+        // And nothing is kept as an example until the teacher asks.
+        assert_eq!(older.examples.keep, KeepExamples::No);
     }
 
     #[test]

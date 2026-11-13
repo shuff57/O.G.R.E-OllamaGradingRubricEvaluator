@@ -1,0 +1,24 @@
+[package]
+name = "ogre-examples"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+# The program a teacher runs on a computer of their own to keep their
+# examples there instead of on the computer they grade on.
+[[bin]]
+name = "ogre-examples-server"
+path = "src/bin/ogre-examples-server.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+# A rubric's name on disk and on the server is a hash of its question.
+sha2 = "0.11"
+# The server: small, with no async runtime of its own.
+tiny_http = "0.12"
+# The client, as the AI services are reached.
+reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
+
+[dev-dependencies]
+tokio.workspace = true

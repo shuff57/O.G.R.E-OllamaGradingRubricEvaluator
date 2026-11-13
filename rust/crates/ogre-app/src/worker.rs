@@ -23,6 +23,7 @@ use crate::agent_run::{
 };
 use crate::audit::AuditLog;
 use crate::built_in::{self, PageChannel, PageLink};
+use crate::examples::{ExamplesFor, ExamplesPlace, KeepRequest, Kept};
 use crate::grading::{self, GradeReport, PreparedCache};
 use crate::history::{self, PastSession};
 use crate::profiles::{ProfileStore, ProfileSummary};
@@ -97,6 +98,13 @@ pub enum Command {
     DeleteRubric(String),
     /// Put these grades into the page that was read. Saves nothing.
     Write(Vec<GradeWrite>),
+    /// As [`Command::Write`], and the grades that reach the page are then
+    /// kept as examples for later sessions.
+    WriteAndKeep(Vec<GradeWrite>, Box<KeepRequest>),
+    /// Count the examples kept in a place.
+    CountExamples(ExamplesPlace),
+    /// Delete every example kept in a place.
+    DeleteExamples(ExamplesPlace),
     /// Have the site store what was written.
     Save,
     /// Work out where the students, scores and feedback are on the open page
@@ -163,6 +171,9 @@ pub struct GradeRequest {
     /// The skills the teacher has switched on or off, by id. Those that are
     /// on and are not a guide to a site are given to the grader.
     pub skill_choices: std::collections::BTreeMap<String, bool>,
+    /// Where the teacher's earlier grades for this question are kept, to
+    /// show the grader a few of them. `None` shows none.
+    pub earlier: Option<ExamplesFor>,
     /// Stops the run after the AI call in flight.
     pub cancel: CancelFlag,
 }
@@ -216,6 +227,11 @@ pub enum Event {
         total: usize,
     },
     Written(WriteReport),
+    /// How many examples are kept in the place that was asked about, or why
+    /// that could not be told.
+    ExamplesCounted(std::result::Result<usize, String>),
+    /// How many examples were deleted, or why none were.
+    ExamplesDeleted(std::result::Result<usize, String>),
     Saved(Option<GradingPage>),
     Mapped(Box<MapReport>),
     /// A saved mapping, to be changed by hand.
@@ -382,6 +398,9 @@ pub struct WriteReport {
     pub mismatches: Vec<Mismatch>,
     /// The page as it reads after the writes.
     pub page: Option<GradingPage>,
+    /// How many of the written grades were kept as examples, or why they
+    /// could not be. `None` when none were to be kept.
+    pub kept: Option<std::result::Result<usize, String>>,
 }
 
 /// The window's handle to the worker thread.
@@ -604,6 +623,7 @@ fn run(
             profiles: ProfileStore::open(data_dir.clone()),
             rubrics: RubricStore::open(data_dir.clone()),
             skills_dir: data_dir.join("skills"),
+            examples_dir: data_dir.join("examples"),
             answers,
             chrome: None,
             opened: None,
@@ -709,6 +729,8 @@ struct Task {
     rubrics: RubricStore,
     /// The teacher's own skill files for agent mode.
     skills_dir: PathBuf,
+    /// Where examples kept on this computer are.
+    examples_dir: PathBuf,
     answers: mpsc::UnboundedReceiver<AgentAnswer>,
     chrome: Option<Chrome>,
     /// The tab OGRE opened most recently.
@@ -838,8 +860,18 @@ impl Task {
                 let report = self.report.clone();
                 let cancel = request.cancel.clone();
                 let skills = agent_run::grading_skills(&self.skills_dir, &request.skill_choices);
+                let earlier = match &request.earlier {
+                    Some(examples_for) => {
+                        Some(match Kept::open(&self.examples_dir, &examples_for.place) {
+                            Ok(kept) => kept.for_rubric(&examples_for.rubric).await,
+                            Err(problem) => Err(problem),
+                        })
+                    }
+                    None => None,
+                };
                 let graded = grading::grade(
                     *request,
+                    earlier,
                     &skills,
                     &cancel,
                     &mut self.prepared,
@@ -898,7 +930,20 @@ impl Task {
                 self.rubrics.delete(&name).map_err(Error::Page)?;
                 Ok(Event::Rubrics(self.rubrics.all()))
             }
-            Command::Write(writes) => self.write(writes).await,
+            Command::Write(writes) => self.write(writes, None).await,
+            Command::WriteAndKeep(writes, keep) => self.write(writes, Some(*keep)).await,
+            Command::CountExamples(place) => Ok(Event::ExamplesCounted(
+                match Kept::open(&self.examples_dir, &place) {
+                    Ok(kept) => kept.count().await,
+                    Err(problem) => Err(problem),
+                },
+            )),
+            Command::DeleteExamples(place) => Ok(Event::ExamplesDeleted(
+                match Kept::open(&self.examples_dir, &place) {
+                    Ok(kept) => kept.clear().await,
+                    Err(problem) => Err(problem),
+                },
+            )),
             Command::Save => {
                 let target = self.target().await?;
                 target.adapter.save(&target.page).await?;
@@ -1331,7 +1376,9 @@ impl Task {
         Ok(target.clone())
     }
 
-    async fn write(&mut self, writes: Vec<GradeWrite>) -> Result<Event> {
+    /// Writes the grades. Those of `keep` that reached the page are then
+    /// kept as examples: a failure there is reported and undoes nothing.
+    async fn write(&mut self, writes: Vec<GradeWrite>, keep: Option<KeepRequest>) -> Result<Event> {
         let total = writes.len();
         let mut report = WriteReport::default();
         let mut done = 0;
@@ -1359,6 +1406,23 @@ impl Task {
                 }
             }
             report.page = target.adapter.read_page(&target.page).await.ok();
+        }
+        // A page that does not show what was written is not one to learn from.
+        if let Some(keep) = keep.filter(|_| report.mismatches.is_empty()) {
+            let examples: Vec<_> = keep
+                .examples
+                .into_iter()
+                .filter(|(index, _)| report.written.contains(index))
+                .map(|(_, example)| example)
+                .collect();
+            if !examples.is_empty() {
+                report.kept = Some(
+                    match Kept::open(&self.examples_dir, &keep.examples_for.place) {
+                        Ok(kept) => kept.add(&keep.examples_for.rubric, &examples).await,
+                        Err(problem) => Err(problem),
+                    },
+                );
+            }
         }
         Ok(Event::Written(report))
     }

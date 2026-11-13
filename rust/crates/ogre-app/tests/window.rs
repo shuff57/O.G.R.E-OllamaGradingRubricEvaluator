@@ -15,11 +15,11 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use ogre_agent::{InterviewTurn, SkillDraft};
 use ogre_app::{
-    AgentAnswer, AgentLine, AgentQuestion, AgentRequest, AgentSummary, Command, Event, Grade,
-    GradeReport, GradedRow, LineKind, MapReport, MemoryKeys, OgreApp, OutsideRubric, PastProposal,
-    PastSession, PastStudent, ProfileCheck, ProfileSummary, ProviderSettings, ReadReport,
-    SavedRubric, Service, SessionEnd, Settings, SkillSummary, StandIn, Suggestion, ViewInput,
-    Worker, WriteReport,
+    AgentAnswer, AgentLine, AgentQuestion, AgentRequest, AgentSummary, Command, Event, ExamplesFor,
+    ExamplesPlace, ExamplesSettings, Grade, GradeReport, GradedRow, KeepExamples, LineKind,
+    MapReport, MemoryKeys, OgreApp, OutsideRubric, PastProposal, PastSession, PastStudent,
+    ProfileCheck, ProfileSummary, ProviderSettings, ReadReport, SavedRubric, Service, SessionEnd,
+    Settings, SkillSummary, StandIn, Suggestion, ViewInput, Worker, WriteReport,
 };
 use ogre_core::{
     FeedbackField, FeedbackKind, GradingPage, Position, QuestionLink, Rubric, ScoreField,
@@ -199,6 +199,7 @@ fn graded() -> Event {
         ],
         warnings: Vec::new(),
         cancelled: false,
+        earlier: 0,
     })
 }
 
@@ -366,6 +367,7 @@ fn grades_fills_and_saves_one_explicit_step_at_a_time() {
             failed: vec![],
             mismatches: vec![],
             page: Some(filled.clone()),
+            kept: None,
         }))
         .unwrap();
     frames(&mut harness);
@@ -456,6 +458,7 @@ fn a_write_the_page_did_not_keep_blocks_saving() {
                 problem: "score should be 6 but the page shows 2".into(),
             }],
             page: None,
+            kept: None,
         }))
         .unwrap();
     frames(&mut harness);
@@ -501,6 +504,7 @@ fn a_running_grade_can_be_stopped_and_failures_are_shown() {
             }],
             warnings: vec![],
             cancelled: true,
+            earlier: 0,
         }))
         .unwrap();
     frames(&mut harness);
@@ -720,6 +724,7 @@ fn a_site_ogre_cannot_confirm_saving_on_is_saved_by_the_teacher() {
             failed: vec![],
             mismatches: vec![],
             page: None,
+            kept: None,
         }))
         .unwrap();
     frames(&mut harness);
@@ -1374,6 +1379,7 @@ fn leaving_with_grades_filled_in_but_not_saved_is_asked_about_first() {
             failed: vec![],
             mismatches: vec![],
             page: Some(filled.clone()),
+            kept: None,
         }))
         .unwrap();
     frames(&mut harness);
@@ -2611,6 +2617,7 @@ fn the_consistency_check_can_be_run_again_on_the_grades_in_the_table() {
                 .collect(),
             warnings: Vec::new(),
             cancelled: false,
+            earlier: 0,
         }))
         .unwrap();
     frames(&mut harness);
@@ -2879,6 +2886,7 @@ fn a_stopped_run_is_carried_on_with_the_students_it_did_not_reach() {
             ],
             warnings: Vec::new(),
             cancelled: true,
+            earlier: 0,
         }))
         .unwrap();
     frames(&mut harness);
@@ -3502,4 +3510,242 @@ fn a_mapping_opened_in_the_form_is_the_mapping_the_form_gives_back() {
         let (mut harness, mut stand_in) = mapping_form(&saved);
         assert_eq!(mapping_tried(&mut harness, &mut stand_in), saved);
     }
+}
+
+// ── The teacher's earlier grades ────────────────────────────────────────
+
+/// Settings that keep approved grades as examples in `keep`.
+fn keeping_examples(keep: KeepExamples) -> Settings {
+    Settings {
+        examples: ExamplesSettings {
+            keep,
+            server: "https://school.example".into(),
+        },
+        ..local_model()
+    }
+}
+
+/// A window with the students read and graded, and the grading request
+/// that was sent on the way.
+fn graded_window(
+    settings: Settings,
+    report: Event,
+) -> (
+    Harness<'static, OgreApp>,
+    StandIn,
+    Box<ogre_app::GradeRequest>,
+) {
+    let (mut harness, mut stand_in) = window(settings);
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    stand_in.events.send(read()).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Grade 2 students").click();
+    frames(&mut harness);
+    let Command::Grade(request) = sent(&mut stand_in) else {
+        panic!("expected a grading request");
+    };
+    stand_in.events.send(report).unwrap();
+    frames(&mut harness);
+    (harness, stand_in, request)
+}
+
+/// The grades as the page then shows them, written and with `kept` said of
+/// the examples.
+fn written(kept: Option<Result<usize, String>>) -> Event {
+    let mut filled = page();
+    filled.submissions[1].scores[0].raw = "6".into();
+    filled.submissions[3].scores[0].raw = "8.5".into();
+    Event::Written(WriteReport {
+        written: vec![1, 3],
+        failed: vec![],
+        mismatches: vec![],
+        page: Some(filled),
+        kept,
+    })
+}
+
+#[test]
+fn nothing_is_kept_and_no_earlier_grade_is_shown_unless_the_teacher_asks() {
+    let (mut harness, mut stand_in, request) = graded_window(local_model(), graded());
+    assert_eq!(request.earlier, None);
+    assert!(
+        harness
+            .query_by_label_contains("of your earlier grade")
+            .is_none()
+    );
+    harness.get_by_label("Fill in 2 grades").click();
+    frames(&mut harness);
+    assert!(matches!(sent(&mut stand_in), Command::Write(_)));
+    stand_in.events.send(written(None)).unwrap();
+    frames(&mut harness);
+    assert!(harness.query_by_label_contains("kept as").is_none());
+}
+
+#[test]
+fn approved_grades_are_kept_and_the_grader_is_shown_earlier_ones() {
+    let Event::Graded(mut report) = graded() else {
+        unreachable!()
+    };
+    report.earlier = 3;
+    let (mut harness, mut stand_in, request) = graded_window(
+        keeping_examples(KeepExamples::ThisComputer),
+        Event::Graded(report),
+    );
+    // The grader is to be shown what is kept for this question.
+    let this_question = ogre_examples::rubric_id(
+        "Explain how sample size affects the margin of error.",
+        "",
+        10.0,
+    )
+    .unwrap();
+    assert_eq!(
+        request.earlier,
+        Some(ExamplesFor {
+            place: ExamplesPlace::ThisComputer,
+            rubric: this_question.clone(),
+        })
+    );
+    harness.get_by_label("The grader was shown 3 of your earlier grades for this question.");
+    shot(&mut harness, "40-earlier-grades-shown");
+
+    harness.get_by_label("Fill in 2 grades").click();
+    frames(&mut harness);
+    let Command::WriteAndKeep(writes, keep) = sent(&mut stand_in) else {
+        panic!("expected a write that keeps examples");
+    };
+    assert_eq!(writes.len(), 2);
+    assert_eq!(keep.examples_for.rubric, this_question);
+    assert_eq!(keep.examples_for.place, ExamplesPlace::ThisComputer);
+    let places: Vec<usize> = keep.examples.iter().map(|(at, _)| *at).collect();
+    assert_eq!(places, [1, 3]);
+    let kai = &keep.examples[0].1;
+    assert_eq!((kai.score, kai.max_score, kai.changed), (6.0, 10.0, false));
+    // The student is not named in what is kept.
+    assert_eq!(
+        kai.feedback,
+        "[STUDENT], you have the right idea. Name the standard error."
+    );
+    assert!(kai.at > 1_700_000_000, "it says when it was approved");
+
+    stand_in.events.send(written(Some(Ok(2)))).unwrap();
+    frames(&mut harness);
+    harness.get_by_label_contains(
+        "2 grades kept as examples for the next time this question is graded.",
+    );
+    shot(&mut harness, "41-grades-kept-as-examples");
+}
+
+#[test]
+fn grades_are_written_even_when_they_cannot_be_kept() {
+    let (mut harness, mut stand_in, request) =
+        graded_window(keeping_examples(KeepExamples::Server), graded());
+    assert_eq!(
+        request.earlier.as_ref().map(|earlier| &earlier.place),
+        Some(&ExamplesPlace::Server {
+            address: "https://school.example".into(),
+            // No key was entered: the server will say so.
+            key: None,
+        })
+    );
+    harness.get_by_label("Fill in 2 grades").click();
+    frames(&mut harness);
+    assert!(matches!(sent(&mut stand_in), Command::WriteAndKeep(..)));
+    stand_in
+        .events
+        .send(written(Some(Err(
+            "The examples server did not accept the key.".into(),
+        ))))
+        .unwrap();
+    frames(&mut harness);
+    // The write itself is reported as it always is.
+    harness.get_by_label_contains("2 grades filled in on the page and checked.");
+    harness.get_by_label_contains(
+        "The grades could not be kept as examples: The examples server did not accept the key.",
+    );
+}
+
+#[test]
+fn settings_say_where_earlier_grades_are_kept_and_count_and_delete_them() {
+    let (mut harness, mut stand_in) = window(local_model());
+    harness.get_by_label("Settings").click();
+    frames(&mut harness);
+    harness.get_by_label("Your earlier grades").scroll_to_me();
+    frames(&mut harness);
+    harness.get_by_label_contains("with the student\u{2019}s name taken out. No answer is kept");
+    // Nothing is kept until the teacher says so, and then there is nothing
+    // to count or delete.
+    assert!(harness.query_by_label("Count them").is_none());
+    assert!(harness.query_by_label("Delete all examples").is_none());
+
+    scroll_to_and_press(&mut harness, "Keep them on this computer");
+    scroll_to_and_press(&mut harness, "Count them");
+    assert!(matches!(
+        sent(&mut stand_in),
+        Command::CountExamples(ExamplesPlace::ThisComputer)
+    ));
+    stand_in
+        .events
+        .send(Event::ExamplesCounted(Ok(12)))
+        .unwrap();
+    frames(&mut harness);
+    harness.get_by_label("12 examples are kept on this computer.");
+    shot(&mut harness, "42-settings-earlier-grades");
+
+    // Deleting asks first.
+    scroll_to_and_press(&mut harness, "Delete all examples");
+    harness.get_by_label("Delete every example on this computer? This cannot be undone.");
+    assert!(
+        stand_in.commands.try_recv().is_err(),
+        "nothing is deleted yet"
+    );
+    scroll_to_and_press(&mut harness, "Keep them");
+    assert!(stand_in.commands.try_recv().is_err());
+    scroll_to_and_press(&mut harness, "Delete all examples");
+    scroll_to_and_press(&mut harness, "Delete them");
+    assert!(matches!(
+        sent(&mut stand_in),
+        Command::DeleteExamples(ExamplesPlace::ThisComputer)
+    ));
+    stand_in
+        .events
+        .send(Event::ExamplesDeleted(Ok(12)))
+        .unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Deleted 12 examples.");
+
+    // A server needs an address and a key.
+    scroll_to_and_press(&mut harness, "Keep them on a server of mine");
+    assert!(
+        harness.query_by_label("Deleted 12 examples.").is_none(),
+        "that was said of this computer"
+    );
+    type_into(
+        &mut harness,
+        "Server address",
+        "https://school.example/ogre",
+    );
+    type_into(&mut harness, "Server key", "a-key-the-server-made");
+    shot(&mut harness, "43-settings-examples-server");
+    scroll_to_and_press(&mut harness, "Check the server");
+    let Command::CountExamples(place) = sent(&mut stand_in) else {
+        panic!("expected the server to be asked");
+    };
+    assert_eq!(
+        place,
+        ExamplesPlace::Server {
+            address: "https://school.example/ogre".into(),
+            key: Some("a-key-the-server-made".into()),
+        }
+    );
+    stand_in
+        .events
+        .send(Event::ExamplesCounted(Err(
+            "The examples server did not accept the key.".into(),
+        )))
+        .unwrap();
+    frames(&mut harness);
+    harness.get_by_label("The examples server did not accept the key.");
+    stand_in.events.send(Event::ExamplesCounted(Ok(1))).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("The server answered. 1 example is kept there.");
 }
