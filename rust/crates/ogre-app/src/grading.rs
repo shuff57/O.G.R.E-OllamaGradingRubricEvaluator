@@ -305,6 +305,32 @@ fn report(outcome: BatchOutcome) -> GradeReport {
     }
 }
 
+/// Has the AI reword the request's rubric for its leniency, and gives the
+/// wording as requirements for the teacher's editor. The wording is kept,
+/// so a grading run at the same leniency would use this one.
+pub async fn reword_rubric(
+    request: ExamplesRequest,
+    cache: &mut PreparedCache,
+) -> Result<String, String> {
+    let provider = provider(&request.provider, request.api_key.as_deref())?;
+    let prepared = cache
+        .prepare(
+            &provider,
+            &request.rubric,
+            request.rubric_text.as_deref(),
+            request.leniency,
+            &request.provider,
+        )
+        .await;
+    match prepared.rewrite_problem {
+        Some(problem) => Err(format!("The rubric could not be reworded: {problem}")),
+        None => Ok(ogre_core::editable_requirements(
+            &prepared.text,
+            prepared.weights_given,
+        )),
+    }
+}
+
 /// Has the AI write an example answer at each of four levels for the
 /// request's rubric, as text for the teacher to read and edit.
 pub async fn write_examples(

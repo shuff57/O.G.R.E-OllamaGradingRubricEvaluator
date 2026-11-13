@@ -1580,8 +1580,7 @@ fn a_rubric_is_saved_under_a_name_and_used_on_another_page() {
         .unwrap();
     frames(&mut harness);
     harness.get_by_label_contains("The rubric could not be read from the page");
-    harness.get_by_label("Saved rubrics").click();
-    frames(&mut harness);
+    scroll_to_and_press(&mut harness, "Saved rubrics");
     harness.get_by_label("Essay 2").click();
     frames(&mut harness);
     scroll_to_and_press(&mut harness, "Use it");
@@ -2341,4 +2340,64 @@ fn a_zero_for_no_response_is_proposed_only_when_asked_and_written_only_with_the_
     assert_eq!(writes[0].name, "Cruz, Jo");
     assert_eq!(writes[0].score.value, 0.0);
     assert_eq!(writes[0].feedback, None, "a zero comes with no feedback");
+}
+
+#[test]
+fn the_rubric_can_be_reworded_before_grading_to_read_and_change() {
+    const REWORDED: &str = "## Concept\nMentions standard error, in any words\nSays which way it goes\n## Communication\nUses a course word or two";
+    let (mut harness, mut stand_in) = rubric_open(read());
+
+    // At the usual leniency the AI rewords the rubric, and says so.
+    scroll_to_and_press(&mut harness, "Reword the rubric now");
+    let Command::RewordRubric(request) = sent(&mut stand_in) else {
+        panic!("expected the rubric to be reworded");
+    };
+    assert_eq!(request.leniency, ogre_app::engine_leniency(50));
+    assert_eq!(
+        request.rubric_text, None,
+        "the page's rubric, unchanged so far"
+    );
+    stand_in
+        .events
+        .send(Event::Reworded(Ok(REWORDED.into())))
+        .unwrap();
+    frames(&mut harness);
+    harness.get_by_label_contains("The rubric is reworded in the editor.");
+    harness.get_by_label_contains("This is the AI\u{2019}s rewording at leniency 50");
+    assert!(harness.query_by_label("Reword the rubric now").is_none());
+    assert!(harness.query_all_by_value(REWORDED).next().is_some());
+    shot(&mut harness, "33-rubric-reworded");
+
+    // Grading sends that wording, to be used as written.
+    harness.get_by_label("Grade 2 students").click();
+    frames(&mut harness);
+    let Command::Grade(request) = sent(&mut stand_in) else {
+        panic!("expected grading to start");
+    };
+    assert_eq!(request.rubric_text.as_deref(), Some(REWORDED));
+    assert_eq!(
+        request.leniency,
+        ogre_app::engine_leniency(75),
+        "the rubric as written"
+    );
+    stand_in.events.send(graded()).unwrap();
+    frames(&mut harness);
+
+    // The page's own rubric is one press away, and is reworded at grading
+    // as before.
+    scroll_to_and_press(&mut harness, "Use the page\u{2019}s rubric");
+    harness.get_by_label("Reword the rubric now");
+
+    // A failure leaves the editor alone.
+    scroll_to_and_press(&mut harness, "Reword the rubric now");
+    assert!(matches!(sent(&mut stand_in), Command::RewordRubric(_)));
+    stand_in
+        .events
+        .send(Event::Reworded(Err(
+            "The rubric could not be reworded: the AI dropped a requirement.".into(),
+        )))
+        .unwrap();
+    frames(&mut harness);
+    harness.get_by_label_contains("could not be reworded");
+    assert!(harness.query_by_label("Edited").is_none());
 }

@@ -4,11 +4,13 @@
 
 use eframe::egui;
 use ogre_core::format_score;
+use ogre_grader::rewrites_rubric;
 
 use super::{Action, OgreApp};
 use crate::kit;
 use crate::rubrics::SavedRubric;
 use crate::session::{RubricOutline, Session, count};
+use crate::settings::engine_leniency;
 use crate::theme::{self, ty};
 
 /// How much of the window's height an open rubric may take before it scrolls.
@@ -137,7 +139,7 @@ impl OgreApp {
                 .desired_width(f32::INFINITY),
         )
         .labelled_by(label.id);
-        if session.examples_out_of_date(self.settings.leniency) {
+        if session.examples_out_of_date(session.leniency_for_grading(self.settings.leniency)) {
             kit::warning(
                 ui,
                 "The rubric or the leniency has changed since these were written.",
@@ -281,6 +283,34 @@ impl OgreApp {
         });
     }
 
+    /// The AI rewords the rubric for the leniency setting before grading.
+    /// Here the teacher can have that done now, into the editor, to read the
+    /// wording and change it first.
+    fn rewording(&self, ui: &mut egui::Ui, session: &Session, actions: &mut Vec<Action>) {
+        if let Some(leniency) = session.reworded_at() {
+            ui.label(theme::muted(format!(
+                "This is the AI\u{2019}s rewording at leniency {leniency}, and yours to \
+                 change. It is graded as it stands: the leniency setting does not reword it \
+                 again. \u{201c}Use the page\u{2019}s rubric\u{201d} goes back."
+            )));
+            return;
+        }
+        let rewords = rewrites_rubric(engine_leniency(self.settings.leniency));
+        if !rewords || session.rubric_outline().requirements == 0 {
+            return;
+        }
+        let can_ask = self.busy.is_none() && self.provider_problem().is_none();
+        ui.horizontal_wrapped(|ui| {
+            if kit::ghost(ui, "Reword the rubric now", can_ask).clicked() {
+                actions.push(Action::RewordRubric);
+            }
+            ui.label(theme::muted(
+                "At this leniency the AI rewords the rubric before grading. Reword it now \
+                 to read the wording, and change it, first.",
+            ));
+        });
+    }
+
     pub(super) fn rubric(
         &mut self,
         ui: &mut egui::Ui,
@@ -348,6 +378,7 @@ impl OgreApp {
                         if let Some(warning) = unread_warning(&session.rubric_outline().unread) {
                             kit::warning(ui, &warning);
                         }
+                        self.rewording(ui, session, actions);
                         Self::weights(ui, session);
                         self.other_rubrics(ui, session, actions);
                         let label = kit::section_label(ui, "Your instructions to the grader");

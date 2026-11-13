@@ -345,6 +345,24 @@ pub fn editable_rubric_text(scraped: &Rubric) -> String {
     }
 }
 
+/// Rubric text as it was prepared for grading, as requirements for the
+/// teacher's editor: without the exemplar answer, with requirements that
+/// carry no points as plain lines, and without weights unless the text the
+/// teacher had named them (`weights_given`). Weights that were only filled
+/// in would otherwise read as ones the teacher set.
+pub fn editable_requirements(prepared: &str, weights_given: bool) -> String {
+    let body = match prepared.find(MODEL_RESPONSE_MARKER) {
+        Some(marker) => &prepared[..marker],
+        None => prepared,
+    };
+    let body = plain_lines(js::trim(body));
+    if weights_given {
+        body
+    } else {
+        unweighted_headings(&body)
+    }
+}
+
 /// The teacher's edited rubric text in the form grading reads: every line
 /// they wrote that is not a heading is a requirement, with "(0pts)" added
 /// where they gave no points.

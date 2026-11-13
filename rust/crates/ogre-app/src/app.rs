@@ -146,6 +146,9 @@ enum Action {
     StopGrading,
     /// Have the AI write scoring examples for the rubric.
     WriteExamples,
+    /// Have the AI reword the rubric for the leniency setting now, into the
+    /// editor.
+    RewordRubric,
     /// Have the AI read the rubric from a picture of the grading tab.
     RubricFromPicture,
     /// Have the AI write a rubric for the question.
@@ -341,7 +344,19 @@ impl OgreApp {
                         session.examples_arrived(examples);
                     }
                 }
-                Event::Examples(Err(problem)) => self.error = Some(problem),
+                Event::Examples(Err(problem)) | Event::Reworded(Err(problem)) => {
+                    self.error = Some(problem);
+                }
+                Event::Reworded(Ok(requirements)) => {
+                    if let Some(session) = &mut self.session {
+                        session.rubric_reworded(&requirements);
+                        self.notice = Some(
+                            "The rubric is reworded in the editor. Read it and change what \
+                             you like: it is graded as it stands."
+                                .into(),
+                        );
+                    }
+                }
                 Event::RubricRead(Ok(read)) => self.take_outside_rubric(read, |parts| {
                     format!(
                         "Read a rubric of {parts} from the picture of the page. Check it \
@@ -472,7 +487,7 @@ impl OgreApp {
                     students: session.to_grade(),
                     provider: self.settings.provider.clone(),
                     api_key: self.key(),
-                    leniency: engine_leniency(self.settings.leniency),
+                    leniency: engine_leniency(session.leniency_for_grading(self.settings.leniency)),
                     score_from_verdicts: self.settings.score_from_verdicts,
                     examples: session.examples_for_grading(),
                     skill_choices: self.settings.skills.clone(),
@@ -480,11 +495,29 @@ impl OgreApp {
                 };
                 self.send(Command::Grade(Box::new(request)), "Grading…");
             }
-            Action::WriteExamples => {
+            Action::RewordRubric => {
                 let leniency = self.settings.leniency;
                 let Some(session) = &mut self.session else {
                     return;
                 };
+                session.reword_asked_for(leniency);
+                let request = ExamplesRequest {
+                    rubric: session.rubric_for_grading(),
+                    rubric_text: session.edited_rubric_text(),
+                    provider: self.settings.provider.clone(),
+                    api_key: self.key(),
+                    leniency: engine_leniency(leniency),
+                };
+                self.send(
+                    Command::RewordRubric(Box::new(request)),
+                    "Rewording the rubric…",
+                );
+            }
+            Action::WriteExamples => {
+                let Some(session) = &mut self.session else {
+                    return;
+                };
+                let leniency = session.leniency_for_grading(self.settings.leniency);
                 session.examples_asked_for(leniency);
                 let request = ExamplesRequest {
                     rubric: session.rubric_for_grading(),
@@ -952,7 +985,11 @@ impl OgreApp {
             if slider.changed() {
                 actions.push(Action::SetLeniency(leniency));
             }
-            ui.label(theme::muted(leniency_note(leniency)));
+            ui.label(theme::muted(if session.reworded_at().is_some() {
+                "The rubric is already reworded in the editor, and is graded as it stands."
+            } else {
+                leniency_note(leniency)
+            }));
         });
         if let Some(problem) = provider_problem {
             kit::warning(ui, problem);

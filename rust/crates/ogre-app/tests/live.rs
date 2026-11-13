@@ -1025,3 +1025,94 @@ fn the_real_service_runs_the_skill_interview_and_writes_a_skill() {
         skill
     );
 }
+
+/// Has the real service reword a made-up rubric for the editor, through the
+/// worker. No student's work is part of it.
+///
+///     cargo test -p ogre-app --test live rewords_a_rubric -- --ignored --nocapture
+#[test]
+#[ignore = "asks the Electron app's AI service to reword a rubric"]
+fn the_real_service_rewords_a_rubric_for_the_editor() {
+    let (provider, key) = electron_app_provider();
+    println!("asking {}", provider.model);
+    let rubric: ogre_core::Rubric = serde_json::from_value(serde_json::json!({
+        "essayPrompt": "A basketball player makes 70% of free throws. In 20 attempts, find the probability of at least 16 makes.",
+        "maxScore": 14,
+        "modelText": "X ~ B(20, 0.7). P(X >= 16) = 0.2375.",
+        "rubricItems": [],
+        "checklistItems": [
+            {"category": "Name the Parameters(2 pts)", "items": ["Say what one trial is and what counts as a success.", "Give the values of n and p, and write X ~ B(n, p)."]},
+            {"category": "State and Compute(4 pts)", "items": ["Write the probability asked for with the correct inequality, for example P(X >= k).", "Give the value, using a calculator."]}
+        ]
+    }))
+    .unwrap();
+    let as_read = ogre_core::editable_rubric_text(&rubric);
+
+    let data_dir = std::env::temp_dir().join(format!("ogre-live-reword-{}", std::process::id()));
+    let worker = Worker::spawn(
+        LaunchOptions {
+            profile_dir: data_dir.join("chrome-profile"),
+            headless: true,
+            executable: None,
+        },
+        Sites::built_in(),
+        data_dir.clone(),
+        || {},
+    );
+    worker.send(Command::RewordRubric(Box::new(ExamplesRequest {
+        rubric,
+        rubric_text: None,
+        provider,
+        api_key: Some(key),
+        leniency: engine_leniency(50),
+    })));
+    let started = Instant::now();
+    let reworded = loop {
+        match worker.poll().next() {
+            Some(Event::Reworded(result)) => break result,
+            Some(other) => panic!("unexpected news from the worker: {other:?}"),
+            None => {
+                assert!(
+                    started.elapsed() < Duration::from_secs(600),
+                    "no reply in ten minutes"
+                );
+                std::thread::sleep(Duration::from_millis(200));
+            }
+        }
+    };
+    drop(worker);
+    let _ = std::fs::remove_dir_all(&data_dir);
+
+    let reworded = reworded.expect("the rubric was reworded");
+    println!(
+        "took {:.0?}\nAS READ:\n{as_read}\n\nREWORDED:\n{reworded}",
+        started.elapsed()
+    );
+    // The same headings and as many requirements, in other words, with
+    // nothing grading adds for itself.
+    let headings = |text: &str| -> Vec<String> {
+        text.lines()
+            .filter(|l| l.starts_with("## "))
+            .map(str::to_owned)
+            .collect()
+    };
+    assert_eq!(headings(&reworded), headings(&as_read));
+    assert!(!reworded.contains("(0pts)") && !reworded.contains("Model Response"));
+    assert!(
+        !reworded.contains('%'),
+        "weights that were only filled in are not written"
+    );
+    let requirements = |text: &str| {
+        text.split("--- Model Response ---")
+            .next()
+            .unwrap_or_default()
+            .lines()
+            .filter(|l| !l.trim().is_empty() && !l.starts_with("## "))
+            .count()
+    };
+    assert_eq!(requirements(&reworded), requirements(&as_read));
+    assert_ne!(
+        reworded,
+        as_read.split("\n\n--- Model Response ---").next().unwrap()
+    );
+}

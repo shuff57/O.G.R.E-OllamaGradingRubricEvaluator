@@ -59,6 +59,9 @@ pub enum Command {
     Grade(Box<GradeRequest>),
     /// Have the AI write example answers at four levels for a rubric.
     WriteExamples(Box<ExamplesRequest>),
+    /// Have the AI reword a rubric for a leniency, for the teacher to read
+    /// and change before grading.
+    RewordRubric(Box<ExamplesRequest>),
     /// Have the AI read the rubric from a screenshot of the grading tab.
     RubricFromPicture {
         provider: ProviderSettings,
@@ -167,6 +170,8 @@ pub enum Event {
     Graded(GradeReport),
     /// The scoring examples the AI wrote, or why there are none.
     Examples(std::result::Result<String, String>),
+    /// The rubric's requirements as the AI reworded them, or why not.
+    Reworded(std::result::Result<String, String>),
     /// The rubric the AI read from a picture of the page, or why none.
     RubricRead(std::result::Result<OutsideRubric, String>),
     /// The rubric the AI wrote for the question, or why none.
@@ -665,6 +670,9 @@ impl Task {
             }
             Command::WriteExamples(request) => Ok(Event::Examples(
                 grading::write_examples(*request, &mut self.prepared).await,
+            )),
+            Command::RewordRubric(request) => Ok(Event::Reworded(
+                grading::reword_rubric(*request, &mut self.prepared).await,
             )),
             Command::RubricFromPicture { provider, api_key } => {
                 let page = match &self.target {

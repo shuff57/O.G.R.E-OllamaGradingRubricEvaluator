@@ -228,3 +228,23 @@ fn written_weights_reach_the_score_by_the_name_the_ai_reports() {
     // By the reported name: three categories at 10% each, of 14 points.
     assert_eq!(score(rubric.category_weighting_by_reported_name()), 4.0);
 }
+
+#[test]
+fn prepared_text_goes_back_to_the_editor_without_what_grading_added() {
+    // As grading prepares it: points on every line, weights filled in, and
+    // the exemplar answer after the marker.
+    let prepared = with_default_weights(&grading_text(THREE), MODE);
+    assert!(
+        prepared.contains("(0pts)") && prepared.contains('%'),
+        "{prepared}"
+    );
+    assert_eq!(
+        editable_requirements(&prepared, false),
+        "## Method\nShows the steps\n## Answer\nGives the value\n## Writing\nUses sentences"
+    );
+
+    // Weights the teacher's own text named are theirs and stay.
+    let weighted = "## Method [70%]\nShows the steps\n## Answer [30%]\nGives the value";
+    let prepared = with_default_weights(&grading_text(weighted), MODE);
+    assert_eq!(editable_requirements(&prepared, true), weighted);
+}

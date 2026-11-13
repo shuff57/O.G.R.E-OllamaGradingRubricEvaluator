@@ -15,6 +15,7 @@ use ogre_harness::feedback;
 
 use crate::grading::{Grade, GradeReport, Suggestion};
 use crate::rubrics::SavedRubric;
+use crate::settings::AS_WRITTEN_LENIENCY;
 use crate::worker::{ReadReport, WriteReport};
 
 pub struct Session {
@@ -43,6 +44,11 @@ pub struct Session {
     examples_basis: Option<ExamplesBasis>,
     /// What the examples being written now are for.
     examples_asked: Option<ExamplesBasis>,
+    /// The leniency setting the AI reworded the text in the editor for.
+    /// Such text is graded as it stands.
+    reworded_at: Option<u8>,
+    /// The leniency setting a rewording now being made was asked at.
+    reword_asked: Option<u8>,
     /// One per student, in page order.
     pub rows: Vec<Row>,
     pub policy: WritePolicy,
@@ -338,6 +344,8 @@ impl Session {
             examples: String::new(),
             examples_basis: None,
             examples_asked: None,
+            reworded_at: None,
+            reword_asked: None,
             questions: read.questions,
             outline: RubricOutline::of(&rubric, &rubric_text),
             rubric_text_as_read: rubric_text.clone(),
@@ -376,6 +384,7 @@ impl Session {
         self.instructions.clone_from(&earlier.instructions);
         self.examples.clone_from(&earlier.examples);
         self.examples_basis.clone_from(&earlier.examples_basis);
+        self.reworded_at = earlier.reworded_at;
     }
 
     /// The rubric to grade with, including the teacher's instructions.
@@ -410,6 +419,38 @@ impl Session {
     /// Puts the rubric text back to what the page gave.
     pub fn restore_rubric_text(&mut self) {
         self.set_rubric_text(self.rubric_text_as_read.clone());
+        self.reworded_at = None;
+    }
+
+    /// Call when the AI is asked to reword the rubric, with the leniency
+    /// setting it is asked at.
+    pub fn reword_asked_for(&mut self, leniency: u8) {
+        self.reword_asked = Some(leniency);
+    }
+
+    /// Takes the AI's rewording of the requirements into the editor. From
+    /// here it is the teacher's text, and is graded as it stands.
+    pub fn rubric_reworded(&mut self, requirements: &str) {
+        let Some(leniency) = self.reword_asked.take() else {
+            return;
+        };
+        self.set_requirements(requirements);
+        self.reworded_at = Some(leniency);
+    }
+
+    /// The leniency setting the text in the editor was reworded for, if the
+    /// AI has reworded it.
+    pub fn reworded_at(&self) -> Option<u8> {
+        self.reworded_at
+    }
+
+    /// The leniency setting to grade at, given the teacher's: a rubric that
+    /// is already reworded is not reworded again.
+    pub fn leniency_for_grading(&self, setting: u8) -> u8 {
+        match self.reworded_at {
+            Some(_) => AS_WRITTEN_LENIENCY,
+            None => setting,
+        }
     }
 
     /// What the grader will find in the rubric text.
@@ -421,6 +462,7 @@ impl Session {
     /// scoring examples come with it where it has any.
     pub fn use_saved(&mut self, saved: &SavedRubric) {
         self.set_rubric_text(saved.text.clone());
+        self.reworded_at = None;
         if !saved.instructions.trim().is_empty() {
             self.instructions.clone_from(&saved.instructions);
         }
@@ -461,6 +503,7 @@ impl Session {
     /// as a picture of the page. The exemplar answer stays.
     pub fn set_requirements(&mut self, requirements: &str) {
         self.set_rubric_text(with_requirements(&self.rubric_text, requirements));
+        self.reworded_at = None;
     }
 
     /// Makes `category` count for `weight` percent of the grade. Every
@@ -963,6 +1006,47 @@ mod tests {
             rows,
             ..GradeReport::default()
         }
+    }
+
+    #[test]
+    fn a_rubric_the_ai_reworded_is_graded_as_it_stands() {
+        let rubric: Rubric = serde_json::from_value(serde_json::json!({
+            "checklistItems": [{ "category": "Concept", "items": ["Names the theorem"] }],
+            "modelText": "The Central Limit Theorem.",
+        }))
+        .unwrap();
+        let mut s = Session::new(ReadReport {
+            page: page(),
+            rubric: Ok(rubric),
+            site: "MyOpenMath",
+            saves_on_write: false,
+            manual_save: false,
+            questions: Vec::new(),
+            saved_rubrics: Vec::new(),
+            skills: Vec::new(),
+        });
+        assert_eq!(s.leniency_for_grading(50), 50);
+        // A rewording nobody asked for is not taken.
+        s.rubric_reworded("## Concept\nNames the theorem, in any words");
+        assert_eq!(s.reworded_at(), None);
+        assert!(!s.rubric_edited());
+
+        s.reword_asked_for(50);
+        s.rubric_reworded("## Concept\nNames the theorem, in any words");
+        assert_eq!(s.reworded_at(), Some(50));
+        // The exemplar answer is the teacher's and stays.
+        assert_eq!(
+            s.rubric_text,
+            "## Concept\nNames the theorem, in any words\n\n--- Model Response ---\nThe Central Limit Theorem."
+        );
+        // Whatever the slider says, the wording is not reworded again.
+        assert_eq!(s.leniency_for_grading(50), AS_WRITTEN_LENIENCY);
+        assert_eq!(s.leniency_for_grading(10), AS_WRITTEN_LENIENCY);
+
+        // Back to the page's rubric, and leniency rewords at grading again.
+        s.restore_rubric_text();
+        assert_eq!(s.reworded_at(), None);
+        assert_eq!(s.leniency_for_grading(50), 50);
     }
 
     #[test]
