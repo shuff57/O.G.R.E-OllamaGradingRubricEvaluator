@@ -24,6 +24,9 @@ pub struct Settings {
     /// Run Chrome without a window of its own and show its page inside
     /// OGRE's, on the Browser screen. An experiment: off unless asked for.
     pub page_inside: bool,
+    /// Propose a zero for students with no response and no grade. Off
+    /// unless the teacher turns it on.
+    pub zero_for_no_response: bool,
 }
 
 impl Default for Settings {
@@ -35,6 +38,7 @@ impl Default for Settings {
             score_from_verdicts: false,
             skills: BTreeMap::new(),
             page_inside: false,
+            zero_for_no_response: false,
         }
     }
 }
@@ -338,6 +342,7 @@ mod tests {
             score_from_verdicts: true,
             skills: BTreeMap::from([("my-skill".to_owned(), false)]),
             page_inside: true,
+            zero_for_no_response: true,
         };
         let json = serde_json::to_string(&settings).unwrap();
         assert_eq!(serde_json::from_str::<Settings>(&json).unwrap(), settings);

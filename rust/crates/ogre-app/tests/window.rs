@@ -1038,10 +1038,7 @@ fn scores_come_from_the_ai_unless_the_teacher_chooses_the_feedback() {
 
     harness.get_by_label("Grade").click();
     frames(&mut harness);
-    harness
-        .get_by_label("Include students who are already graded")
-        .click();
-    frames(&mut harness);
+    choose(&mut harness, "Who to grade", "Everyone with an answer");
     harness.get_by_label("Grade 3 students").click();
     frames(&mut harness);
     let Command::Grade(request) = sent(&mut stand_in) else {
@@ -1300,6 +1297,23 @@ fn rubric_open(read: Event) -> (Harness<'static, OgreApp>, StandIn) {
     (harness, stand_in)
 }
 
+/// Picks `option` in the dropdown named `dropdown`.
+fn choose(harness: &mut Harness<'_, OgreApp>, dropdown: &str, option: &str) {
+    harness.get_by_label(dropdown).click();
+    frames(harness);
+    // The option may also be named elsewhere in the window, as a student
+    // is in the table, but only as plain text there.
+    harness
+        .query_all_by(|node| {
+            node.role() != egui::accesskit::Role::Label
+                && node.label().is_some_and(|label| label == option)
+        })
+        .last()
+        .unwrap_or_else(|| panic!("no {option:?} in {dropdown:?}"))
+        .click();
+    frames(harness);
+}
+
 /// Clicks something that may be out of sight in a part that scrolls: it is
 /// brought into view first, as the teacher would.
 fn scroll_to_and_press(harness: &mut Harness<'_, OgreApp>, label: &str) {
@@ -1438,10 +1452,7 @@ fn scoring_examples_are_written_when_asked_and_shown_to_the_grader() {
     // Removed, they are not sent.
     scroll_to_and_press(&mut harness, "Remove the examples");
     harness.get_by_label("Write scoring examples");
-    harness
-        .get_by_label("Include students who are already graded")
-        .click();
-    frames(&mut harness);
+    choose(&mut harness, "Who to grade", "Everyone with an answer");
     harness.get_by_label("Grade 3 students").click();
     frames(&mut harness);
     let Command::Grade(request) = sent(&mut stand_in) else {
@@ -2245,4 +2256,70 @@ fn a_ticked_skill_is_given_to_the_grader_and_the_rubric_card_says_so() {
         panic!("expected grading to start");
     };
     assert_eq!(request.skill_choices.get("late-work"), Some(&true));
+}
+
+#[test]
+fn the_teacher_chooses_who_is_graded() {
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    stand_in.events.send(read()).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Grade 2 students");
+
+    choose(&mut harness, "Who to grade", "Everyone with an answer");
+    harness.get_by_label("Grade 3 students");
+    // Late work is whoever is at zero or blank and has an answer now.
+    choose(
+        &mut harness,
+        "Who to grade",
+        "Late work: at 0 or blank, now answered",
+    );
+    harness.get_by_label("Grade 2 students");
+
+    // One student, who may be one that already has a grade.
+    choose(&mut harness, "Who to grade", "One student");
+    harness.get_by_label("Grade 1 student");
+    choose(&mut harness, "Which student", "Diaz, Remy");
+    shot(&mut harness, "31-who-to-grade");
+    harness.get_by_label("Grade 1 student").click();
+    frames(&mut harness);
+    let Command::Grade(request) = sent(&mut stand_in) else {
+        panic!("expected grading to start");
+    };
+    let names: Vec<&str> = request.students.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(names, ["Diaz, Remy"]);
+}
+
+#[test]
+fn a_zero_for_no_response_is_proposed_only_when_asked_and_written_only_with_the_grades() {
+    const SWITCH: &str = "Give 0 to students with no response";
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    stand_in.events.send(read()).unwrap();
+    frames(&mut harness);
+    // Off until the teacher asks: nothing is proposed for the blank answer.
+    harness.get_by_label_contains("1 student on this page.");
+    assert!(harness.query_by_label_contains("Fill in").is_none());
+
+    harness.get_by_label(SWITCH).click();
+    frames(&mut harness);
+    assert!(
+        stand_in.commands.try_recv().is_err(),
+        "nothing is written yet"
+    );
+    harness.get_by_label("Fill in 1 grade");
+    shot(&mut harness, "32-zero-for-no-response");
+
+    // The choice is remembered for the next page read.
+    stand_in.events.send(read()).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Fill in 1 grade").click();
+    frames(&mut harness);
+    let Command::Write(writes) = sent(&mut stand_in) else {
+        panic!("expected the zero to be written");
+    };
+    assert_eq!(writes.len(), 1);
+    assert_eq!(writes[0].name, "Cruz, Jo");
+    assert_eq!(writes[0].score.value, 0.0);
+    assert_eq!(writes[0].feedback, None, "a zero comes with no feedback");
 }

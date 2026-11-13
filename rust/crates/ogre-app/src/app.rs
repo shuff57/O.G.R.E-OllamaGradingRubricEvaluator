@@ -13,7 +13,7 @@ use crate::history::{self, PastProposal, PastSession, SessionEnd};
 use crate::keys::KeyStore;
 use crate::kit;
 use crate::profiles::ProfileSummary;
-use crate::session::{Note, Session, Status, count, score_text};
+use crate::session::{Note, Session, Status, Who, count, score_text};
 use crate::settings::{
     AS_WRITTEN_LENIENCY, DEFAULT_LENIENCY, STORAGE_KEY, Service, Settings, engine_leniency,
     old_app_provider,
@@ -177,6 +177,8 @@ enum Action {
     StartAgent,
     AnswerAgent(AgentAnswer),
     SetLeniency(u8),
+    /// Remember whether students with no response are proposed a zero.
+    SetZeroBlank(bool),
 }
 
 /// The one step the teacher would take next. Its button is the primary one.
@@ -311,6 +313,7 @@ impl OgreApp {
                     if let Some(earlier) = &self.session {
                         session.keep_setup_from(earlier);
                     }
+                    session.set_zero_blank(self.settings.zero_for_no_response);
                     self.session = Some(session);
                 }
                 Event::Models(Ok(models)) => {
@@ -629,6 +632,7 @@ impl OgreApp {
             }
             Action::DiscardMapping => self.mapping = None,
             Action::SetLeniency(leniency) => self.settings.leniency = leniency,
+            Action::SetZeroBlank(on) => self.settings.zero_for_no_response = on,
             Action::StartAgent => {
                 let request = AgentRequest {
                     task: self.agent.task.trim().to_owned(),
@@ -713,7 +717,14 @@ impl OgreApp {
                 Step::Save
             }
             Some(session) if session.unsaved => Step::Read,
-            Some(session) if !session.blocked && session.write_count() > 0 => Step::Write,
+            // Zeros for no response wait for the AI's grades, to go in together.
+            Some(session)
+                if !session.blocked
+                    && session.write_count() > 0
+                    && !(session.only_zeros_waiting() && session.grade_count() > 0) =>
+            {
+                Step::Write
+            }
             Some(session) if session.grade_count() > 0 => Step::Grade,
             Some(_) => Step::Read,
         }
@@ -889,11 +900,39 @@ impl OgreApp {
             if self.step_button(ui, Step::Grade, &label, enabled) {
                 actions.push(Action::Grade);
             }
-            ui.checkbox(
-                &mut session.include_graded,
-                "Include students who are already graded",
-            );
+            self.who_to_grade(ui, session);
         });
+        ui.horizontal_wrapped(|ui| {
+            let mut zero = session.zero_blank();
+            if ui
+                .checkbox(&mut zero, "Give 0 to students with no response")
+                .changed()
+            {
+                session.set_zero_blank(zero);
+                actions.push(Action::SetZeroBlank(zero));
+            }
+            ui.label(theme::muted(match session.blank_count() {
+                0 => "There are none on this page.".to_owned(),
+                n => format!(
+                    "{} on this page. A zero is a proposal like the others: it is in the \
+                     table below, and filled in only when you fill the grades in.",
+                    count(n, "student")
+                ),
+            }));
+        });
+        if session.who() == Who::Late && !session.policy.replace_feedback {
+            match session.late_with_feedback() {
+                0 => {}
+                n => {
+                    ui.label(theme::muted(format!(
+                        "{} of them already {} feedback on the page. It is kept, and only the \
+                         score written, unless you choose to replace it when filling in.",
+                        n,
+                        if n == 1 { "has" } else { "have" }
+                    )));
+                }
+            }
+        }
         ui.horizontal_wrapped(|ui| {
             let label = kit::section_label(ui, "Leniency");
             let mut leniency = self.settings.leniency;
@@ -920,9 +959,11 @@ impl OgreApp {
         } else if let Some(problem) = &weight_problem {
             kit::warning(ui, &format!("{problem} Open the rubric to put it right."));
         } else if to_grade == 0 && session.rows.iter().all(|row| row.proposal.is_none()) {
-            ui.label(theme::muted(
-                "There are no ungraded written answers on this page.",
-            ));
+            ui.label(theme::muted(if session.who() == Who::Ungraded {
+                "There are no ungraded written answers on this page."
+            } else {
+                "No student on this page fits that choice."
+            }));
         } else if self.settings.provider.service.is_remote() {
             ui.label(theme::muted(format!(
                 "Student names and answers will be sent to {}.",
@@ -988,6 +1029,52 @@ impl OgreApp {
         }
         for warning in &session.warnings {
             kit::warning(ui, warning);
+        }
+    }
+
+    /// The choice of which students a grading run takes.
+    fn who_to_grade(&self, ui: &mut egui::Ui, session: &mut Session) {
+        let label = ui.label(theme::muted("Who to grade"));
+        let mut who = session.who();
+        // One student: the one already chosen, else the one whose row is
+        // open in the table, else the first with a response.
+        let answered = |at: &usize| session.answered().any(|(index, _)| index == *at);
+        let one = match who {
+            Who::One(at) => Some(at),
+            _ => self
+                .selected
+                .filter(answered)
+                .or_else(|| session.answered().next().map(|(at, _)| at)),
+        };
+        egui::ComboBox::from_id_salt("who-to-grade")
+            .selected_text(theme::body(who_text(who)))
+            .width(280.0)
+            .show_ui(ui, |ui| {
+                let choices = [Who::Ungraded, Who::Late, Who::Everyone];
+                for choice in choices.into_iter().chain(one.map(Who::One)) {
+                    ui.selectable_value(&mut who, choice, who_text(choice));
+                }
+            })
+            .response
+            .labelled_by(label.id);
+        if let Who::One(mut at) = who {
+            let name = |at: usize| session.page.submissions[at].name.as_str();
+            egui::ComboBox::from_id_salt("which-student")
+                .selected_text(theme::body(name(at)))
+                .width(220.0)
+                .show_ui(ui, |ui| {
+                    for (index, submission) in session.answered() {
+                        ui.selectable_value(&mut at, index, &submission.name);
+                    }
+                })
+                .response
+                .widget_info(|| {
+                    egui::WidgetInfo::labeled(egui::Role::ComboBox, true, "Which student")
+                });
+            who = Who::One(at);
+        }
+        if who != session.who() {
+            session.set_who(who);
         }
     }
 
@@ -2000,6 +2087,16 @@ fn suggestion_text(proposed: f64, suggestion: &Suggestion) -> String {
         text.push_str(reason);
     }
     text
+}
+
+/// A choice of who to grade, as the Grade screen names it.
+fn who_text(who: Who) -> &'static str {
+    match who {
+        Who::Ungraded => "Students with no grade yet",
+        Who::Late => "Late work: at 0 or blank, now answered",
+        Who::Everyone => "Everyone with an answer",
+        Who::One(_) => "One student",
+    }
 }
 
 /// What a leniency setting does, in a line.

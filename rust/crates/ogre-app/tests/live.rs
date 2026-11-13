@@ -66,7 +66,8 @@ use serde_json::Value;
 
 type Window = Harness<'static, OgreApp>;
 
-const INCLUDE_GRADED: &str = "Include students who are already graded";
+/// On the Grade screen once students are read, and nowhere before.
+const STUDENTS_READ: &str = "Give 0 to students with no response";
 
 /// Keeps the window drawing until `done` says so, as a person watching would.
 fn wait_until(window: &mut Window, what: &str, limit: Duration, done: impl Fn(&Window) -> bool) {
@@ -517,7 +518,7 @@ fn a_real_page_is_read_and_graded_without_writing() {
     let mut reopened = Instant::now();
     loop {
         click_read(&mut window);
-        if shows(&window, INCLUDE_GRADED) {
+        if shows(&window, STUDENTS_READ) {
             break;
         }
         assert!(
@@ -618,7 +619,9 @@ fn a_real_page_is_read_and_graded_without_writing() {
         return;
     }
 
-    window.get_by_label(INCLUDE_GRADED).click();
+    window.get_by_label("Who to grade").click();
+    window.run_steps(2);
+    window.get_by_label("Everyone with an answer").click();
     window.run_steps(2);
     let grade = window.get_by(|node| {
         node.role() == Role::Button
@@ -655,7 +658,7 @@ fn a_real_page_is_read_and_graded_without_writing() {
     // Read once more, to compare the page after the run with before it.
     click_read(&mut window);
     assert!(
-        shows(&window, INCLUDE_GRADED),
+        shows(&window, STUDENTS_READ),
         "the page still reads after grading"
     );
     drop(window);

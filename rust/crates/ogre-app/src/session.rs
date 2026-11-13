@@ -46,13 +46,29 @@ pub struct Session {
     /// One per student, in page order.
     pub rows: Vec<Row>,
     pub policy: WritePolicy,
-    /// Also grade students who already have points or feedback.
-    pub include_graded: bool,
+    /// Which students a grading run takes. Use [`Session::set_who`].
+    who: Who,
+    /// Students with no response and no grade are proposed a zero.
+    zero_blank: bool,
     pub warnings: Vec<String>,
     /// Grades are in the page's form but the site has not stored them yet.
     pub unsaved: bool,
     /// The last write left the page in a state that must not be saved.
     pub blocked: bool,
+}
+
+/// Which of the students with a response a grading run takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Who {
+    /// Those with no points and no feedback.
+    #[default]
+    Ungraded,
+    /// Those at zero or blank, whatever feedback they have: work handed in
+    /// after the class was graded.
+    Late,
+    Everyone,
+    /// The student at this place on the page.
+    One(usize),
 }
 
 /// A question's place in its assignment.
@@ -129,6 +145,8 @@ pub struct Proposal {
     pub suggestion: Option<Suggestion>,
     /// Unticked proposals are not written.
     pub accepted: bool,
+    /// A zero for a student who gave no response, proposed without the AI.
+    pub for_no_response: bool,
 }
 
 impl Proposal {
@@ -144,6 +162,21 @@ impl Proposal {
                 .suggestion
                 .filter(|s| s.score != grade.score || s.feedback_html.is_some()),
             accepted: true,
+            for_no_response: false,
+        }
+    }
+
+    /// A zero with no feedback, for a student who gave no response.
+    fn zero_for_no_response() -> Self {
+        Self {
+            score: 0.0,
+            original_html: String::new(),
+            text: String::new(),
+            edited: false,
+            flag: None,
+            suggestion: None,
+            accepted: true,
+            for_no_response: true,
         }
     }
 
@@ -266,7 +299,8 @@ impl Session {
             rubric,
             rubric_problem,
             policy: WritePolicy::default(),
-            include_graded: false,
+            who: Who::default(),
+            zero_blank: false,
             warnings: Vec::new(),
             unsaved: false,
             blocked: false,
@@ -435,9 +469,101 @@ impl Session {
         submission.has_nonzero_score() || submission.has_feedback()
     }
 
-    fn gradable(&self, submission: &Submission) -> bool {
+    fn gradable(&self, at: usize, submission: &Submission) -> bool {
         !submission.response.trim().is_empty()
-            && (self.include_graded || !Self::already_graded(submission))
+            && match self.who {
+                Who::Ungraded => !Self::already_graded(submission),
+                Who::Late => !submission.has_nonzero_score(),
+                Who::Everyone => true,
+                Who::One(only) => at == only,
+            }
+    }
+
+    /// Which students a grading run takes.
+    pub fn who(&self) -> Who {
+        self.who
+    }
+
+    /// Chooses which students a grading run takes. One student has to be
+    /// one with a response; asking for another leaves the choice as it was.
+    pub fn set_who(&mut self, who: Who) {
+        if let Who::One(at) = who
+            && !self.answered().any(|(index, _)| index == at)
+        {
+            return;
+        }
+        self.who = who;
+    }
+
+    /// The students who gave a response, with their place on the page.
+    pub fn answered(&self) -> impl Iterator<Item = (usize, &Submission)> {
+        self.page
+            .submissions
+            .iter()
+            .enumerate()
+            .filter(|(_, submission)| !submission.response.trim().is_empty())
+    }
+
+    /// Of the students a run of late work would take, how many already have
+    /// feedback on the page.
+    pub fn late_with_feedback(&self) -> usize {
+        self.answered()
+            .filter(|(_, s)| !s.has_nonzero_score() && s.has_feedback())
+            .count()
+    }
+
+    /// True for a student who gave no response and has no grade: no points,
+    /// no feedback, and a score box that does not already say zero.
+    fn blank_and_ungraded(submission: &Submission) -> bool {
+        submission.response.trim().is_empty()
+            && !Self::already_graded(submission)
+            && submission
+                .scores
+                .iter()
+                .all(|score| score.value().is_none())
+    }
+
+    /// How many students a zero for no response is for.
+    pub fn blank_count(&self) -> usize {
+        self.page
+            .submissions
+            .iter()
+            .filter(|s| Self::blank_and_ungraded(s))
+            .count()
+    }
+
+    /// True while students with no response are proposed a zero.
+    pub fn zero_blank(&self) -> bool {
+        self.zero_blank
+    }
+
+    /// Proposes a zero, with no feedback, for every student with no response
+    /// and no grade, or takes those proposals back. They are proposals like
+    /// any other: shown in the table, and written only when the teacher
+    /// fills the grades in.
+    pub fn set_zero_blank(&mut self, on: bool) {
+        self.zero_blank = on;
+        for (submission, row) in self.page.submissions.iter().zip(&mut self.rows) {
+            if row.note.is_some() {
+                continue;
+            }
+            let proposed = row.proposal.as_ref().is_some_and(|p| p.for_no_response);
+            if on && row.proposal.is_none() && Self::blank_and_ungraded(submission) {
+                row.proposal = Some(Proposal::zero_for_no_response());
+            } else if proposed && !(on && Self::blank_and_ungraded(submission)) {
+                row.proposal = None;
+            }
+        }
+    }
+
+    /// True when the only grades waiting to be written are zeros for no
+    /// response, so that grading is still the step to take.
+    pub fn only_zeros_waiting(&self) -> bool {
+        self.rows
+            .iter()
+            .filter(|row| row.note.is_none())
+            .filter_map(|row| row.proposal.as_ref())
+            .all(|proposal| proposal.for_no_response)
     }
 
     /// The students a grading run would send to the AI.
@@ -446,7 +572,8 @@ impl Session {
         self.page
             .submissions
             .iter()
-            .filter(|s| self.gradable(s))
+            .enumerate()
+            .filter(|(at, s)| self.gradable(*at, s))
             .count()
     }
 
@@ -454,8 +581,9 @@ impl Session {
         self.page
             .submissions
             .iter()
-            .filter(|s| self.gradable(s))
-            .map(StudentWork::from)
+            .enumerate()
+            .filter(|(at, s)| self.gradable(*at, s))
+            .map(|(_, s)| StudentWork::from(s))
             .collect()
     }
 
@@ -664,8 +792,14 @@ impl Session {
                 .all(|(new, old)| new.student_id == old.student_id && new.name == old.name);
         if !same_students {
             self.rows = page.submissions.iter().map(|_| Row::default()).collect();
+            if matches!(self.who, Who::One(_)) {
+                self.who = Who::default();
+            }
         }
         self.page = page;
+        // A zero that is now on the page needs no proposing again, and a
+        // student who is new to the page may need one.
+        self.set_zero_blank(self.zero_blank);
     }
 }
 
@@ -1117,9 +1251,82 @@ mod tests {
         assert_eq!(s.status(1), Status::Ungraded);
         assert_eq!(s.status(2), Status::NoResponse);
 
-        s.include_graded = true;
+        s.set_who(Who::Everyone);
         let names: Vec<_> = s.to_grade().into_iter().map(|w| w.name).collect();
         assert_eq!(names, ["Avery, Sam", "Brook, Kai", "Diaz, Remy"]);
+    }
+
+    fn session_on(page: GradingPage) -> Session {
+        Session::new(ReadReport {
+            page,
+            rubric: Ok(Rubric::default()),
+            site: "MyOpenMath",
+            saves_on_write: false,
+            manual_save: false,
+            questions: Vec::new(),
+            saved_rubrics: Vec::new(),
+            skills: Vec::new(),
+        })
+    }
+
+    #[test]
+    fn a_run_can_take_late_work_or_one_student() {
+        let mut graded_zero = page();
+        graded_zero.submissions[1].feedback.as_mut().unwrap().text = "Nothing handed in.".into();
+        let mut s = session_on(graded_zero);
+        let names =
+            |s: &Session| -> Vec<String> { s.to_grade().into_iter().map(|w| w.name).collect() };
+        assert_eq!(names(&s), ["Diaz, Remy"]);
+
+        // Late work: at zero, whatever the feedback says, and answered now.
+        s.set_who(Who::Late);
+        assert_eq!(names(&s), ["Brook, Kai", "Diaz, Remy"]);
+        assert_eq!(s.late_with_feedback(), 1);
+
+        // One student, graded already or not.
+        s.set_who(Who::One(0));
+        assert_eq!(names(&s), ["Avery, Sam"]);
+        assert_eq!(s.grade_count(), 1);
+        // Not one with nothing to grade.
+        s.set_who(Who::One(2));
+        assert_eq!(s.who(), Who::One(0));
+    }
+
+    #[test]
+    fn a_zero_for_no_response_is_a_proposal_the_teacher_can_take_back() {
+        let mut s = session();
+        assert_eq!(s.blank_count(), 1);
+        assert!(s.to_write().is_empty());
+
+        s.set_zero_blank(true);
+        assert_eq!(s.status(2), Status::Ready);
+        assert!(s.only_zeros_waiting());
+        let writes = s.to_write();
+        assert_eq!(writes.len(), 1);
+        assert_eq!(writes[0].name, "Cruz, Jo");
+        assert_eq!(writes[0].score.value, 0.0);
+        assert_eq!(writes[0].feedback, None);
+        // Students who answered are the AI's to grade, whatever their score.
+        assert_eq!(s.status(1), Status::Ungraded);
+
+        s.set_zero_blank(false);
+        assert_eq!(s.status(2), Status::NoResponse);
+        assert!(s.to_write().is_empty());
+    }
+
+    #[test]
+    fn no_zero_is_proposed_where_there_is_already_a_grade() {
+        let mut already = page();
+        // A zero in the box, and a blank box with feedback beside it.
+        already.submissions[2].scores[0].raw = "0".into();
+        already
+            .submissions
+            .push(submission(4, "Ellis, Pat", "", "Excused.", ""));
+        let mut s = session_on(already);
+        assert_eq!(s.blank_count(), 0);
+        s.set_zero_blank(true);
+        assert!(s.to_write().is_empty());
+        assert_eq!(s.status(4), Status::HasFeedback);
     }
 
     #[test]
@@ -1140,7 +1347,7 @@ mod tests {
         assert_eq!(names, ["Diaz, Remy"], "Kai was given a zero on purpose");
         assert_eq!(s.status(1), Status::HasFeedback);
 
-        s.include_graded = true;
+        s.set_who(Who::Everyone);
         assert_eq!(s.to_grade().len(), 3);
     }
 
@@ -1158,7 +1365,7 @@ mod tests {
     #[test]
     fn proposals_are_written_unless_held_back_or_against_the_rules() {
         let mut s = session();
-        s.include_graded = true;
+        s.set_who(Who::Everyone);
         s.apply_grades(report(vec![
             graded(0, 9.0, "<p>Re-graded.</p>"),
             graded(1, 7.5, "<p>Good <strong>start</strong>.</p>"),
