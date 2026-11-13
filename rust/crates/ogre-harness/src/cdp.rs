@@ -107,6 +107,7 @@ impl Chrome {
         let conn = Arc::new(Connection {
             next_id: AtomicU64::new(1),
             outbox,
+            piped: true,
             state: Mutex::default(),
         });
         let (quit, quitting) = oneshot::channel();
@@ -232,7 +233,75 @@ impl fmt::Debug for CdpPage {
     }
 }
 
+/// The one page of a browser that is not a Chrome OGRE started, reached over
+/// that browser's own debugging channel: the browser built into OGRE's
+/// window. Whoever embeds the browser carries the messages both ways.
+pub struct EmbeddedLink {
+    /// The page, driven as a tab of Chrome is.
+    pub page: CdpPage,
+    /// Messages for the browser, each one whole message of the DevTools
+    /// protocol as JSON.
+    pub to_browser: mpsc::UnboundedReceiver<Vec<u8>>,
+    /// Where the browser's own messages are handed in.
+    pub from_browser: FromBrowser,
+}
+
+/// The way in for what an embedded browser sends. Safe to use from the
+/// thread the browser calls back on.
+#[derive(Clone)]
+pub struct FromBrowser(Arc<Connection>);
+
+impl FromBrowser {
+    /// Takes one message from the browser: a reply or an event.
+    pub fn message(&self, bytes: &[u8]) {
+        self.0.dispatch(bytes);
+    }
+
+    /// Says that the browser is gone. Everything waiting for it fails with
+    /// `why`, as does everything asked of the page from now on.
+    pub fn closed(&self, why: &str) {
+        self.0.shut(why);
+    }
+}
+
 impl CdpPage {
+    /// A page of an embedded browser. Nothing is sent until the page is used.
+    pub fn embedded() -> EmbeddedLink {
+        let (outbox, to_browser) = mpsc::unbounded_channel();
+        let conn = Arc::new(Connection {
+            next_id: AtomicU64::new(1),
+            outbox,
+            piped: false,
+            state: Mutex::default(),
+        });
+        EmbeddedLink {
+            page: Self {
+                conn: conn.clone(),
+                target: "".into(),
+                session: "".into(),
+            },
+            to_browser,
+            from_browser: FromBrowser(conn),
+        }
+    }
+
+    /// Asks an embedded browser for the events a page load is known by.
+    /// To be called once the browser is there, before the page is driven.
+    pub async fn prepare(&self) -> Result<()> {
+        for (method, params) in [
+            ("Page.enable", json!({})),
+            ("Page.setLifecycleEventsEnabled", json!({ "enabled": true })),
+        ] {
+            self.call(method, params).await?;
+        }
+        Ok(())
+    }
+
+    /// True for the page of an embedded browser, which is no tab of a Chrome.
+    fn is_embedded(&self) -> bool {
+        self.target.is_empty()
+    }
+
     async fn call(&self, method: &str, params: Value) -> Result<Value> {
         self.conn
             .call(Some(&self.session), method, params, COMMAND_TIMEOUT)
@@ -326,6 +395,14 @@ impl CdpPage {
 #[async_trait]
 impl PageDriver for CdpPage {
     async fn url(&self) -> Result<String> {
+        if self.is_embedded() {
+            return Ok(self
+                .eval("location.href")
+                .await?
+                .as_str()
+                .unwrap_or_default()
+                .to_owned());
+        }
         // Asked of the browser rather than the page, so that a page too busy
         // to answer does not hold up a look across the tabs.
         let reply = self
@@ -491,11 +568,14 @@ impl InputDriver for CdpPage {
     }
 
     async fn screenshot_png(&self) -> Result<Vec<u8>> {
-        // Chrome only paints the tab in front.
-        let front = json!({ "targetId": &*self.target });
-        self.conn
-            .call(None, "Target.activateTarget", front, COMMAND_TIMEOUT)
-            .await?;
+        // Chrome only paints the tab in front. An embedded page is the
+        // only one there is.
+        if !self.is_embedded() {
+            let front = json!({ "targetId": &*self.target });
+            self.conn
+                .call(None, "Target.activateTarget", front, COMMAND_TIMEOUT)
+                .await?;
+        }
         let reply = self
             .call("Page.captureScreenshot", json!({ "format": "png" }))
             .await?;
@@ -515,6 +595,9 @@ struct Connection {
     /// Messages for the task that writes to Chrome. Never full, so a Chrome
     /// that has stopped reading cannot block whoever sends.
     outbox: mpsc::UnboundedSender<Vec<u8>>,
+    /// True for the pipe to a Chrome, where each message ends with a zero
+    /// byte. False where an embedded browser is handed whole messages.
+    piped: bool,
     state: Mutex<State>,
 }
 
@@ -603,11 +686,14 @@ impl Connection {
     ) -> Result<Value> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let mut message = json!({ "id": id, "method": method, "params": params });
-        if let Some(session) = session {
+        // An embedded browser's one page has no session to name.
+        if let Some(session) = session.filter(|session| !session.is_empty()) {
             message["sessionId"] = session.into();
         }
         let mut bytes = serde_json::to_vec(&message)?;
-        bytes.push(0);
+        if self.piped {
+            bytes.push(0);
+        }
 
         let (reply, answer) = oneshot::channel();
         {
@@ -731,8 +817,10 @@ impl Connection {
             if let Some(session) = message.params["sessionId"].as_str() {
                 state.end_session(session);
             }
-        } else if let Some(session) = message.session_id
-            && let Some(listeners) = state.listeners.get_mut(&session)
+        } else if let Some(listeners) = state
+            .listeners
+            // An embedded browser's one page sends its events with no session.
+            .get_mut(message.session_id.as_deref().unwrap_or_default())
         {
             let event = Event {
                 method,
@@ -1122,5 +1210,89 @@ mod tests {
         let places = usual_places();
         assert!(!places.is_empty());
         assert!(places.iter().all(|place| place.is_absolute()));
+    }
+
+    /// Stands in for an embedded browser: answers what it is asked, and
+    /// keeps every message it was sent.
+    fn pretend_browser(link: &mut EmbeddedLink) -> Arc<Mutex<Vec<Value>>> {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let (kept, from_browser) = (seen.clone(), link.from_browser.clone());
+        let mut to_browser = std::mem::replace(&mut link.to_browser, mpsc::unbounded_channel().1);
+        tokio::spawn(async move {
+            while let Some(bytes) = to_browser.recv().await {
+                assert_ne!(bytes.last(), Some(&0), "a whole message, not a framed one");
+                let message: Value = serde_json::from_slice(&bytes).unwrap();
+                kept.lock().unwrap().push(message.clone());
+                let reply = |result: Value| {
+                    let answer = json!({ "id": message["id"], "result": result });
+                    from_browser.message(answer.to_string().as_bytes());
+                };
+                match message["method"].as_str().unwrap_or_default() {
+                    "Runtime.evaluate" => reply(json!({ "result": { "value": 42 } })),
+                    "Page.navigate" => {
+                        reply(json!({ "frameId": "F", "loaderId": "L" }));
+                        // The page's events come with no session.
+                        for event in [
+                            json!({ "method": "Page.frameNavigated",
+                                    "params": { "frame": { "id": "F", "loaderId": "L" } } }),
+                            json!({ "method": "Page.lifecycleEvent",
+                                    "params": { "name": "load", "frameId": "F", "loaderId": "L" } }),
+                        ] {
+                            from_browser.message(event.to_string().as_bytes());
+                        }
+                    }
+                    _ => reply(json!({})),
+                }
+            }
+        });
+        seen
+    }
+
+    #[tokio::test]
+    async fn an_embedded_page_is_driven_over_messages_someone_else_carries() {
+        let mut link = CdpPage::embedded();
+        let seen = pretend_browser(&mut link);
+        let page = link.page.clone();
+
+        page.prepare().await.unwrap();
+        assert_eq!(page.eval("6 * 7").await.unwrap(), json!(42));
+        // A load is over when the page's own events say so.
+        page.navigate("https://example.edu/grade").await.unwrap();
+
+        let seen = seen.lock().unwrap().clone();
+        let methods: Vec<&str> = seen.iter().filter_map(|m| m["method"].as_str()).collect();
+        assert_eq!(
+            methods,
+            [
+                "Page.enable",
+                "Page.setLifecycleEventsEnabled",
+                "Runtime.evaluate",
+                "Page.navigate"
+            ]
+        );
+        assert!(
+            seen.iter()
+                .all(|message| message.get("sessionId").is_none()),
+            "the one page of an embedded browser has no session to name"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_embedded_browser_that_goes_away_fails_what_waits_for_it() {
+        let link = CdpPage::embedded();
+        let page = link.page.clone();
+        let waiting = tokio::spawn(async move { page.eval("1").await });
+        // The question is on its way before the browser goes.
+        let mut to_browser = link.to_browser;
+        to_browser.recv().await.expect("the question");
+        link.from_browser
+            .closed("The built-in browser was stopped.");
+        let error = waiting.await.unwrap().unwrap_err();
+        assert!(
+            matches!(&error, Error::Browser(why) if why.contains("was stopped")),
+            "{error}"
+        );
+        let after = link.page.eval("2").await.unwrap_err();
+        assert!(matches!(after, Error::Browser(_)), "{after}");
     }
 }
