@@ -27,7 +27,8 @@ use ogre_core::{
 use ogre_harness::cdp::{DialogKind, Held, MouseAction, MouseButton, PageDialog};
 use ogre_harness::sites::Mismatch;
 use ogre_harness::sites::generic::{
-    Element, ElementCheck, PageMap, PickFor, Problem, Severity, SiteProfile, StudentSample, UrlRule,
+    Element, ElementCheck, MaxScoreRule, PageMap, PickFor, Problem, SaveButton, SaveRule,
+    SaveSuccess, Severity, SiteProfile, StudentSample, UrlRule,
 };
 
 fn shots_dir() -> Option<PathBuf> {
@@ -2988,4 +2989,253 @@ fn a_saved_mapping_is_put_right_by_hand_and_saved_only_once_the_page_proves_it()
     frames(&mut harness);
     harness.get_by_label_contains("Nothing was picked.");
     assert!(harness.query_all_by_value("div.student").next().is_some());
+}
+
+/// The Sites screen with one saved mapping open in the form.
+fn mapping_form(saved: &SiteProfile) -> (Harness<'static, OgreApp>, StandIn) {
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Sites").click();
+    frames(&mut harness);
+    assert!(matches!(sent(&mut stand_in), Command::ListProfiles));
+    stand_in
+        .events
+        .send(Event::Profiles(vec![ProfileSummary {
+            id: saved.id.clone(),
+            name: saved.name.clone(),
+            pages: "grades.example.edu/course/*/grade".into(),
+        }]))
+        .unwrap();
+    frames(&mut harness);
+    harness
+        .get_by_label(&format!("Change {}", saved.name))
+        .click();
+    frames(&mut harness);
+    assert!(matches!(sent(&mut stand_in), Command::EditProfile(_)));
+    stand_in
+        .events
+        .send(Event::ProfileToEdit(Box::new(saved.clone())))
+        .unwrap();
+    frames(&mut harness);
+    (harness, stand_in)
+}
+
+/// Types into a box that may be out of sight, as the teacher would: brought
+/// into view and clicked first.
+fn type_into(harness: &mut Harness<'_, OgreApp>, label: &str, text: &str) {
+    scroll_to_and_press(harness, label);
+    harness.get_by_label(label).type_text(text);
+    frames(harness);
+}
+
+/// Presses "Check against the open page" and gives the mapping that was sent.
+fn mapping_tried(harness: &mut Harness<'_, OgreApp>, stand_in: &mut StandIn) -> SiteProfile {
+    scroll_to_and_press(harness, "Check against the open page");
+    match sent(stand_in) {
+        Command::CheckProfile(tried) => *tried,
+        other => panic!("expected the mapping to be tried on the page, got {other:?}"),
+    }
+}
+
+/// The same, with the page then answering that the mapping fits it.
+fn mapping_proven(harness: &mut Harness<'_, OgreApp>, stand_in: &mut StandIn) -> SiteProfile {
+    let tried = mapping_tried(harness, stand_in);
+    stand_in.events.send(checked(&tried, 3)).unwrap();
+    frames(harness);
+    tried
+}
+
+#[test]
+fn the_maximum_score_and_the_save_button_of_a_mapping_are_set_in_the_form() {
+    let Event::Mapped(report) = found_mapping() else {
+        unreachable!()
+    };
+    let saved = report.profile;
+    assert_eq!(saved.page.max_score, None);
+    assert_eq!(saved.page.save, None);
+    let (mut harness, mut stand_in) = mapping_form(&saved);
+
+    // The same maximum for everyone has to be a number before the mapping
+    // can be tried.
+    harness.get_by_label("Maximum score").scroll_to_me();
+    frames(&mut harness);
+    choose(&mut harness, "Maximum score", "The same for every student");
+    harness.get_by_label("Give the maximum score as a number above zero.");
+    scroll_to_and_press(&mut harness, "Check against the open page");
+    assert!(stand_in.commands.try_recv().is_err());
+    type_into(&mut harness, "Maximum score for every student", "12.5");
+    let tried = mapping_proven(&mut harness, &mut stand_in);
+    assert_eq!(
+        tried.page.max_score,
+        Some(MaxScoreRule::Fixed { value: 12.5 })
+    );
+
+    // Beside the score box: the usual pattern is there to begin with.
+    harness.get_by_label("Maximum score").scroll_to_me();
+    frames(&mut harness);
+    choose(
+        &mut harness,
+        "Maximum score",
+        "From the text beside the score box",
+    );
+    let tried = mapping_proven(&mut harness, &mut stand_in);
+    assert_eq!(tried.page.max_score, Some(MaxScoreRule::usual()));
+
+    // In its own place: a selector, typed or picked inside a student's block.
+    harness.get_by_label("Maximum score").scroll_to_me();
+    frames(&mut harness);
+    choose(
+        &mut harness,
+        "Maximum score",
+        "From its own place in each block",
+    );
+    harness.get_by_label_contains("Say where the maximum score is shown");
+    assert_eq!(harness.query_all_by_label("Pick on the page").count(), 7);
+    harness
+        .query_all_by_label("Pick on the page")
+        .last()
+        .unwrap()
+        .click();
+    frames(&mut harness);
+    let Command::PickElement(what) = sent(&mut stand_in) else {
+        panic!("expected to wait for a click on the page");
+    };
+    assert_eq!(what, PickFor::InsideSection(Some("div.student".into())));
+    stand_in
+        .events
+        .send(Event::Picked(Some("span.out-of".into())))
+        .unwrap();
+    frames(&mut harness);
+    let tried = mapping_proven(&mut harness, &mut stand_in);
+    assert_eq!(
+        tried.page.max_score,
+        Some(MaxScoreRule::Selector {
+            selector: "span.out-of".into(),
+            pattern: None
+        })
+    );
+
+    // The save button by its label. With nothing to say a save went
+    // through, the mapping holds the button and no confirmation.
+    harness.get_by_label("Saving").scroll_to_me();
+    frames(&mut harness);
+    choose(&mut harness, "Saving", "The button with this label");
+    harness.get_by_label_contains("Give the save button\u{2019}s label");
+    type_into(&mut harness, "Label of the save button", "Save All Grades");
+    let tried = mapping_proven(&mut harness, &mut stand_in);
+    assert_eq!(
+        tried.page.save,
+        Some(SaveRule {
+            button: SaveButton::Text {
+                text: "Save All Grades".into()
+            },
+            success: None,
+        })
+    );
+
+    // The confirmation is picked anywhere on the page, not inside a block.
+    harness
+        .query_all_by_label("Pick on the page")
+        .last()
+        .unwrap()
+        .scroll_to_me();
+    frames(&mut harness);
+    harness
+        .query_all_by_label("Pick on the page")
+        .last()
+        .unwrap()
+        .click();
+    frames(&mut harness);
+    let Command::PickElement(what) = sent(&mut stand_in) else {
+        panic!("expected to wait for a click on the page");
+    };
+    assert_eq!(what, PickFor::WholePage);
+    stand_in
+        .events
+        .send(Event::Picked(Some("#status".into())))
+        .unwrap();
+    frames(&mut harness);
+    type_into(&mut harness, "What it has to say", "^Saved");
+    let tried = mapping_tried(&mut harness, &mut stand_in);
+    let with_save = Some(SaveRule {
+        button: SaveButton::Text {
+            text: "Save All Grades".into(),
+        },
+        success: Some(SaveSuccess {
+            selector: "#status".into(),
+            pattern: Some("^Saved".into()),
+        }),
+    });
+    assert_eq!(tried.page.save, with_save);
+
+    // Proven on the page, it is saved as the form has it.
+    let mut check = checked(&tried, 3);
+    if let Event::ProfileChecked(check) = &mut check {
+        check.checks.push(ElementCheck {
+            element: Element::SaveButton,
+            rule: "a button labelled \"Save All Grades\"".into(),
+            none: 0,
+            one: 1,
+            several: 0,
+        });
+    }
+    stand_in.events.send(check).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Found on the page.");
+    shot(&mut harness, "40-mapping-editor-max-and-save");
+    scroll_to_and_press(&mut harness, "Save the mapping");
+    let Command::SaveProfile(profile) = sent(&mut stand_in) else {
+        panic!("expected the mapping to be saved");
+    };
+    assert_eq!(profile.page.save, with_save);
+    assert!(matches!(
+        profile.page.max_score,
+        Some(MaxScoreRule::Selector { .. })
+    ));
+}
+
+#[test]
+fn a_mapping_opened_in_the_form_is_the_mapping_the_form_gives_back() {
+    let Event::Mapped(report) = found_mapping() else {
+        unreachable!()
+    };
+    let mut saved = report.profile;
+    for (max, save) in [
+        (
+            Some(MaxScoreRule::Fixed { value: 10.0 }),
+            Some(SaveRule {
+                button: SaveButton::Selector {
+                    selector: "#save".into(),
+                },
+                success: None,
+            }),
+        ),
+        (
+            Some(MaxScoreRule::NearbyText {
+                pattern: r"of (\d+)".into(),
+            }),
+            Some(SaveRule {
+                button: SaveButton::Text {
+                    text: "Save".into(),
+                },
+                success: Some(SaveSuccess {
+                    selector: "#status".into(),
+                    pattern: None,
+                }),
+            }),
+        ),
+        (
+            Some(MaxScoreRule::Selector {
+                selector: ".max".into(),
+                pattern: Some(r"(\d+) points".into()),
+            }),
+            None,
+        ),
+    ] {
+        saved.page.max_score = max;
+        saved.page.save = save;
+        let (mut harness, mut stand_in) = mapping_form(&saved);
+        assert_eq!(mapping_tried(&mut harness, &mut stand_in), saved);
+    }
 }

@@ -4,7 +4,10 @@
 
 use eframe::egui;
 use ogre_core::FeedbackKind;
-use ogre_harness::sites::generic::{Element, FeedbackBox, PickFor, Severity, SiteProfile};
+use ogre_harness::sites::generic::{
+    Element, FeedbackBox, MaxScoreRule, PickFor, SaveButton, SaveRule, SaveSuccess, Severity,
+    SiteProfile,
+};
 
 use super::{Action, OgreApp};
 use crate::kit;
@@ -21,10 +24,16 @@ pub(super) enum Field {
     Response,
     Prompt,
     Feedback,
+    /// The three below have a line only for the ways of finding the maximum
+    /// score and the save button that go by a selector.
+    MaxScore,
+    SaveButton,
+    SaveConfirmation,
 }
 
 impl Field {
-    const ALL: [Self; 6] = [
+    /// The lines every mapping has.
+    const ALWAYS: [Self; 6] = [
         Self::Section,
         Self::Name,
         Self::Score,
@@ -32,6 +41,7 @@ impl Field {
         Self::Prompt,
         Self::Feedback,
     ];
+    const COUNT: usize = 9;
 
     fn label(self) -> &'static str {
         match self {
@@ -41,6 +51,9 @@ impl Field {
             Self::Response => "Student response",
             Self::Prompt => "Question, where each student has their own",
             Self::Feedback => "Feedback box",
+            Self::MaxScore => "Where the maximum score is shown",
+            Self::SaveButton => "Save button",
+            Self::SaveConfirmation => "What the page shows once it has saved",
         }
     }
 
@@ -48,7 +61,11 @@ impl Field {
         match self {
             Self::Section => "Empty for a page that shows one student",
             Self::Prompt | Self::Feedback => "Empty if the page has none",
-            Self::Name | Self::Score | Self::Response => "A selector, looked up in each block",
+            Self::Name | Self::Score | Self::Response | Self::MaxScore => {
+                "A selector, looked up in each block"
+            }
+            Self::SaveButton => "A selector for the page\u{2019}s one save button",
+            Self::SaveConfirmation => "Empty, and OGRE leaves the saving to you",
         }
     }
 
@@ -61,18 +78,80 @@ impl Field {
             Self::Response => Element::Response,
             Self::Prompt => Element::Prompt,
             Self::Feedback => Element::Feedback,
+            Self::MaxScore => Element::MaxScore,
+            Self::SaveButton => Element::SaveButton,
+            Self::SaveConfirmation => Element::SaveConfirmation,
         }
     }
+}
+
+/// How the maximum score is found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MaxFrom {
+    NotShown,
+    NearBox,
+    OwnPlace,
+    Same,
+}
+
+impl MaxFrom {
+    const ALL: [Self; 4] = [Self::NotShown, Self::NearBox, Self::OwnPlace, Self::Same];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::NotShown => "The page does not show it",
+            Self::NearBox => "From the text beside the score box",
+            Self::OwnPlace => "From its own place in each block",
+            Self::Same => "The same for every student",
+        }
+    }
+}
+
+/// How the page's save button is found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SaveBy {
+    Teacher,
+    Label,
+    Selector,
+}
+
+impl SaveBy {
+    const ALL: [Self; 3] = [Self::Teacher, Self::Label, Self::Selector];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Teacher => "No button: I save in the browser",
+            Self::Label => "The button with this label",
+            Self::Selector => "The button at this selector",
+        }
+    }
+}
+
+/// `text` without the space around it, or nothing if that leaves nothing.
+fn filled(text: &str) -> Option<String> {
+    Some(text.trim().to_owned()).filter(|text| !text.is_empty())
 }
 
 /// The form a saved mapping is changed in.
 pub(super) struct MappingEdit {
     /// The mapping as it was loaded. What the form does not show, such as
-    /// how the maximum score and the save button are found, stays as here.
+    /// the pages it is for, stays as here.
     base: SiteProfile,
     name: String,
-    /// One selector per [`Field`], in the order of [`Field::ALL`].
-    selectors: [String; 6],
+    /// One selector per [`Field`], in the order they are declared.
+    selectors: [String; Field::COUNT],
+    max_from: MaxFrom,
+    /// The pattern for the number in the text beside the score box.
+    near_pattern: String,
+    /// The pattern for the number in its own place, where the first number
+    /// there is not it.
+    own_pattern: String,
+    /// The maximum where it is the same for every student.
+    max_value: String,
+    save_by: SaveBy,
+    save_label: String,
+    /// What the confirmation has to say, where its being shown is not enough.
+    saved_pattern: String,
     /// What the last check against the page found.
     checked: Option<ProfileCheck>,
     /// The field waiting for the teacher to click it on the page.
@@ -86,7 +165,7 @@ impl MappingEdit {
             .feedback
             .as_ref()
             .map(|feedback| feedback.selector.clone());
-        Self {
+        let mut edit = Self {
             name: profile.name.clone(),
             selectors: [
                 page.student_section.clone().unwrap_or_default(),
@@ -95,11 +174,54 @@ impl MappingEdit {
                 page.response.clone(),
                 page.prompt.clone().unwrap_or_default(),
                 feedback.unwrap_or_default(),
+                String::new(),
+                String::new(),
+                String::new(),
             ],
-            base: profile,
+            max_from: MaxFrom::NotShown,
+            near_pattern: MaxScoreRule::USUAL_PATTERN.to_owned(),
+            own_pattern: String::new(),
+            max_value: String::new(),
+            save_by: SaveBy::Teacher,
+            save_label: String::new(),
+            saved_pattern: String::new(),
             checked: None,
             picking: None,
+            base: profile,
+        };
+        match edit.base.page.max_score.clone() {
+            None => {}
+            Some(MaxScoreRule::NearbyText { pattern }) => {
+                edit.max_from = MaxFrom::NearBox;
+                edit.near_pattern = pattern;
+            }
+            Some(MaxScoreRule::Selector { selector, pattern }) => {
+                edit.max_from = MaxFrom::OwnPlace;
+                edit.selectors[Field::MaxScore as usize] = selector;
+                edit.own_pattern = pattern.unwrap_or_default();
+            }
+            Some(MaxScoreRule::Fixed { value }) => {
+                edit.max_from = MaxFrom::Same;
+                edit.max_value = value.to_string();
+            }
         }
+        if let Some(save) = edit.base.page.save.clone() {
+            match save.button {
+                SaveButton::Text { text } => {
+                    edit.save_by = SaveBy::Label;
+                    edit.save_label = text;
+                }
+                SaveButton::Selector { selector } => {
+                    edit.save_by = SaveBy::Selector;
+                    edit.selectors[Field::SaveButton as usize] = selector;
+                }
+            }
+            if let Some(success) = save.success {
+                edit.selectors[Field::SaveConfirmation as usize] = success.selector;
+                edit.saved_pattern = success.pattern.unwrap_or_default();
+            }
+        }
+        edit
     }
 
     fn selector(&self, field: Field) -> &str {
@@ -108,16 +230,16 @@ impl MappingEdit {
 
     /// The mapping as the form has it now.
     pub(super) fn profile(&self) -> SiteProfile {
-        let filled = |field: Field| Some(self.selector(field).to_owned()).filter(|s| !s.is_empty());
+        let at = |field: Field| filled(self.selector(field));
         let mut profile = self.base.clone();
         profile.name = self.name.trim().to_owned();
         let page = &mut profile.page;
-        page.student_section = filled(Field::Section);
+        page.student_section = at(Field::Section);
         page.student_name = self.selector(Field::Name).to_owned();
         page.score_input = self.selector(Field::Score).to_owned();
         page.response = self.selector(Field::Response).to_owned();
-        page.prompt = filled(Field::Prompt);
-        page.feedback = filled(Field::Feedback).map(|selector| match page.feedback.take() {
+        page.prompt = at(Field::Prompt);
+        page.feedback = at(Field::Feedback).map(|selector| match page.feedback.take() {
             Some(known) => FeedbackBox { selector, ..known },
             // The check says which kind of box it is.
             None => FeedbackBox {
@@ -126,7 +248,65 @@ impl MappingEdit {
                 hidden_field: None,
             },
         });
+        page.max_score = match self.max_from {
+            MaxFrom::NotShown => None,
+            MaxFrom::NearBox => Some(MaxScoreRule::NearbyText {
+                pattern: filled(&self.near_pattern)
+                    .unwrap_or_else(|| MaxScoreRule::USUAL_PATTERN.to_owned()),
+            }),
+            MaxFrom::OwnPlace => Some(MaxScoreRule::Selector {
+                selector: self.selector(Field::MaxScore).to_owned(),
+                pattern: filled(&self.own_pattern),
+            }),
+            MaxFrom::Same => self.same_max().map(|value| MaxScoreRule::Fixed { value }),
+        };
+        let button = match self.save_by {
+            SaveBy::Teacher => None,
+            SaveBy::Label => Some(SaveButton::Text {
+                text: self.save_label.trim().to_owned(),
+            }),
+            SaveBy::Selector => Some(SaveButton::Selector {
+                selector: self.selector(Field::SaveButton).to_owned(),
+            }),
+        };
+        page.save = button.map(|button| SaveRule {
+            button,
+            success: at(Field::SaveConfirmation).map(|selector| SaveSuccess {
+                selector,
+                pattern: filled(&self.saved_pattern),
+            }),
+        });
         profile
+    }
+
+    /// The maximum typed for every student, if it is a score.
+    fn same_max(&self) -> Option<f64> {
+        let value: f64 = self.max_value.trim().parse().ok()?;
+        (value.is_finite() && value > 0.0).then_some(value)
+    }
+
+    /// What the form still needs before it says a whole mapping.
+    fn missing(&self) -> Option<&'static str> {
+        match self.max_from {
+            MaxFrom::Same if self.same_max().is_none() => {
+                return Some("Give the maximum score as a number above zero.");
+            }
+            MaxFrom::OwnPlace if self.selector(Field::MaxScore).is_empty() => {
+                return Some(
+                    "Say where the maximum score is shown, or choose another way of finding it.",
+                );
+            }
+            _ => {}
+        }
+        match self.save_by {
+            SaveBy::Label if self.save_label.trim().is_empty() => {
+                Some("Give the save button\u{2019}s label, or choose to save in the browser.")
+            }
+            SaveBy::Selector if self.selector(Field::SaveButton).is_empty() => {
+                Some("Say where the save button is, or choose to save in the browser.")
+            }
+            _ => None,
+        }
     }
 
     /// What to look for when the teacher points at `field` on the page.
@@ -134,6 +314,7 @@ impl MappingEdit {
         self.picking = Some(field);
         match field {
             Field::Section => PickFor::StudentSection,
+            Field::SaveButton | Field::SaveConfirmation => PickFor::WholePage,
             _ => PickFor::InsideSection(
                 Some(self.selector(Field::Section).to_owned()).filter(|s| !s.is_empty()),
             ),
@@ -183,10 +364,18 @@ fn finding(check: &ProfileCheck, field: Field) -> (Option<String>, Vec<(Severity
         .map(|found| match field {
             Field::Section if found.one == 1 => format!("Finds {}.", count(students, "student")),
             Field::Section => "Finds no student.".to_owned(),
-            _ if found.one == students => format!("Found for all {}.", count(students, "student")),
+            Field::SaveButton if found.one == 1 => "Found on the page.".to_owned(),
+            Field::SaveButton => "Not found as the page\u{2019}s one save button.".to_owned(),
+            // A maximum is only looked for where there is a score box.
+            _ if found.none == 0 && found.several == 0 => {
+                format!("Found for all {}.", count(found.one, "student"))
+            }
             _ => format!(
                 "Found for {} of {}: missing for {}, more than one for {}.",
-                found.one, students, found.none, found.several
+                found.one,
+                found.none + found.one + found.several,
+                found.none,
+                found.several
             ),
         });
     let problems = check
@@ -196,6 +385,59 @@ fn finding(check: &ProfileCheck, field: Field) -> (Option<String>, Vec<(Severity
         .map(|problem| (problem.severity, problem.message.as_str()))
         .collect();
     (line, problems)
+}
+
+/// One selector of the mapping: a box to type it in and a button to pick it
+/// on the page instead.
+fn selector_line(
+    ui: &mut egui::Ui,
+    edit: &mut MappingEdit,
+    field: Field,
+    on_a_page: bool,
+    actions: &mut Vec<Action>,
+) {
+    let label = kit::section_label(ui, field.label());
+    ui.horizontal(|ui| {
+        let pick = format!("Pick the {} on the page", field.label().to_lowercase());
+        if kit::ghost(ui, "Pick on the page", on_a_page)
+            .on_hover_text(&pick)
+            .clicked()
+        {
+            actions.push(Action::PickOnPage(field));
+        }
+        ui.add(
+            egui::TextEdit::singleline(&mut edit.selectors[field as usize])
+                .hint_text(field.hint())
+                .desired_width(f32::INFINITY),
+        )
+        .labelled_by(label.id);
+    });
+}
+
+/// Something of the mapping that is typed and cannot be picked.
+fn text_line(ui: &mut egui::Ui, label: &str, text: &mut String, hint: &str) {
+    let label = kit::section_label(ui, label);
+    ui.add(egui::TextEdit::singleline(text).desired_width(f32::INFINITY))
+        .labelled_by(label.id);
+    ui.label(theme::muted(hint));
+}
+
+/// What the last check found for `field`, if the form still says what was
+/// checked.
+fn show_finding(ui: &mut egui::Ui, check: Option<&ProfileCheck>, field: Field) {
+    let Some(check) = check else { return };
+    let (line, problems) = finding(check, field);
+    if let Some(line) = line.filter(|_| problems.is_empty()) {
+        ui.label(theme::muted(line));
+    }
+    for (severity, message) in problems {
+        match severity {
+            Severity::Error => kit::warning(ui, message),
+            Severity::Warning => {
+                ui.label(theme::muted(message));
+            }
+        }
+    }
 }
 
 impl OgreApp {
@@ -217,39 +459,90 @@ impl OgreApp {
             .labelled_by(label.id);
 
         let check = edit.current_check().cloned();
-        for field in Field::ALL {
-            let label = kit::section_label(ui, field.label());
-            ui.horizontal(|ui| {
-                let pick = format!("Pick the {} on the page", field.label().to_lowercase());
-                if kit::ghost(ui, "Pick on the page", on_a_page)
-                    .on_hover_text(&pick)
-                    .clicked()
-                {
-                    actions.push(Action::PickOnPage(field));
-                }
-                ui.add(
-                    egui::TextEdit::singleline(&mut edit.selectors[field as usize])
-                        .hint_text(field.hint())
-                        .desired_width(f32::INFINITY),
-                )
-                .labelled_by(label.id);
-            });
-            let Some(check) = &check else { continue };
-            let (line, problems) = finding(check, field);
-            if let Some(line) = line.filter(|_| problems.is_empty()) {
-                ui.label(theme::muted(line));
-            }
-            for (severity, message) in problems {
-                match severity {
-                    Severity::Error => kit::warning(ui, message),
-                    Severity::Warning => {
-                        ui.label(theme::muted(message));
-                    }
-                }
-            }
+        let check = check.as_ref();
+        for field in Field::ALWAYS {
+            selector_line(ui, edit, field, on_a_page, actions);
+            show_finding(ui, check, field);
         }
 
-        match &check {
+        let label = kit::section_label(ui, "Maximum score");
+        egui::ComboBox::from_id_salt("mapping-max-score")
+            .selected_text(theme::body(edit.max_from.label()))
+            .width(320.0)
+            .show_ui(ui, |ui| {
+                for way in MaxFrom::ALL {
+                    ui.selectable_value(&mut edit.max_from, way, way.label());
+                }
+            })
+            .response
+            .labelled_by(label.id);
+        match edit.max_from {
+            MaxFrom::NotShown => {}
+            MaxFrom::NearBox => text_line(
+                ui,
+                "Pattern for the number beside the score box",
+                &mut edit.near_pattern,
+                "A regular expression whose first group is the number. The one given \
+                 reads \u{201c}/ 10\u{201d} and \u{201c}out of 10\u{201d}.",
+            ),
+            MaxFrom::OwnPlace => {
+                selector_line(ui, edit, Field::MaxScore, on_a_page, actions);
+                text_line(
+                    ui,
+                    "Pattern for the number there",
+                    &mut edit.own_pattern,
+                    "Empty for the first number there. Otherwise a regular expression \
+                     whose first group is the number.",
+                );
+            }
+            MaxFrom::Same => text_line(
+                ui,
+                "Maximum score for every student",
+                &mut edit.max_value,
+                "A number, such as 10.",
+            ),
+        }
+        show_finding(ui, check, Field::MaxScore);
+
+        let label = kit::section_label(ui, "Saving");
+        egui::ComboBox::from_id_salt("mapping-save")
+            .selected_text(theme::body(edit.save_by.label()))
+            .width(320.0)
+            .show_ui(ui, |ui| {
+                for way in SaveBy::ALL {
+                    ui.selectable_value(&mut edit.save_by, way, way.label());
+                }
+            })
+            .response
+            .labelled_by(label.id);
+        match edit.save_by {
+            SaveBy::Teacher => {}
+            SaveBy::Label => text_line(
+                ui,
+                "Label of the save button",
+                &mut edit.save_label,
+                "The whole label, as the button shows it. Capitals do not matter.",
+            ),
+            SaveBy::Selector => selector_line(ui, edit, Field::SaveButton, on_a_page, actions),
+        }
+        show_finding(ui, check, Field::SaveButton);
+        if edit.save_by != SaveBy::Teacher {
+            selector_line(ui, edit, Field::SaveConfirmation, on_a_page, actions);
+            text_line(
+                ui,
+                "What it has to say",
+                &mut edit.saved_pattern,
+                "Empty if its being shown is enough. Otherwise a regular expression its \
+                 text has to match.",
+            );
+            show_finding(ui, check, Field::SaveConfirmation);
+        }
+
+        let missing = edit.missing();
+        if let Some(missing) = missing {
+            kit::warning(ui, missing);
+        }
+        match check {
             Some(check) if check.passed => {
                 let names: Vec<&str> = check.samples.iter().map(|s| s.name.as_str()).collect();
                 ui.label(theme::body(format!(
@@ -273,10 +566,11 @@ impl OgreApp {
         let proven = edit.proven();
         let mut cancel = false;
         ui.horizontal(|ui| {
-            if kit::ghost(ui, "Check against the open page", on_a_page).clicked() {
+            let whole = missing.is_none();
+            if kit::ghost(ui, "Check against the open page", on_a_page && whole).clicked() {
                 actions.push(Action::CheckMapping);
             }
-            if kit::primary(ui, "Save the mapping", idle && named && proven).clicked() {
+            if kit::primary(ui, "Save the mapping", idle && named && proven && whole).clicked() {
                 actions.push(Action::SaveEditedMapping);
             }
             cancel = kit::ghost(ui, "Cancel", idle).clicked();
