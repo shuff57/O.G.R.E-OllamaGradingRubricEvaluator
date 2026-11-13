@@ -404,6 +404,7 @@ fn draft_from(answer: &Value) -> Result<DiscoveryDraft, DiscoveryParseError> {
                 success: None,
             }),
             // Only a page that shows one student has a next one to go to.
+            frame: None,
             next_student: step("nextButton"),
             previous_student: step("prevButton"),
         },

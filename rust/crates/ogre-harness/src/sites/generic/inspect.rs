@@ -19,7 +19,39 @@ pub(super) fn call(script: &str, map: &PageMap, args: &Value) -> Result<String> 
 
 /// Looks up everything `map` points at, for every student shown.
 pub(super) async fn inspect(page: &dyn PageDriver, map: &PageMap) -> Result<Inspection> {
-    eval_as(page, &call("(page) => page.inspect()", map, &Value::Null)?).await
+    let mut found: Inspection =
+        eval_as(page, &call("(page) => page.inspect()", map, &Value::Null)?).await?;
+    read_frames(page, map, &mut found).await;
+    Ok(found)
+}
+
+/// Reads the answers and questions that are shown in a frame from another
+/// site. A script in the page cannot look into such a frame; the browser
+/// can. Where it cannot either, the content stays marked as out of reach.
+async fn read_frames(page: &dyn PageDriver, map: &PageMap, found: &mut Inspection) {
+    let Ok(map) = serde_json::to_string(map) else {
+        return;
+    };
+    for student in &mut found.students {
+        let index = student.index;
+        let parts = [
+            ("response", Some(&mut student.response)),
+            ("prompt", student.prompt.as_mut()),
+        ];
+        for (what, content) in parts {
+            let Some(content) = content.filter(|content| content.blocked) else {
+                continue;
+            };
+            let frame = format!("(({PAGE_SCRIPT})({map})).contentFrame({index}, \"{what}\")");
+            // Inside the frame its document is the page, so the same
+            // helper turns what it shows into the HTML that is kept.
+            let read = format!("(({PAGE_SCRIPT})({{}})).htmlOf(document.body)");
+            if let Ok(Value::String(html)) = page.eval_in_frame(&frame, &read).await {
+                content.html = Some(html);
+                content.blocked = false;
+            }
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]

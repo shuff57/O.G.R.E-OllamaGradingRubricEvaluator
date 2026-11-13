@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Submitted answer</title>
+</head>
+<body>
+  <!--
+    One student's answer, as a separate document viewer would show it.
+    Written for OGRE's tests; the answers are invented. Shown in a frame by
+    answers-in-frames.html, where a script of that page cannot read it: two
+    files opened from disk are different sites to the browser.
+  -->
+  <article id="answer"></article>
+  <script>
+    const ANSWERS = {
+      1: 'The <strong>median</strong> is 14, because it is the middle value.',
+      2: 'I added them all up and divided by 5.',
+      3: '',
+    };
+    const who = new URLSearchParams(location.search).get('who');
+    document.getElementById('answer').innerHTML = ANSWERS[who] || '';
+  </script>
+</body>
+</html>

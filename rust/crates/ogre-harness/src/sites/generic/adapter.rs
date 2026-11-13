@@ -11,6 +11,7 @@ use ogre_core::{
 use serde::Deserialize;
 use serde_json::json;
 
+use super::frame::Within;
 use super::inspect::{self, Inspection, Student, call};
 use super::profile::SiteProfile;
 use super::validate::{self, ValidatedProfile};
@@ -230,7 +231,16 @@ impl SiteAdapter for ProfileAdapter {
     }
 
     async fn read_page(&self, page: &dyn PageDriver) -> Result<GradingPage> {
-        let found = self.inspect(page).await?;
+        // The address is the one the teacher has open, also where the
+        // grading page is in a frame with an address of its own.
+        let framed = self.profile.page.frame.is_some();
+        let top = page.url().await?;
+        let within = Within::of(page, self.profile.page.frame.as_deref());
+        let page = within.page();
+        let mut found = self.inspect(page).await?;
+        if framed {
+            found.url = top;
+        }
         if !self.profile.page.steps_through_students() {
             return Ok(GradingPage {
                 url: found.url,
@@ -279,6 +289,8 @@ impl SiteAdapter for ProfileAdapter {
         if !self.profile.page.steps_through_students() {
             return self.read_page(page).await;
         }
+        let within = Within::of(page, self.profile.page.frame.as_deref());
+        let page = within.page();
         let mut submissions = Vec::new();
         let mut shown = None;
         for (write, _) in written {
@@ -309,6 +321,8 @@ impl SiteAdapter for ProfileAdapter {
     /// of, both as shown to the first student. A profile cannot describe a
     /// checklist, so the rubric has none.
     async fn read_rubric(&self, page: &dyn PageDriver) -> Result<Rubric> {
+        let within = Within::of(page, self.profile.page.frame.as_deref());
+        let page = within.page();
         let found = self.inspect(page).await?;
         let first = found.students.first();
         let prompt = first
@@ -325,6 +339,8 @@ impl SiteAdapter for ProfileAdapter {
     }
 
     async fn write_grade(&self, page: &dyn PageDriver, write: &GradeWrite) -> Result<WriteReceipt> {
+        let within = Within::of(page, self.profile.page.frame.as_deref());
+        let page = within.page();
         if !self.profile.page.steps_through_students() {
             return self.fill(page, write).await;
         }
@@ -357,6 +373,8 @@ impl SiteAdapter for ProfileAdapter {
     /// profile describes. A profile that cannot tell a finished save from a
     /// failed one is never used to click anything.
     async fn save(&self, page: &dyn PageDriver) -> Result<()> {
+        let within = Within::of(page, self.profile.page.frame.as_deref());
+        let page = within.page();
         if self.profile.page.steps_through_students() {
             // Every grade was saved as it was written.
             return Ok(());

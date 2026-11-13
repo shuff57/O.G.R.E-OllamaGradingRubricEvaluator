@@ -4,6 +4,7 @@ use std::fmt;
 
 use ogre_core::FeedbackKind;
 
+use super::frame::Within;
 use super::inspect::{self, Inspection, StepButton, Student};
 use super::profile::{ButtonRule, MaxScoreRule, PageMap, SiteProfile};
 use crate::{PageDriver, Result};
@@ -187,7 +188,8 @@ pub async fn validate_profile(
     page: &dyn PageDriver,
     profile: &SiteProfile,
 ) -> Result<ValidationReport> {
-    let found = inspect::inspect(page, &profile.page).await?;
+    let within = Within::of(page, profile.page.frame.as_deref());
+    let found = inspect::inspect(within.page(), &profile.page).await?;
     Ok(report(profile, &found))
 }
 
@@ -804,6 +806,7 @@ mod tests {
                 response: ".answer".into(),
                 prompt: None,
                 save: None,
+                frame: None,
                 next_student: None,
                 previous_student: None,
             },

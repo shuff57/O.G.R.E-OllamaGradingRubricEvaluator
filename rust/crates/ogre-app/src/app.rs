@@ -837,7 +837,7 @@ impl OgreApp {
                 let Some(edit) = &mut self.mapping_edit else {
                     return;
                 };
-                let command = Command::PickElement(edit.pick_for(field));
+                let command = Command::PickElement(edit.pick_for(field), edit.frame());
                 self.send(
                     command,
                     "Click it on the page in Chrome. Escape there cancels.",

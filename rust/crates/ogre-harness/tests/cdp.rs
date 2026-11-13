@@ -207,3 +207,118 @@ async fn navigating_away_from_a_page_that_asks_to_stay_still_arrives() {
     chrome.close().await.unwrap();
     let _ = std::fs::remove_dir_all(&profile_dir);
 }
+
+/// A web server for one test, answering every request with the page for its
+/// path. Gives the port it listens on.
+fn serve(page_for: fn(&str, u16) -> String) -> u16 {
+    use std::io::{BufRead, BufReader, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
+    let port = listener.local_addr().unwrap().port();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let mut request = String::new();
+            if BufReader::new(&stream).read_line(&mut request).is_err() {
+                continue;
+            }
+            let path = request.split_whitespace().nth(1).unwrap_or("/");
+            let body = page_for(path, port);
+            let _ = write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\
+                 Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+        }
+    });
+    port
+}
+
+/// A page with two frames: one from its own site and one from another.
+/// `127.0.0.1` and `localhost` are different sites to Chrome.
+fn framed_pages(path: &str, port: u16) -> String {
+    if path.starts_with("/inner") {
+        return "<!doctype html><title>Inner page</title><p id=who></p>\
+                <script>document.getElementById('who').textContent = location.search</script>"
+            .to_owned();
+    }
+    format!(
+        "<!doctype html><title>Outer page</title>\
+         <iframe id=same src=\"/inner?who=same\"></iframe>\
+         <iframe id=other src=\"http://localhost:{port}/inner?who=other\"></iframe>"
+    )
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs Chrome installed"]
+async fn a_script_runs_inside_a_frame_of_the_same_site_or_another() {
+    let port = serve(framed_pages);
+    let dir = profile("frames");
+    let chrome = launch(&dir).await;
+    let page = chrome
+        .open(&format!("http://127.0.0.1:{port}/"))
+        .await
+        .unwrap();
+    let same = "document.getElementById('same')";
+    let other = "document.getElementById('other')";
+
+    // The page itself cannot look into the frame from the other site.
+    assert_eq!(
+        page.eval(&format!(
+            "[!!{same}.contentDocument, !!{other}.contentDocument]"
+        ))
+        .await
+        .unwrap(),
+        serde_json::json!([true, false])
+    );
+
+    // Inside each frame the script sees the frame's own page.
+    let seen = "[location.href, document.title, document.getElementById('who').textContent]";
+    assert_eq!(
+        page.eval_in_frame(same, seen).await.unwrap(),
+        serde_json::json!([
+            format!("http://127.0.0.1:{port}/inner?who=same"),
+            "Inner page",
+            "?who=same"
+        ])
+    );
+    assert_eq!(
+        page.eval_in_frame(other, seen).await.unwrap(),
+        serde_json::json!([
+            format!("http://localhost:{port}/inner?who=other"),
+            "Inner page",
+            "?who=other"
+        ])
+    );
+
+    // As in the page: a promise is waited for, and what is thrown comes back.
+    let later = "new Promise((done) => setTimeout(() => done(document.title + '!'), 20))";
+    for frame in [same, other] {
+        assert_eq!(
+            page.eval_in_frame(frame, later).await.unwrap(),
+            serde_json::json!("Inner page!")
+        );
+        let thrown = page
+            .eval_in_frame(frame, "(() => { throw new Error('no such box'); })()")
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&thrown, Error::Script(message) if message.contains("no such box")),
+            "{thrown}"
+        );
+    }
+
+    // Something that is not a frame, or not there, is said to be no frame.
+    for not_a_frame in ["document.getElementById('nothing')", "document.body", "42"] {
+        let error = page.eval_in_frame(not_a_frame, "1").await.unwrap_err();
+        assert!(matches!(error, Error::Page(_)), "{not_a_frame}: {error}");
+    }
+    // The page still answers for itself afterwards.
+    assert_eq!(
+        page.eval("document.title").await.unwrap(),
+        serde_json::json!("Outer page")
+    );
+
+    chrome.close().await.unwrap();
+    let _ = std::fs::remove_dir_all(dir);
+}

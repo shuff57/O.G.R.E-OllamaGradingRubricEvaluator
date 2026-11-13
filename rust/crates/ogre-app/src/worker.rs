@@ -10,9 +10,9 @@ use ogre_core::{GradeWrite, GradingPage, QuestionLink, Rubric, StudentWork};
 use ogre_grader::CancelFlag;
 use ogre_harness::cdp::{CdpPage, Chrome, LaunchOptions};
 use ogre_harness::sites::generic::{
-    DiscoverOptions, DiscoverySource, ElementCheck, PickFor, Problem, ProfileAdapter, Severity,
-    SiteProfile, SnapshotOptions, StudentSample, ValidationReport, capture_snapshot, discover,
-    draft_profile, pick_element, validate_profile,
+    DiscoverOptions, DiscoverySource, ElementCheck, Framed, PickFor, Problem, ProfileAdapter,
+    Severity, SiteProfile, SnapshotOptions, StudentSample, ValidationReport, capture_snapshot,
+    discover, draft_profile, main_frame, pick_element, validate_profile,
 };
 use ogre_harness::sites::{Mismatch, SiteAdapter, Sites, WriteReceipt, verify_writes};
 use ogre_harness::{Error, InputDriver, PageDriver, Result};
@@ -130,8 +130,9 @@ pub enum Command {
     /// nothing, on the page or in what is saved.
     CheckProfile(Box<SiteProfile>),
     /// Wait for the teacher to click something on the open page, and give a
-    /// selector for it.
-    PickElement(PickFor),
+    /// selector for it. With a selector for a frame, the click is waited
+    /// for inside that frame of the page.
+    PickElement(PickFor, Option<String>),
     /// Ask the AI for its next turn in the interview that writes a skill.
     /// The last of `turns` is the teacher's.
     SkillInterview {
@@ -679,6 +680,13 @@ impl PageDriver for Tab {
             Self::BuiltIn(page) => page.eval(expression).await,
         }
     }
+
+    async fn eval_in_frame(&self, frame: &str, expression: &str) -> Result<serde_json::Value> {
+        match self {
+            Self::Chrome(page) => page.eval_in_frame(frame, expression).await,
+            Self::BuiltIn(page) => page.eval_in_frame(frame, expression).await,
+        }
+    }
 }
 
 /// The grading page that was last read, which later writes go to.
@@ -914,9 +922,15 @@ impl Task {
                 None => Err(Error::Page("That mapping is no longer saved.".into())),
             },
             Command::CheckProfile(profile) => self.check_profile(*profile).await,
-            Command::PickElement(what) => {
+            Command::PickElement(what, frame) => {
                 let page = self.current_tab().await?;
-                Ok(Event::Picked(pick_element(&page, &what).await?))
+                // In a mapping for a page inside a frame, the click is one
+                // inside that frame.
+                let picked = match &frame {
+                    Some(frame) => pick_element(&Framed::new(&page, frame), &what).await?,
+                    None => pick_element(&page, &what).await?,
+                };
+                Ok(Event::Picked(picked))
             }
             Command::ListHistory => Ok(Event::History(history::load(self.audit.dir()))),
             Command::ListSkills => Ok(self.skills()),
@@ -1024,11 +1038,24 @@ impl Task {
         // then bring up what was asked for. Keep trying for a little while
         // after an open. A page OGRE does not know at all fails at once.
         let settled = self.opened_at.map(|at| at + SETTLE_TIME);
+        let waiting = || settled.is_some_and(|settled| Instant::now() < settled);
+        // Set once a grading page has been seen. While such a page is on
+        // its way to another address, for a moment no tab shows a page
+        // OGRE knows; that is then not the end of it either.
+        let mut seen = false;
         let (chosen, read) = loop {
             let chosen = match &tab {
                 Some(chosen) => chosen.clone(),
-                None => self.grading_page().await?,
+                None => match self.grading_page().await {
+                    Ok(chosen) => chosen,
+                    Err(Error::Page(_)) if seen && waiting() => {
+                        tokio::time::sleep(SETTLE_STEP).await;
+                        continue;
+                    }
+                    Err(error) => return Err(error),
+                },
             };
+            seen = true;
             match chosen.adapter.read_page(&chosen.page).await {
                 Ok(read) => break (chosen, read),
                 Err(error) if settled.is_none_or(|settled| Instant::now() >= settled) => {
@@ -1186,9 +1213,20 @@ impl Task {
             )));
         }
 
+        // A school's site may show the grading tool in a frame. Where the
+        // page itself is not a grading page and is mostly one frame, what
+        // that frame shows is mapped.
+        let top = page;
+        let frame = self.frame_to_map(&top).await;
+        let framed = frame.as_deref().map(|frame| Framed::new(&top, frame));
+        let page: &dyn PageDriver = match &framed {
+            Some(framed) => framed,
+            None => &top,
+        };
+
         let (report, how, notes) = match ai {
             None => {
-                let snapshot = capture_snapshot(&page, &SnapshotOptions::default()).await?;
+                let snapshot = capture_snapshot(page, &SnapshotOptions::default()).await?;
                 let draft = draft_profile(&snapshot).ok_or_else(|| {
                     Error::Page(
                         "OGRE could not work this page out from its structure alone. \
@@ -1196,7 +1234,7 @@ impl Task {
                             .into(),
                     )
                 })?;
-                let report = validate_profile(&page, &draft).await?;
+                let report = validate_profile(page, &draft).await?;
                 if !report.passed() {
                     return Err(Error::Page(format!(
                         "OGRE's reading of this page did not hold up: {} Try again with AI.",
@@ -1212,7 +1250,7 @@ impl Task {
             Some((provider, api_key)) => {
                 let provider =
                     grading::provider(&provider, api_key.as_deref()).map_err(Error::Page)?;
-                let found = discover(&page, &provider, &DiscoverOptions::default())
+                let found = discover(page, &provider, &DiscoverOptions::default())
                     .await
                     .map_err(|error| Error::Page(error.to_string()))?;
                 let how = match found.source {
@@ -1227,7 +1265,48 @@ impl Task {
                 (found.report, how, found.notes)
             }
         };
+        let (report, notes) = match frame {
+            None => (report, notes),
+            Some(frame) => {
+                // Kept under the address the teacher has open, and proven
+                // once more from there, through the frame.
+                let mut map = report.profile().page.clone();
+                map.frame = Some(frame);
+                let profile = SiteProfile::for_page(&url, map);
+                let report = validate_profile(&top, &profile).await?;
+                if !report.passed() {
+                    return Err(Error::Page(format!(
+                        "OGRE's reading of the frame on this page did not hold up: {}",
+                        report.error_summary()
+                    )));
+                }
+                let mut notes = notes;
+                notes.push(
+                    "The grading page is shown inside a frame of this page. The mapping is \
+                     for what that frame shows."
+                        .into(),
+                );
+                (report, notes)
+            }
+        };
         Ok(Event::Mapped(Box::new(map_report(report, how, notes))))
+    }
+
+    /// A selector for the frame to map instead of `page`: `page` is mostly
+    /// one frame, and its own structure is not that of a grading page.
+    async fn frame_to_map(&self, page: &Tab) -> Option<String> {
+        let frame = main_frame(page).await.ok().flatten()?;
+        let snapshot = capture_snapshot(page, &SnapshotOptions::default())
+            .await
+            .ok()?;
+        if let Some(draft) = draft_profile(&snapshot)
+            && validate_profile(page, &draft)
+                .await
+                .is_ok_and(|report| report.passed())
+        {
+            return None;
+        }
+        Some(frame)
     }
 
     /// The page that was read, provided it is still showing the same address.

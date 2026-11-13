@@ -12,7 +12,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use base64::Engine as _;
@@ -42,6 +42,8 @@ const LOAD_TIMEOUT: Duration = Duration::from_secs(30);
 /// A script, which may wait on the page: the site adapters wait up to 30
 /// seconds for a site to confirm a save, so this has to be well over that.
 const EVAL_TIMEOUT: Duration = Duration::from_secs(120);
+/// How long a frame showing another site may take to become reachable.
+const FRAME_WAIT: Duration = Duration::from_secs(5);
 /// Whether Chrome still answers. A live Chrome does so at once.
 const ALIVE_TIMEOUT: Duration = Duration::from_secs(5);
 /// How long Chrome gets to quit by itself before it is killed.
@@ -354,7 +356,7 @@ impl PageDriver for CdpPage {
             "awaitPromise": true,
             "returnByValue": true,
         });
-        let mut reply = self
+        let reply = self
             .conn
             .call(
                 Some(&self.session),
@@ -363,19 +365,88 @@ impl PageDriver for CdpPage {
                 EVAL_TIMEOUT,
             )
             .await?;
-        if let Some(thrown) = reply.get("exceptionDetails") {
-            let message = thrown["exception"]["description"]
-                .as_str()
-                .or(thrown["text"].as_str())
-                .unwrap_or("the script threw");
-            return Err(Error::Script(message.to_owned()));
-        }
-        // `undefined` has no JSON form; treat it as null.
-        Ok(reply
-            .pointer_mut("/result/value")
-            .map(Value::take)
-            .unwrap_or_default())
+        value_of(reply)
     }
+
+    async fn eval_in_frame(&self, frame: &str, expression: &str) -> Result<Value> {
+        let no_frame = || Error::Page("The frame was not found on the page.".into());
+        // The frame's element, kept as a handle rather than brought back.
+        let params = json!({ "expression": frame, "returnByValue": false });
+        let found = self.call("Runtime.evaluate", params).await?;
+        if found.get("exceptionDetails").is_some() {
+            return Err(no_frame());
+        }
+        let element = found["result"]["objectId"].as_str().ok_or_else(no_frame)?;
+        let described = self
+            .call("DOM.describeNode", json!({ "objectId": element }))
+            .await;
+        // The handle is only needed for that one question.
+        let _ = self
+            .call("Runtime.releaseObject", json!({ "objectId": element }))
+            .await;
+        let node = described?["node"].take();
+
+        // A frame that Chrome runs in the page's own process: its document
+        // is at hand, and a function called on it runs in the frame.
+        if let Some(document) = node["contentDocument"]["backendNodeId"].as_i64() {
+            let resolved = self
+                .call("DOM.resolveNode", json!({ "backendNodeId": document }))
+                .await?;
+            let document = text(&resolved["object"], "objectId")?;
+            let params = json!({
+                "objectId": document,
+                "functionDeclaration": format!("function() {{ return ({expression}\n); }}"),
+                "awaitPromise": true,
+                "returnByValue": true,
+            });
+            let reply = self
+                .conn
+                .call(
+                    Some(&self.session),
+                    "Runtime.callFunctionOn",
+                    params,
+                    EVAL_TIMEOUT,
+                )
+                .await?;
+            return value_of(reply);
+        }
+        // A frame showing another site runs in a process of its own, and is
+        // a target of its own, named after the frame.
+        let frame_id = node["frameId"].as_str().ok_or_else(no_frame)?;
+        let started = Instant::now();
+        let inner = loop {
+            // Chrome only has a target for such a frame once it has been
+            // asked what targets there are, and just after the page loaded
+            // the frame may not be among them yet.
+            self.conn
+                .call(None, "Target.getTargets", json!({}), COMMAND_TIMEOUT)
+                .await?;
+            match self.conn.tab(frame_id).await {
+                Ok(inner) => break inner,
+                Err(_) if started.elapsed() < FRAME_WAIT && !self.conn.is_closed() => {
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+                Err(_) => return Err(no_frame()),
+            }
+        };
+        inner.eval(expression).await
+    }
+}
+
+/// The value a script gave, or what it threw.
+fn value_of(mut reply: Value) -> Result<Value> {
+    if let Some(thrown) = reply.get("exceptionDetails") {
+        let message = thrown["exception"]["description"]
+            .as_str()
+            .or(thrown["text"].as_str())
+            .unwrap_or("the script threw");
+        return Err(Error::Script(message.to_owned()));
+    }
+    // `undefined` has no JSON form; treat it as null.
+    Ok(reply
+        .pointer_mut("/result/value")
+        .map(Value::take)
+        .unwrap_or_default())
 }
 
 #[async_trait]

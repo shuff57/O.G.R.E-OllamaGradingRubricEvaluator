@@ -10,9 +10,8 @@
     Written for OGRE's tests; the students are invented.
     The links to the next and the previous student load a new page. The first
     student has no "previous" and the last no "next".
-    A grade is kept only once "Save grade" is pressed: it goes into
-    sessionStorage, which stands in for the site's server, and anything only
-    typed is gone after moving on.
+    A grade is kept only once "Save grade" is pressed, and anything only
+    typed is gone after moving on. "Saved" shows once the grade is kept.
   -->
   <header>
     <h1>Essay 2</h1>
@@ -45,12 +44,22 @@
     const asked = parseInt(new URLSearchParams(location.search).get('student') || '1', 10);
     const at = Math.min(Math.max(asked || 1, 1), STUDENTS.length);
     const student = STUDENTS[at - 1];
-    const grades = () => JSON.parse(sessionStorage.getItem('grades') || '{}');
+    // Where saved grades are kept. Served by the tests' own web server, the
+    // page is given what is kept as `window.KEPT` and posts each save to it.
+    // Opened from disk, sessionStorage stands in for the server.
+    const served = !!window.KEPT;
+    const keptAt = (key) =>
+      served ? window.KEPT[key] || null : JSON.parse(sessionStorage.getItem(key) || 'null');
+    const keep = async (key, value) => {
+      if (!served) return sessionStorage.setItem(key, JSON.stringify(value));
+      await fetch('/kept/' + key, { method: 'POST', body: JSON.stringify(value) });
+      window.KEPT[key] = value;
+    };
 
     document.getElementById('place').textContent = `Student ${at} of ${STUDENTS.length}`;
     document.getElementById('student-name').textContent = student.name;
     document.getElementById('answer').textContent = student.answer;
-    const kept = grades()[at];
+    const kept = keptAt('grade-' + at);
     if (kept) {
       document.getElementById('points').value = kept.points;
       document.getElementById('comment').value = kept.comment;
@@ -66,13 +75,11 @@
     document.getElementById('save').addEventListener('click', () => {
       const status = document.getElementById('status');
       status.hidden = true;
-      setTimeout(() => {
-        const all = grades();
-        all[at] = {
+      setTimeout(async () => {
+        await keep('grade-' + at, {
           points: document.getElementById('points').value,
           comment: document.getElementById('comment').value,
-        };
-        sessionStorage.setItem('grades', JSON.stringify(all));
+        });
         status.textContent = 'Saved for ' + student.name;
         status.hidden = false;
       }, 60);

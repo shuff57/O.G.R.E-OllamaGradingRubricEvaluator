@@ -658,6 +658,177 @@ fn maps_an_unknown_site_then_reads_and_fills_it() {
     let _ = std::fs::remove_dir_all(&data_dir);
 }
 
+/// A worker with an empty data folder of its own, with Chrome started.
+fn fresh_worker(test: &str) -> (Worker, mpsc::Receiver<()>, PathBuf) {
+    let data_dir = std::env::temp_dir().join(format!("ogre-test-{test}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data_dir);
+    let (wake, woken) = mpsc::channel();
+    let worker = Worker::spawn(
+        LaunchOptions {
+            profile_dir: data_dir.join("chrome-profile"),
+            headless: true,
+            executable: None,
+        },
+        Sites::built_in(),
+        data_dir.clone(),
+        move || {
+            let _ = wake.send(());
+        },
+    );
+    ask(&worker, &woken, Command::StartChrome { inside: false });
+    (worker, woken, data_dir)
+}
+
+/// A grading tool that a school's site shows inside a frame: the frame is
+/// what gets mapped, read and filled, under the address the teacher has open.
+#[test]
+#[ignore = "needs Chrome installed"]
+fn maps_a_tool_shown_in_a_frame_then_reads_and_fills_it() {
+    let (worker, woken, data_dir) = fresh_worker("framed-tool");
+    ask(
+        &worker,
+        &woken,
+        Command::Open(fixture("generic/tool-in-a-frame.html")),
+    );
+
+    let (event, _) = ask(&worker, &woken, Command::MapPage { ai: None });
+    let Event::Mapped(found) = event else {
+        panic!("expected a mapping, got {event:?}");
+    };
+    assert_eq!(
+        found.profile.page.frame.as_deref(),
+        Some("iframe#tool_content")
+    );
+    assert_eq!(found.students, 3);
+    assert!(
+        found.warnings.iter().any(|w| w.contains("inside a frame")),
+        "{:?}",
+        found.warnings
+    );
+    let (event, _) = ask(
+        &worker,
+        &woken,
+        Command::SaveProfile(Box::new(found.profile)),
+    );
+    assert!(
+        matches!(&event, Event::Profiles(list) if list.len() == 1),
+        "{event:?}"
+    );
+
+    let (event, _) = ask(&worker, &woken, Command::ReadStudents);
+    let Event::Read(read) = event else {
+        panic!("expected students, got {event:?}");
+    };
+    assert_eq!(read.page.submissions.len(), 3);
+    let second = &read.page.submissions[1];
+    assert!(!second.response.is_empty());
+    let write = plan_write(second, 7.0, "<p>Good start.</p>", WritePolicy::default()).unwrap();
+    let (event, _) = ask(&worker, &woken, Command::Write(vec![write]));
+    let Event::Written(written) = event else {
+        panic!("expected a write report, got {event:?}");
+    };
+    assert_eq!(written.written, [1]);
+    assert!(written.failed.is_empty(), "{:?}", written.failed);
+    assert!(written.mismatches.is_empty(), "{:?}", written.mismatches);
+    let page = written.page.unwrap();
+    assert_eq!(page.submissions[1].score(), Some(7.0));
+    assert!(!page.submissions[0].has_nonzero_score());
+
+    drop(worker);
+    let _ = std::fs::remove_dir_all(&data_dir);
+}
+
+/// A site that shows one student at a time: mapped from its structure, told
+/// by the teacher what shows that a save went through, then read from the
+/// first student to the last and written with each grade saved as it goes.
+#[test]
+#[ignore = "needs Chrome installed"]
+fn a_site_that_shows_one_student_at_a_time_is_mapped_read_and_written() {
+    use ogre_harness::sites::generic::SaveSuccess;
+
+    let (worker, woken, data_dir) = fresh_worker("one-at-a-time");
+    ask(
+        &worker,
+        &woken,
+        Command::Open(fixture("generic/one-at-a-time-buttons.html")),
+    );
+
+    let (event, _) = ask(&worker, &woken, Command::MapPage { ai: None });
+    let Event::Mapped(found) = event else {
+        panic!("expected a mapping, got {event:?}");
+    };
+    assert!(found.profile.page.steps_through_students());
+    let said = |part: &str| found.warnings.iter().any(|w| w.contains(part));
+    assert!(said("one student at a time"), "{:?}", found.warnings);
+    // Structure cannot show how the site confirms a save, and says what
+    // follows from that here.
+    assert!(said("none can be written"), "{:?}", found.warnings);
+    assert!(!said("will not click Save"), "{:?}", found.warnings);
+
+    // The teacher adds it in the form on the Sites screen.
+    let mut profile = found.profile.clone();
+    profile.page.save.as_mut().expect("a save button").success = Some(SaveSuccess {
+        selector: "#saved-note".into(),
+        pattern: None,
+    });
+    let (event, _) = ask(
+        &worker,
+        &woken,
+        Command::CheckProfile(Box::new(profile.clone())),
+    );
+    let Event::ProfileChecked(check) = event else {
+        panic!("expected what the mapping found, got {event:?}");
+    };
+    assert!(check.passed, "{:?}", check.problems);
+    let (event, _) = ask(&worker, &woken, Command::SaveProfile(Box::new(profile)));
+    assert!(
+        matches!(&event, Event::Profiles(list) if list.len() == 1),
+        "{event:?}"
+    );
+
+    let (event, _) = ask(&worker, &woken, Command::ReadStudents);
+    let Event::Read(read) = event else {
+        panic!("expected students, got {event:?}");
+    };
+    assert!(read.saves_on_write, "each grade is saved as it is written");
+    let names: Vec<&str> = read
+        .page
+        .submissions
+        .iter()
+        .map(|s| s.name.as_str())
+        .collect();
+    assert_eq!(
+        names,
+        ["Avery, Sam", "Brook, Kai", "Casey, Lin", "Drew, Pat"]
+    );
+
+    let writes = [(3, 12.0), (0, 15.0)]
+        .map(|(at, score)| {
+            plan_write(
+                &read.page.submissions[at],
+                score,
+                "<p>Checked.</p>",
+                WritePolicy::default(),
+            )
+            .unwrap()
+        })
+        .to_vec();
+    let (event, _) = ask(&worker, &woken, Command::Write(writes));
+    let Event::Written(written) = event else {
+        panic!("expected a write report, got {event:?}");
+    };
+    assert_eq!(written.written, [3, 0]);
+    assert!(written.failed.is_empty(), "{:?}", written.failed);
+    assert!(written.mismatches.is_empty(), "{:?}", written.mismatches);
+    // The fresh read after the write went through every student again.
+    let page = written.page.unwrap();
+    let scores: Vec<_> = page.submissions.iter().map(|s| s.score()).collect();
+    assert_eq!(scores, [Some(15.0), None, None, Some(12.0)]);
+
+    drop(worker);
+    let _ = std::fs::remove_dir_all(&data_dir);
+}
+
 /// Agent mode on the saved page, with a scripted AI: it asks before it types
 /// a score, does it when allowed, and leaves the page alone when refused.
 #[test]

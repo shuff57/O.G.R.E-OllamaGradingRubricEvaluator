@@ -212,6 +212,8 @@ pub(super) struct MappingEdit {
     previous: ButtonForm,
     /// What the confirmation has to say, where its being shown is not enough.
     saved_pattern: String,
+    /// A selector for the frame the grading page is in, where it is in one.
+    frame: String,
     /// What the last check against the page found.
     checked: Option<ProfileCheck>,
     /// The field waiting for the teacher to click it on the page.
@@ -257,6 +259,7 @@ impl MappingEdit {
             own_pattern: String::new(),
             max_value: String::new(),
             saved_pattern: String::new(),
+            frame: page.frame.clone().unwrap_or_default(),
             checked: None,
             picking: None,
             base: profile,
@@ -320,6 +323,7 @@ impl MappingEdit {
             }),
             MaxFrom::Same => self.same_max().map(|value| MaxScoreRule::Fixed { value }),
         };
+        page.frame = self.frame();
         page.next_student = self.next.rule(&self.selectors);
         page.previous_student = self.previous.rule(&self.selectors);
         page.save = self.save.rule(&self.selectors).map(|button| SaveRule {
@@ -330,6 +334,11 @@ impl MappingEdit {
             }),
         });
         profile
+    }
+
+    /// The frame the grading page is in, if the mapping says it is in one.
+    pub(super) fn frame(&self) -> Option<String> {
+        filled(&self.frame)
     }
 
     /// The maximum typed for every student, if it is a score.
@@ -567,6 +576,14 @@ impl OgreApp {
         let label = kit::section_label(ui, "Name");
         ui.add(egui::TextEdit::singleline(&mut edit.name).desired_width(f32::INFINITY))
             .labelled_by(label.id);
+
+        text_line(
+            ui,
+            "Frame the grading page is in",
+            &mut edit.frame,
+            "Empty, unless the grading page is shown inside a frame of the page you have \
+             open. Then a selector for that frame; everything below is looked up inside it.",
+        );
 
         let check = edit.current_check().cloned();
         let check = check.as_ref();

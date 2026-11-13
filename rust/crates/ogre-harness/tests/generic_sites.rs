@@ -20,10 +20,10 @@ use ogre_core::{
 };
 use ogre_harness::cdp::{CdpPage, Chrome, LaunchOptions};
 use ogre_harness::sites::generic::{
-    ButtonRule, DiscoverOptions, DiscoveryError, DiscoverySource, Element, FeedbackBox,
+    ButtonRule, DiscoverOptions, DiscoveryError, DiscoverySource, Element, FeedbackBox, Framed,
     MaxScoreRule, PageMap, PickFor, ProfileAdapter, SaveRule, SaveSuccess, Severity, SiteProfile,
     Snapshot, SnapshotNode, SnapshotOptions, ValidatedProfile, capture_snapshot, detect, discover,
-    draft_profile, pick_element, validate_profile,
+    draft_profile, main_frame, pick_element, validate_profile,
 };
 use ogre_harness::sites::{SiteAdapter, verify_writes};
 use ogre_harness::{Error, InputDriver, PageDriver};
@@ -267,6 +267,7 @@ async fn simple_batch_is_mapped_read_and_written() {
                 response: "div.question-region".into(),
                 prompt: None,
                 save: save_by("#save-all"),
+                frame: None,
                 next_student: None,
                 previous_student: None,
             },
@@ -296,6 +297,7 @@ async fn a_table_layout_is_mapped_read_and_written() {
                 response: "td.response-col".into(),
                 prompt: None,
                 save: save_by("#save-all-btn"),
+                frame: None,
                 next_student: None,
                 previous_student: None,
             },
@@ -326,6 +328,7 @@ async fn deeply_wrapped_rows_are_mapped_read_and_written() {
                 response: "div.response-container".into(),
                 prompt: None,
                 save: None,
+                frame: None,
                 next_student: None,
                 previous_student: None,
             },
@@ -356,6 +359,7 @@ async fn an_unknown_lms_is_mapped_read_and_written() {
                 prompt: None,
                 // Each student has a "Grade" button; none saves the page.
                 save: None,
+                frame: None,
                 next_student: None,
                 previous_student: None,
             },
@@ -814,6 +818,7 @@ async fn rich_text_feedback_is_written_with_its_hidden_field() {
             response: "div.essay".into(),
             prompt: None,
             save: None,
+            frame: None,
             next_student: None,
             previous_student: None,
         }
@@ -974,6 +979,7 @@ async fn a_page_showing_one_student_is_read_and_written_for_that_student() {
                 },
                 success: None
             }),
+            frame: None,
             next_student: Some(ButtonRule::Selector {
                 selector: "#next-student".into(),
             }),
@@ -1042,11 +1048,95 @@ fn by_address() -> PageMap {
         response: "#answer".into(),
         prompt: None,
         save: confirmed_by("#save", "#status", Some("^Saved for")),
+        frame: None,
         next_student: Some(ButtonRule::Text {
             text: "Next student \u{bb}".into(),
         }),
         previous_student: None,
     }
+}
+
+/// What a made-up site has been given to keep, by key.
+type Kept = std::sync::Arc<Mutex<serde_json::Map<String, Value>>>;
+
+/// A web server for one of the made-up sites that show one student at a
+/// time: it serves the fixtures, and keeps the grades their pages save, as a
+/// site's server would. Every page it serves is told what is kept. Gives
+/// the address of the server and what it keeps.
+fn serve_site() -> (String, Kept) {
+    use std::io::{BufRead, BufReader, Read, Write};
+    let kept = Kept::default();
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
+    let address = format!("http://{}", listener.local_addr().unwrap());
+    let shelf = kept.clone();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let mut reader = BufReader::new(&stream);
+            let mut request = String::new();
+            if reader.read_line(&mut request).is_err() {
+                continue;
+            }
+            let mut length = 0;
+            loop {
+                let mut header = String::new();
+                if reader.read_line(&mut header).is_err() || header.trim().is_empty() {
+                    break;
+                }
+                if let Some((name, value)) = header.split_once(':')
+                    && name.eq_ignore_ascii_case("content-length")
+                {
+                    length = value.trim().parse().unwrap_or(0);
+                }
+            }
+            let mut body = vec![0; length];
+            if reader.read_exact(&mut body).is_err() {
+                continue;
+            }
+            let path = request.split_whitespace().nth(1).unwrap_or("/");
+            let path = path.split('?').next().unwrap_or(path);
+            let answer = match path.strip_prefix("/kept/") {
+                Some(key) => {
+                    let value = serde_json::from_slice(&body).unwrap_or(Value::Null);
+                    shelf.lock().unwrap().insert(key.to_owned(), value);
+                    "{}".to_owned()
+                }
+                None => {
+                    let file = Path::new(env!("CARGO_MANIFEST_DIR"))
+                        .join("../../fixtures/generic")
+                        .join(path.trim_start_matches('/'));
+                    let page = std::fs::read_to_string(file).unwrap_or_default();
+                    let known = Value::Object(shelf.lock().unwrap().clone());
+                    page.replacen(
+                        "<head>",
+                        &format!("<head><script>window.KEPT = {known};</script>"),
+                        1,
+                    )
+                }
+            };
+            let _ = write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\
+                 Cache-Control: no-store\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{answer}",
+                answer.len()
+            );
+        }
+    });
+    (address, kept)
+}
+
+/// Starts Chrome on a fixture served by [`serve_site`].
+async fn open_served(test: &str, fixture: &str) -> (Session, String, Kept) {
+    let (address, kept) = serve_site();
+    let url = format!("{address}/{fixture}");
+    let s = open(test, fixture).await;
+    s.page.navigate(&url).await.unwrap();
+    (s, url, kept)
+}
+
+/// What the site keeps, as JSON.
+fn kept_now(kept: &Kept) -> Value {
+    Value::Object(kept.lock().unwrap().clone())
 }
 
 const FOUR_STUDENTS: [&str; 4] = ["Avery, Sam", "Brook, Kai", "Casey, Lin", "Drew, Pat"];
@@ -1060,8 +1150,8 @@ fn stepping(profile: ValidatedProfile) -> ProfileAdapter {
 #[ignore = "needs Chrome installed"]
 async fn every_student_of_a_site_that_shows_one_at_a_time_is_read_and_written() {
     let fixture = "one-at-a-time-addresses.html";
-    let s = open("one-by-address", fixture).await;
-    let profile = SiteProfile::for_page(&fixture_url(fixture), by_address());
+    let (s, url, kept) = open_served("one-by-address", fixture).await;
+    let profile = SiteProfile::for_page(&url, by_address());
     let adapter = stepping(validated(&s.page, profile).await);
     assert!(
         adapter.saves_on_write(),
@@ -1072,7 +1162,7 @@ async fn every_student_of_a_site_that_shows_one_at_a_time_is_read_and_written() 
     // answer included, and the page is back where the teacher left it.
     let read = adapter.read_page(&s.page).await.unwrap();
     assert_eq!(names(&read), FOUR_STUDENTS);
-    assert_eq!(read.url, fixture_url(fixture));
+    assert_eq!(read.url, url);
     assert!(read.submissions[1].response.contains("sample size"));
     assert_eq!(read.submissions[2].response, "");
     for (at, student) in read.submissions.iter().enumerate() {
@@ -1102,13 +1192,10 @@ async fn every_student_of_a_site_that_shows_one_at_a_time_is_read_and_written() 
         []
     );
     assert_eq!(
-        s.page
-            .eval("JSON.parse(sessionStorage.getItem('grades'))")
-            .await
-            .unwrap(),
+        kept_now(&kept),
         json!({
-            "4": { "points": "8.5", "comment": "Clear and correct." },
-            "2": { "points": "6", "comment": "Say how it depends." },
+            "grade-4": { "points": "8.5", "comment": "Clear and correct." },
+            "grade-2": { "points": "6", "comment": "Say how it depends." },
         })
     );
 
@@ -1123,26 +1210,17 @@ async fn every_student_of_a_site_that_shows_one_at_a_time_is_read_and_written() 
 
     // A score someone gave in the meantime is not written over.
     let stale = planned(&after, 0, 9.0, "<p>Good.</p>");
-    s.page
-        .eval(
-            "(() => { const all = JSON.parse(sessionStorage.getItem('grades')); \
-             all[1] = { points: '3', comment: 'By hand.' }; \
-             sessionStorage.setItem('grades', JSON.stringify(all)); location.reload(); })()",
-        )
-        .await
-        .unwrap();
+    let by_hand = json!({ "points": "3", "comment": "By hand." });
+    kept.lock()
+        .unwrap()
+        .insert("grade-1".into(), by_hand.clone());
+    s.page.navigate(&url).await.unwrap();
     let refused = adapter.write_grade(&s.page, &stale).await.unwrap_err();
     assert!(
         matches!(&refused, Error::Page(reason) if reason.contains("changed on the page since it was read")),
         "{refused}"
     );
-    assert_eq!(
-        s.page
-            .eval("JSON.parse(sessionStorage.getItem('grades'))[1]")
-            .await
-            .unwrap(),
-        json!({ "points": "3", "comment": "By hand." })
-    );
+    assert_eq!(kept_now(&kept)["grade-1"], by_hand);
 
     close(s).await;
 }
@@ -1151,7 +1229,7 @@ async fn every_student_of_a_site_that_shows_one_at_a_time_is_read_and_written() 
 #[ignore = "needs Chrome installed"]
 async fn students_behind_buttons_at_one_address_are_read_and_written() {
     let fixture = "one-at-a-time-buttons.html";
-    let s = open("one-by-buttons", fixture).await;
+    let (s, _, kept) = open_served("one-by-buttons", fixture).await;
 
     // The page's structure gives the buttons away; what shows that a save
     // went through, it cannot.
@@ -1194,12 +1272,11 @@ async fn students_behind_buttons_at_one_address_are_read_and_written() {
         verify_writes(&adapter, &s.page, &written).await.unwrap(),
         []
     );
-    let kept = "JSON.parse(sessionStorage.getItem('quiz-grades'))";
     assert_eq!(
-        s.page.eval(kept).await.unwrap(),
+        kept_now(&kept),
         json!({
-            "2": { "score": "4", "feedback": "The 3 is missing." },
-            "0": { "score": "15", "feedback": "Yes." },
+            "quiz-grade-2": { "score": "4", "feedback": "The 3 is missing." },
+            "quiz-grade-0": { "score": "15", "feedback": "Yes." },
         })
     );
 
@@ -1221,10 +1298,13 @@ async fn students_behind_buttons_at_one_address_are_read_and_written() {
             .unwrap(),
         []
     );
-    let all = s.page.eval(kept).await.unwrap();
-    assert_eq!(all["3"]["score"], "12");
-    assert_eq!(all["1"]["feedback"], "Show the rule.");
-    assert_eq!(all["0"]["score"], "15", "nobody else's grade changed");
+    let all = kept_now(&kept);
+    assert_eq!(all["quiz-grade-3"]["score"], "12");
+    assert_eq!(all["quiz-grade-1"]["feedback"], "Show the rule.");
+    assert_eq!(
+        all["quiz-grade-0"]["score"], "15",
+        "nobody else's grade changed"
+    );
 
     close(s).await;
 }
@@ -1265,10 +1345,133 @@ async fn nothing_is_filled_in_on_a_one_at_a_time_site_that_cannot_confirm_a_save
         .unwrap();
     assert_eq!(
         s.page
-            .eval("[document.getElementById('points').value, sessionStorage.getItem('grades')]")
+            .eval("[document.getElementById('points').value, sessionStorage.length]")
             .await
             .unwrap(),
-        json!(["", null])
+        json!(["", 0])
+    );
+
+    close(s).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs Chrome installed"]
+async fn answers_shown_in_frames_from_another_site_are_read() {
+    let s = open("answers-in-frames", "answers-in-frames.html").await;
+    // A script of the page is not let into the frames.
+    assert_eq!(
+        s.page
+            .eval("Array.from(document.querySelectorAll('iframe'), (f) => !!f.contentDocument)")
+            .await
+            .unwrap(),
+        json!([false, false, false])
+    );
+
+    let profile = SiteProfile::for_page(
+        &fixture_url("answers-in-frames.html"),
+        PageMap {
+            student_section: Some("div.submission".into()),
+            student_name: ".student-name".into(),
+            score_input: "input.score".into(),
+            max_score: Some(MaxScoreRule::usual()),
+            feedback: None,
+            response: "iframe.answer-viewer".into(),
+            prompt: None,
+            save: None,
+            frame: None,
+            next_student: None,
+            previous_student: None,
+        },
+    );
+    let report = validate_profile(&s.page, &profile).await.unwrap();
+    assert!(report.passed(), "{}", report.error_summary());
+    assert!(
+        !report.has_error(Element::Response),
+        "the browser reads what the page's own script cannot"
+    );
+
+    let adapter = ProfileAdapter::new(report.into_validated().unwrap());
+    let read = adapter.read_page(&s.page).await.unwrap();
+    assert_eq!(names(&read), ["Avery, Sam", "Brook, Kai", "Casey, Lin"]);
+    let answers: Vec<&str> = read
+        .submissions
+        .iter()
+        .map(|s| s.response.as_str())
+        .collect();
+    assert_eq!(
+        answers,
+        [
+            "The **median** is 14, because it is the middle value.",
+            "I added them all up and divided by 5.",
+            "",
+        ]
+    );
+
+    close(s).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs Chrome installed"]
+async fn a_grading_page_inside_a_frame_is_mapped_read_and_written() {
+    let fixture = "tool-in-a-frame.html";
+    let s = open("tool-in-a-frame", fixture).await;
+    let top = fixture_url(fixture);
+
+    // The school's own page has no students on it; the frame that takes up
+    // most of it is what there is to map.
+    assert_eq!(draft_profile(&snapshot(&s.page).await), None);
+    let frame = main_frame(&s.page).await.unwrap().expect("a frame to map");
+    assert_eq!(frame, "iframe#tool_content");
+
+    // Mapped as any page is, from inside the frame, and kept under the
+    // address the teacher has open.
+    let framed = Framed::new(&s.page, &frame);
+    let inside = capture_snapshot(&framed, &SnapshotOptions::default())
+        .await
+        .unwrap();
+    let mut map = draft_profile(&inside)
+        .expect("heuristics propose a profile")
+        .page;
+    assert_eq!(map.student_section.as_deref(), Some("div[data-lastchange]"));
+    map.frame = Some(frame.clone());
+    let profile = SiteProfile::for_page(&top, map);
+    assert!(profile.url.matches(&top));
+    let adapter = ProfileAdapter::new(validated(&s.page, profile.clone()).await);
+
+    let read = adapter.read_page(&s.page).await.unwrap();
+    assert_eq!(read.url, top, "the address is the one the teacher sees");
+    assert_eq!(names(&read), ["Alice Johnson", "Bob Smith", "Carol Davis"]);
+    assert!(read.submissions[1].response.contains("I factored"));
+    assert_eq!(read.submissions[0].max_score(), Some(10.0));
+
+    let write = planned(&read, 1, 7.5, "<p>Check the last step.</p>");
+    let receipt = adapter.write_grade(&s.page, &write).await.unwrap();
+    assert_eq!(
+        verify_writes(&adapter, &s.page, &[(write, receipt)])
+            .await
+            .unwrap(),
+        []
+    );
+    // The grade is in the tool, and the school's page around it is untouched.
+    let boxes = "Array.from(document.querySelectorAll('input[type=number]'), (box) => box.value)";
+    assert_eq!(framed.eval(boxes).await.unwrap(), json!(["", "7.5", ""]));
+    assert_eq!(
+        s.page
+            .eval("document.querySelector('input[name=q]').value")
+            .await
+            .unwrap(),
+        json!("")
+    );
+
+    // With the frame gone from the page, the profile says so and reads nothing.
+    s.page
+        .eval("document.getElementById('tool_content').remove()")
+        .await
+        .unwrap();
+    let gone = adapter.read_page(&s.page).await.unwrap_err();
+    assert!(
+        matches!(&gone, Error::Page(reason) if reason.contains("frame was not found")),
+        "{gone}"
     );
 
     close(s).await;
@@ -1593,6 +1796,7 @@ async fn discovery_tells_the_ai_which_selectors_failed_and_asks_again() {
             prompt: None,
             // "Grade" is on every submission and nothing is labelled "Save".
             save: None,
+            frame: None,
             next_student: None,
             previous_student: None,
         }
@@ -2008,6 +2212,7 @@ async fn a_mapping_is_put_together_by_pointing_at_the_page() {
             response,
             prompt: None,
             save: None,
+            frame: None,
             next_student: None,
             previous_student: None,
         },

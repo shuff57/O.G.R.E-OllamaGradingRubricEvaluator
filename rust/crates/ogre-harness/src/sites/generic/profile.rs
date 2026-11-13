@@ -242,6 +242,11 @@ pub struct PageMap {
     /// The question as shown to this student, on sites that show it per student.
     pub prompt: Option<String>,
     pub save: Option<SaveRule>,
+    /// A selector for the frame the grading page is shown in, when it is
+    /// inside a frame of the page the teacher has open. Every other
+    /// selector is then looked up in what that frame shows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame: Option<String>,
     /// The button that shows the next student, on a site that shows one
     /// student at a time. With it OGRE reads every student from the one
     /// shown to the last, and goes back to each to write.
@@ -366,6 +371,7 @@ mod tests {
                         pattern: Some("^Saved".into()),
                     }),
                 }),
+                frame: None,
                 next_student: None,
                 previous_student: None,
             },

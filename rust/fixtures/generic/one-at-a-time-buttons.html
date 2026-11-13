@@ -12,9 +12,8 @@
     site does that fetches each student. "Next" is disabled on the last
     student and "Previous" on the first. Opening the address again starts at
     the first student.
-    A grade is kept only once "Save" is pressed: it goes into sessionStorage,
-    which stands in for the site's server, and anything only typed is gone
-    after moving on.
+    A grade is kept only once "Save" is pressed, and anything only typed is
+    gone after moving on. "Saved." shows once the grade is kept.
   -->
   <div id="app">
     <header>
@@ -50,12 +49,22 @@
       { name: 'Drew, Pat', answer: 'By the power rule, bring down the 3 and take one off the power.' },
     ];
     let at = 0;
-    const grades = () => JSON.parse(sessionStorage.getItem('quiz-grades') || '{}');
+    // Where saved grades are kept. Served by the tests' own web server, the
+    // page is given what is kept as `window.KEPT` and posts each save to it.
+    // Opened from disk, sessionStorage stands in for the server.
+    const served = !!window.KEPT;
+    const keptAt = (key) =>
+      served ? window.KEPT[key] || null : JSON.parse(sessionStorage.getItem(key) || 'null');
+    const keep = async (key, value) => {
+      if (!served) return sessionStorage.setItem(key, JSON.stringify(value));
+      await fetch('/kept/' + key, { method: 'POST', body: JSON.stringify(value) });
+      window.KEPT[key] = value;
+    };
     const el = (id) => document.getElementById(id);
 
     const show = () => {
       const student = STUDENTS[at];
-      const kept = grades()[at] || { score: '', feedback: '' };
+      const kept = keptAt('quiz-grade-' + at) || { score: '', feedback: '' };
       el('who').textContent = student.name;
       document.querySelector('.response-text').textContent = student.answer;
       el('score-input').value = kept.score;
@@ -73,11 +82,12 @@
     el('save-grade').addEventListener('click', () => {
       el('saved-note').hidden = true;
       const showing = at;
-      setTimeout(() => {
-        const all = grades();
-        all[showing] = { score: el('score-input').value, feedback: el('feedback-input').value };
-        sessionStorage.setItem('quiz-grades', JSON.stringify(all));
-        el('saved-note').hidden = false;
+      setTimeout(async () => {
+        await keep('quiz-grade-' + showing, {
+          score: el('score-input').value,
+          feedback: el('feedback-input').value,
+        });
+        if (at === showing) el('saved-note').hidden = false;
       }, 60);
     });
     show();

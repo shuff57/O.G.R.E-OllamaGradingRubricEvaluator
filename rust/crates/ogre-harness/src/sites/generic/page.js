@@ -196,6 +196,17 @@
     return body ? { html: htmlOf(body) } : { blocked: true };
   };
 
+  // The frame that holds a student's answer ("response") or question
+  // ("prompt"), for the browser to read where this script may not. `index`
+  // is the student's place among the sections shown.
+  const contentFrame = (index, what) => {
+    const selector = what === 'prompt' ? map.prompt : map.response;
+    const section = sections().shown[index];
+    if (!selector || !section) return null;
+    const found = query(section, selector).els;
+    return found.length === 1 && found[0].tagName === 'IFRAME' ? found[0] : null;
+  };
+
   const firstNumber = (text, pattern) => {
     const match = text.match(pattern || /(\d+(?:\.\d+)?)/);
     if (!match) return null;
@@ -370,6 +381,6 @@
 
   return {
     map, squash, visible, query, regex, sections, locate, studentName, scoreFacts,
-    feedbackFacts, button, pressable, saveButton, inspect,
+    feedbackFacts, button, pressable, saveButton, inspect, contentFrame, htmlOf,
   };
 }

@@ -74,6 +74,7 @@ impl Detection {
                 button,
                 success: None,
             }),
+            frame: None,
             next_student: found.next_student.clone(),
             previous_student: found.previous_student.clone(),
         })

@@ -2925,7 +2925,7 @@ fn a_saved_mapping_is_put_right_by_hand_and_saved_only_once_the_page_proves_it()
         .unwrap()
         .click();
     frames(&mut harness);
-    let Command::PickElement(what) = sent(&mut stand_in) else {
+    let Command::PickElement(what, _) = sent(&mut stand_in) else {
         panic!("expected to wait for a click on the page");
     };
     assert_eq!(what, PickFor::InsideSection(Some("div.student".into())));
@@ -2980,7 +2980,7 @@ fn a_saved_mapping_is_put_right_by_hand_and_saved_only_once_the_page_proves_it()
     frames(&mut harness);
     assert_eq!(
         match sent(&mut stand_in) {
-            Command::PickElement(what) => what,
+            Command::PickElement(what, _) => what,
             other => panic!("expected a pick, got {other:?}"),
         },
         PickFor::StudentSection
@@ -3098,7 +3098,7 @@ fn the_maximum_score_and_the_save_button_of_a_mapping_are_set_in_the_form() {
         .unwrap()
         .click();
     frames(&mut harness);
-    let Command::PickElement(what) = sent(&mut stand_in) else {
+    let Command::PickElement(what, _) = sent(&mut stand_in) else {
         panic!("expected to wait for a click on the page");
     };
     assert_eq!(what, PickFor::InsideSection(Some("div.student".into())));
@@ -3147,7 +3147,7 @@ fn the_maximum_score_and_the_save_button_of_a_mapping_are_set_in_the_form() {
         .unwrap()
         .click();
     frames(&mut harness);
-    let Command::PickElement(what) = sent(&mut stand_in) else {
+    let Command::PickElement(what, _) = sent(&mut stand_in) else {
         panic!("expected to wait for a click on the page");
     };
     assert_eq!(what, PickFor::WholePage);
@@ -3228,7 +3228,7 @@ fn the_button_to_the_next_student_is_mapped_for_a_page_that_shows_one_student() 
         .unwrap()
         .click();
     frames(&mut harness);
-    let Command::PickElement(what) = sent(&mut stand_in) else {
+    let Command::PickElement(what, _) = sent(&mut stand_in) else {
         panic!("expected to wait for a click on the page");
     };
     assert_eq!(what, PickFor::WholePage);
@@ -3287,6 +3287,42 @@ fn the_button_to_the_next_student_is_mapped_for_a_page_that_shows_one_student() 
     frames(&mut harness);
     harness.get_by_label("every student is read, but none can be written");
     shot(&mut harness, "41-mapping-editor-next-student");
+}
+
+#[test]
+fn a_mapping_for_a_page_inside_a_frame_keeps_its_frame_and_picks_inside_it() {
+    let Event::Mapped(report) = found_mapping() else {
+        unreachable!()
+    };
+    let mut saved = report.profile;
+    saved.page.frame = Some("iframe#tool_content".into());
+    let (mut harness, mut stand_in) = mapping_form(&saved);
+    harness.get_by_label("Frame the grading page is in");
+    assert!(
+        harness
+            .query_all_by_value("iframe#tool_content")
+            .next()
+            .is_some()
+    );
+
+    // A click on the page is waited for inside that frame.
+    harness
+        .query_all_by_label("Pick on the page")
+        .next()
+        .unwrap()
+        .click();
+    frames(&mut harness);
+    let Command::PickElement(what, frame) = sent(&mut stand_in) else {
+        panic!("expected to wait for a click on the page");
+    };
+    assert_eq!(what, PickFor::StudentSection);
+    assert_eq!(frame.as_deref(), Some("iframe#tool_content"));
+    stand_in.events.send(Event::Picked(None)).unwrap();
+    frames(&mut harness);
+
+    // And the mapping that is tried still says which frame.
+    let tried = mapping_tried(&mut harness, &mut stand_in);
+    assert_eq!(tried, saved);
 }
 
 #[test]
