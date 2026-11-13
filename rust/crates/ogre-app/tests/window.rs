@@ -1057,6 +1057,25 @@ fn a_suggestion_the_teacher_takes_is_what_gets_written() {
 
     harness.get_by_label("Diaz, Remy").click();
     frames(&mut harness);
+    // What it would put in the feedback box is there to read first.
+    harness.get_by_label("Suggested feedback");
+    harness.get_by_label("Remy, correct, but say why.");
+    harness.get_by_label("Use the suggestion").click();
+    frames(&mut harness);
+    assert!(harness.query_by_label("Has a suggestion").is_none());
+    assert!(harness.query_by_label("Suggested feedback").is_none());
+
+    // Taking it can be gone back on, and then taken again.
+    harness
+        .get_by_label("Go back to the first proposal")
+        .click();
+    frames(&mut harness);
+    harness.get_by_label("Suggested feedback");
+    assert!(
+        harness
+            .query_by_label("Go back to the first proposal")
+            .is_none()
+    );
     harness.get_by_label("Use the suggestion").click();
     frames(&mut harness);
     assert!(harness.query_by_label("Has a suggestion").is_none());

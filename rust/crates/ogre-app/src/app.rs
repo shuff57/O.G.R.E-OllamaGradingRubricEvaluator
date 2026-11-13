@@ -1198,6 +1198,12 @@ impl OgreApp {
                             ui.label(theme::meta("from the consistency check"));
                         });
                         ui.label(theme::body(text));
+                        // What taking it would put in the feedback box, to
+                        // read against what is there now.
+                        if let Some(feedback) = proposal.suggested_feedback() {
+                            kit::section_label(ui, "Suggested feedback");
+                            ui.label(theme::body(feedback));
+                        }
                         ui.horizontal_wrapped(|ui| {
                             take = kit::ghost(ui, "Use the suggestion", true).clicked();
                             keep = kit::ghost(ui, "Keep the proposal", true).clicked();
@@ -1208,6 +1214,15 @@ impl OgreApp {
                     } else if keep {
                         proposal.keep_proposal();
                     }
+                } else if proposal.suggestion_taken() {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(theme::muted(
+                            "This is the consistency check\u{2019}s suggestion, which you took.",
+                        ));
+                        if kit::ghost(ui, "Go back to the first proposal", true).clicked() {
+                            proposal.undo_suggestion();
+                        }
+                    });
                 }
                 let label = kit::section_label(ui, "Proposed feedback");
                 let edit = ui

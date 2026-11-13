@@ -147,6 +147,17 @@ pub struct Proposal {
     pub accepted: bool,
     /// A zero for a student who gave no response, proposed without the AI.
     pub for_no_response: bool,
+    /// What the proposal was before a suggestion was taken, to go back to.
+    before_suggestion: Option<BeforeSuggestion>,
+}
+
+/// A proposal as it stood when the teacher took the consistency check's
+/// suggestion.
+struct BeforeSuggestion {
+    score: f64,
+    /// The feedback that the suggestion's replaced, where it replaced any.
+    feedback: Option<(String, String)>,
+    suggestion: Suggestion,
 }
 
 impl Proposal {
@@ -163,6 +174,7 @@ impl Proposal {
                 .filter(|s| s.score != grade.score || s.feedback_html.is_some()),
             accepted: true,
             for_no_response: false,
+            before_suggestion: None,
         }
     }
 
@@ -177,6 +189,7 @@ impl Proposal {
             suggestion: None,
             accepted: true,
             for_no_response: true,
+            before_suggestion: None,
         }
     }
 
@@ -187,16 +200,52 @@ impl Proposal {
         let Some(suggestion) = self.suggestion.take() else {
             return;
         };
+        let mut before = BeforeSuggestion {
+            score: self.score,
+            feedback: None,
+            suggestion: suggestion.clone(),
+        };
         self.score = suggestion.score;
         if let Some(html) = suggestion.feedback_html.filter(|_| !self.edited) {
-            self.text = feedback::plain_text(&html);
-            self.original_html = html;
+            let text = std::mem::replace(&mut self.text, feedback::plain_text(&html));
+            let original = std::mem::replace(&mut self.original_html, html);
+            before.feedback = Some((original, text));
         }
+        self.before_suggestion = Some(before);
+    }
+
+    /// True when a suggestion was taken and can still be given back.
+    pub fn suggestion_taken(&self) -> bool {
+        self.before_suggestion.is_some()
+    }
+
+    /// Goes back on [`Self::use_suggestion`]: the proposal's own score
+    /// returns, and its feedback unless the teacher has edited the feedback
+    /// since. The suggestion is open again.
+    pub fn undo_suggestion(&mut self) {
+        let Some(before) = self.before_suggestion.take() else {
+            return;
+        };
+        self.score = before.score;
+        if let Some((html, text)) = before.feedback.filter(|_| !self.edited) {
+            self.original_html = html;
+            self.text = text;
+        }
+        self.suggestion = Some(before.suggestion);
+    }
+
+    /// The feedback the suggestion would put in place of the proposal's, as
+    /// plain text. `None` where it has none, or where the teacher's own
+    /// edits would be kept instead.
+    pub fn suggested_feedback(&self) -> Option<String> {
+        let html = self.suggestion.as_ref()?.feedback_html.as_deref()?;
+        (!self.edited).then(|| feedback::plain_text(html))
     }
 
     /// Sets the suggestion aside; the proposal stands as it is.
     pub fn keep_proposal(&mut self) {
         self.suggestion = None;
+        self.before_suggestion = None;
     }
 
     /// Call after the teacher changes [`Self::text`].
@@ -1024,6 +1073,54 @@ mod tests {
             writes[1].feedback.as_ref().unwrap().html,
             "<p>First thoughts.</p>"
         );
+    }
+
+    #[test]
+    fn taking_a_suggestion_can_be_gone_back_on() {
+        let mut s = session();
+        s.apply_grades(report(vec![suggested(
+            1,
+            7.0,
+            5.5,
+            Some("<p>Second thoughts.</p>"),
+        )]));
+        let proposal = |s: &mut Session| s.rows[1].proposal.as_mut().unwrap();
+        assert_eq!(
+            proposal(&mut s).suggested_feedback().as_deref(),
+            Some("Second thoughts.")
+        );
+        assert!(!proposal(&mut s).suggestion_taken());
+
+        proposal(&mut s).use_suggestion();
+        assert!(proposal(&mut s).suggestion_taken());
+        proposal(&mut s).undo_suggestion();
+        assert!(!proposal(&mut s).suggestion_taken());
+        assert_eq!(
+            s.status(1),
+            Status::Suggested,
+            "the suggestion is open again"
+        );
+        let writes = s.to_write();
+        assert_eq!(writes[0].score.value, 7.0);
+        assert_eq!(
+            writes[0].feedback.as_ref().unwrap().html,
+            "<p>First thoughts.</p>"
+        );
+
+        // Feedback the teacher wrote after taking it is theirs to keep: only
+        // the score goes back.
+        proposal(&mut s).use_suggestion();
+        proposal(&mut s).text = "My own words.".into();
+        proposal(&mut s).mark_edited();
+        proposal(&mut s).undo_suggestion();
+        let writes = s.to_write();
+        assert_eq!(writes[0].score.value, 7.0);
+        assert_eq!(
+            writes[0].feedback.as_ref().unwrap().html,
+            "<p>My own words.</p>"
+        );
+        // And the suggestion no longer offers to replace them.
+        assert_eq!(proposal(&mut s).suggested_feedback(), None);
     }
 
     #[test]
