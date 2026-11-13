@@ -292,6 +292,16 @@ fn unfinished(
     page: &GradingPage,
 ) -> Option<(u64, Vec<crate::grading::GradedRow>)> {
     let (at, kept) = history::proposed_before(sessions_dir, &page.url)?;
+    // A name that two students share, then or now, says nothing about which
+    // of them a grade was for.
+    let once = |names: Vec<&str>, name: &str| names.iter().filter(|n| **n == name).count() == 1;
+    let own_name = |name: &str| {
+        once(kept.iter().map(|g| g.name.as_str()).collect(), name)
+            && once(
+                page.submissions.iter().map(|s| s.name.as_str()).collect(),
+                name,
+            )
+    };
     let rows: Vec<_> = page
         .submissions
         .iter()
@@ -305,7 +315,7 @@ fn unfinished(
                 .iter()
                 .find(|grade| match (&grade.student_id, &s.student_id) {
                     (Some(then), Some(now)) => then == now,
-                    _ => grade.name == s.name,
+                    _ => grade.name == s.name && own_name(&s.name),
                 })?;
             Some(crate::grading::GradedRow {
                 index,
@@ -1119,7 +1129,7 @@ impl Task {
                     report.error_summary()
                 ))
             })?;
-            let manual_save = !can_confirm_save(profile);
+            let manual_save = !profile.page.confirms_saves();
             return Ok(Chosen {
                 page: page.clone(),
                 adapter: Arc::new(ProfileAdapter::new(validated)),
@@ -1205,54 +1215,20 @@ impl Task {
 
         // A school's site may show the grading tool in a frame. Where the
         // page itself is not a grading page and is mostly one frame, what
-        // that frame shows is mapped.
+        // that frame shows is mapped. If that comes to nothing, the frame
+        // was something else, a viewer of the student's work perhaps, and
+        // the page itself is mapped as it always was.
         let top = page;
         let frame = self.frame_to_map(&top).await;
-        let framed = frame.as_deref().map(|frame| Framed::new(&top, frame));
-        let page: &dyn PageDriver = match &framed {
-            Some(framed) => framed,
-            None => &top,
+        let inside = match &frame {
+            Some(frame) => self.map_on(&Framed::new(&top, frame), &ai).await.ok(),
+            None => None,
         };
-
-        let (report, how, notes) = match ai {
+        let (report, how, notes, frame) = match inside {
+            Some((report, how, notes)) => (report, how, notes, frame),
             None => {
-                let snapshot = capture_snapshot(page, &SnapshotOptions::default()).await?;
-                let draft = draft_profile(&snapshot).ok_or_else(|| {
-                    Error::Page(
-                        "OGRE could not work this page out from its structure alone. \
-                         Try again with AI."
-                            .into(),
-                    )
-                })?;
-                let report = validate_profile(page, &draft).await?;
-                if !report.passed() {
-                    return Err(Error::Page(format!(
-                        "OGRE's reading of this page did not hold up: {} Try again with AI.",
-                        report.error_summary()
-                    )));
-                }
-                (
-                    report,
-                    "Worked out from the page's structure, without AI.".to_owned(),
-                    Vec::new(),
-                )
-            }
-            Some((provider, api_key)) => {
-                let provider =
-                    grading::provider(&provider, api_key.as_deref()).map_err(Error::Page)?;
-                let found = discover(page, &provider, &DiscoverOptions::default())
-                    .await
-                    .map_err(|error| Error::Page(error.to_string()))?;
-                let how = match found.source {
-                    DiscoverySource::Heuristics { .. } => {
-                        "Worked out from the page's structure; the AI was not needed.".to_owned()
-                    }
-                    DiscoverySource::Ai { attempts, .. } => format!(
-                        "Worked out by the AI in {attempts} {}, then checked on the page.",
-                        if attempts == 1 { "try" } else { "tries" }
-                    ),
-                };
-                (found.report, how, found.notes)
+                let (report, how, notes) = self.map_on(&top, &ai).await?;
+                (report, how, notes, None)
             }
         };
         let (report, notes) = match frame {
@@ -1280,6 +1256,48 @@ impl Task {
             }
         };
         Ok(Event::Mapped(Box::new(map_report(report, how, notes))))
+    }
+
+    /// Works out where things are on `page`: from its structure, or with the
+    /// AI where one is given. The mapping that comes back fits the page.
+    async fn map_on(
+        &self,
+        page: &dyn PageDriver,
+        ai: &Option<(ProviderSettings, Option<String>)>,
+    ) -> Result<(ValidationReport, String, Vec<String>)> {
+        let Some((provider, api_key)) = ai else {
+            let snapshot = capture_snapshot(page, &SnapshotOptions::default()).await?;
+            let draft = draft_profile(&snapshot).ok_or_else(|| {
+                Error::Page(
+                    "OGRE could not work this page out from its structure alone. \
+                     Try again with AI."
+                        .into(),
+                )
+            })?;
+            let report = validate_profile(page, &draft).await?;
+            if !report.passed() {
+                return Err(Error::Page(format!(
+                    "OGRE's reading of this page did not hold up: {} Try again with AI.",
+                    report.error_summary()
+                )));
+            }
+            let how = "Worked out from the page's structure, without AI.".to_owned();
+            return Ok((report, how, Vec::new()));
+        };
+        let provider = grading::provider(provider, api_key.as_deref()).map_err(Error::Page)?;
+        let found = discover(page, &provider, &DiscoverOptions::default())
+            .await
+            .map_err(|error| Error::Page(error.to_string()))?;
+        let how = match found.source {
+            DiscoverySource::Heuristics { .. } => {
+                "Worked out from the page's structure; the AI was not needed.".to_owned()
+            }
+            DiscoverySource::Ai { attempts, .. } => format!(
+                "Worked out by the AI in {attempts} {}, then checked on the page.",
+                if attempts == 1 { "try" } else { "tries" }
+            ),
+        };
+        Ok((found.report, how, found.notes))
     }
 
     /// A selector for the frame to map instead of `page`: `page` is mostly
@@ -1346,15 +1364,6 @@ impl Task {
     }
 }
 
-/// Whether a mapping says how to recognize that the site saved.
-fn can_confirm_save(profile: &SiteProfile) -> bool {
-    profile
-        .page
-        .save
-        .as_ref()
-        .is_some_and(|save| save.success.is_some())
-}
-
 fn map_report(report: ValidationReport, how: String, notes: Vec<String>) -> MapReport {
     let mut warnings: Vec<String> = report
         .problems()
@@ -1373,7 +1382,7 @@ fn map_report(report: ValidationReport, how: String, notes: Vec<String>) -> MapR
         );
     }
     // A site gone through student by student says so itself, in the check.
-    if !steps && !can_confirm_save(report.profile()) {
+    if !steps && !report.profile().page.confirms_saves() {
         warnings.push(
             "OGRE will fill in grades on this site but will not click Save: \
              it has no way to tell that a save worked. You save in the browser."

@@ -587,19 +587,47 @@ enum Step {
     Previous,
 }
 
-const NEXT_WORDS: [&str; 5] = ["next", "►", "→", "»", "raquo"];
-
 /// The way `node` moves between students, if it is a button that does.
+///
+/// Stricter than [`is_nav_button`], which only has to tell that a page shows
+/// one student at a time: this button gets pressed. "Preview" is no way
+/// back, and "Next question" goes somewhere else altogether.
 fn steps(node: &Node) -> Option<Step> {
-    if !is_nav_button(node) {
+    /// Where else a "next" or a "previous" on a grading page may lead.
+    const ELSEWHERE: [&str; 12] = [
+        "question",
+        "page",
+        "problem",
+        "item",
+        "part",
+        "section",
+        "assignment",
+        "attempt",
+        "step",
+        "week",
+        "unit",
+        "back to",
+    ];
+    if !is_button(node) {
         return None;
     }
     let label = button_label(node).to_lowercase();
-    Some(if NEXT_WORDS.iter().any(|word| label.contains(word)) {
-        Step::Next
+    if ELSEWHERE.iter().any(|other| label.contains(other)) {
+        return None;
+    }
+    let word = |wanted: &[&str]| {
+        label
+            .split(|c: char| !c.is_alphanumeric())
+            .any(|word| wanted.contains(&word))
+    };
+    let arrow = |wanted: &[char]| label.chars().any(|c| wanted.contains(&c));
+    if word(&["next", "raquo"]) || arrow(&['►', '▶', '→', '»', '›']) {
+        Some(Step::Next)
+    } else if word(&["prev", "previous", "laquo"]) || arrow(&['◄', '◀', '←', '«', '‹']) {
+        Some(Step::Previous)
     } else {
-        Step::Previous
-    })
+        None
+    }
 }
 
 fn is_save_button(node: &Node) -> bool {
@@ -1736,5 +1764,36 @@ mod tests {
         ] {
             assert!(!mentions_max(text), "{text}");
         }
+    }
+
+    #[test]
+    fn only_a_button_to_another_student_is_one_to_press() {
+        let button = |label: &str| node("button").saying(label);
+        for label in [
+            "Next \u{bb}",
+            "Next student",
+            "next",
+            "\u{2192}",
+            "Next submission",
+        ] {
+            assert_eq!(steps(&button(label)), Some(Step::Next), "{label}");
+        }
+        for label in ["\u{ab} Previous", "Prev", "\u{2190}", "Previous student"] {
+            assert_eq!(steps(&button(label)), Some(Step::Previous), "{label}");
+        }
+        // These go somewhere else, or nowhere: pressing them would read
+        // another question's students as this one's, or leave the page.
+        for label in [
+            "Preview",
+            "Next question",
+            "Next page \u{bb}",
+            "\u{2190} Back to assignment",
+            "Previous attempt",
+            "Save",
+            "Context",
+        ] {
+            assert_eq!(steps(&button(label)), None, "{label}");
+        }
+        assert_eq!(steps(&node("span").saying("Next")), None, "not a button");
     }
 }

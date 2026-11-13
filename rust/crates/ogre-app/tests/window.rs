@@ -899,6 +899,33 @@ fn the_agent_finds_a_grading_page_and_the_page_it_stops_on_is_mapped() {
 }
 
 #[test]
+fn an_agent_that_never_ran_does_not_have_a_later_run_mapped() {
+    let (mut harness, mut stand_in) = sites_screen();
+    agent_sent_to_find(&mut harness, &mut stand_in, "Quiz 4 in Algebra 2");
+    // It could not even start: no page was open.
+    stand_in
+        .events
+        .send(Event::Failed("No page is open in Chrome.".into()))
+        .unwrap();
+    frames(&mut harness);
+
+    // The teacher's own task afterwards is only that. Its end sends no
+    // page to be mapped, and nothing of the page to the AI.
+    harness.get_by_label("Start").click();
+    frames(&mut harness);
+    assert!(matches!(sent(&mut stand_in), Command::RunAgent(_)));
+    stand_in
+        .events
+        .send(Event::AgentDone(AgentSummary {
+            finished: true,
+            message: "Done.".into(),
+        }))
+        .unwrap();
+    frames(&mut harness);
+    assert!(stand_in.commands.try_recv().is_err());
+}
+
+#[test]
 fn nothing_is_mapped_when_the_agent_does_not_get_to_a_grading_page() {
     let (mut harness, mut stand_in) = sites_screen();
     agent_sent_to_find(&mut harness, &mut stand_in, "Quiz 4 in Algebra 2");

@@ -123,10 +123,16 @@ pub(super) struct Walker<'a> {
 }
 
 impl Walker<'_> {
-    /// The page as it stands, if the profile fits it.
+    /// The page as it stands, if it shows a student by name. A student who
+    /// cannot be graded, as one who handed nothing in may have no score
+    /// box, is still a student to list and to pass on the way to the next.
     async fn look(&self, page: &dyn PageDriver) -> Option<(Inspection, Stop)> {
         let found = inspect::inspect(page, &self.profile.page).await.ok()?;
-        if !validate::report(self.profile, &found).passed() {
+        let named = found
+            .students
+            .first()
+            .is_some_and(|student| student.name.count == 1 && !student.name.text.is_empty());
+        if !named {
             return None;
         }
         let stop = Stop::of(&found)?;
@@ -206,9 +212,22 @@ impl Walker<'_> {
             if self.press(page, Step::Next).await?.is_err() {
                 break;
             }
-            // Nothing new within the time allowed: that was the last student.
             let Some((found, next)) = self.settled(page, Some(&stop)).await else {
-                break;
+                // Nothing new in the time allowed. With the page as it was,
+                // that was the last student. A page that has become
+                // something unreadable is not the end of the list, and to
+                // stop here would leave students out without a word.
+                let now = inspect::inspect(page, &self.profile.page).await.ok();
+                if now.as_ref().and_then(Stop::of).as_ref() == Some(&stop) {
+                    break;
+                }
+                return Err(Error::Page(format!(
+                    "After \u{201c}{}\u{201d}, the button to the next student led to a page \
+                     OGRE could not read, so the students after them are not known. OGRE \
+                     read {} before that and changed nothing.",
+                    stop.name,
+                    met.len()
+                )));
             };
             // A site may go round to the first student again.
             if met.iter().any(|(_, seen)| *seen == next) {
@@ -309,6 +328,17 @@ impl Walker<'_> {
         }
 
         let shown = Stop::of(&found).ok_or_else(lost)?;
+        // Students on the way are only passed. This one is to be read or
+        // written, so the profile has to fit their page.
+        let report = validate::report(self.profile, &found);
+        if at == Some(to) && shown.name == want.name && !report.passed() {
+            return Err(Error::Page(format!(
+                "{}: this student\u{2019}s page does not fit the site profile \"{}\":\n{}",
+                want.name,
+                self.profile.name,
+                report.error_summary()
+            )));
+        }
         if at != Some(to) || shown.name != want.name {
             return Err(Error::Page(format!(
                 "The page shows \u{201c}{}\u{201d} where \u{201c}{}\u{201d} was when the students \

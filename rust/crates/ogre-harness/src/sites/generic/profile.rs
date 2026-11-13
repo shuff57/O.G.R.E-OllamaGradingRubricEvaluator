@@ -264,6 +264,14 @@ impl PageMap {
     pub fn steps_through_students(&self) -> bool {
         self.student_section.is_none() && self.next_student.is_some()
     }
+
+    /// True if the map says how a finished save looks. Without that OGRE
+    /// never clicks the save button.
+    pub fn confirms_saves(&self) -> bool {
+        self.save
+            .as_ref()
+            .is_some_and(|save| save.success.is_some())
+    }
 }
 
 /// How to find the points a question is out of.

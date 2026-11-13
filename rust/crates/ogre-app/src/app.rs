@@ -81,6 +81,8 @@ pub struct OgreApp {
     browser: BrowserView,
     /// The browser built into the window, in a build of OGRE that has one.
     built_in: Option<BuiltIn>,
+    /// True if the browser that is running is the built-in one.
+    started_built_in: bool,
     /// A page the program was asked to open as it starts: the browser is
     /// started for it, and then it is gone to.
     open_at_start: Option<String>,
@@ -284,6 +286,7 @@ impl OgreApp {
             agent: AgentView::default(),
             browser: BrowserView::default(),
             built_in: None,
+            started_built_in: false,
             open_at_start: None,
             start_asked: false,
         }
@@ -320,8 +323,15 @@ impl OgreApp {
     }
 
     /// True when the teacher works in the browser built into the window.
+    /// While a browser is running that is the one that was started: the
+    /// choice in Settings is for the next start.
     fn uses_built_in(&self) -> bool {
-        self.built_in.is_some() && self.settings.built_in_browser
+        let chosen = if self.chrome_running {
+            self.started_built_in
+        } else {
+            self.settings.built_in_browser
+        };
+        self.built_in.is_some() && chosen
     }
 
     /// True when the page is to be seen inside the window, one way or the
@@ -621,10 +631,13 @@ impl OgreApp {
                     }
                     self.agent.running = false;
                     self.agent.question = None;
+                    // An agent that never ran maps nothing later either.
+                    self.agent.then_map = false;
                     self.error = Some(message);
                 }
                 Event::ChromeStopped(message) => {
                     self.chrome_running = false;
+                    self.agent.then_map = false;
                     self.error = Some(format!("Chrome is no longer running ({message})."));
                 }
             }
@@ -634,9 +647,11 @@ impl OgreApp {
     fn carry_out(&mut self, ctx: &egui::Context, action: Action) {
         match action {
             Action::StartChrome if self.uses_built_in() => {
+                self.started_built_in = true;
                 self.send(Command::StartBuiltIn, "Starting the browser…");
             }
             Action::StartChrome => {
+                self.started_built_in = false;
                 let inside = self.settings.page_inside;
                 self.send(Command::StartChrome { inside }, "Starting Chrome…");
             }
@@ -1340,7 +1355,7 @@ impl OgreApp {
         }
         // It ran when the class was graded. It can run again on the grades
         // as they now stand, such as after the teacher has changed some.
-        let checkable = session.to_sweep().1.len();
+        let checkable = session.sweep_count();
         if checkable > 0 {
             ui.horizontal_wrapped(|ui| {
                 let enough = checkable >= ogre_grader::MIN_SWEEP_STUDENTS;

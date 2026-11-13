@@ -228,6 +228,11 @@ fn kept_grades(record: &str, url: &str) -> Vec<KeptGrade> {
     // By the student's place on the page as that record read it.
     let mut students: Vec<(Option<String>, String)> = Vec::new();
     let mut grades: std::collections::BTreeMap<usize, KeptGrade> = Default::default();
+    // Grades the record says reached the site, which are not to be offered
+    // again: written where writing stores, or filled in and then saved.
+    let mut saves_on_write = false;
+    let mut filled = std::collections::BTreeSet::new();
+    let mut reached = std::collections::BTreeSet::new();
     for event in record
         .lines()
         .filter_map(|line| serde_json::from_str::<Value>(line).ok())
@@ -240,7 +245,18 @@ fn kept_grades(record: &str, url: &str) -> Vec<KeptGrade> {
                 students = list(&event["students"])
                     .map(|s| (s["id"].as_str().map(str::to_owned), text(&s["name"])))
                     .collect();
+                saves_on_write = event["saves_on_write"].as_bool().unwrap_or(false);
             }
+            Some("written") => {
+                let written = list(&event["students"])
+                    .filter_map(|s| usize::try_from(s["index"].as_u64()?).ok());
+                if saves_on_write {
+                    reached.extend(written);
+                } else {
+                    filled.extend(written);
+                }
+            }
+            Some("saved") => reached.append(&mut filled),
             Some("graded") => {
                 for result in list(&event["results"]) {
                     let Some(at) = result["index"]
@@ -257,6 +273,9 @@ fn kept_grades(record: &str, url: &str) -> Vec<KeptGrade> {
                         grades.remove(&at);
                         continue;
                     };
+                    // A grade given again is a new one, not yet on the site.
+                    filled.remove(&at);
+                    reached.remove(&at);
                     grades.insert(
                         at,
                         KeptGrade {
@@ -272,7 +291,11 @@ fn kept_grades(record: &str, url: &str) -> Vec<KeptGrade> {
             _ => {}
         }
     }
-    grades.into_values().collect()
+    grades
+        .into_iter()
+        .filter(|(at, _)| !reached.contains(at))
+        .map(|(_, grade)| grade)
+        .collect()
 }
 
 /// The sessions recorded under `sessions_dir`, newest first. Records that
@@ -421,6 +444,30 @@ mod tests {
         );
         let touched: Vec<_> = session.touched().map(|s| s.name.as_str()).collect();
         assert_eq!(touched, ["Brook, Kai", "Cruz, Jo"]);
+    }
+
+    #[test]
+    fn a_grade_the_record_says_reached_the_site_is_not_kept_to_offer_again() {
+        const URL: &str = "https://www.myopenmath.com/course/gradeallq2.php?cid=1";
+        let names = |events: &[&str]| -> Vec<String> {
+            kept_grades(&record(events), URL)
+                .into_iter()
+                .map(|grade| grade.name)
+                .collect()
+        };
+        // Filled in and not saved: it may be gone, so it is kept.
+        assert_eq!(names(&[READ, GRADED, WRITTEN]), ["Brook, Kai"]);
+        // Saved: the site has it, also where the page cannot show that, as
+        // with a zero on a site that has no feedback box.
+        assert!(names(&[READ, GRADED, WRITTEN, SAVED]).is_empty());
+        // Where writing stores, written is saved.
+        let stores = READ.replace(r#""saves_on_write":false"#, r#""saves_on_write":true"#);
+        assert!(names(&[&stores, GRADED, WRITTEN]).is_empty());
+        // Graded again after that, the new grade is one the site has not seen.
+        assert_eq!(
+            names(&[READ, GRADED, WRITTEN, SAVED, GRADED]),
+            ["Brook, Kai"]
+        );
     }
 
     #[test]

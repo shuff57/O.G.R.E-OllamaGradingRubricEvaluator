@@ -247,8 +247,10 @@ fn push_words(out: &mut Blocks, words: &str, opened: &mut Option<&str>) {
         .replace("&nbsp;", " ")
         .replace('\u{a0}', " ")
         .replace("&amp;", "&");
+    // The mark is only still there to move if nothing ended the line since.
     if let Some(mark) = opened.take()
         && let Some(words) = text.strip_prefix(' ')
+        && out.current.ends_with(mark)
     {
         // "<b> word</b>" is " **word**", not "** word**".
         let at = out.current.len() - mark.len();
@@ -565,5 +567,17 @@ mod tests {
             "<p>2. is the answer</p>"
         );
         assert_eq!(editable_text("<p>2. is the answer</p>"), "2. is the answer");
+    }
+
+    #[test]
+    fn a_mark_with_nothing_in_it_before_the_end_of_a_block_is_no_trouble() {
+        // The mark's place is gone once the paragraph has ended: the text
+        // after it is just text.
+        let empty_mark = "<p>Good.<strong></strong></p>\n<p>Next</p>";
+        assert!(editable_text(empty_mark).contains("Good."));
+        assert!(editable_text(empty_mark).contains("Next"));
+        let around_a_block = "<strong><p> text</p></strong>";
+        assert!(editable_text(around_a_block).contains("text"));
+        assert!(plain_text(around_a_block).contains("text"));
     }
 }

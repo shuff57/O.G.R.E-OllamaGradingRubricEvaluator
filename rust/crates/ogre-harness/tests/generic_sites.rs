@@ -1227,6 +1227,102 @@ async fn every_student_of_a_site_that_shows_one_at_a_time_is_read_and_written() 
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs Chrome installed"]
+async fn a_student_who_cannot_be_graded_is_listed_and_passed_on_the_way() {
+    let fixture = "one-at-a-time-addresses.html";
+    let (s, url, kept) = open_served("one-nobox", fixture).await;
+    s.page.navigate(&format!("{url}?odd=nobox")).await.unwrap();
+    let profile = SiteProfile::for_page(&url, by_address());
+    let adapter = stepping(validated(&s.page, profile).await);
+
+    // The third student handed nothing in and has no score box. They are
+    // still on the list, and the student after them is still read.
+    let read = adapter.read_page(&s.page).await.unwrap();
+    assert_eq!(names(&read), FOUR_STUDENTS);
+    assert!(read.submissions[2].scores.is_empty());
+    assert_eq!(read.submissions[3].scores.len(), 1);
+
+    // And the student after them is still reached to be written.
+    let last = planned(&read, 3, 7.0, "<p>Good.</p>");
+    let receipt = adapter.write_grade(&s.page, &last).await.unwrap();
+    assert_eq!(
+        verify_writes(&adapter, &s.page, &[(last, receipt)])
+            .await
+            .unwrap(),
+        []
+    );
+    assert_eq!(kept_now(&kept)["grade-4"]["points"], "7");
+
+    close(s).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs Chrome installed"]
+async fn a_walk_that_meets_a_page_it_cannot_read_says_so_and_does_not_stop_short() {
+    let fixture = "one-at-a-time-addresses.html";
+    let (s, url, _) = open_served("one-broken", fixture).await;
+    s.page.navigate(&format!("{url}?odd=broken")).await.unwrap();
+    let profile = SiteProfile::for_page(&url, by_address());
+    let adapter = stepping(validated(&s.page, profile).await);
+
+    // Two students in, the site shows a page with no name on it. Giving
+    // back the two as if they were everyone would leave two ungraded.
+    let stopped = adapter.read_page(&s.page).await.unwrap_err();
+    assert!(
+        matches!(&stopped, Error::Page(reason)
+            if reason.contains("After \u{201c}Brook, Kai\u{201d}") && reason.contains("could not read")),
+        "{stopped}"
+    );
+
+    close(s).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs Chrome installed"]
+async fn a_one_at_a_time_tool_inside_a_frame_is_read_and_written() {
+    let fixture = "one-at-a-time-in-a-frame.html";
+    let (s, top, kept) = open_served("one-in-a-frame", fixture).await;
+    let mut map = by_address();
+    map.frame = Some("iframe#tool".into());
+    let profile = SiteProfile::for_page(&top, map);
+    let adapter = stepping(validated(&s.page, profile).await);
+
+    // Every student is found inside the frame, and the address is the one
+    // the teacher has open, before the read and after it.
+    let read = adapter.read_page(&s.page).await.unwrap();
+    assert_eq!(names(&read), FOUR_STUDENTS);
+    assert_eq!(read.url, top);
+    assert_eq!(s.page.url().await.unwrap(), top);
+    let framed = Framed::new(&s.page, "iframe#tool");
+    let shown = "document.getElementById('student-name').textContent";
+    assert_eq!(framed.eval(shown).await.unwrap(), json!("Avery, Sam"));
+
+    // Each student is gone to inside the frame, by their own address there.
+    let last = planned(&read, 3, 8.5, "<p>Clear and correct.</p>");
+    let second = planned(&read, 1, 6.0, "<p>Say how it depends.</p>");
+    let mut written = Vec::new();
+    for write in [last, second] {
+        let receipt = adapter.write_grade(&s.page, &write).await.unwrap();
+        written.push((write, receipt));
+    }
+    assert_eq!(
+        verify_writes(&adapter, &s.page, &written).await.unwrap(),
+        []
+    );
+    assert_eq!(kept_now(&kept)["grade-4"]["points"], "8.5");
+    assert_eq!(kept_now(&kept)["grade-2"]["points"], "6");
+    assert_eq!(s.page.url().await.unwrap(), top, "the school's page stayed");
+
+    // A second read is of the same students under the same address.
+    let again = adapter.read_page(&s.page).await.unwrap();
+    assert_eq!(again.url, top);
+    let scores: Vec<_> = again.submissions.iter().map(|s| s.score()).collect();
+    assert_eq!(scores, [None, Some(6.0), None, Some(8.5)]);
+
+    close(s).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs Chrome installed"]
 async fn students_behind_buttons_at_one_address_are_read_and_written() {
     let fixture = "one-at-a-time-buttons.html";
     let (s, _, kept) = open_served("one-by-buttons", fixture).await;

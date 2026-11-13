@@ -819,10 +819,9 @@ impl Session {
         })
     }
 
-    /// The grades the consistency check would look at, as they now stand:
-    /// every proposal that came from grading and is not yet on the page,
-    /// with the student it is for.
-    pub fn to_sweep(&self) -> (Vec<StudentWork>, Vec<StudentResult>) {
+    /// The proposals the consistency check would look at: those that came
+    /// from grading and are not yet on the page, each with its student.
+    fn sweepable(&self) -> impl Iterator<Item = (&Submission, &Proposal)> {
         self.page
             .submissions
             .iter()
@@ -830,12 +829,26 @@ impl Session {
             .filter(|(_, row)| row.note.is_none())
             .filter_map(|(submission, row)| {
                 let proposal = row.proposal.as_ref().filter(|p| !p.for_no_response)?;
+                Some((submission, proposal))
+            })
+    }
+
+    /// How many grades the consistency check would look at.
+    pub fn sweep_count(&self) -> usize {
+        self.sweepable().count()
+    }
+
+    /// The grades the consistency check would look at, as they now stand,
+    /// with the student each is for.
+    pub fn to_sweep(&self) -> (Vec<StudentWork>, Vec<StudentResult>) {
+        self.sweepable()
+            .map(|(submission, proposal)| {
                 let grade = StudentResult {
                     student_index: submission.index,
                     score: proposal.score,
                     feedback: proposal.html(),
                 };
-                Some((StudentWork::from(submission), grade))
+                (StudentWork::from(submission), grade)
             })
             .unzip()
     }

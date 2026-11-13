@@ -1,6 +1,8 @@
 //! A grading page that is shown inside a frame of another page, as when a
 //! school's site shows a grading tool inside itself.
 
+use std::time::{Duration, Instant};
+
 use async_trait::async_trait;
 use serde_json::Value;
 
@@ -8,6 +10,9 @@ use crate::driver::eval_as;
 use crate::{Error, PageDriver, Result};
 
 const FRAME_SCRIPT: &str = include_str!("frame.js");
+
+/// The longest a frame may take to load a page it was sent to.
+const LOAD_TIME: Duration = Duration::from_secs(60);
 
 /// A selector for the frame that takes up most of `page`, if it has one.
 /// What that frame shows is then the page to map and to grade on.
@@ -44,13 +49,40 @@ impl PageDriver for Framed<'_> {
         self.page.url().await
     }
 
-    /// Sends the frame, not the page around it, to `url`. This returns once
-    /// the frame has been told to go; it does not wait for it to arrive.
+    /// Sends the frame, not the page around it, to `url`, and waits for the
+    /// page there to have loaded.
     async fn navigate(&self, url: &str) -> Result<()> {
-        let url = Value::String(url.to_owned());
-        self.eval(&format!("(location.assign({url}), null)"))
-            .await
-            .map(|_| ())
+        let to = Value::String(url.to_owned());
+        // The page that goes is marked, so that the one that comes can be
+        // told from it. An address that differs only after its `#` brings
+        // no new page.
+        let leaves = self
+            .eval(&format!(
+                "(() => {{ const to = new URL({to}, location.href); \
+                 const here = (address) => address.split('#')[0]; \
+                 const leaves = !(to.hash && here(to.href) === here(location.href)); \
+                 if (leaves) window.__ogreLeaving = true; \
+                 location.assign(to.href); return leaves; }})()"
+            ))
+            .await?;
+        if leaves != Value::Bool(true) {
+            return Ok(());
+        }
+        let started = Instant::now();
+        while started.elapsed() < LOAD_TIME {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            // Between two pages the frame may not answer at all.
+            let arrived = self
+                .eval("window.__ogreLeaving !== true && document.readyState === 'complete'")
+                .await;
+            if matches!(arrived, Ok(Value::Bool(true))) {
+                return Ok(());
+            }
+        }
+        Err(Error::Browser(format!(
+            "the frame did not finish loading {url} within {} seconds",
+            LOAD_TIME.as_secs()
+        )))
     }
 
     async fn eval(&self, expression: &str) -> Result<Value> {

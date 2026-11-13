@@ -89,15 +89,6 @@ impl ProfileAdapter {
         *self.route.lock().unwrap_or_else(PoisonError::into_inner) = route;
     }
 
-    /// True if the profile says how a finished save looks.
-    fn confirms_saves(&self) -> bool {
-        self.profile
-            .page
-            .save
-            .as_ref()
-            .is_some_and(|save| save.success.is_some())
-    }
-
     /// Shows the student a write is for, on a site that shows one at a time,
     /// and gives the write with its boxes named as that page names them.
     async fn show_student_of(
@@ -237,13 +228,17 @@ impl SiteAdapter for ProfileAdapter {
         let top = page.url().await?;
         let within = Within::of(page, self.profile.page.frame.as_deref());
         let page = within.page();
-        let mut found = self.inspect(page).await?;
-        if framed {
-            found.url = top;
-        }
+        let found = self.inspect(page).await?;
+        let address = |inside: &str| {
+            if framed {
+                top.clone()
+            } else {
+                inside.to_owned()
+            }
+        };
         if !self.profile.page.steps_through_students() {
             return Ok(GradingPage {
-                url: found.url,
+                url: address(&found.url),
                 title: found.title,
                 position: None,
                 submissions: found.students.iter().map(submission).collect(),
@@ -260,7 +255,9 @@ impl SiteAdapter for ProfileAdapter {
                 .unwrap_or(found),
             None => found,
         };
-        let (url, title) = (found.url.clone(), found.title.clone());
+        // What the frame says its own address is stays with each student:
+        // it is how they are found again inside the frame.
+        let (url, title) = (address(&found.url), found.title.clone());
         self.keep_route(None);
         let met = walker.everyone(page, found).await?;
         let submissions = met
@@ -346,7 +343,7 @@ impl SiteAdapter for ProfileAdapter {
         }
         // Moving to the next student would lose a grade that is only filled
         // in, so nothing is filled in that cannot then be saved.
-        if !self.confirms_saves() {
+        if !self.profile.page.confirms_saves() {
             return Err(Error::Page(format!(
                 "{}: this site shows one student at a time, so a grade has to be saved before \
                  OGRE moves on, and the site profile \"{}\" does not say how a finished save \
@@ -379,7 +376,7 @@ impl SiteAdapter for ProfileAdapter {
             // Every grade was saved as it was written.
             return Ok(());
         }
-        if !self.confirms_saves() {
+        if !self.profile.page.confirms_saves() {
             return Err(Error::Page(format!(
                 "The site profile \"{}\" does not say how a finished save looks, so OGRE has not saved anything. Save in the browser yourself.",
                 self.profile.name

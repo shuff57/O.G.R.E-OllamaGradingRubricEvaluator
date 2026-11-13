@@ -50,7 +50,13 @@ impl RubricStore {
     }
 
     /// Stores `rubric`, replacing the one of the same name.
-    pub fn save(&mut self, mut rubric: SavedRubric) -> Result<(), String> {
+    pub fn save(&mut self, rubric: SavedRubric) -> Result<(), String> {
+        self.save_over(None, rubric)
+    }
+
+    /// Saves `rubric`. `was` is a rubric it takes the place of, whose file
+    /// it may therefore take as well.
+    fn save_over(&mut self, was: Option<&str>, mut rubric: SavedRubric) -> Result<(), String> {
         rubric.name = rubric.name.trim().to_owned();
         if rubric.name.is_empty() {
             return Err("Give the rubric a name to save it under.".into());
@@ -62,6 +68,7 @@ impl RubricStore {
         let taken = self
             .rubrics
             .iter()
+            .filter(|other| Some(other.name.as_str()) != was)
             .any(|other| other.name != rubric.name && self.file(&other.name) == file);
         if taken {
             return Err(format!(
@@ -88,10 +95,18 @@ impl RubricStore {
                 "There is already a saved rubric called \u{201c}{name}\u{201d}. Choose another name."
             ));
         }
-        self.save(rubric)?;
-        match was {
-            Some(was) if was != name => self.delete(was),
-            _ => Ok(()),
+        let renamed = was.filter(|was| *was != name);
+        // A new name that makes the same file, as "essay 2" does after
+        // "Essay 2": the file is written over, and must not then be deleted.
+        let same_file = renamed.is_some_and(|was| self.file(was) == self.file(&name));
+        self.save_over(was, rubric)?;
+        match renamed {
+            Some(was) if same_file => {
+                self.rubrics.retain(|rubric| rubric.name != was);
+                Ok(())
+            }
+            Some(was) => self.delete(was),
+            None => Ok(()),
         }
     }
 
@@ -147,6 +162,28 @@ mod tests {
 
     fn names(store: &RubricStore) -> Vec<String> {
         store.all().into_iter().map(|rubric| rubric.name).collect()
+    }
+
+    #[test]
+    fn a_rubric_can_be_renamed_to_a_name_that_makes_the_same_file() {
+        let dir = scratch("same-file");
+        let mut store = RubricStore::open(dir.clone());
+        store.save(rubric("Essay 2", "## Thesis")).unwrap();
+        store.save(rubric("Quiz 1", "## Units")).unwrap();
+
+        // Only the capitals change: the same file, and no other rubric's.
+        store
+            .put(Some("Essay 2"), rubric("essay 2", "## Thesis"))
+            .unwrap();
+        assert_eq!(names(&store), ["essay 2", "Quiz 1"]);
+        let reopened = RubricStore::open(dir.clone());
+        assert_eq!(names(&reopened), ["essay 2", "Quiz 1"]);
+
+        // Another rubric's file is still not to be had.
+        let taken = store.put(Some("essay 2"), rubric("quiz 1", "## Thesis"));
+        assert!(taken.is_err(), "{taken:?}");
+        assert_eq!(names(&store), ["essay 2", "Quiz 1"]);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

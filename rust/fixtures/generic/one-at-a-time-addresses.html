@@ -12,6 +12,9 @@
     student has no "previous" and the last no "next".
     A grade is kept only once "Save grade" is pressed, and anything only
     typed is gone after moving on. "Saved" shows once the grade is kept.
+    With ?odd=nobox the third student, who handed nothing in, has no score
+    box; with ?odd=broken their page is one this site got wrong and shows no
+    name at all. Either is carried along by the links.
   -->
   <header>
     <h1>Essay 2</h1>
@@ -64,10 +67,13 @@
       document.getElementById('points').value = kept.points;
       document.getElementById('comment').value = kept.comment;
     }
+    const odd = new URLSearchParams(location.search).get('odd');
+    if (at === 3 && odd === 'nobox') document.getElementById('grade').remove();
+    if (at === 3 && odd === 'broken') document.getElementById('student-name').remove();
     const link = (id, to) => {
       const el = document.getElementById(id);
       if (to < 1 || to > STUDENTS.length) el.hidden = true;
-      else el.href = '?student=' + to;
+      else el.href = '?student=' + to + (odd ? '&odd=' + odd : '');
     };
     link('prev', at - 1);
     link('next', at + 1);

@@ -741,8 +741,7 @@ impl Checks {
                 "the page lists its students, so the button to the next student is not used",
             );
         }
-        let confirms = map.save.as_ref().is_some_and(|save| save.success.is_some());
-        if map.steps_through_students() && !confirms {
+        if map.steps_through_students() && !map.confirms_saves() {
             self.warning(
                 Element::NextStudent,
                 "every student is read, but none can be written: a grade has to be saved before OGRE moves on to the next student, and nothing says how a finished save looks",

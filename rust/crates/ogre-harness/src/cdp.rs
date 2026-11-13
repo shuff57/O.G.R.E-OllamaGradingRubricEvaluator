@@ -484,8 +484,12 @@ impl PageDriver for CdpPage {
                     params,
                     EVAL_TIMEOUT,
                 )
-                .await?;
-            return value_of(reply);
+                .await;
+            // The handle on the frame's document was for this one call.
+            let _ = self
+                .call("Runtime.releaseObject", json!({ "objectId": document }))
+                .await;
+            return value_of(reply?);
         }
         // A frame showing another site runs in a process of its own, and is
         // a target of its own, named after the frame.
