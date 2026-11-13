@@ -42,7 +42,12 @@ fn main() -> eframe::Result {
         ogre_app::native_options(),
         Box::new(|cc| {
             let chromium = Chromium::new(&cc.egui_ctx);
-            let app = ogre_app::start(cc)?.with_built_in_browser(Box::new(chromium));
+            let mut app = ogre_app::start(cc)?.with_built_in_browser(Box::new(chromium));
+            // OGRE_OPEN=<address> starts straight into the built-in browser
+            // at that page, to show it or to try it.
+            if let Some(address) = std::env::var("OGRE_OPEN").ok().filter(|a| !a.is_empty()) {
+                app = app.working_in_built_in_browser().opening(address);
+            }
             Ok(Box::new(Embedded(app)))
         }),
     )

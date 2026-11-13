@@ -298,10 +298,17 @@ wrap_app! {
             // Pick the Ozone platform of the session, unless the command line picks one.
             #[cfg(target_os = "linux")]
             if command_line.has_switch(Some(&"ozone-platform".into())) == 0 {
-                let platform = if std::env::var_os("WAYLAND_DISPLAY").is_some() {
-                    "wayland"
-                } else {
+                // OGRE: X11 wherever there is an X server, which under Wayland is XWayland.
+                // With Chromium's Wayland backend on a display at a fractional scale (seen at
+                // 1.7, KDE), an off-screen page is sized by the display's scale a second time
+                // and fills only that fraction of its place. Nothing of the page is on an X
+                // window: it is still painted by egui.
+                let platform = if std::env::var_os("DISPLAY").is_some()
+                    || std::env::var_os("WAYLAND_DISPLAY").is_none()
+                {
                     "x11"
+                } else {
+                    "wayland"
                 };
                 command_line.append_switch_with_value(
                     Some(&"ozone-platform".into()),

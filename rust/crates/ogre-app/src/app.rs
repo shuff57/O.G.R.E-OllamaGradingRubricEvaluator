@@ -81,6 +81,11 @@ pub struct OgreApp {
     browser: BrowserView,
     /// The browser built into the window, in a build of OGRE that has one.
     built_in: Option<BuiltIn>,
+    /// A page the program was asked to open as it starts: the browser is
+    /// started for it, and then it is gone to.
+    open_at_start: Option<String>,
+    /// The browser has been asked to start for that page.
+    start_asked: bool,
 }
 
 /// The Agent screen's state.
@@ -269,6 +274,8 @@ impl OgreApp {
             agent: AgentView::default(),
             browser: BrowserView::default(),
             built_in: None,
+            open_at_start: None,
+            start_asked: false,
         }
     }
 
@@ -276,6 +283,21 @@ impl OgreApp {
     /// chooses in Settings whether to work in it or in Chrome.
     pub fn with_built_in_browser(mut self, browser: Box<dyn BuiltInBrowser>) -> Self {
         self.built_in = Some(BuiltIn::new(browser));
+        self
+    }
+
+    /// Has the teacher work in the built-in browser from the start, whatever
+    /// Settings said before. For a program that was started to show it.
+    pub fn working_in_built_in_browser(mut self) -> Self {
+        self.settings.built_in_browser = self.built_in.is_some();
+        self.settings.page_inside &= !self.settings.built_in_browser;
+        self
+    }
+
+    /// Starts the browser by itself and goes to `address`, without waiting
+    /// to be asked.
+    pub fn opening(mut self, address: impl Into<String>) -> Self {
+        self.open_at_start = Some(address.into());
         self
     }
 
@@ -363,6 +385,10 @@ impl OgreApp {
                     // Where the page is, which is where signing in happens.
                     if self.page_is_inside() && self.screen == Screen::Grade {
                         self.screen = Screen::Browser;
+                    }
+                    if let Some(address) = self.open_at_start.take() {
+                        self.address.clone_from(&address);
+                        self.send(Command::Open(address), "Opening the page…");
                     }
                 }
                 Event::ChromeClosed => {
@@ -2386,6 +2412,9 @@ impl eframe::App for OgreApp {
         // Decided once, before the screens borrow the session to draw it.
         self.next = self.next_step();
         let mut actions = Vec::new();
+        if self.open_at_start.is_some() && !std::mem::replace(&mut self.start_asked, true) {
+            actions.push(Action::StartChrome);
+        }
 
         // The desk: every panel below is transparent and sits on this.
         let desk = ui.max_rect();

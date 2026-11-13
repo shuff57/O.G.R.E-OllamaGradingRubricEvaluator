@@ -12,7 +12,12 @@ changes again. Each is marked in the code with a comment that starts "OGRE:".
 2. `src/instance.rs`: `WebViewInstance::take_events` is public. `ui` returns a page's events
    only while the page is shown, and OGRE reads and writes a page while another screen is in
    front.
-3. `Cargo.toml` is OGRE's own: the original inherits from its workspace.
+3. `src/chromium/runtime.rs`: Chromium's display backend is X11 wherever an X server is there
+   (`DISPLAY` is set), and Wayland only otherwise. The crate picks Wayland whenever
+   `WAYLAND_DISPLAY` is set. On a Wayland display at a fractional scale (1.7, KDE) the page then
+   filled only 1/1.7 of its place in each direction. `--ozone-platform=…` on the command line
+   still overrides either.
+4. `Cargo.toml` is OGRE's own: the original inherits from its workspace.
 
 Not changed, and missing for OGRE: JavaScript dialogs (`alert`, `confirm`), file pickers and
 drag and drop are not supported by the crate yet.
