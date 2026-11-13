@@ -6,7 +6,7 @@
 
 use ogre_core::{
     CategoryShare, DEFAULT_WEIGHT_MODE, GradeWrite, GradingPage, QuestionLink, Rubric, SkipReason,
-    StudentWork, Submission, WritePolicy, category_shares, category_weight_problem,
+    StudentResult, StudentWork, Submission, WritePolicy, category_shares, category_weight_problem,
     editable_rubric_text, format_score, names_category_weights, plan_write,
     rubric_from_edited_text, skip_reason, unread_rubric_lines, with_category_weight,
     with_equal_category_weights, with_requirements, without_category_weights,
@@ -743,6 +743,52 @@ impl Session {
         })
     }
 
+    /// The grades the consistency check would look at, as they now stand:
+    /// every proposal that came from grading and is not yet on the page,
+    /// with the student it is for.
+    pub fn to_sweep(&self) -> (Vec<StudentWork>, Vec<StudentResult>) {
+        self.page
+            .submissions
+            .iter()
+            .zip(&self.rows)
+            .filter(|(_, row)| row.note.is_none())
+            .filter_map(|(submission, row)| {
+                let proposal = row.proposal.as_ref().filter(|p| !p.for_no_response)?;
+                let grade = StudentResult {
+                    student_index: submission.index,
+                    score: proposal.score,
+                    feedback: proposal.html(),
+                };
+                Some((StudentWork::from(submission), grade))
+            })
+            .unzip()
+    }
+
+    /// Takes what a fresh consistency check suggests, in place of whatever
+    /// was suggested before. Returns how many students it has a suggestion
+    /// for.
+    pub fn apply_sweep(&mut self, suggestions: Vec<(usize, Suggestion)>) -> usize {
+        for row in &mut self.rows {
+            if let Some(proposal) = row.proposal.as_mut().filter(|_| row.note.is_none()) {
+                proposal.suggestion = None;
+                proposal.before_suggestion = None;
+            }
+        }
+        for (index, suggestion) in suggestions {
+            let at = self.page.submissions.iter().position(|s| s.index == index);
+            let proposal = at
+                .and_then(|at| self.rows.get_mut(at))
+                .filter(|row| row.note.is_none())
+                .and_then(|row| row.proposal.as_mut());
+            if let Some(proposal) = proposal
+                && (suggestion.score != proposal.score || suggestion.feedback_html.is_some())
+            {
+                proposal.suggestion = Some(suggestion);
+            }
+        }
+        self.open_suggestions()
+    }
+
     /// How many proposals have a suggestion the teacher has not decided on.
     pub fn open_suggestions(&self) -> usize {
         self.rows
@@ -1194,6 +1240,54 @@ mod tests {
         );
         // And the suggestion no longer offers to replace them.
         assert_eq!(proposal(&mut s).suggested_feedback(), None);
+    }
+
+    #[test]
+    fn a_fresh_consistency_check_replaces_what_was_suggested_before() {
+        let mut s = session();
+        s.set_zero_blank(true);
+        s.apply_grades(report(vec![
+            suggested(1, 7.0, 5.5, None),
+            graded(3, 9.0, "<p>Fine.</p>"),
+        ]));
+        // The teacher changes a score; the check then looks at that.
+        s.rows[3].proposal.as_mut().unwrap().score = 4.0;
+        let (students, grades) = s.to_sweep();
+        let names: Vec<&str> = students.iter().map(|s| s.name.as_str()).collect();
+        // Not the zero for no response: there is nothing to compare.
+        assert_eq!(names, ["Brook, Kai", "Diaz, Remy"]);
+        assert_eq!(
+            grades
+                .iter()
+                .map(|g| (g.student_index, g.score))
+                .collect::<Vec<_>>(),
+            [(1, 7.0), (3, 4.0)]
+        );
+        assert_eq!(grades[1].feedback, "<p>Fine.</p>");
+
+        let found = s.apply_sweep(vec![(
+            3,
+            Suggestion {
+                score: 8.0,
+                feedback_html: None,
+                reason: Some("Kai said less and got more.".into()),
+            },
+        )]);
+        assert_eq!(found, 1);
+        assert_eq!(s.status(1), Status::Ready, "the earlier suggestion is gone");
+        assert_eq!(s.status(3), Status::Suggested);
+        // A suggestion of the score already there says nothing.
+        assert_eq!(
+            s.apply_sweep(vec![(
+                3,
+                Suggestion {
+                    score: 4.0,
+                    feedback_html: None,
+                    reason: None
+                }
+            )]),
+            0
+        );
     }
 
     #[test]

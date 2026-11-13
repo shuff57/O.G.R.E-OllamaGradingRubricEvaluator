@@ -4,11 +4,12 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use ogre_agent::{Skill, build_skill_injection};
-use ogre_core::{ExtractedRubric, Rubric, imported_rubric_text};
+use ogre_core::{ExtractedRubric, Rubric, StudentResult, imported_rubric_text};
 use ogre_grader::{
-    BatchOutcome, CancelFlag, GradeEvent, GradeOptions, GradeStatus, GraderError, PreparedRubric,
-    ScoreSource, draft_rubric as draft, generate_anchor_examples, grade_batch,
-    prepare_edited_rubric, prepare_rubric, read_rubric_from_image,
+    BatchOutcome, CancelFlag, GradeEvent, GradeOptions, GradeStatus, GraderError,
+    MIN_SWEEP_STUDENTS, PreparedRubric, ScoreSource, draft_rubric as draft,
+    generate_anchor_examples, grade_batch, prepare_edited_rubric, prepare_rubric,
+    read_rubric_from_image, sweep_grades,
 };
 use ogre_llm::{HttpProvider, Image};
 
@@ -183,42 +184,12 @@ pub async fn grade(
             progress(done);
         }
     };
-    let prepared = cache
-        .prepare(
-            &provider,
-            &request.rubric,
-            request.rubric_text.as_deref(),
-            request.leniency,
-            &request.provider,
-        )
-        .await;
-    let mut rubric = prepared.rubric;
-    let examples = request
-        .examples
-        .as_deref()
-        .map(str::trim)
-        .filter(|examples| !examples.is_empty());
-    rubric.custom_instructions = grader_instructions(
-        request.rubric.custom_instructions.as_deref(),
-        examples,
-        skills,
-    );
-
-    let options = GradeOptions {
-        score_source: if request.score_from_verdicts {
-            ScoreSource::Verdicts
-        } else {
-            ScoreSource::Ai
-        },
-        // Weights the rubric text names are meant to count.
-        weights_by_name: prepared.weights_given,
-        ..GradeOptions::default()
-    };
+    let ready = Ready::make(&provider, &request, skills, cache).await;
     let outcome = grade_batch(
         &provider,
-        &rubric,
+        &ready.rubric,
         request.students,
-        &options,
+        &ready.options,
         cancel,
         &mut on_event,
     )
@@ -226,10 +197,10 @@ pub async fn grade(
     match outcome {
         Ok(outcome) => {
             let mut report = report(outcome);
-            report.rubric_text = Some(prepared.text);
-            report.examples = examples.map(str::to_owned);
+            report.rubric_text = Some(ready.text);
+            report.examples = ready.examples;
             report.skills = skills.iter().map(|skill| skill.name.clone()).collect();
-            if let Some(problem) = prepared.rewrite_problem {
+            if let Some(problem) = ready.rewrite_problem {
                 report.warnings.insert(
                     0,
                     format!(
@@ -242,6 +213,120 @@ pub async fn grade(
         }
         Err(error) => nobody_graded(format!("Grading could not start: {error}")),
     }
+}
+
+/// A request's rubric as the grader is given it, and how to grade with it.
+struct Ready {
+    /// Prepared, with the scoring examples, the teacher's instructions and
+    /// their skills in its instructions.
+    rubric: Rubric,
+    options: GradeOptions,
+    /// The prepared rubric text, for the record.
+    text: String,
+    rewrite_problem: Option<String>,
+    /// The scoring examples the grader is shown, if any.
+    examples: Option<String>,
+}
+
+impl Ready {
+    async fn make(
+        provider: &HttpProvider,
+        request: &GradeRequest,
+        skills: &[Skill],
+        cache: &mut PreparedCache,
+    ) -> Self {
+        let prepared = cache
+            .prepare(
+                provider,
+                &request.rubric,
+                request.rubric_text.as_deref(),
+                request.leniency,
+                &request.provider,
+            )
+            .await;
+        let mut rubric = prepared.rubric;
+        let examples = request
+            .examples
+            .as_deref()
+            .map(str::trim)
+            .filter(|examples| !examples.is_empty());
+        rubric.custom_instructions = grader_instructions(
+            request.rubric.custom_instructions.as_deref(),
+            examples,
+            skills,
+        );
+        Self {
+            rubric,
+            options: GradeOptions {
+                score_source: if request.score_from_verdicts {
+                    ScoreSource::Verdicts
+                } else {
+                    ScoreSource::Ai
+                },
+                // Weights the rubric text names are meant to count.
+                weights_by_name: prepared.weights_given,
+                ..GradeOptions::default()
+            },
+            text: prepared.text,
+            rewrite_problem: prepared.rewrite_problem,
+            examples: examples.map(str::to_owned),
+        }
+    }
+}
+
+/// Runs the consistency check on grades that are already in the table,
+/// without grading anyone again. `request` is what a grading run would be
+/// given, with the students whose grades are checked; `grades` are those
+/// grades as they now stand. Gives the suggestions, by the student's place
+/// on the page. Nothing is changed.
+pub async fn sweep(
+    request: GradeRequest,
+    grades: Vec<StudentResult>,
+    skills: &[Skill],
+    cancel: &CancelFlag,
+    cache: &mut PreparedCache,
+) -> Result<Vec<(usize, Suggestion)>, String> {
+    if grades.len() < MIN_SWEEP_STUDENTS {
+        return Err(format!(
+            "The consistency check compares students with each other, and needs at least \
+             {MIN_SWEEP_STUDENTS} grades to do it."
+        ));
+    }
+    let provider = provider(&request.provider, request.api_key.as_deref())?;
+    let ready = Ready::make(&provider, &request, skills, cache).await;
+    let mut ignore = |_: GradeEvent| {};
+    let report = sweep_grades(
+        &provider,
+        &ready.rubric,
+        &request.students,
+        &grades,
+        &ready.options,
+        cancel,
+        &mut ignore,
+    )
+    .await
+    .map_err(|error| format!("The consistency check could not run: {error}"))?;
+    if report.cancelled {
+        return Err("The consistency check was stopped before it finished.".to_owned());
+    }
+    if let Some(problem) = report.warnings.first() {
+        return Err(format!("The consistency check did not finish: {problem}"));
+    }
+    Ok(report
+        .sweep
+        .adjustments
+        .into_iter()
+        .map(|adjustment| {
+            (
+                adjustment.student_index,
+                Suggestion {
+                    score: adjustment.suggested_score,
+                    feedback_html: adjustment.suggested_feedback,
+                    reason: adjustment.reason,
+                },
+            )
+        })
+        .collect())
 }
 
 fn report(outcome: BatchOutcome) -> GradeReport {

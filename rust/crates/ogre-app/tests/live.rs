@@ -1116,3 +1116,136 @@ fn the_real_service_rewords_a_rubric_for_the_editor() {
         as_read.split("\n\n--- Model Response ---").next().unwrap()
     );
 }
+
+/// Has the real service run the consistency check on made-up grades, through
+/// the worker. The six students and their answers are invented here.
+///
+///     cargo test -p ogre-app --test live consistency_check_again -- --ignored --nocapture
+#[test]
+#[ignore = "sends six made-up answers and grades to the Electron app's AI service"]
+fn the_real_service_runs_the_consistency_check_again_on_given_grades() {
+    use ogre_core::{StudentResult, StudentWork};
+
+    let (provider, key) = electron_app_provider();
+    println!("asking {}", provider.model);
+    let rubric: ogre_core::Rubric = serde_json::from_value(serde_json::json!({
+        "essayPrompt": "Explain how sample size affects the margin of error.",
+        "maxScore": 10,
+        "rubricItems": [],
+        "checklistItems": [
+            {"category": "Concept", "items": ["Says the margin of error gets smaller as the sample gets larger.", "Mentions the standard error or the square root of n."]}
+        ]
+    }))
+    .unwrap();
+    // The second and the fifth say the same thing and are four points apart.
+    // Names, not numbers: the check's prompt numbers students from 0, and a
+    // name like "Student 4" at place 3 gets the two mixed up in the reply.
+    let answers = [
+        (
+            "Avery, Sam",
+            "A bigger sample makes the standard error smaller, since it is divided by root n, so the margin of error shrinks.",
+            10.0,
+        ),
+        (
+            "Brook, Kai",
+            "More people asked means a smaller margin of error.",
+            8.0,
+        ),
+        (
+            "Cruz, Jo",
+            "The margin of error shrinks because the standard error has the square root of n underneath.",
+            10.0,
+        ),
+        ("Diaz, Remy", "Sample size does not matter much.", 2.0),
+        (
+            "Ellis, Pat",
+            "More people asked means a smaller margin of error.",
+            4.0,
+        ),
+        (
+            "Evans, Lee",
+            "Larger n gives a smaller standard error and so a smaller margin of error.",
+            10.0,
+        ),
+    ];
+    let students: Vec<StudentWork> = answers
+        .iter()
+        .enumerate()
+        .map(|(index, (name, response, _))| StudentWork {
+            index,
+            name: (*name).into(),
+            response: (*response).into(),
+            prompt: None,
+        })
+        .collect();
+    let grades: Vec<StudentResult> = answers
+        .iter()
+        .enumerate()
+        .map(|(student_index, (_, _, score))| StudentResult {
+            student_index,
+            score: *score,
+            feedback: "<p>Graded.</p>".into(),
+        })
+        .collect();
+
+    let data_dir = std::env::temp_dir().join(format!("ogre-live-sweep-{}", std::process::id()));
+    let worker = Worker::spawn(
+        LaunchOptions {
+            profile_dir: data_dir.join("chrome-profile"),
+            headless: true,
+            executable: None,
+        },
+        Sites::built_in(),
+        data_dir.clone(),
+        || {},
+    );
+    worker.send(Command::Sweep(
+        Box::new(ogre_app::GradeRequest {
+            rubric,
+            rubric_text: None,
+            students,
+            provider,
+            api_key: Some(key),
+            leniency: engine_leniency(75),
+            score_from_verdicts: false,
+            examples: None,
+            skill_choices: Default::default(),
+            cancel: ogre_grader::CancelFlag::new(),
+        }),
+        grades,
+    ));
+    let started = Instant::now();
+    let swept = loop {
+        match worker.poll().next() {
+            Some(Event::Swept(result)) => break result,
+            Some(other) => panic!("unexpected news from the worker: {other:?}"),
+            None => {
+                assert!(
+                    started.elapsed() < Duration::from_secs(900),
+                    "no reply in fifteen minutes"
+                );
+                std::thread::sleep(Duration::from_millis(200));
+            }
+        }
+    };
+    drop(worker);
+    let _ = std::fs::remove_dir_all(&data_dir);
+
+    let suggestions = swept.expect("the consistency check ran");
+    println!("took {:.0?}", started.elapsed());
+    for (index, suggestion) in &suggestions {
+        println!(
+            "{}: {} instead of {} ({})",
+            answers[*index].0,
+            suggestion.score,
+            answers[*index].2,
+            suggestion.reason.as_deref().unwrap_or("no reason given")
+        );
+    }
+    assert!(
+        suggestions
+            .iter()
+            .any(|(index, _)| *index == 1 || *index == 4),
+        "one of the two students who said the same thing is looked at again"
+    );
+}

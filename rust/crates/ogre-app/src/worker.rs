@@ -57,6 +57,10 @@ pub enum Command {
         api_key: Option<String>,
     },
     Grade(Box<GradeRequest>),
+    /// Run the consistency check on these grades, without grading anyone
+    /// again. The request is what a grading run of the same students would
+    /// be given.
+    Sweep(Box<GradeRequest>, Vec<ogre_core::StudentResult>),
     /// Have the AI write example answers at four levels for a rubric.
     WriteExamples(Box<ExamplesRequest>),
     /// Have the AI reword a rubric for a leniency, for the teacher to read
@@ -168,6 +172,9 @@ pub enum Event {
         total: usize,
     },
     Graded(GradeReport),
+    /// What the consistency check suggests for the grades it was given, by
+    /// the student's place on the page, or why it suggests nothing.
+    Swept(std::result::Result<Vec<(usize, crate::grading::Suggestion)>, String>),
     /// The scoring examples the AI wrote, or why there are none.
     Examples(std::result::Result<String, String>),
     /// The rubric's requirements as the AI reworded them, or why not.
@@ -369,7 +376,9 @@ impl Worker {
 
     pub fn send(&self, command: Command) {
         let stoppable = match &command {
-            Command::Grade(request) => Some(Running::Grading(request.cancel.clone())),
+            Command::Grade(request) | Command::Sweep(request, _) => {
+                Some(Running::Grading(request.cancel.clone()))
+            }
             Command::RunAgent(request) => Some(Running::Agent(request.cancel.clone())),
             _ => None,
         };
@@ -667,6 +676,13 @@ impl Task {
                 .await;
                 self.audit.graded(&graded);
                 Ok(Event::Graded(graded))
+            }
+            Command::Sweep(request, grades) => {
+                let cancel = request.cancel.clone();
+                let skills = agent_run::grading_skills(&self.skills_dir, &request.skill_choices);
+                Ok(Event::Swept(
+                    grading::sweep(*request, grades, &skills, &cancel, &mut self.prepared).await,
+                ))
             }
             Command::WriteExamples(request) => Ok(Event::Examples(
                 grading::write_examples(*request, &mut self.prepared).await,

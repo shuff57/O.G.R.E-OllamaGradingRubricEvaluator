@@ -2401,3 +2401,101 @@ fn the_rubric_can_be_reworded_before_grading_to_read_and_change() {
     harness.get_by_label_contains("could not be reworded");
     assert!(harness.query_by_label("Edited").is_none());
 }
+
+#[test]
+fn the_consistency_check_can_be_run_again_on_the_grades_in_the_table() {
+    const AGAIN: &str = "Run the consistency check again";
+    // Two grades are too few to compare.
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    stand_in.events.send(read()).unwrap();
+    stand_in.events.send(graded()).unwrap();
+    frames(&mut harness);
+    harness.get_by_label_contains("needs at least 5 grades");
+    scroll_to_and_press(&mut harness, AGAIN);
+    assert!(stand_in.commands.try_recv().is_err());
+
+    // A class of six, all graded.
+    let names = [
+        "Avery, Sam",
+        "Brook, Kai",
+        "Cruz, Jo",
+        "Diaz, Remy",
+        "Ellis, Pat",
+        "Evans, Lee",
+    ];
+    let mut class = page();
+    class.submissions = names
+        .iter()
+        .enumerate()
+        .map(|(index, name)| submission(index, name, "0", "", "An answer of some kind."))
+        .collect();
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    stand_in
+        .events
+        .send(Event::Read(Box::new(ReadReport {
+            page: class,
+            rubric: Ok(rubric()),
+            site: "MyOpenMath",
+            saves_on_write: false,
+            manual_save: false,
+            questions: Vec::new(),
+            saved_rubrics: Vec::new(),
+            skills: Vec::new(),
+        })))
+        .unwrap();
+    stand_in
+        .events
+        .send(Event::Graded(GradeReport {
+            rubric_text: None,
+            examples: None,
+            skills: Vec::new(),
+            rows: (0..6)
+                .map(|index| GradedRow {
+                    index,
+                    outcome: Ok(Grade {
+                        score: 6.0 + index as f64 * 0.5,
+                        feedback_html: "<p>Mostly there.</p>".into(),
+                        flag: None,
+                        suggestion: None,
+                    }),
+                })
+                .collect(),
+            warnings: Vec::new(),
+            cancelled: false,
+        }))
+        .unwrap();
+    frames(&mut harness);
+
+    scroll_to_and_press(&mut harness, AGAIN);
+    let Command::Sweep(request, grades) = sent(&mut stand_in) else {
+        panic!("expected the consistency check to run");
+    };
+    assert_eq!(request.students.len(), 6);
+    assert_eq!(grades.len(), 6);
+    assert_eq!((grades[2].student_index, grades[2].score), (2, 7.0));
+    assert_eq!(grades[2].feedback, "<p>Mostly there.</p>");
+    stand_in
+        .events
+        .send(Event::Swept(Ok(vec![(
+            2,
+            Suggestion {
+                score: 5.0,
+                feedback_html: None,
+                reason: Some("Pat said the same and got less.".into()),
+            },
+        )])))
+        .unwrap();
+    frames(&mut harness);
+    harness.get_by_label("The consistency check suggests a different grade for 1 student.");
+    harness.get_by_label("Has a suggestion");
+
+    // Run again, it finds nothing, and the old suggestion goes.
+    scroll_to_and_press(&mut harness, AGAIN);
+    assert!(matches!(sent(&mut stand_in), Command::Sweep(..)));
+    stand_in.events.send(Event::Swept(Ok(Vec::new()))).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("The consistency check found nothing to change.");
+    assert!(harness.query_by_label("Has a suggestion").is_none());
+}

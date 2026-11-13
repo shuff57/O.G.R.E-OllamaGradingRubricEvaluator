@@ -1,7 +1,7 @@
 use eframe::egui::{self, Align, Frame, Layout, Margin, RichText};
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use egui_extras::{Column, TableBuilder};
-use ogre_core::format_score;
+use ogre_core::{StudentWork, format_score};
 use ogre_grader::CancelFlag;
 use ogre_harness::cdp::DialogKind;
 
@@ -143,6 +143,8 @@ enum Action {
     AskToLeave(String),
     Stay,
     Grade,
+    /// Run the consistency check again on the grades in the table.
+    Sweep,
     StopGrading,
     /// Have the AI write scoring examples for the rubric.
     WriteExamples,
@@ -281,7 +283,10 @@ impl OgreApp {
         self.busy = Some(Busy {
             label,
             progress: None,
-            can_stop: matches!(command, Command::Grade(_) | Command::RunAgent(_)),
+            can_stop: matches!(
+                command,
+                Command::Grade(_) | Command::Sweep(..) | Command::RunAgent(_)
+            ),
             started: None,
         });
         self.worker.send(command);
@@ -339,6 +344,18 @@ impl OgreApp {
                         session.apply_grades(report);
                     }
                 }
+                Event::Swept(Ok(suggestions)) => {
+                    if let Some(session) = &mut self.session {
+                        self.notice = Some(match session.apply_sweep(suggestions) {
+                            0 => "The consistency check found nothing to change.".to_owned(),
+                            n => format!(
+                                "The consistency check suggests a different grade for {}.",
+                                count(n, "student")
+                            ),
+                        });
+                    }
+                }
+                Event::Swept(Err(problem)) => self.error = Some(problem),
                 Event::Examples(Ok(examples)) => {
                     if let Some(session) = &mut self.session {
                         session.examples_arrived(examples);
@@ -481,19 +498,17 @@ impl OgreApp {
             Action::Stay => self.leaving = None,
             Action::Grade => {
                 let Some(session) = &self.session else { return };
-                let request = GradeRequest {
-                    rubric: session.rubric_for_grading(),
-                    rubric_text: session.edited_rubric_text(),
-                    students: session.to_grade(),
-                    provider: self.settings.provider.clone(),
-                    api_key: self.key(),
-                    leniency: engine_leniency(session.leniency_for_grading(self.settings.leniency)),
-                    score_from_verdicts: self.settings.score_from_verdicts,
-                    examples: session.examples_for_grading(),
-                    skill_choices: self.settings.skills.clone(),
-                    cancel: CancelFlag::new(),
-                };
+                let request = self.grade_request(session, session.to_grade());
                 self.send(Command::Grade(Box::new(request)), "Grading…");
+            }
+            Action::Sweep => {
+                let Some(session) = &self.session else { return };
+                let (students, grades) = session.to_sweep();
+                let request = self.grade_request(session, students);
+                self.send(
+                    Command::Sweep(Box::new(request), grades),
+                    "Checking the grades against each other…",
+                );
             }
             Action::RewordRubric => {
                 let leniency = self.settings.leniency;
@@ -728,6 +743,23 @@ impl OgreApp {
             .collect();
         names.sort_unstable();
         names
+    }
+
+    /// What a grading run of `students` is given: the rubric as the teacher
+    /// has it, and everything they have set up beside it.
+    fn grade_request(&self, session: &Session, students: Vec<StudentWork>) -> GradeRequest {
+        GradeRequest {
+            rubric: session.rubric_for_grading(),
+            rubric_text: session.edited_rubric_text(),
+            students,
+            provider: self.settings.provider.clone(),
+            api_key: self.key(),
+            leniency: engine_leniency(session.leniency_for_grading(self.settings.leniency)),
+            score_from_verdicts: self.settings.score_from_verdicts,
+            examples: session.examples_for_grading(),
+            skill_choices: self.settings.skills.clone(),
+            cancel: CancelFlag::new(),
+        }
     }
 
     /// Why the AI service cannot be asked anything yet, if it cannot.
@@ -1042,6 +1074,28 @@ impl OgreApp {
                     count(n, "student")
                 )));
             }
+        }
+        // It ran when the class was graded. It can run again on the grades
+        // as they now stand, such as after the teacher has changed some.
+        let checkable = session.to_sweep().1.len();
+        if checkable > 0 {
+            ui.horizontal_wrapped(|ui| {
+                let enough = checkable >= ogre_grader::MIN_SWEEP_STUDENTS;
+                let enabled = idle && enough && provider_problem.is_none();
+                if kit::ghost(ui, "Run the consistency check again", enabled).clicked() {
+                    actions.push(Action::Sweep);
+                }
+                ui.label(theme::muted(if enough {
+                    "It compares the grades in the table as they stand now, and only \
+                     suggests. Nobody is graded again."
+                        .to_owned()
+                } else {
+                    format!(
+                        "It compares students with each other, and needs at least {} grades.",
+                        ogre_grader::MIN_SWEEP_STUDENTS
+                    )
+                }));
+            });
         }
 
         if session.unsaved && session.manual_save {
