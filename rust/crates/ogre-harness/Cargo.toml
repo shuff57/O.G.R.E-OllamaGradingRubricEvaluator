@@ -16,6 +16,7 @@ ogre-llm = { path = "../ogre-llm", default-features = false }
 ammonia.workspace = true
 async-trait.workspace = true
 htmd.workspace = true
+regex = "1"
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

@@ -135,7 +135,8 @@ pub struct Proposal {
     pub score: f64,
     /// Feedback as the AI wrote it.
     original_html: String,
-    /// Feedback as plain text, which the teacher may edit.
+    /// Feedback as text the teacher may edit: paragraphs, `- ` lists,
+    /// `**bold**` and `*emphasis*`, as [`feedback::editable_text`] writes it.
     pub text: String,
     edited: bool,
     /// A reason to look at this grade before accepting it.
@@ -164,7 +165,7 @@ impl Proposal {
     fn new(grade: Grade) -> Self {
         Self {
             score: grade.score,
-            text: feedback::plain_text(&grade.feedback_html),
+            text: feedback::editable_text(&grade.feedback_html),
             original_html: grade.feedback_html,
             edited: false,
             flag: grade.flag,
@@ -207,7 +208,7 @@ impl Proposal {
         };
         self.score = suggestion.score;
         if let Some(html) = suggestion.feedback_html.filter(|_| !self.edited) {
-            let text = std::mem::replace(&mut self.text, feedback::plain_text(&html));
+            let text = std::mem::replace(&mut self.text, feedback::editable_text(&html));
             let original = std::mem::replace(&mut self.original_html, html);
             before.feedback = Some((original, text));
         }
@@ -239,7 +240,7 @@ impl Proposal {
     /// edits would be kept instead.
     pub fn suggested_feedback(&self) -> Option<String> {
         let html = self.suggestion.as_ref()?.feedback_html.as_deref()?;
-        (!self.edited).then(|| feedback::plain_text(html))
+        (!self.edited).then(|| feedback::editable_text(html))
     }
 
     /// Sets the suggestion aside; the proposal stands as it is.
@@ -253,11 +254,11 @@ impl Proposal {
         self.edited = true;
     }
 
-    /// The feedback to write. The AI's formatting is kept until the teacher
-    /// edits the text; after that, the text is what counts.
+    /// The feedback to write: the AI's own until the teacher edits the
+    /// text, and after that the text, with the shape it is written in.
     pub fn html(&self) -> String {
         if self.edited {
-            text_to_html(&self.text)
+            feedback::html_from_text(&self.text)
         } else {
             self.original_html.clone()
         }
@@ -883,20 +884,6 @@ fn names<'a>(names: impl Iterator<Item = &'a str>) -> String {
 }
 
 /// Paragraphs for blank-line-separated text, with everything escaped.
-fn text_to_html(text: &str) -> String {
-    text.split("\n\n")
-        .map(str::trim)
-        .filter(|paragraph| !paragraph.is_empty())
-        .map(|paragraph| format!("<p>{}</p>", escape(paragraph).replace('\n', "<br>")))
-        .collect()
-}
-
-fn escape(text: &str) -> String {
-    text.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-}
-
 #[cfg(test)]
 mod tests {
     use ogre_core::{FeedbackField, FeedbackKind, ScoreField};
@@ -1084,7 +1071,9 @@ mod tests {
             5.5,
             Some("<p>Second thoughts.</p>"),
         )]));
-        let proposal = |s: &mut Session| s.rows[1].proposal.as_mut().unwrap();
+        fn proposal(s: &mut Session) -> &mut Proposal {
+            s.rows[1].proposal.as_mut().unwrap()
+        }
         assert_eq!(
             proposal(&mut s).suggested_feedback().as_deref(),
             Some("Second thoughts.")
@@ -1500,7 +1489,7 @@ mod tests {
     }
 
     #[test]
-    fn edited_feedback_replaces_the_ai_text_and_is_escaped() {
+    fn edited_feedback_keeps_its_formatting_and_is_escaped() {
         let mut s = session();
         s.apply_grades(report(vec![graded(
             1,
@@ -1508,13 +1497,15 @@ mod tests {
             "<p>Good <strong>start</strong>.</p>",
         )]));
         let proposal = s.rows[1].proposal.as_mut().unwrap();
-        assert_eq!(proposal.text, "Good start.");
+        // The editor shows the AI's formatting as marks the teacher can keep.
+        assert_eq!(proposal.text, "Good **start**.");
 
-        proposal.text = "Good start, Kai.\nCheck x < 3.\n\n<script>alert(1)</script>".into();
+        proposal.text = "Good **start**, Kai.\nCheck x_1 < 3.\n\n<script>alert(1)</script>".into();
         proposal.mark_edited();
         assert_eq!(
             proposal.html(),
-            "<p>Good start, Kai.<br>Check x &lt; 3.</p><p>&lt;script&gt;alert(1)&lt;/script&gt;</p>"
+            "<p>Good <strong>start</strong>, Kai.<br>Check x_1 &lt; 3.</p>\
+             <p>&lt;script&gt;alert(1)&lt;/script&gt;</p>"
         );
     }
 
