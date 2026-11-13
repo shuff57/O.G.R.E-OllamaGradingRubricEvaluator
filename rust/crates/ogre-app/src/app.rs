@@ -8,6 +8,7 @@ use ogre_harness::cdp::DialogKind;
 use crate::agent_run::{
     AgentAnswer, AgentLine, AgentQuestion, AgentRequest, AgentSummary, LineKind, SkillSummary,
 };
+use crate::built_in::{BuiltIn, BuiltInBrowser};
 use crate::grading::Suggestion;
 use crate::history::{self, PastProposal, PastSession, SessionEnd};
 use crate::keys::KeyStore;
@@ -78,6 +79,8 @@ pub struct OgreApp {
     history_open: Option<u64>,
     agent: AgentView,
     browser: BrowserView,
+    /// The browser built into the window, in a build of OGRE that has one.
+    built_in: Option<BuiltIn>,
 }
 
 /// The Agent screen's state.
@@ -265,7 +268,34 @@ impl OgreApp {
             saving_mapping: None,
             agent: AgentView::default(),
             browser: BrowserView::default(),
+            built_in: None,
         }
+    }
+
+    /// Gives the window a browser of its own to show pages in. The teacher
+    /// chooses in Settings whether to work in it or in Chrome.
+    pub fn with_built_in_browser(mut self, browser: Box<dyn BuiltInBrowser>) -> Self {
+        self.built_in = Some(BuiltIn::new(browser));
+        self
+    }
+
+    /// For a program that gave the window a built-in browser: call after
+    /// every frame, with what the frame produced.
+    pub fn after_frame(&mut self, ctx: &egui::Context, output: &egui::FullOutput) {
+        if let Some(built_in) = &mut self.built_in {
+            built_in.browser().after_frame(ctx, output);
+        }
+    }
+
+    /// True when the teacher works in the browser built into the window.
+    fn uses_built_in(&self) -> bool {
+        self.built_in.is_some() && self.settings.built_in_browser
+    }
+
+    /// True when the page is to be seen inside the window, one way or the
+    /// other, so that the Browser screen has something to show.
+    fn page_is_inside(&self) -> bool {
+        self.settings.page_inside || self.uses_built_in()
     }
 
     /// Offers, in Settings, to copy the AI service from the Electron app's
@@ -331,7 +361,7 @@ impl OgreApp {
                 Event::ChromeStarted => {
                     self.chrome_running = true;
                     // Where the page is, which is where signing in happens.
-                    if self.settings.page_inside && self.screen == Screen::Grade {
+                    if self.page_is_inside() && self.screen == Screen::Grade {
                         self.screen = Screen::Browser;
                     }
                 }
@@ -550,6 +580,9 @@ impl OgreApp {
 
     fn carry_out(&mut self, ctx: &egui::Context, action: Action) {
         match action {
+            Action::StartChrome if self.uses_built_in() => {
+                self.send(Command::StartBuiltIn, "Starting the browser…");
+            }
             Action::StartChrome => {
                 let inside = self.settings.page_inside;
                 self.send(Command::StartChrome { inside }, "Starting Chrome…");
@@ -942,8 +975,7 @@ impl OgreApp {
             );
             ui.add_space(14.0);
             let browser =
-                self.settings
-                    .page_inside
+                self.page_is_inside()
                     .then_some((Screen::Browser, icon::BROWSER, "Browser"));
             for (screen, glyph, label) in [(Screen::Grade, icon::GRADE, "Grade")]
                 .into_iter()
@@ -1032,10 +1064,19 @@ impl OgreApp {
         kit::wide_card(ui, |ui| {
             if !self.chrome_running {
                 ui.horizontal_wrapped(|ui| {
-                    if self.step_button(ui, Step::StartChrome, "Start Chrome", idle) {
+                    let start = if self.uses_built_in() {
+                        "Start the built-in browser"
+                    } else {
+                        "Start Chrome"
+                    };
+                    if self.step_button(ui, Step::StartChrome, start, idle) {
                         actions.push(Action::StartChrome);
                     }
-                    ui.label(theme::muted(if self.settings.page_inside {
+                    ui.label(theme::muted(if self.uses_built_in() {
+                        "Uses the browser built into OGRE, which has a sign-in of its own, \
+                         apart from Chrome\u{2019}s. Its page is on the Browser screen: log in \
+                         to your grading site there once."
+                    } else if self.settings.page_inside {
                         "Starts Chrome without a window of its own, with its own profile. \
                          Its page is shown on the Browser screen: log in to your grading \
                          site there once."
@@ -2267,16 +2308,42 @@ impl OgreApp {
                     ui.set_max_width(560.0);
                     kit::panel_title(ui, "Where the page is shown");
                     ui.add_space(4.0);
-                    ui.checkbox(
-                        &mut self.settings.page_inside,
-                        "Show the page inside OGRE (an experiment)",
-                    );
-                    ui.label(theme::muted(
-                        "Chrome then runs without a window of its own and its page is drawn \
-                         on a Browser screen here. It answers a click or a key a little \
-                         late, and it cannot show a file picker or Chrome\u{2019}s own \
-                         pop-ups. Takes effect the next time Chrome is started.",
-                    ));
+                    if self.built_in.is_some() {
+                        // This build has a browser of its own: three ways.
+                        let settings = &mut self.settings;
+                        let mut way = match (settings.built_in_browser, settings.page_inside) {
+                            (true, _) => 2,
+                            (false, true) => 1,
+                            (false, false) => 0,
+                        };
+                        ui.radio_value(&mut way, 0, "In Chrome\u{2019}s own window");
+                        ui.radio_value(&mut way, 1, "As a picture of Chrome, inside OGRE");
+                        ui.radio_value(
+                            &mut way,
+                            2,
+                            "In the browser built into OGRE (an experiment)",
+                        );
+                        settings.built_in_browser = way == 2;
+                        settings.page_inside = way == 1;
+                        ui.label(theme::muted(
+                            "The built-in browser is a real one inside this window, with a \
+                             sign-in of its own, apart from Chrome\u{2019}s. The agent and \
+                             reading a rubric from a picture of the page do not work with it \
+                             yet. A choice takes effect the next time the browser is started.",
+                        ));
+                    } else {
+                        ui.checkbox(
+                            &mut self.settings.page_inside,
+                            "Show the page inside OGRE (an experiment)",
+                        );
+                        ui.label(theme::muted(
+                            "Chrome then runs without a window of its own and its page is \
+                             drawn on a Browser screen here. It answers a click or a key a \
+                             little late, and it cannot show a file picker or \
+                             Chrome\u{2019}s own pop-ups. Takes effect the next time Chrome is \
+                             started.",
+                        ));
+                    }
                 });
                 ui.add_space(4.0);
                 kit::card().show(ui, |ui| {
@@ -2304,6 +2371,14 @@ impl OgreApp {
 impl eframe::App for OgreApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.take_events();
+        // What the worker wants of the built-in browser's page is done here,
+        // between frames, and its answers go back.
+        if let Some(built_in) = &mut self.built_in
+            && built_in.pump(self.worker.page_requests())
+        {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(30));
+        }
         if let Some(busy) = &mut self.busy {
             let now = ui.input(|i| i.time);
             busy.started.get_or_insert(now);

@@ -3,10 +3,12 @@
 mod agent_run;
 mod app;
 mod audit;
+mod built_in;
 mod grading;
 mod history;
 mod keys;
 mod kit;
+mod launch;
 mod profiles;
 mod rubrics;
 mod session;
@@ -19,9 +21,11 @@ pub use agent_run::{
     AgentAnswer, AgentLine, AgentQuestion, AgentRequest, AgentSummary, LineKind, SkillSummary,
 };
 pub use app::OgreApp;
+pub use built_in::{BuiltIn, BuiltInBrowser, BuiltInPage, PageNews, Requests};
 pub use grading::{Grade, GradeReport, GradedRow, Suggestion};
 pub use history::{PastProposal, PastSession, PastStudent, SessionEnd};
 pub use keys::{KeyStore, Keyring, MemoryKeys};
+pub use launch::{APP_ID, data_dir, native_options, start};
 pub use profiles::ProfileSummary;
 pub use rubrics::SavedRubric;
 pub use settings::engine_leniency;

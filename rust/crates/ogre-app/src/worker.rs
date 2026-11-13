@@ -22,6 +22,7 @@ use crate::agent_run::{
     self, AgentAnswer, AgentLine, AgentQuestion, AgentRequest, AgentSummary, SkillSummary,
 };
 use crate::audit::AuditLog;
+use crate::built_in::{BuiltInPage, Requests};
 use crate::grading::{self, GradeReport, PreparedCache};
 use crate::history::{self, PastSession};
 use crate::profiles::{ProfileStore, ProfileSummary};
@@ -45,7 +46,11 @@ pub enum Command {
     StartChrome {
         inside: bool,
     },
+    /// Work in the browser built into the window instead of a Chrome. Only
+    /// a build of OGRE that brings one sends this.
+    StartBuiltIn,
     /// Shut Chrome down. With a window of its own the teacher closes that.
+    /// The built-in browser is only let go of.
     StopChrome,
     /// Open this address: in the tab on show where the page is shown inside
     /// the window, otherwise in a new tab.
@@ -376,6 +381,9 @@ pub struct Worker {
     running: Mutex<Option<Running>>,
     answers: mpsc::UnboundedSender<AgentAnswer>,
     view: ViewLink,
+    /// What the worker asks of the built-in browser's page, for the window
+    /// to carry out.
+    page_requests: Requests,
     thread: Option<JoinHandle<()>>,
 }
 
@@ -394,6 +402,8 @@ pub struct StandIn {
     pub view: ViewLink,
     /// What the teacher did on the page shown inside the window.
     pub view_input: mpsc::UnboundedReceiver<ViewInput>,
+    /// The built-in browser's page, to ask things of as the worker would.
+    pub built_in_page: BuiltInPage,
 }
 
 impl Worker {
@@ -411,12 +421,15 @@ impl Worker {
         let (outbox, events) = std_mpsc::channel();
         let (answers, answer_inbox) = mpsc::unbounded_channel();
         let (view, view_input) = ViewLink::new();
+        let wake: Arc<dyn Fn() + Send + Sync> = Arc::new(wake);
+        let (built_in_page, page_requests) = BuiltInPage::new(wake.clone());
         let wires = Wires {
             commands: inbox,
             answers: answer_inbox,
             view: view.clone(),
             view_input,
             events: outbox,
+            built_in_page,
         };
         let thread = std::thread::Builder::new()
             .name("ogre-worker".into())
@@ -428,6 +441,7 @@ impl Worker {
             running: Mutex::new(None),
             answers,
             view,
+            page_requests: Mutex::new(page_requests),
             thread: Some(thread),
         }
     }
@@ -439,12 +453,14 @@ impl Worker {
         let (outbox, events) = std_mpsc::channel();
         let (answers, answer_inbox) = mpsc::unbounded_channel();
         let (view, view_input) = ViewLink::new();
+        let (built_in_page, page_requests) = BuiltInPage::new(Arc::new(|| {}));
         let worker = Self {
             commands: Some(commands),
             events,
             running: Mutex::new(None),
             answers,
             view: view.clone(),
+            page_requests: Mutex::new(page_requests),
             thread: None,
         };
         let stand_in = StandIn {
@@ -453,6 +469,7 @@ impl Worker {
             answers: answer_inbox,
             view,
             view_input,
+            built_in_page,
         };
         (worker, stand_in)
     }
@@ -502,6 +519,11 @@ impl Worker {
         &self.view
     }
 
+    /// What the worker has asked of the built-in browser's page.
+    pub(crate) fn page_requests(&self) -> &Requests {
+        &self.page_requests
+    }
+
     /// Events that have arrived since the last call.
     pub fn poll(&self) -> impl Iterator<Item = Event> + '_ {
         self.events.try_iter()
@@ -527,6 +549,7 @@ struct Wires {
     view: ViewLink,
     view_input: mpsc::UnboundedReceiver<ViewInput>,
     events: std_mpsc::Sender<Event>,
+    built_in_page: BuiltInPage,
 }
 
 fn run(
@@ -534,7 +557,7 @@ fn run(
     sites: Sites,
     data_dir: PathBuf,
     wires: Wires,
-    wake: impl Fn() + Send + Sync + 'static,
+    wake: Arc<dyn Fn() + Send + Sync>,
 ) {
     let Wires {
         commands: mut inbox,
@@ -542,13 +565,13 @@ fn run(
         view,
         view_input,
         events: outbox,
+        built_in_page,
     } = wires;
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
         .build()
         .expect("the async runtime starts");
-    let wake: Arc<dyn Fn() + Send + Sync> = Arc::new(wake);
     runtime.block_on(async move {
         let (view_control, controls) = mpsc::unbounded_channel();
         let shown = Shown::default();
@@ -560,6 +583,8 @@ fn run(
             wake.clone(),
         ));
         let mut task = Task {
+            built_in: false,
+            built_in_page,
             inside: false,
             view_control,
             shown,
@@ -608,10 +633,58 @@ impl Reporter {
     }
 }
 
+/// A page OGRE reads and writes: a tab of the Chrome it started, or the
+/// page of the browser built into the window.
+#[derive(Clone)]
+enum Tab {
+    Chrome(CdpPage),
+    BuiltIn(BuiltInPage),
+}
+
+impl Tab {
+    /// The page as something to click and type on and take a picture of.
+    /// Only a Chrome tab is one so far.
+    fn input(&self) -> Result<&dyn InputDriver> {
+        match self {
+            Self::Chrome(page) => Ok(page),
+            Self::BuiltIn(_) => Err(Error::Page(
+                "The built-in browser cannot do this yet. In Settings, have the page \
+                 shown in Chrome\u{2019}s own window, or as a picture of Chrome, and start \
+                 the browser again."
+                    .into(),
+            )),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl PageDriver for Tab {
+    async fn url(&self) -> Result<String> {
+        match self {
+            Self::Chrome(page) => page.url().await,
+            Self::BuiltIn(page) => page.url().await,
+        }
+    }
+
+    async fn navigate(&self, url: &str) -> Result<()> {
+        match self {
+            Self::Chrome(page) => page.navigate(url).await,
+            Self::BuiltIn(page) => page.navigate(url).await,
+        }
+    }
+
+    async fn eval(&self, expression: &str) -> Result<serde_json::Value> {
+        match self {
+            Self::Chrome(page) => page.eval(expression).await,
+            Self::BuiltIn(page) => page.eval(expression).await,
+        }
+    }
+}
+
 /// The grading page that was last read, which later writes go to.
 #[derive(Clone)]
 struct Target {
-    page: CdpPage,
+    page: Tab,
     adapter: Arc<dyn SiteAdapter>,
     url: String,
 }
@@ -619,7 +692,7 @@ struct Target {
 /// The adapter chosen for a page, and what is known about saving with it.
 #[derive(Clone)]
 struct Chosen {
-    page: CdpPage,
+    page: Tab,
     adapter: Arc<dyn SiteAdapter>,
     manual_save: bool,
 }
@@ -634,7 +707,11 @@ struct Task {
     answers: mpsc::UnboundedReceiver<AgentAnswer>,
     chrome: Option<Chrome>,
     /// The tab OGRE opened most recently.
-    opened: Option<CdpPage>,
+    opened: Option<Tab>,
+    /// The teacher works in the browser built into the window, and no
+    /// Chrome is running.
+    built_in: bool,
+    built_in_page: BuiltInPage,
     /// When the last page was opened from the app.
     opened_at: Option<Instant>,
     target: Option<Target>,
@@ -688,15 +765,21 @@ impl Task {
                             Some(first) => first,
                             None => chrome.open("about:blank").await?,
                         };
-                        self.show(&first);
-                        self.opened = Some(first);
+                        self.show(&Tab::Chrome(first.clone()));
+                        self.opened = Some(Tab::Chrome(first));
                     }
                     self.chrome = Some(chrome);
                 }
                 Ok(Event::ChromeStarted)
             }
+            Command::StartBuiltIn => {
+                // The browser is the window's own: there is nothing to start.
+                self.built_in = true;
+                Ok(Event::ChromeStarted)
+            }
             Command::StopChrome => {
                 let chrome = self.chrome.take();
+                self.built_in = false;
                 self.forget_chrome();
                 if let Some(chrome) = chrome {
                     chrome.close().await?;
@@ -706,12 +789,12 @@ impl Task {
             Command::Open(address) => {
                 // Shown inside the window there is one tab the teacher looks
                 // at, and that is the one to send somewhere.
-                let page = match self.shown_tab() {
+                let page = match self.shown_tab().or_else(|| self.built_in_tab()) {
                     Some(page) => {
                         page.navigate(&address).await?;
                         page
                     }
-                    None => self.chrome()?.open(&address).await?,
+                    None => Tab::Chrome(self.chrome()?.open(&address).await?),
                 };
                 let url = page.url().await?;
                 self.opened = Some(page);
@@ -779,7 +862,7 @@ impl Task {
                     Some(target) => target.page.clone(),
                     None => self.current_tab().await?,
                 };
-                let png = page.screenshot_png().await?;
+                let png = page.input()?.screenshot_png().await?;
                 Ok(Event::RubricRead(
                     grading::rubric_from_picture(&provider, api_key.as_deref(), &png).await,
                 ))
@@ -871,7 +954,7 @@ impl Task {
             Command::RunAgent(request) => {
                 let page = self.current_tab().await?;
                 let summary = agent_run::run(
-                    &page,
+                    page.input()?,
                     *request,
                     &self.skills_dir,
                     self.report.clone(),
@@ -885,10 +968,31 @@ impl Task {
         }
     }
 
-    /// Has `page` shown inside the window, where pages are shown there.
-    fn show(&self, page: &CdpPage) {
-        if self.inside {
+    /// Has `page` shown inside the window, where a picture of Chrome's page
+    /// is shown there. The built-in browser's page is in the window already.
+    fn show(&self, page: &Tab) {
+        if let (true, Tab::Chrome(page)) = (self.inside, page) {
             let _ = self.view_control.send(Control::Show(page.clone()));
+        }
+    }
+
+    /// The built-in browser's page, while the teacher works in that.
+    fn built_in_tab(&self) -> Option<Tab> {
+        self.built_in
+            .then(|| Tab::BuiltIn(self.built_in_page.clone()))
+    }
+
+    /// Every page there is to look for a grading page among.
+    async fn tabs(&self) -> Result<Vec<Tab>> {
+        match self.built_in_tab() {
+            Some(page) => Ok(vec![page]),
+            None => Ok(self
+                .chrome()?
+                .pages()
+                .await?
+                .into_iter()
+                .map(Tab::Chrome)
+                .collect()),
         }
     }
 
@@ -973,7 +1077,7 @@ impl Task {
     /// The tab to read and the adapter for it: a site OGRE was built for, or
     /// one the teacher has mapped.
     async fn grading_page(&self) -> Result<Chosen> {
-        let pages = self.chrome()?.pages().await?;
+        let pages = self.tabs().await?;
         for page in &pages {
             if let Some(adapter) = self.sites.adapter_for(&page.url().await?) {
                 return Ok(Chosen {
@@ -1015,14 +1119,19 @@ impl Task {
     /// The tab shown inside the window, where the page is shown there. The
     /// tab is forgotten a moment after the switch is turned off, so the
     /// switch is asked too.
-    fn shown_tab(&self) -> Option<CdpPage> {
-        tab_view::shown_tab(&self.shown).filter(|_| self.inside)
+    fn shown_tab(&self) -> Option<Tab> {
+        tab_view::shown_tab(&self.shown)
+            .filter(|_| self.inside)
+            .map(Tab::Chrome)
     }
 
     /// The tab the teacher means by "the page": the one shown inside the
     /// window, else the one OGRE opened last, or failing that the first tab
     /// showing a web page.
-    async fn current_tab(&self) -> Result<CdpPage> {
+    async fn current_tab(&self) -> Result<Tab> {
+        if let Some(page) = self.built_in_tab() {
+            return Ok(page);
+        }
         for page in [self.shown_tab(), self.opened.clone()]
             .into_iter()
             .flatten()
@@ -1031,7 +1140,7 @@ impl Task {
                 return Ok(page);
             }
         }
-        for page in self.chrome()?.pages().await? {
+        for page in self.tabs().await? {
             let url = page.url().await?;
             if url.starts_with("http") || url.starts_with("file:") {
                 return Ok(page);

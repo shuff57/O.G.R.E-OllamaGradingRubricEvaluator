@@ -51,26 +51,56 @@ impl OgreApp {
                     return;
                 }
                 // The address box follows the page, except while it is typed in.
-                let at = self.worker.view().state().address.clone();
+                let built_in = self.uses_built_in();
+                let at = match &self.built_in {
+                    Some(browser) if built_in => browser.address.clone(),
+                    _ => self.worker.view().state().address.clone(),
+                };
                 if at != self.browser.address {
                     self.browser.address.clone_from(&at);
                     self.address = at;
                 }
                 kit::wide_card(ui, |ui| {
                     ui.horizontal(|ui| {
-                        let view = self.worker.view();
-                        if kit::icon_button(ui, icon::BACK, "Back", true).clicked() {
-                            view.send(ViewInput::Back);
+                        let back = kit::icon_button(ui, icon::BACK, "Back", true).clicked();
+                        let forward =
+                            kit::icon_button(ui, icon::FORWARD, "Forward", true).clicked();
+                        let reload =
+                            kit::icon_button(ui, icon::RELOAD, "Reload the page", true).clicked();
+                        match self.built_in.as_mut().filter(|_| built_in) {
+                            Some(browser) => {
+                                let browser = browser.browser();
+                                if back {
+                                    browser.back();
+                                }
+                                if forward {
+                                    browser.forward();
+                                }
+                                if reload {
+                                    browser.reload();
+                                }
+                            }
+                            None => {
+                                let view = self.worker.view();
+                                for (pressed, input) in [
+                                    (back, ViewInput::Back),
+                                    (forward, ViewInput::Forward),
+                                    (reload, ViewInput::Reload),
+                                ] {
+                                    if pressed {
+                                        view.send(input);
+                                    }
+                                }
+                            }
                         }
-                        if kit::icon_button(ui, icon::FORWARD, "Forward", true).clicked() {
-                            view.send(ViewInput::Forward);
-                        }
-                        if kit::icon_button(ui, icon::RELOAD, "Reload the page", true).clicked() {
-                            view.send(ViewInput::Reload);
-                        }
+                        let stop_label = if built_in {
+                            "Stop the browser"
+                        } else {
+                            "Stop Chrome"
+                        };
                         let stop = ui
                             .with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                let stop = kit::ghost(ui, "Stop Chrome", idle);
+                                let stop = kit::ghost(ui, stop_label, idle);
                                 let go = kit::ghost(ui, "Go", idle);
                                 let address = ui.add(
                                     egui::TextEdit::singleline(&mut self.address)
@@ -93,7 +123,13 @@ impl OgreApp {
                     self.messages(ui, actions);
                 });
                 ui.add_space(4.0);
-                self.browser.page(ui, self.worker.view());
+                match self.built_in.as_mut().filter(|_| built_in) {
+                    Some(browser) => {
+                        let size = ui.available_size();
+                        browser.browser().show(ui, size);
+                    }
+                    None => self.browser.page(ui, self.worker.view()),
+                }
             });
     }
 }

@@ -1,0 +1,33 @@
+# A copy of `egui_webview` from https://github.com/rerun-io/egui_crates, at
+# commit ab18cba39c1a15da0b51c709855c5be6a274ec5c of its `lucas/egui-webview-cef`
+# branch (12 November 2026), which is an unpublished draft. MIT OR Apache-2.0;
+# see LICENSE-MIT and LICENSE-APACHE here. What OGRE changed is in PATCHES.md.
+#
+# This manifest is OGRE's: the original takes its settings from its own
+# workspace. Only what a native build with the `cef` feature needs is kept.
+[package]
+name = "egui_webview"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Web pages as egui widgets"
+
+[lints.rust]
+# The crate marks each use of unsafe code with `#[expect(unsafe_code)]`.
+unsafe_code = "deny"
+
+[features]
+default = []
+## Render pages off screen with CEF (Chromium) into egui textures. The build
+## downloads CEF (about 1 GB) and requires CMake and Ninja.
+cef = ["dep:cef", "dep:winit"]
+
+[dependencies]
+eframe = { version = "0.37.0", default-features = false }
+egui = { version = "0.37.0", default-features = false }
+log = { version = "0.4.29", features = ["std"] }
+cef = { version = "156.3.0", default-features = false, optional = true }
+# Converts egui keys to the scancodes CEF expects. On Linux that needs a
+# windowing backend feature.
+winit = { version = "0.30.13", default-features = false, features = ["x11"], optional = true }

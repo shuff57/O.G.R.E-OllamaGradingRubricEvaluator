@@ -173,7 +173,8 @@ Decisions: desktop only for now (code kept web-compilable), Linux only for now, 
   - A Rubrics screen for the saved rubrics, with no page open: write, change (the name too), copy, delete.
   - Carrying on a stopped run with the students it did not reach, and, when a page is read again (after a restart too), the offer to bring back grades the last run proposed for students still ungraded. They come as the AI proposed them; the record does not hold the teacher's later changes.
   - A saved site mapping changed by hand on the Sites screen: each selector editable, or picked by clicking the thing on the page; checked against the open page per field; saved only once the page proves it. How the maximum score and the save button are found is not in the form yet.
-- 999 tests pass by default; 81 more need Chrome, a local model or the AI service.
+- A browser built into the window, as a second build (`rust/embedded`, 2026-11-12, an experiment). It links Chromium through CEF and a patched copy of the unpublished `egui_webview` crate, and Settings then offers a third place for the page. The usual build is untouched: `ogre-app` only has a `BuiltInBrowser` trait and a page driver that runs the adapters' scripts in whatever is behind it. Checked on a practice MyOpenMath page: read, write a grade, read it back (`cargo run --example bridge_check` in `rust/embedded`). Not there: the agent, a rubric from a picture, a page's pop-up questions, packaging. Not tried on a real grading page.
+- 1004 tests pass by default; 81 more need Chrome, a local model or the AI service.
 
 ## Checked on real MyOpenMath pages (read-only)
 

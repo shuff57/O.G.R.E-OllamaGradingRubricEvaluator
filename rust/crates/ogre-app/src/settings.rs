@@ -27,6 +27,9 @@ pub struct Settings {
     /// Propose a zero for students with no response and no grade. Off
     /// unless the teacher turns it on.
     pub zero_for_no_response: bool,
+    /// Work in the browser built into OGRE's window instead of a Chrome.
+    /// Only means something in a build of OGRE that brings a browser.
+    pub built_in_browser: bool,
     /// AI services that were set up and are not the one in use, each as it
     /// was left, to switch back to. Their keys are in the keyring.
     pub other_services: Vec<ProviderSettings>,
@@ -42,6 +45,7 @@ impl Default for Settings {
             skills: BTreeMap::new(),
             page_inside: false,
             zero_for_no_response: false,
+            built_in_browser: false,
             other_services: Vec::new(),
         }
     }
@@ -382,6 +386,7 @@ mod tests {
             skills: BTreeMap::from([("my-skill".to_owned(), false)]),
             page_inside: true,
             zero_for_no_response: true,
+            built_in_browser: true,
             other_services: vec![ProviderSettings {
                 service: Service::Ollama,
                 base_url: String::new(),

@@ -1,6 +1,8 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
+# OGRE with a built-in browser: a workspace of its own, see embedded/Cargo.toml.
+exclude = ["embedded"]
 
 [workspace.package]
 version = "0.1.0"

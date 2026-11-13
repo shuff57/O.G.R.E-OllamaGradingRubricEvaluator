@@ -1,0 +1,58 @@
+# OGRE with a browser built into its window.
+#
+# A workspace of its own, apart from the one above it: the built-in browser
+# needs an unreleased egui and downloads Chromium (about 1 GB) to build, and
+# neither should touch the usual build. Build and run it from this folder:
+#
+#     cargo run --release
+#
+# The first build needs CMake and Ninja. Set CEF_PATH to keep the Chromium
+# download somewhere of your choosing.
+[workspace]
+members = [".", "egui_webview"]
+resolver = "3"
+
+[package]
+name = "ogre-embedded"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "ogre-embedded"
+path = "src/main.rs"
+
+[dependencies]
+ogre-app = { path = "../crates/ogre-app" }
+egui_webview = { path = "egui_webview", features = ["cef"] }
+eframe = { version = "0.37", default-features = false }
+egui = { version = "0.37", default-features = false }
+
+[dev-dependencies]
+# For examples/bridge_check.rs, which reads a practice page with the real
+# MyOpenMath reader through the built-in browser.
+ogre-core = { path = "../crates/ogre-core" }
+ogre-harness = { path = "../crates/ogre-harness" }
+tokio = { version = "1", features = ["rt"] }
+
+# egui 0.37.0 plus what `egui_webview` needs and no release has yet, pinned
+# to the commit the copy of that crate here was written against. Every egui
+# crate in the build has to come from the same place.
+[patch.crates-io]
+ecolor = { git = "https://github.com/emilk/egui.git", rev = "6fd6a4d5abc1889f1ea6a90a027b1a293b80a9ec" }
+eframe = { git = "https://github.com/emilk/egui.git", rev = "6fd6a4d5abc1889f1ea6a90a027b1a293b80a9ec" }
+egui = { git = "https://github.com/emilk/egui.git", rev = "6fd6a4d5abc1889f1ea6a90a027b1a293b80a9ec" }
+egui-wgpu = { git = "https://github.com/emilk/egui.git", rev = "6fd6a4d5abc1889f1ea6a90a027b1a293b80a9ec" }
+egui-winit = { git = "https://github.com/emilk/egui.git", rev = "6fd6a4d5abc1889f1ea6a90a027b1a293b80a9ec" }
+egui_extras = { git = "https://github.com/emilk/egui.git", rev = "6fd6a4d5abc1889f1ea6a90a027b1a293b80a9ec" }
+egui_glow = { git = "https://github.com/emilk/egui.git", rev = "6fd6a4d5abc1889f1ea6a90a027b1a293b80a9ec" }
+emath = { git = "https://github.com/emilk/egui.git", rev = "6fd6a4d5abc1889f1ea6a90a027b1a293b80a9ec" }
+epaint = { git = "https://github.com/emilk/egui.git", rev = "6fd6a4d5abc1889f1ea6a90a027b1a293b80a9ec" }
+epaint_default_fonts = { git = "https://github.com/emilk/egui.git", rev = "6fd6a4d5abc1889f1ea6a90a027b1a293b80a9ec" }
+
+[profile.release]
+strip = true
+opt-level = "s"
