@@ -2,6 +2,11 @@
 //!
 //! Set `OGRE_UI_SHOTS` to a folder to also save a picture of each state:
 //!     OGRE_UI_SHOTS=/tmp/ogre-shots cargo test -p ogre-app --test window
+//!
+//! Pictures are drawn on the graphics card, one drawing surface per test.
+//! With all the tests drawing at once the test program has been seen to
+//! crash (SIGSEGV) about one run in two on this machine; add
+//! `-- --test-threads=1` if it does. Without pictures nothing is drawn.
 
 use std::path::PathBuf;
 
@@ -12,8 +17,8 @@ use ogre_agent::{InterviewTurn, SkillDraft};
 use ogre_app::{
     AgentAnswer, AgentLine, AgentQuestion, AgentSummary, Command, Event, Grade, GradeReport,
     GradedRow, LineKind, MapReport, MemoryKeys, OgreApp, OutsideRubric, PastProposal, PastSession,
-    PastStudent, ProfileSummary, ProviderSettings, ReadReport, SavedRubric, Service, SessionEnd,
-    Settings, SkillSummary, StandIn, Suggestion, ViewInput, Worker, WriteReport,
+    PastStudent, ProfileCheck, ProfileSummary, ProviderSettings, ReadReport, SavedRubric, Service,
+    SessionEnd, Settings, SkillSummary, StandIn, Suggestion, ViewInput, Worker, WriteReport,
 };
 use ogre_core::{
     FeedbackField, FeedbackKind, GradingPage, Position, QuestionLink, Rubric, ScoreField,
@@ -21,7 +26,9 @@ use ogre_core::{
 };
 use ogre_harness::cdp::{DialogKind, Held, MouseAction, MouseButton, PageDialog};
 use ogre_harness::sites::Mismatch;
-use ogre_harness::sites::generic::{PageMap, SiteProfile, StudentSample, UrlRule};
+use ogre_harness::sites::generic::{
+    Element, ElementCheck, PageMap, PickFor, Problem, Severity, SiteProfile, StudentSample, UrlRule,
+};
 
 fn shots_dir() -> Option<PathBuf> {
     std::env::var_os("OGRE_UI_SHOTS").map(PathBuf::from)
@@ -2805,4 +2812,180 @@ fn grades_a_run_left_unwritten_are_offered_when_the_page_is_read_again() {
     assert!(harness.query_by_label("Bring them back").is_none());
     assert!(harness.query_by_label("Ready to write").is_none());
     harness.get_by_label("Grade 2 students");
+}
+
+/// What a check of `profile` on a page of three students reports, with the
+/// score box found for `scores` of them.
+fn checked(profile: &SiteProfile, scores: usize) -> Event {
+    let found = |element, rule: &str, one: usize, of: usize| ElementCheck {
+        element,
+        rule: rule.into(),
+        none: of - one,
+        one,
+        several: 0,
+    };
+    let map = &profile.page;
+    let passed = scores == 3;
+    Event::ProfileChecked(Box::new(ProfileCheck {
+        profile: profile.clone(),
+        passed,
+        students: 3,
+        checks: vec![
+            found(Element::StudentSection, "div.student", 1, 1),
+            found(Element::StudentName, &map.student_name, 3, 3),
+            found(Element::ScoreInput, &map.score_input, scores, 3),
+            found(Element::Response, &map.response, 3, 3),
+        ],
+        problems: if passed {
+            Vec::new()
+        } else {
+            vec![Problem {
+                element: Element::ScoreInput,
+                severity: Severity::Error,
+                message: "no score box was found for 3 of 3 students".into(),
+            }]
+        },
+        samples: vec![StudentSample {
+            name: "Avery, Sam".into(),
+            score: String::new(),
+            max: Some(10.0),
+            response_chars: 212,
+            has_feedback_box: false,
+        }],
+    }))
+}
+
+#[test]
+fn a_saved_mapping_is_put_right_by_hand_and_saved_only_once_the_page_proves_it() {
+    let Event::Mapped(report) = found_mapping() else {
+        unreachable!()
+    };
+    let saved = report.profile;
+    let listed = || {
+        Event::Profiles(vec![ProfileSummary {
+            id: "grades-example-edu".into(),
+            name: "grades.example.edu".into(),
+            pages: "grades.example.edu/course/*/grade".into(),
+        }])
+    };
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Sites").click();
+    frames(&mut harness);
+    assert!(matches!(sent(&mut stand_in), Command::ListProfiles));
+    stand_in.events.send(listed()).unwrap();
+    frames(&mut harness);
+
+    harness.get_by_label("Change grades.example.edu").click();
+    frames(&mut harness);
+    let Command::EditProfile(id) = sent(&mut stand_in) else {
+        panic!("expected the mapping to be opened");
+    };
+    assert_eq!(id, "grades-example-edu");
+    stand_in
+        .events
+        .send(Event::ProfileToEdit(Box::new(saved.clone())))
+        .unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Change the mapping");
+    assert!(harness.query_all_by_value("input.score").next().is_some());
+
+    // The site changed its score box: the check says so, and nothing can
+    // be saved until the mapping fits the page again.
+    scroll_to_and_press(&mut harness, "Check against the open page");
+    let Command::CheckProfile(tried) = sent(&mut stand_in) else {
+        panic!("expected the mapping to be tried on the page");
+    };
+    assert_eq!(*tried, saved);
+    stand_in.events.send(checked(&saved, 0)).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("no score box was found for 3 of 3 students");
+    // The name and the response are where the mapping says.
+    assert_eq!(
+        harness
+            .query_all_by_label("Found for all 3 students.")
+            .count(),
+        2
+    );
+    shot(&mut harness, "39-mapping-editor");
+    scroll_to_and_press(&mut harness, "Save the mapping");
+    assert!(stand_in.commands.try_recv().is_err());
+
+    // The teacher points at the score box on the page instead of typing.
+    let picks: Vec<_> = harness.query_all_by_label("Pick on the page").collect();
+    assert_eq!(picks.len(), 6);
+    picks[2].scroll_to_me();
+    drop(picks);
+    frames(&mut harness);
+    harness
+        .query_all_by_label("Pick on the page")
+        .nth(2)
+        .unwrap()
+        .click();
+    frames(&mut harness);
+    let Command::PickElement(what) = sent(&mut stand_in) else {
+        panic!("expected to wait for a click on the page");
+    };
+    assert_eq!(what, PickFor::InsideSection(Some("div.student".into())));
+    stand_in
+        .events
+        .send(Event::Picked(Some("input.points".into())))
+        .unwrap();
+    frames(&mut harness);
+    assert!(harness.query_all_by_value("input.points").next().is_some());
+    // What was checked is not what the form says now.
+    harness.get_by_label("Changed since it was checked. Check it again.");
+    scroll_to_and_press(&mut harness, "Save the mapping");
+    assert!(stand_in.commands.try_recv().is_err());
+
+    scroll_to_and_press(&mut harness, "Check against the open page");
+    let Command::CheckProfile(tried) = sent(&mut stand_in) else {
+        panic!("expected the mapping to be tried on the page");
+    };
+    assert_eq!(tried.page.score_input, "input.points");
+    stand_in.events.send(checked(&tried, 3)).unwrap();
+    frames(&mut harness);
+    harness.get_by_label_contains("This mapping reads the open page: 3 students");
+    scroll_to_and_press(&mut harness, "Save the mapping");
+    let Command::SaveProfile(profile) = sent(&mut stand_in) else {
+        panic!("expected the mapping to be saved");
+    };
+    assert_eq!(
+        profile.id, "grades-example-edu",
+        "the same mapping, changed"
+    );
+    assert_eq!(profile.page.score_input, "input.points");
+    assert_eq!(profile.url, saved.url);
+    stand_in.events.send(listed()).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Saved the mapping \u{201c}grades.example.edu\u{201d}.");
+    assert!(harness.query_by_label("Change the mapping").is_none());
+
+    // A click that picked nothing says so and changes nothing.
+    harness.get_by_label("Change grades.example.edu").click();
+    frames(&mut harness);
+    assert!(matches!(sent(&mut stand_in), Command::EditProfile(_)));
+    stand_in
+        .events
+        .send(Event::ProfileToEdit(Box::new(saved)))
+        .unwrap();
+    frames(&mut harness);
+    harness
+        .query_all_by_label("Pick on the page")
+        .next()
+        .unwrap()
+        .click();
+    frames(&mut harness);
+    assert_eq!(
+        match sent(&mut stand_in) {
+            Command::PickElement(what) => what,
+            other => panic!("expected a pick, got {other:?}"),
+        },
+        PickFor::StudentSection
+    );
+    stand_in.events.send(Event::Picked(None)).unwrap();
+    frames(&mut harness);
+    harness.get_by_label_contains("Nothing was picked.");
+    assert!(harness.query_all_by_value("div.student").next().is_some());
 }

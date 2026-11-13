@@ -21,6 +21,7 @@ mod adapter;
 mod discovery;
 mod heuristics;
 mod inspect;
+mod pick;
 mod profile;
 mod snapshot;
 mod validate;
@@ -32,6 +33,7 @@ pub use discovery::{
     discovery_request, extract_discovery_json, is_valid_discovery_result, parse_discovery_response,
 };
 pub use heuristics::{Candidates, Detection, Mode, detect, draft_profile};
+pub use pick::{PICK_SECONDS, PickFor, pick_element};
 pub use profile::{
     FeedbackBox, MaxScoreRule, PROFILE_VERSION, PageMap, ProfileError, SaveButton, SaveRule,
     SaveSuccess, SiteProfile, UrlRule,

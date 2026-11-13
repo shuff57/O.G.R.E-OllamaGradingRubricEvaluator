@@ -25,11 +25,13 @@ use crate::worker::{
 };
 
 mod browser;
+mod mapping_editor;
 mod rubric_card;
 mod rubric_library;
 mod skills;
 
 use self::browser::BrowserView;
+use self::mapping_editor::{Field, MappingEdit};
 use self::rubric_card::RubricShelf;
 use self::rubric_library::RubricLibrary;
 use self::skills::{Interview, SkillEdit};
@@ -66,6 +68,10 @@ pub struct OgreApp {
     profiles: Vec<ProfileSummary>,
     /// A mapping that was just worked out and is waiting to be saved.
     mapping: Option<MapReport>,
+    /// A saved mapping being put right by hand.
+    mapping_edit: Option<MappingEdit>,
+    /// The name of the mapping being saved from that form right now.
+    saving_mapping: Option<String>,
     /// Past sessions, as last read from their records.
     history: Vec<PastSession>,
     /// The past session whose details are shown, by when it was read.
@@ -188,6 +194,14 @@ enum Action {
     },
     SaveMapping,
     DiscardMapping,
+    /// Open a saved mapping in the form that changes it.
+    EditProfile(String),
+    /// Try the mapping in the form on the open page.
+    CheckMapping,
+    /// Have the teacher click this thing on the page, for its selector.
+    PickOnPage(Field),
+    /// Save the mapping in the form, once the page has proven it.
+    SaveEditedMapping,
     DeleteProfile(String),
     StartAgent,
     AnswerAgent(AgentAnswer),
@@ -247,6 +261,8 @@ impl OgreApp {
             history: Vec::new(),
             history_open: None,
             mapping: None,
+            mapping_edit: None,
+            saving_mapping: None,
             agent: AgentView::default(),
             browser: BrowserView::default(),
         }
@@ -442,6 +458,27 @@ impl OgreApp {
                     }
                 }
                 Event::Mapped(report) => self.mapping = Some(*report),
+                Event::ProfileToEdit(profile) => {
+                    self.mapping_edit = Some(MappingEdit::of(*profile));
+                }
+                Event::ProfileChecked(check) => {
+                    if let Some(edit) = &mut self.mapping_edit {
+                        edit.checked(*check);
+                    }
+                }
+                Event::Picked(selector) => {
+                    let taken = self
+                        .mapping_edit
+                        .as_mut()
+                        .is_some_and(|edit| edit.picked(selector));
+                    if !taken {
+                        self.error = Some(
+                            "Nothing was picked. Click the thing itself on the page; for \
+                             something inside a student\u{2019}s block, click inside one."
+                                .into(),
+                        );
+                    }
+                }
                 Event::AgentLine(line) => self.agent.log.push(line),
                 Event::AgentAsks(question) => {
                     self.agent.note.clear();
@@ -455,7 +492,13 @@ impl OgreApp {
                     self.session = None;
                     self.selected = None;
                 }
-                Event::Profiles(profiles) => self.profiles = profiles,
+                Event::Profiles(profiles) => {
+                    self.profiles = profiles;
+                    if let Some(name) = self.saving_mapping.take() {
+                        self.mapping_edit = None;
+                        self.notice = Some(format!("Saved the mapping \u{201c}{name}\u{201d}."));
+                    }
+                }
                 Event::History(sessions) => self.history = sessions,
                 Event::SkillInterview(reply) => {
                     if let Some(interview) = &mut self.agent.interview {
@@ -486,6 +529,7 @@ impl OgreApp {
                     self.agent.skills_folder = folder;
                 }
                 Event::Failed(message) => {
+                    self.saving_mapping = None;
                     self.shelf.saving = None;
                     self.library.saving = None;
                     self.agent.saving_skill = None;
@@ -720,6 +764,37 @@ impl OgreApp {
                 }
             }
             Action::DiscardMapping => self.mapping = None,
+            Action::EditProfile(id) => {
+                self.send(Command::EditProfile(id), "Opening the mapping…");
+            }
+            Action::CheckMapping => {
+                let Some(edit) = &self.mapping_edit else {
+                    return;
+                };
+                let command = Command::CheckProfile(Box::new(edit.profile()));
+                self.send(command, "Trying the mapping on the open page…");
+            }
+            Action::PickOnPage(field) => {
+                let Some(edit) = &mut self.mapping_edit else {
+                    return;
+                };
+                let command = Command::PickElement(edit.pick_for(field));
+                self.send(
+                    command,
+                    "Click it on the page in Chrome. Escape there cancels.",
+                );
+            }
+            Action::SaveEditedMapping => {
+                let Some(edit) = self.mapping_edit.as_ref().filter(|edit| edit.proven()) else {
+                    return;
+                };
+                let profile = edit.profile();
+                self.saving_mapping = Some(profile.name.clone());
+                self.send(
+                    Command::SaveProfile(Box::new(profile)),
+                    "Saving the mapping…",
+                );
+            }
             Action::SetLeniency(leniency) => self.settings.leniency = leniency,
             Action::SetZeroBlank(on) => self.settings.zero_for_no_response = on,
             Action::StartAgent => {
@@ -2012,6 +2087,11 @@ impl OgreApp {
                             ui.horizontal(|ui| {
                                 ui.label(theme::strong(&profile.name).size(ty::BODY));
                                 ui.label(theme::muted(&profile.pages));
+                                let change = format!("Change {}", profile.name);
+                                let free = idle && self.mapping_edit.is_none();
+                                if kit::ghost(ui, &change, free).clicked() {
+                                    actions.push(Action::EditProfile(profile.id.clone()));
+                                }
                                 let remove = format!("Remove {}", profile.name);
                                 if kit::ghost(ui, &remove, idle).clicked() {
                                     actions.push(Action::DeleteProfile(profile.id.clone()));
@@ -2020,6 +2100,10 @@ impl OgreApp {
                         }
                     });
                     ui.add_space(4.0);
+                    if self.mapping_edit.is_some() {
+                        kit::wide_card(ui, |ui| self.mapping_editor(ui, actions));
+                        ui.add_space(4.0);
+                    }
                     kit::wide_card(ui, |ui| {
                         kit::panel_title(ui, "Map a new site");
                         ui.label(theme::body(

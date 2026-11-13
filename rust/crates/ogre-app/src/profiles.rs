@@ -40,6 +40,11 @@ impl ProfileStore {
         &self.profiles
     }
 
+    /// The mapping saved under `id`.
+    pub fn get(&self, id: &str) -> Option<&SiteProfile> {
+        self.profiles.iter().find(|profile| profile.id == id)
+    }
+
     pub fn summaries(&self) -> Vec<ProfileSummary> {
         self.profiles
             .iter()

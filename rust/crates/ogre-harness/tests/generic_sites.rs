@@ -21,12 +21,12 @@ use ogre_core::{
 use ogre_harness::cdp::{CdpPage, Chrome, LaunchOptions};
 use ogre_harness::sites::generic::{
     DiscoverOptions, DiscoveryError, DiscoverySource, Element, FeedbackBox, MaxScoreRule, PageMap,
-    ProfileAdapter, SaveButton, SaveRule, SaveSuccess, Severity, SiteProfile, Snapshot,
+    PickFor, ProfileAdapter, SaveButton, SaveRule, SaveSuccess, Severity, SiteProfile, Snapshot,
     SnapshotNode, SnapshotOptions, ValidatedProfile, capture_snapshot, detect, discover,
-    draft_profile, validate_profile,
+    draft_profile, pick_element, validate_profile,
 };
 use ogre_harness::sites::{SiteAdapter, verify_writes};
-use ogre_harness::{Error, PageDriver};
+use ogre_harness::{Error, InputDriver, PageDriver};
 use ogre_llm::{ChatProvider, ChatRequest, LlmError, ProviderKind, Role};
 use serde_json::{Value, json};
 
@@ -1652,4 +1652,95 @@ async fn survey_of_heuristics_on_every_fixture() {
     for unmappable in ["iframe-grading.html", "hidden-content.html"] {
         assert!(!valid.contains(&unmappable), "{unmappable} is in {valid:?}");
     }
+}
+
+/// Points at the element `selector` finds, the way a teacher would, while
+/// the page waits to be told what to pick. Gives the selector the page
+/// worked out.
+async fn point_at(page: &CdpPage, what: PickFor, selector: &str) -> Option<String> {
+    let middle = format!(
+        "(() => {{ const el = document.querySelector({}); el.scrollIntoView({{block: 'center'}}); \
+         const box = el.getBoundingClientRect(); \
+         return [box.left + box.width / 2, box.top + box.height / 2]; }})()",
+        json!(selector)
+    );
+    let at: (f64, f64) = serde_json::from_value(page.eval(&middle).await.unwrap()).unwrap();
+    let picking = pick_element(page, &what);
+    let clicking = async {
+        // Once the page is listening.
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        page.click_at(at.0, at.1).await.unwrap();
+    };
+    let (picked, ()) = tokio::join!(picking, clicking);
+    picked.unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs Chrome installed"]
+async fn a_mapping_is_put_together_by_pointing_at_the_page() {
+    let session = open("pick", "simple-batch.html").await;
+    let page = &session.page;
+
+    // The block that repeats once per student, from anything inside one.
+    let section = point_at(page, PickFor::StudentSection, "span.student-name")
+        .await
+        .expect("a student's block is found around the name");
+    assert_eq!(section, "div.student-row");
+
+    // Things inside it, each as a selector that holds for every student:
+    // pointed at in the second student's block, with nothing of that
+    // student's own in the selector.
+    let inside = PickFor::InsideSection(Some(section.clone()));
+    let second = |what: &str| format!("div.student-row:nth-of-type(2) {what}");
+    let name = point_at(page, inside.clone(), &second(".student-name"))
+        .await
+        .unwrap();
+    let score = point_at(page, inside.clone(), &second("input.score-input"))
+        .await
+        .unwrap();
+    let response = point_at(page, inside.clone(), &second(".response-body"))
+        .await
+        .unwrap();
+    let feedback = point_at(page, inside.clone(), &second("textarea"))
+        .await
+        .unwrap();
+    assert_eq!(name, "span.student-name");
+    assert_eq!(score, "input.score-input");
+    assert_eq!(feedback, "textarea.feedback-input");
+
+    // The click that picked did not reach the page: the box was not focused.
+    let focused = page.eval("document.activeElement.localName").await.unwrap();
+    assert_ne!(focused, json!("textarea"));
+
+    // What was pointed at reads the page.
+    let profile = SiteProfile::for_page(
+        &page.url().await.unwrap(),
+        PageMap {
+            student_section: Some(section),
+            student_name: name,
+            score_input: score,
+            max_score: Some(MaxScoreRule::usual()),
+            feedback: Some(FeedbackBox {
+                selector: feedback,
+                kind: FeedbackKind::Textarea,
+                hidden_field: None,
+            }),
+            response,
+            prompt: None,
+            save: None,
+        },
+    );
+    let report = validate_profile(page, &profile).await.unwrap();
+    assert!(report.passed(), "{}", report.error_summary());
+    assert_eq!(report.students, 3);
+    assert_eq!(report.samples[1].name, "Bob Smith");
+
+    // The page's one save button, and something that is in no student's block.
+    let save = point_at(page, PickFor::WholePage, "#save-all")
+        .await
+        .unwrap();
+    assert_eq!(save, "#save-all");
+    let outside = point_at(page, inside, "h1").await;
+    assert_eq!(outside, None, "the heading belongs to no student");
+    close(session).await;
 }

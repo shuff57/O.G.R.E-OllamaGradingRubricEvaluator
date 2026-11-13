@@ -568,6 +568,29 @@ fn maps_an_unknown_site_then_reads_and_fills_it() {
     assert_eq!(list.len(), 1);
     assert_eq!(list[0].name, "Practice LMS");
 
+    // The saved mapping can be had back whole and tried on the open page,
+    // as the form that changes one does.
+    let (event, _) = ask(&worker, &woken, Command::EditProfile(list[0].id.clone()));
+    let Event::ProfileToEdit(saved) = event else {
+        panic!("expected the saved mapping, got {event:?}");
+    };
+    let (event, _) = ask(&worker, &woken, Command::CheckProfile(saved.clone()));
+    let Event::ProfileChecked(check) = event else {
+        panic!("expected what the mapping found, got {event:?}");
+    };
+    assert!(check.passed, "{:?}", check.problems);
+    assert!(check.students > 0 && !check.samples.is_empty());
+    // With the score box pointed somewhere it is not, the check says so and
+    // changes nothing that is saved.
+    let mut wrong = saved.clone();
+    wrong.page.score_input = "input.nowhere-at-all".into();
+    let (event, _) = ask(&worker, &woken, Command::CheckProfile(wrong));
+    let Event::ProfileChecked(check) = event else {
+        panic!("expected what the mapping found, got {event:?}");
+    };
+    assert!(!check.passed);
+    assert!(!check.problems.is_empty());
+
     // The mapping survives a restart of the app.
     drop(worker);
     let worker = spawn(wake);

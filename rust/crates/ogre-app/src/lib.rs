@@ -28,6 +28,6 @@ pub use settings::engine_leniency;
 pub use settings::{ProviderSettings, STORAGE_KEY, Service, Settings, old_app_settings_file};
 pub use tab_view::{ViewInput, ViewLink, ViewState};
 pub use worker::{
-    Command, Event, ExamplesRequest, GradeRequest, MapReport, OutsideRubric, ReadReport, StandIn,
-    Worker, WriteReport,
+    Command, Event, ExamplesRequest, GradeRequest, MapReport, OutsideRubric, ProfileCheck,
+    ReadReport, StandIn, Worker, WriteReport,
 };

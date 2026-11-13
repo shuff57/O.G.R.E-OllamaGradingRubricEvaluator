@@ -10,8 +10,9 @@ use ogre_core::{GradeWrite, GradingPage, QuestionLink, Rubric, StudentWork};
 use ogre_grader::CancelFlag;
 use ogre_harness::cdp::{CdpPage, Chrome, LaunchOptions};
 use ogre_harness::sites::generic::{
-    DiscoverOptions, DiscoverySource, ProfileAdapter, Severity, SiteProfile, SnapshotOptions,
-    StudentSample, ValidationReport, capture_snapshot, discover, draft_profile, validate_profile,
+    DiscoverOptions, DiscoverySource, ElementCheck, PickFor, Problem, ProfileAdapter, Severity,
+    SiteProfile, SnapshotOptions, StudentSample, ValidationReport, capture_snapshot, discover,
+    draft_profile, pick_element, validate_profile,
 };
 use ogre_harness::sites::{Mismatch, SiteAdapter, Sites, WriteReceipt, verify_writes};
 use ogre_harness::{Error, InputDriver, PageDriver, Result};
@@ -118,6 +119,14 @@ pub enum Command {
         draft: Box<ogre_agent::SkillDraft>,
     },
     DeleteSkill(String),
+    /// Send a saved mapping whole, to be changed by hand.
+    EditProfile(String),
+    /// Try a mapping on the open page and say what it finds. Changes
+    /// nothing, on the page or in what is saved.
+    CheckProfile(Box<SiteProfile>),
+    /// Wait for the teacher to click something on the open page, and give a
+    /// selector for it.
+    PickElement(PickFor),
     /// Ask the AI for its next turn in the interview that writes a skill.
     /// The last of `turns` is the teacher's.
     SkillInterview {
@@ -203,6 +212,13 @@ pub enum Event {
     Written(WriteReport),
     Saved(Option<GradingPage>),
     Mapped(Box<MapReport>),
+    /// A saved mapping, to be changed by hand.
+    ProfileToEdit(Box<SiteProfile>),
+    /// What a mapping found on the open page.
+    ProfileChecked(Box<ProfileCheck>),
+    /// A selector for what the teacher clicked on the page. `None` if they
+    /// clicked nothing, or something that cannot be used.
+    Picked(Option<String>),
     /// The teacher's saved mappings, after any change to them.
     Profiles(Vec<ProfileSummary>),
     /// Past grading sessions, newest first.
@@ -322,6 +338,21 @@ pub struct MapReport {
     pub samples: Vec<StudentSample>,
     /// Limits of this mapping the teacher should know about.
     pub warnings: Vec<String>,
+}
+
+/// What a mapping found when it was tried on the open page.
+#[derive(Debug, Clone)]
+pub struct ProfileCheck {
+    /// The mapping that was tried.
+    pub profile: SiteProfile,
+    /// True if it can be used on this page as it stands.
+    pub passed: bool,
+    pub students: usize,
+    /// For each thing it points at, for how many students that was found.
+    pub checks: Vec<ElementCheck>,
+    pub problems: Vec<Problem>,
+    /// The first students as it read them, to check by eye.
+    pub samples: Vec<StudentSample>,
 }
 
 #[derive(Debug, Default)]
@@ -795,6 +826,15 @@ impl Task {
                 Ok(Event::Profiles(self.profiles.summaries()))
             }
             Command::ListProfiles => Ok(Event::Profiles(self.profiles.summaries())),
+            Command::EditProfile(id) => match self.profiles.get(&id) {
+                Some(profile) => Ok(Event::ProfileToEdit(Box::new(profile.clone()))),
+                None => Err(Error::Page("That mapping is no longer saved.".into())),
+            },
+            Command::CheckProfile(profile) => self.check_profile(*profile).await,
+            Command::PickElement(what) => {
+                let page = self.current_tab().await?;
+                Ok(Event::Picked(pick_element(&page, &what).await?))
+            }
             Command::ListHistory => Ok(Event::History(history::load(self.audit.dir()))),
             Command::ListSkills => Ok(self.skills()),
             Command::SaveSkill { id, draft } => {
@@ -1001,6 +1041,30 @@ impl Task {
             "No page is open. Open one of the site's grading pages in the OGRE Chrome window first."
                 .into(),
         ))
+    }
+
+    /// Tries `profile` on the open page. Where the page shows the feedback
+    /// box to be of another kind than the mapping says, the mapping is put
+    /// right and tried again: which kind it is is the page's to say.
+    async fn check_profile(&mut self, mut profile: SiteProfile) -> Result<Event> {
+        let page = self.current_tab().await?;
+        let mut report = validate_profile(&page, &profile).await?;
+        if let (Some(seen), Some(feedback)) =
+            (report.feedback_kind_seen, profile.page.feedback.as_mut())
+            && feedback.kind != seen
+            && !report.passed()
+        {
+            feedback.kind = seen;
+            report = validate_profile(&page, &profile).await?;
+        }
+        Ok(Event::ProfileChecked(Box::new(ProfileCheck {
+            passed: report.passed(),
+            students: report.students,
+            checks: report.elements.clone(),
+            problems: report.problems().to_vec(),
+            samples: report.samples.clone(),
+            profile,
+        })))
     }
 
     async fn map_page(&mut self, ai: Option<(ProviderSettings, Option<String>)>) -> Result<Event> {
