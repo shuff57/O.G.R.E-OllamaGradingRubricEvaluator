@@ -114,6 +114,12 @@ pub struct RubricOutline {
 }
 
 impl RubricOutline {
+    /// The outline of rubric text that belongs to no page, such as a saved
+    /// rubric's.
+    pub fn of_text(text: &str) -> Self {
+        Self::of(&Rubric::default(), text)
+    }
+
     fn of(scraped: &Rubric, text: &str) -> Self {
         let rubric = rubric_from_edited_text(scraped, text, DEFAULT_WEIGHT_MODE);
         let checklist = rubric.checklist_items.iter().map(|item| item.items.len());

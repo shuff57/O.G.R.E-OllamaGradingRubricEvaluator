@@ -405,13 +405,13 @@ impl OgreApp {
 }
 
 /// Shown in the empty rubric editor.
-const RUBRIC_HINT: &str = "One requirement per line. A line that starts with ## \
+pub(super) const RUBRIC_HINT: &str = "One requirement per line. A line that starts with ## \
 is a heading for the requirements under it:\n\
 ## Method\n\
 Sets up the equation with the rate given in the question";
 
 /// One line saying what the grader will find in the rubric text.
-fn rubric_summary(outline: &RubricOutline) -> String {
+pub(super) fn rubric_summary(outline: &RubricOutline) -> String {
     let exemplar = if outline.exemplar {
         "a model response"
     } else {

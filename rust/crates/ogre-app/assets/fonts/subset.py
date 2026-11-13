@@ -24,7 +24,7 @@ TEXT = (
 # The icons named in src/theme.rs.
 ICONS = (
     "U+E742,U+E762,U+E28E,U+E1A0,U+E270,U+E472,U+E330,U+E4E0,U+E184,"
-    "U+E0F4,U+E058,U+E06C,U+E036"
+    "U+E0F4,U+E058,U+E06C,U+E036,U+EADC"
 )
 
 FACES = [

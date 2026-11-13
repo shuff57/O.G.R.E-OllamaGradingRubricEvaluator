@@ -26,10 +26,12 @@ use crate::worker::{
 
 mod browser;
 mod rubric_card;
+mod rubric_library;
 mod skills;
 
 use self::browser::BrowserView;
 use self::rubric_card::RubricShelf;
+use self::rubric_library::RubricLibrary;
 use self::skills::{Interview, SkillEdit};
 
 pub struct OgreApp {
@@ -59,6 +61,7 @@ pub struct OgreApp {
     notice: Option<String>,
     markdown: CommonMarkCache,
     shelf: RubricShelf,
+    library: RubricLibrary,
     /// The teacher's saved site mappings.
     profiles: Vec<ProfileSummary>,
     /// A mapping that was just worked out and is waiting to be saved.
@@ -106,6 +109,8 @@ enum Screen {
     /// The page Chrome is on, where Chrome has no window of its own.
     Browser,
     Agent,
+    /// The teacher's saved rubrics.
+    Rubrics,
     Sites,
     History,
     Settings,
@@ -157,6 +162,8 @@ enum Action {
     DraftRubric,
     /// Keep the rubric in hand under the name in the name box.
     SaveRubric,
+    /// Keep the rubric in the library's form.
+    PutRubric,
     DeleteRubric(String),
     Write,
     Save,
@@ -233,6 +240,7 @@ impl OgreApp {
             notice: None,
             markdown: CommonMarkCache::default(),
             shelf: RubricShelf::default(),
+            library: RubricLibrary::default(),
             profiles: Vec::new(),
             history: Vec::new(),
             history_open: None,
@@ -399,6 +407,10 @@ impl OgreApp {
                 }),
                 Event::Rubrics(rubrics) => {
                     self.shelf.set_saved(rubrics);
+                    if let Some(name) = self.library.saving.take() {
+                        self.library.editing = None;
+                        self.notice = Some(format!("Saved the rubric \u{201c}{name}\u{201d}."));
+                    }
                     if let Some(name) = self.shelf.saving.take() {
                         self.notice = Some(format!("Saved the rubric as \u{201c}{name}\u{201d}."));
                         self.shelf.pick = Some(name);
@@ -473,6 +485,7 @@ impl OgreApp {
                 }
                 Event::Failed(message) => {
                     self.shelf.saving = None;
+                    self.library.saving = None;
                     self.agent.saving_skill = None;
                     if let Some(interview) = &mut self.agent.interview {
                         interview.unanswered();
@@ -580,6 +593,19 @@ impl OgreApp {
                 self.shelf.saving = Some(rubric.name.clone());
                 self.send(Command::SaveRubric(Box::new(rubric)), "Saving the rubric…");
             }
+            Action::PutRubric => {
+                let Some(edit) = &self.library.editing else {
+                    return;
+                };
+                let rubric = edit.rubric();
+                let was = edit.was.clone();
+                self.library.saving = Some(rubric.name.clone());
+                let command = Command::PutRubric {
+                    was,
+                    rubric: Box::new(rubric),
+                };
+                self.send(command, "Saving the rubric…");
+            }
             Action::DeleteRubric(name) => {
                 self.shelf.deleting = false;
                 self.send(Command::DeleteRubric(name), "Deleting the saved rubric…");
@@ -625,6 +651,7 @@ impl OgreApp {
                     Screen::Agent => {
                         Some((Command::ListSkills, "Looking at what the agent knows…"))
                     }
+                    Screen::Rubrics => Some((Command::ListRubrics, "Loading your rubrics…")),
                     Screen::Grade | Screen::Browser | Screen::Settings => None,
                 };
                 if let Some((command, label)) = listing
@@ -841,6 +868,7 @@ impl OgreApp {
                 .chain(browser)
                 .chain([
                     (Screen::Agent, icon::AGENT, "Agent"),
+                    (Screen::Rubrics, icon::RUBRICS, "Rubrics"),
                     (Screen::Sites, icon::SITES, "Sites"),
                     (Screen::History, icon::HISTORY, "History"),
                     (Screen::Settings, icon::SETTINGS, "Settings"),
@@ -2177,6 +2205,7 @@ impl eframe::App for OgreApp {
             Screen::Grade => self.grade_screen(ui, &mut actions),
             Screen::Browser => self.browser_screen(ui, &mut actions),
             Screen::Agent => self.agent_screen(ui, &mut actions),
+            Screen::Rubrics => self.rubrics_screen(ui, &mut actions),
             Screen::Sites => self.sites_screen(ui, &mut actions),
             Screen::History => self.history_screen(ui, &mut actions),
             Screen::Settings => self.settings_screen(ui, &mut actions),

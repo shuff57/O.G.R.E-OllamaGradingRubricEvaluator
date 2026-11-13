@@ -80,6 +80,14 @@ pub enum Command {
     },
     /// Keep a rubric for other pages, replacing the one of the same name.
     SaveRubric(Box<SavedRubric>),
+    /// Keep a rubric written or changed in the library. `was` is the name
+    /// it was saved under before, if it was.
+    PutRubric {
+        was: Option<String>,
+        rubric: Box<SavedRubric>,
+    },
+    /// Send the saved rubrics.
+    ListRubrics,
     DeleteRubric(String),
     /// Put these grades into the page that was read. Saves nothing.
     Write(Vec<GradeWrite>),
@@ -717,6 +725,13 @@ impl Task {
                 self.rubrics.save(*rubric).map_err(Error::Page)?;
                 Ok(Event::Rubrics(self.rubrics.all()))
             }
+            Command::PutRubric { was, rubric } => {
+                self.rubrics
+                    .put(was.as_deref(), *rubric)
+                    .map_err(Error::Page)?;
+                Ok(Event::Rubrics(self.rubrics.all()))
+            }
+            Command::ListRubrics => Ok(Event::Rubrics(self.rubrics.all())),
             Command::DeleteRubric(name) => {
                 self.rubrics.delete(&name).map_err(Error::Page)?;
                 Ok(Event::Rubrics(self.rubrics.all()))

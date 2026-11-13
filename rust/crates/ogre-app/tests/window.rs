@@ -2601,3 +2601,100 @@ fn several_ai_services_stay_set_up_and_the_grade_screen_switches_between_them() 
     assert_eq!(request.provider.service, Service::Ollama);
     assert_eq!(request.provider.model, "gemma4:31b");
 }
+
+#[test]
+fn rubrics_are_written_changed_copied_and_deleted_with_no_page_open() {
+    const ESSAY: &str = "## Thesis [60%]\nStates a position\n## Evidence [40%]\nQuotes the text";
+    let (mut harness, mut stand_in) = window(local_model());
+    frames(&mut harness);
+    harness.get_by_label("Rubrics").click();
+    frames(&mut harness);
+    assert!(matches!(sent(&mut stand_in), Command::ListRubrics));
+    stand_in
+        .events
+        .send(Event::Rubrics(vec![saved("Essay 2", ESSAY)]))
+        .unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Essay 2");
+    harness.get_by_label("2 requirements in 2 categories, no model response.");
+    shot(&mut harness, "36-rubric-library");
+
+    // Changed under its own name.
+    scroll_to_and_press(&mut harness, "Change");
+    harness.get_by_label("Change the rubric");
+    assert!(harness.query_all_by_value(ESSAY).next().is_some());
+    scroll_to_and_press(&mut harness, "Save the rubric");
+    let Command::PutRubric { was, rubric } = sent(&mut stand_in) else {
+        panic!("expected the rubric to be saved");
+    };
+    assert_eq!(was.as_deref(), Some("Essay 2"));
+    assert_eq!(
+        (rubric.name.as_str(), rubric.text.as_str()),
+        ("Essay 2", ESSAY)
+    );
+    stand_in
+        .events
+        .send(Event::Rubrics(vec![saved("Essay 2", ESSAY)]))
+        .unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Saved the rubric \u{201c}Essay 2\u{201d}.");
+    assert!(harness.query_by_label("Change the rubric").is_none());
+
+    // A copy starts under a name of its own, as a new rubric.
+    scroll_to_and_press(&mut harness, "Copy");
+    harness.get_by_label("A new rubric");
+    scroll_to_and_press(&mut harness, "Save the rubric");
+    let Command::PutRubric { was, rubric } = sent(&mut stand_in) else {
+        panic!("expected the copy to be saved");
+    };
+    assert_eq!(was, None);
+    assert_eq!(rubric.name, "Essay 2 (copy)");
+    // The worker refuses it: the form stays, to put right.
+    stand_in
+        .events
+        .send(Event::Failed("The disk is full.".into()))
+        .unwrap();
+    frames(&mut harness);
+    harness.get_by_label("The disk is full.");
+    harness.get_by_label("A new rubric");
+    scroll_to_and_press(&mut harness, "Cancel");
+    assert!(harness.query_by_label("A new rubric").is_none());
+
+    // Deleting asks first.
+    scroll_to_and_press(&mut harness, "Delete");
+    assert!(stand_in.commands.try_recv().is_err());
+    scroll_to_and_press(&mut harness, "Delete the saved rubric");
+    let Command::DeleteRubric(name) = sent(&mut stand_in) else {
+        panic!("expected the rubric to be deleted");
+    };
+    assert_eq!(name, "Essay 2");
+    stand_in.events.send(Event::Rubrics(Vec::new())).unwrap();
+    frames(&mut harness);
+    harness.get_by_label_contains("None yet.");
+
+    // A new one needs a name and something to grade against.
+    scroll_to_and_press(&mut harness, "Write a rubric");
+    scroll_to_and_press(&mut harness, "Save the rubric");
+    assert!(stand_in.commands.try_recv().is_err());
+    for (field, text) in [
+        ("Name", "Binomial FRQ"),
+        ("Requirements and model response", "Names n and p"),
+    ] {
+        harness.get_by_label(field).scroll_to_me();
+        frames(&mut harness);
+        harness.get_by_label(field).click();
+        frames(&mut harness);
+        harness.get_by_label(field).type_text(text);
+        frames(&mut harness);
+    }
+    harness.get_by_label_contains("1 requirement in 1 category");
+    scroll_to_and_press(&mut harness, "Save the rubric");
+    let Command::PutRubric { was, rubric } = sent(&mut stand_in) else {
+        panic!("expected the new rubric to be saved");
+    };
+    assert_eq!(was, None);
+    assert_eq!(
+        (rubric.name.as_str(), rubric.text.as_str()),
+        ("Binomial FRQ", "Names n and p")
+    );
+}

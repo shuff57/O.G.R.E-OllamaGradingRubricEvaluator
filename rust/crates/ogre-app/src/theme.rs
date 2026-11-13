@@ -161,6 +161,7 @@ pub mod icon {
     pub const BACK: &str = "\u{E058}";
     pub const FORWARD: &str = "\u{E06C}";
     pub const RELOAD: &str = "\u{E036}";
+    pub const RUBRICS: &str = "\u{EADC}";
 }
 
 const SERIF: &str = "ogre-serif";

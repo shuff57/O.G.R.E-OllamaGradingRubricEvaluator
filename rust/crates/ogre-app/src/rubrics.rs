@@ -77,6 +77,24 @@ impl RubricStore {
         Ok(())
     }
 
+    /// Stores a rubric written or changed in the library. `was` is the name
+    /// it had, if it was saved before: under a new name the old one goes.
+    /// Unlike [`Self::save`], never over another rubric: its name has to be
+    /// its own.
+    pub fn put(&mut self, was: Option<&str>, rubric: SavedRubric) -> Result<(), String> {
+        let name = rubric.name.trim().to_owned();
+        if was != Some(name.as_str()) && self.rubrics.iter().any(|other| other.name == name) {
+            return Err(format!(
+                "There is already a saved rubric called \u{201c}{name}\u{201d}. Choose another name."
+            ));
+        }
+        self.save(rubric)?;
+        match was {
+            Some(was) if was != name => self.delete(was),
+            _ => Ok(()),
+        }
+    }
+
     pub fn delete(&mut self, name: &str) -> Result<(), String> {
         match std::fs::remove_file(self.file(name)) {
             Ok(()) => {}
@@ -153,6 +171,36 @@ mod tests {
         reopened.delete("essay 2").unwrap();
         reopened.delete("never saved").unwrap();
         assert_eq!(names(&RubricStore::open(dir.clone())), ["Binomial FRQ"]);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn the_library_renames_a_rubric_and_never_writes_over_another() {
+        let dir = scratch("put");
+        let mut store = RubricStore::open(dir.clone());
+        store.put(None, rubric("Essay 2", "first")).unwrap();
+        store.put(None, rubric("Binomial FRQ", "other")).unwrap();
+
+        // Changed under its own name, then under a new one: the old goes.
+        store
+            .put(Some("Essay 2"), rubric("Essay 2", "second"))
+            .unwrap();
+        store
+            .put(Some("Essay 2"), rubric("Essay 3", "third"))
+            .unwrap();
+        assert_eq!(names(&store), ["Binomial FRQ", "Essay 3"]);
+        assert_eq!(
+            names(&RubricStore::open(dir.clone())),
+            ["Binomial FRQ", "Essay 3"]
+        );
+
+        // Neither a new rubric nor a renamed one takes another's name.
+        for was in [None, Some("Essay 3")] {
+            let clash = store.put(was, rubric("Binomial FRQ", "mine")).unwrap_err();
+            assert!(clash.contains("already a saved rubric"), "{clash}");
+        }
+        assert_eq!(store.all()[0].text, "other");
+        assert_eq!(names(&store), ["Binomial FRQ", "Essay 3"]);
         let _ = std::fs::remove_dir_all(dir);
     }
 
