@@ -1250,3 +1250,353 @@ fn the_real_service_runs_the_consistency_check_again_on_given_grades() {
         "one of the two students who said the same thing is looked at again"
     );
 }
+
+/// Sends one command and waits for what ends it. A page that was read and a
+/// grading run both hold student work, so the answer is never printed here.
+fn answer(worker: &Worker, command: Command, limit: Duration) -> Event {
+    worker.send(command);
+    let deadline = Instant::now() + limit;
+    loop {
+        for event in worker.poll() {
+            if !event.is_progress() {
+                return event;
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the worker did not answer in time"
+        );
+        std::thread::sleep(Duration::from_millis(200));
+    }
+}
+
+/// A folder that goes when the run is over, however it ends.
+struct Scratch(PathBuf);
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// Finds out whether showing the grader the teacher's earlier grades brings
+/// it closer to the teacher, on a real page that is already graded. Nothing
+/// is written to the page, and nothing is kept on this computer afterwards.
+///
+/// The students with points and feedback on the page are split in two, every
+/// other one. Each half is graded without earlier grades and then with them,
+/// the earlier grades being the page's own scores and feedback for the other
+/// half, so no student is graded with their own grade in sight. What OGRE
+/// proposes is compared with what is on the page.
+///
+///     OGRE_LIVE_PAGE=<address of a "Grade all" page> \
+///         cargo test -p ogre-app --test live earlier_grades -- --ignored --nocapture
+///
+/// Chrome runs without a window, with the app's own profile and the sign-in
+/// kept in it. Student names and answers are sent to the Electron app's AI
+/// service, as in the run above. Session records and the examples go to a
+/// folder that is deleted at the end. Students are numbered in the output.
+///
+///   OGRE_LIVE_LENIENCY  the app's leniency setting (default 50)
+///   OGRE_LIVE_REPEATS   how often each half is graded each way (default 2).
+///                       One AI gives different scores on different days, so
+///                       one run each way says little
+#[test]
+#[ignore = "needs Chrome, the teacher's login to a real site and the Electron app's AI service"]
+fn earlier_grades_are_tried_on_a_page_that_is_already_graded() {
+    use std::collections::BTreeMap;
+
+    use ogre_app::{ExamplesFor, ExamplesPlace, GradeRequest};
+    use ogre_core::StudentWork;
+    use ogre_examples::{FolderStore, GradedExample, choose, rubric_id, without_name};
+
+    struct Known {
+        work: StudentWork,
+        on_page: f64,
+        example: GradedExample,
+    }
+
+    let address = std::env::var("OGRE_LIVE_PAGE").expect("set OGRE_LIVE_PAGE to a grading page");
+    let number = |name: &str, default: u64| {
+        std::env::var(name)
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(default)
+    };
+    let leniency = number("OGRE_LIVE_LENIENCY", 50).min(100) as u8;
+    let repeats = number("OGRE_LIVE_REPEATS", 2).max(1) as usize;
+    let (provider, key) = electron_app_provider();
+    let model = provider.model.clone();
+
+    // The sign-in is in the app's own profile. Everything else the worker
+    // keeps goes to a folder of this run's.
+    let profile_dir = eframe::storage_dir("ogre")
+        .expect("the app has a data folder")
+        .join("chrome-profile");
+    let scratch =
+        Scratch(std::env::temp_dir().join(format!("ogre-live-earlier-{}", std::process::id())));
+    let _ = std::fs::remove_dir_all(&scratch.0);
+    let worker = Worker::spawn(
+        LaunchOptions {
+            profile_dir,
+            headless: true,
+            executable: None,
+        },
+        Sites::built_in(),
+        scratch.0.clone(),
+        || {},
+    );
+    let minute = Duration::from_secs(60);
+    match answer(&worker, Command::StartChrome { inside: true }, 2 * minute) {
+        Event::ChromeStarted => {}
+        Event::Failed(problem) | Event::ChromeStopped(problem) => {
+            panic!("Chrome did not start: {problem}")
+        }
+        _ => panic!("Chrome did not start"),
+    }
+    // As in the app: the page is opened in the tab that is on show, so
+    // wait for there to be one. Opened before that, the page goes to a tab
+    // of its own in the background, where a long page may never finish
+    // loading.
+    let shown = Instant::now();
+    while !worker.view().state().showing {
+        assert!(
+            shown.elapsed() < minute,
+            "Chrome's tab was not shown within a minute"
+        );
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    // A page that is slow to finish loading can be read all the same once
+    // its students are there, so a read that fails is tried again.
+    let read = |worker: &Worker| {
+        let mut tries = 0;
+        loop {
+            tries += 1;
+            match answer(worker, Command::ReadStudents, 2 * minute) {
+                Event::Read(report) => return report,
+                // The app's own words. They name the page, never a student.
+                Event::Failed(problem) if tries < 6 => {
+                    println!("not read yet: {problem}");
+                    std::thread::sleep(Duration::from_secs(10));
+                }
+                Event::Failed(problem) | Event::ChromeStopped(problem) => {
+                    panic!("the page could not be read: {problem}")
+                }
+                _ => panic!("the page could not be read"),
+            }
+        }
+    };
+    match answer(&worker, Command::Open(address), 2 * minute) {
+        Event::Opened(_) => {}
+        // The address is in the message, and it is the teacher's own.
+        Event::Failed(_) => println!("the page was slow to open; reading it all the same"),
+        Event::ChromeStopped(problem) => panic!("the page did not open: {problem}"),
+        _ => panic!("the page did not open"),
+    }
+    let report = read(&worker);
+    let state = |page: &ogre_core::GradingPage| -> Vec<(usize, Option<f64>, bool)> {
+        page.submissions
+            .iter()
+            .map(|s| (s.index, s.score(), s.has_feedback()))
+            .collect()
+    };
+    let before = state(&report.page);
+    let rubric = match &report.rubric {
+        Ok(rubric) => rubric.clone(),
+        Err(problem) => panic!("the page gives no rubric: {problem}"),
+    };
+    let max_score = rubric.max_score_value();
+    let question = rubric
+        .essay_prompt
+        .clone()
+        .filter(|text| !text.trim().is_empty())
+        .or_else(|| {
+            report
+                .page
+                .submissions
+                .iter()
+                .find_map(|s| s.prompt.clone().filter(|text| !text.trim().is_empty()))
+        })
+        .unwrap_or_default();
+    let id = rubric_id(&question, "the rubric of a live run", max_score)
+        .expect("the question can be named");
+
+    let known: Vec<Known> = report
+        .page
+        .submissions
+        .iter()
+        .filter(|s| !s.response.trim().is_empty() && s.has_feedback())
+        .filter_map(|s| {
+            let on_page = s.score().filter(|score| *score > 0.0)?;
+            let example = GradedExample {
+                score: on_page,
+                max_score,
+                feedback: without_name(&s.feedback.as_ref()?.text, &s.name),
+                changed: false,
+                at: 1_700_000_000 + s.index as u64,
+            }
+            .tidy()?;
+            Some(Known {
+                work: StudentWork::from(s),
+                on_page,
+                example,
+            })
+        })
+        .collect();
+    println!(
+        "READ: {} students, {} with points and feedback on the page, out of {max_score}",
+        before.len(),
+        known.len()
+    );
+    assert!(
+        known.len() >= 8,
+        "too few graded students to split in two and learn anything"
+    );
+    let halves: [Vec<&Known>; 2] = [
+        known.iter().step_by(2).collect(),
+        known.iter().skip(1).step_by(2).collect(),
+    ];
+
+    let store = FolderStore::new(scratch.0.join("examples"));
+    // By the student's place on the page: scores without, and scores with.
+    let mut scores: BTreeMap<usize, [Vec<f64>; 2]> = BTreeMap::new();
+    let mut not_graded = 0;
+    let started = Instant::now();
+    for repeat in 0..repeats {
+        for (half, graded) in halves.iter().enumerate() {
+            let others: Vec<GradedExample> =
+                halves[1 - half].iter().map(|k| k.example.clone()).collect();
+            for with in [false, true] {
+                let earlier = with.then(|| {
+                    store.clear().expect("the examples can be cleared");
+                    store.add(&id, &others).expect("the examples can be kept");
+                    ExamplesFor {
+                        place: ExamplesPlace::ThisComputer,
+                        rubric: id.clone(),
+                    }
+                });
+                let request = GradeRequest {
+                    rubric: rubric.clone(),
+                    rubric_text: None,
+                    students: graded.iter().map(|k| k.work.clone()).collect(),
+                    provider: provider.clone(),
+                    api_key: Some(key.clone()),
+                    leniency: engine_leniency(leniency),
+                    score_from_verdicts: Settings::default().score_from_verdicts,
+                    examples: None,
+                    skill_choices: Default::default(),
+                    earlier,
+                    cancel: ogre_grader::CancelFlag::new(),
+                };
+                let Event::Graded(run) =
+                    answer(&worker, Command::Grade(Box::new(request)), 25 * minute)
+                else {
+                    panic!("the grading run did not end with grades");
+                };
+                let shown = choose(&others);
+                if with {
+                    assert_eq!(
+                        run.earlier,
+                        shown.shown(),
+                        "the grader was shown the earlier grades"
+                    );
+                    if repeat == 0 {
+                        let score = |e: &Option<GradedExample>| e.as_ref().map(|e| e.score);
+                        println!(
+                            "half {}: the grader is shown {} earlier grades, with scores {:?}, {:?} and {:?}",
+                            half + 1,
+                            run.earlier,
+                            score(&shown.high),
+                            score(&shown.middle),
+                            score(&shown.low)
+                        );
+                    }
+                } else {
+                    assert_eq!(run.earlier, 0, "the grader was shown no earlier grade");
+                }
+                for row in &run.rows {
+                    match &row.outcome {
+                        Ok(grade) => scores.entry(row.index).or_default()[usize::from(with)]
+                            .push(grade.score),
+                        Err(_) => not_graded += 1,
+                    }
+                }
+                println!(
+                    "round {} of {repeats}, half {}, {} earlier grades: {} students, {:.0?} so far",
+                    repeat + 1,
+                    half + 1,
+                    if with { "with" } else { "without" },
+                    run.rows.len(),
+                    started.elapsed()
+                );
+            }
+        }
+    }
+
+    // Read once more: the page holds what it held before.
+    let after = state(&read(&worker).page);
+    assert_eq!(before, after, "the page holds what it held before the run");
+    println!(
+        "UNCHANGED: the page reads the same after the run ({} students)",
+        after.len()
+    );
+    let _ = answer(&worker, Command::StopChrome, minute);
+    drop(worker);
+
+    let mean = |values: &[f64]| values.iter().sum::<f64>() / values.len().max(1) as f64;
+    let spread = |values: &[f64]| {
+        values.iter().copied().fold(f64::MIN, f64::max)
+            - values.iter().copied().fold(f64::MAX, f64::min)
+    };
+    let (mut gap_without, mut gap_with, mut high_without, mut high_with) =
+        (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let (mut spread_without, mut spread_with) = (Vec::new(), Vec::new());
+    let (mut closer, mut further) = (0, 0);
+    println!("  student  on page  without   with   gap without  gap with");
+    for student in &known {
+        let Some([without, with]) = scores.get(&student.work.index) else {
+            continue;
+        };
+        if without.is_empty() || with.is_empty() {
+            continue;
+        }
+        let (a, b) = (mean(without), mean(with));
+        let (gap_a, gap_b) = ((a - student.on_page).abs(), (b - student.on_page).abs());
+        println!(
+            "  S{:02}     {:>7} {a:>8.2} {b:>6.2} {gap_a:>12.2} {gap_b:>9.2}",
+            student.work.index + 1,
+            student.on_page
+        );
+        gap_without.push(gap_a);
+        gap_with.push(gap_b);
+        high_without.push(a - student.on_page);
+        high_with.push(b - student.on_page);
+        spread_without.push(spread(without));
+        spread_with.push(spread(with));
+        if gap_b + 0.01 < gap_a {
+            closer += 1;
+        } else if gap_a + 0.01 < gap_b {
+            further += 1;
+        }
+    }
+    println!(
+        "{model}, leniency {leniency}, {repeats} rounds, {} students compared, {not_graded} grades missing",
+        gap_without.len()
+    );
+    println!(
+        "WITHOUT earlier grades: mean gap {:.2} | OGRE higher by {:+.2} | same student, round to round: {:.2}",
+        mean(&gap_without),
+        mean(&high_without),
+        mean(&spread_without)
+    );
+    println!(
+        "WITH earlier grades:    mean gap {:.2} | OGRE higher by {:+.2} | same student, round to round: {:.2}",
+        mean(&gap_with),
+        mean(&high_with),
+        mean(&spread_with)
+    );
+    println!(
+        "closer to the page with them: {closer} | further: {further} | the same: {}",
+        gap_without.len() - closer - further
+    );
+}
