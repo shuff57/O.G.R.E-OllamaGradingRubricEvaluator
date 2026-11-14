@@ -37,6 +37,11 @@ changes again. Each is marked in the code with a comment that starts "OGRE:".
    none (`src/lib.rs`, `src/backend.rs`, `src/instance.rs`, `src/chromium/mod.rs`,
    `src/chromium/client.rs`). A windowless browser has no window to show a file chooser in.
    A request for a folder, or for a place to save to, is turned down without asking.
+8. Drag and drop inside a page, CEF only: the render handler takes on a drag the page starts
+   (`start_dragging`, `update_drag_cursor` in `src/chromium/client.rs`), and while it lasts the
+   pointer events are told to the page as a drag over it and a drop (`Input::dragging` in
+   `src/chromium/input.rs`, with `src/chromium/mod.rs` handing it the drag). A windowless
+   browser has no system drag to give it to. Nothing is dragged into the page from outside,
+   or out of it.
 
-Not changed, and missing for OGRE: file pickers and drag and drop are not supported by the
-crate yet.
+Not changed, and missing for OGRE: dragging something into the page from another program, or out of it.

@@ -75,6 +75,9 @@ pub struct Shared {
     pub dialog: Mutex<Option<JsdialogCallback>>,
     /// OGRE: where the files the page asked for go, until it is given them.
     pub file_dialog: Mutex<Option<FileDialogCallback>>,
+    /// OGRE: what is being dragged out of the page, from when the page starts a drag until the
+    /// button is let go.
+    pub drag: Mutex<Option<Drag>>,
     /// Which way Tab left the page, until [`crate::Backend::poll_focus_left`] picks it up.
     pub took_focus_away: Mutex<Option<FocusDirection>>,
 
@@ -113,6 +116,7 @@ impl Shared {
             context_menu: Mutex::new(None),
             dialog: Mutex::new(None),
             file_dialog: Mutex::new(None),
+            drag: Mutex::new(None),
             took_focus_away: Mutex::new(None),
             inbox: Mutex::default(),
             shown_pass: Mutex::new(None),
@@ -375,6 +379,21 @@ impl Layer {
     }
 }
 
+/// OGRE: something the page let the pointer pick up, on its way to where it is dropped.
+///
+/// A windowless browser has no system drag to hand it to. The pointer events that follow are
+/// told to the page as a drag over it instead (`input.rs`), which is all a drag from one part
+/// of a page to another needs.
+pub struct Drag {
+    pub data: cef::DragData,
+    /// What the page it came from lets be done with it.
+    pub allowed: sys::cef_drag_operations_mask_t,
+    /// What the page under the pointer would do with it if it were dropped now.
+    pub would: sys::cef_drag_operations_mask_t,
+    /// Whether the page has been told that the drag is over it.
+    pub entered: bool,
+}
+
 /// `rect` as `[x, y, width, height]`, clipped to a frame of `size`.
 fn clamp_rect(rect: &cef::Rect, size: [usize; 2]) -> [usize; 4] {
     let x = usize::try_from(rect.x).unwrap_or(0).min(size[0]);
@@ -390,6 +409,39 @@ wrap_render_handler! {
     }
 
     impl RenderHandler {
+        /// OGRE: the page starts a drag. Taken on, and carried by the pointer from here.
+        fn start_dragging(
+            &self,
+            _browser: Option<&mut Browser>,
+            drag_data: Option<&mut cef::DragData>,
+            allowed_ops: cef::DragOperationsMask,
+            _x: ::std::os::raw::c_int,
+            _y: ::std::os::raw::c_int,
+        ) -> ::std::os::raw::c_int {
+            let Some(data) = drag_data else {
+                return 0;
+            };
+            *self.shared.drag.lock() = Some(Drag {
+                // Another handle on the same data, not a copy of it.
+                data: <cef::DragData as Clone>::clone(data),
+                allowed: *allowed_ops.as_ref(),
+                would: sys::cef_drag_operations_mask_t::DRAG_OPERATION_NONE,
+                entered: false,
+            });
+            1
+        }
+
+        /// OGRE: what the page under the pointer would do with what is dragged.
+        fn update_drag_cursor(
+            &self,
+            _browser: Option<&mut Browser>,
+            operation: cef::DragOperationsMask,
+        ) {
+            if let Some(drag) = self.shared.drag.lock().as_mut() {
+                drag.would = *operation.as_ref();
+            }
+        }
+
         fn view_rect(&self, _browser: Option<&mut Browser>, rect: Option<&mut cef::Rect>) {
             if let Some(rect) = rect {
                 let (size, _) = *self.shared.size.lock();

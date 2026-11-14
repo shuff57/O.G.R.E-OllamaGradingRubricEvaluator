@@ -267,8 +267,56 @@ async fn read(page: CdpPage, address: String) -> Result<(), String> {
     if holds != serde_json::json!([[name, 7]]) {
         return Err(format!("the page was not given the file: {holds}"));
     }
+
+    // A drag from one part of a page to another. It takes a real pointer,
+    // which this program has none of, so it is only checked when asked
+    // for: something else then has to drag the red box onto the green one
+    // once "READY FOR A DRAG" is printed (see the README).
+    if std::env::var_os("OGRE_CHECK_DRAG").is_some() {
+        page.navigate(&format!("http://127.0.0.1:{port}/drag"))
+            .await
+            .map_err(say)?;
+        println!("READY FOR A DRAG");
+        let seen = "[window.dropped ?? null, window.ended ?? null]";
+        let mut drag = serde_json::Value::Null;
+        for _ in 0..400 {
+            drag = page.eval(seen).await.map_err(say)?;
+            if !drag[0].is_null() && !drag[1].is_null() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        println!("dropped and how the drag ended: {drag}");
+        if drag != serde_json::json!(["the red box", "move"]) {
+            return Err(format!("the drag did not end in a drop: {drag}"));
+        }
+    }
     Ok(())
 }
+
+/// A red box that can be dragged and a green one that takes it. The page
+/// notes what was dropped, and how the drag ended for the box it began on.
+const DRAG_PAGE: &str = "<!doctype html><title>Drag page</title>
+<style>
+  body { margin: 0; }
+  div { position: absolute; top: 40px; }
+  #from { left: 40px; width: 160px; height: 160px; background: #c0392b; }
+  #to { left: 300px; width: 200px; height: 200px; background: #27ae60; }
+</style>
+<div id=from draggable=true>drag me</div><div id=to>drop here</div>
+<script>
+  const from = document.getElementById('from'), to = document.getElementById('to');
+  from.addEventListener('dragstart', (e) => {
+    e.dataTransfer.setData('text/plain', 'the red box');
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  to.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
+  to.addEventListener('drop', (e) => {
+    e.preventDefault();
+    window.dropped = e.dataTransfer.getData('text/plain');
+  });
+  from.addEventListener('dragend', (e) => { window.ended = e.dataTransfer.dropEffect; });
+</script>";
 
 /// Serves a page that frames a page of another site, which frames a page
 /// of the first site again. Gives the port.
@@ -290,7 +338,9 @@ fn serve_frames() -> u16 {
                 let frame = |host: &str, to: &str| {
                     format!("<iframe id=other src=\"http://{host}:{port}{to}\"></iframe>")
                 };
-                let body = if path.starts_with("/file") {
+                let body = if path.starts_with("/drag") {
+                    DRAG_PAGE.to_owned()
+                } else if path.starts_with("/file") {
                     "<!doctype html><title>File page</title><input type=file id=f>".to_owned()
                 } else if path.starts_with("/inner") {
                     "<!doctype html><title>Inner page</title><p>Innermost.</p>".to_owned()

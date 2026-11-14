@@ -103,7 +103,15 @@ impl Batch {
 impl Input {
     /// Sends the input of one pass to the page. That is the pointer events, and if the widget
     /// has egui's focus, the keyboard, text, IME and clipboard events too.
-    pub fn replay(&mut self, browser: &Browser, mut batch: Batch) {
+    ///
+    /// OGRE: `drag` is what the page let the pointer pick up, if anything. While there is
+    /// something, the pointer is a drag over the page, and letting the button go drops it.
+    pub fn replay(
+        &mut self,
+        browser: &Browser,
+        drag: &egui::mutex::Mutex<Option<super::client::Drag>>,
+        mut batch: Batch,
+    ) {
         let Some(host) = browser.host() else {
             return;
         };
@@ -112,6 +120,9 @@ impl Input {
         let mut focused = batch.focused;
         let mut events = std::mem::take(&mut batch.events).into_iter().peekable();
         while let Some(event) = events.next() {
+            if self.dragging(&host, &event, &batch, drag) {
+                continue;
+            }
             if !self.pointer(&host, &event, &batch, &mut focused) && batch.keys && focused {
                 // egui emits the `Event::Text` that a key press typed right after its
                 // `Event::Key`, so the two are sent together.
@@ -124,6 +135,73 @@ impl Input {
                 keyboard(browser, &host, event, text);
             }
         }
+    }
+
+    /// OGRE: while the page has let the pointer pick something up, tells the page of `event`
+    /// as part of that drag, and returns whether it was.
+    ///
+    /// The lock is never held while the page is told: it answers with what it would do with
+    /// the drop, which is written under the same lock.
+    fn dragging(
+        &mut self,
+        host: &cef::BrowserHost,
+        event: &Event,
+        batch: &Batch,
+        drag: &egui::mutex::Mutex<Option<super::client::Drag>>,
+    ) -> bool {
+        let Some((data, allowed, entered)) = drag.lock().as_ref().map(|drag| {
+            let data = <cef::DragData as Clone>::clone(&drag.data);
+            (data, drag.allowed, drag.entered)
+        }) else {
+            return false;
+        };
+        let at = |pos: Pos2, modifiers: Modifiers, buttons: &[PointerButton]| {
+            let pos = pos - batch.rect.min;
+            MouseEvent {
+                x: super::round(pos.x),
+                y: super::round(pos.y),
+                modifiers: event_flags(modifiers) | button_flags(buttons),
+            }
+        };
+        let over = |event: &MouseEvent| {
+            if !entered {
+                let mut data = data.clone();
+                host.drag_target_drag_enter(Some(&mut data), Some(event), allowed.into());
+                if let Some(drag) = drag.lock().as_mut() {
+                    drag.entered = true;
+                }
+            }
+            host.drag_target_drag_over(Some(event), allowed.into());
+        };
+        match *event {
+            Event::PointerMoved(pos) => over(&at(pos, batch.modifiers, &self.buttons_down)),
+            Event::PointerGone => {
+                if entered {
+                    host.drag_target_drag_leave();
+                    if let Some(drag) = drag.lock().as_mut() {
+                        drag.entered = false;
+                    }
+                }
+            }
+            Event::PointerButton {
+                pos,
+                button,
+                pressed: false,
+                modifiers,
+            } if self.buttons_down.contains(&button) => {
+                self.buttons_down.retain(|b| *b != button);
+                let event = at(pos, modifiers, &self.buttons_down);
+                over(&event);
+                host.drag_target_drop(Some(&event));
+                // What the page under the pointer said it would do is what was done.
+                let done = drag.lock().take().map_or(allowed, |drag| drag.would);
+                host.drag_source_ended_at(event.x, event.y, done.into());
+                host.drag_source_system_drag_ended();
+            }
+            // Anything else, a key say, goes its usual way.
+            _ => return false,
+        }
+        true
     }
 
     /// Forwards `event` to the page if it is a pointer event, and returns whether it was one.

@@ -44,6 +44,10 @@ It needs a screen that is drawn to. Where there is none to spare, a made-up one 
 
     env -u WAYLAND_DISPLAY xvfb-run -a ./target/release/examples/bridge_check
 
+A drag takes a pointer, which the check has none of. `./check-drag.sh` runs the same check on a
+made-up screen and drags a box of a practice page onto another with a made-up pointer
+(`xvfb-run` and `xdotool`), and the check then looks at what the page says was dropped.
+
     OGRE_OPEN=<address> OGRE_SHOT=<file.png> ./run.sh
 
 starts at that page in the built-in browser and, after `OGRE_SHOT_AFTER` seconds (10 if not
@@ -52,7 +56,8 @@ that takes pictures of the screen.
 
 ## Not there yet
 
-- Drag and drop: not in the copied crate.
+- Dragging something into the page from another program, or out of the page. A drag from one
+  part of a page to another works.
 - A file a page asks for is given by typing its path into a box in OGRE's window, not chosen in
   a file chooser. A page that asks for a folder, or for where to save something, gets nothing.
 - Nothing here has been used on a real signed-in grading page.
