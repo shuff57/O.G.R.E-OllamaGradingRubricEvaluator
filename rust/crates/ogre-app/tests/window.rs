@@ -29,7 +29,7 @@ use ogre_harness::cdp::{DialogKind, Held, MouseAction, MouseButton, PageDialog};
 use ogre_harness::sites::Mismatch;
 use ogre_harness::sites::generic::{
     ButtonRule, Element, ElementCheck, MaxScoreRule, PageMap, PickFor, Problem, SaveRule,
-    SaveSuccess, Severity, SiteProfile, StudentSample, UrlRule,
+    SaveSuccess, Saving, Severity, SiteProfile, StudentSample, UrlRule,
 };
 
 fn shots_dir() -> Option<PathBuf> {
@@ -158,6 +158,7 @@ fn read() -> Event {
         site: "MyOpenMath",
         saves_on_write: false,
         manual_save: false,
+        saves_unseen: false,
         questions: Vec::new(),
         saved_rubrics: Vec::new(),
         skills: Vec::new(),
@@ -706,6 +707,7 @@ fn a_site_ogre_cannot_confirm_saving_on_is_saved_by_the_teacher() {
             site: "Practice LMS",
             saves_on_write: false,
             manual_save: true,
+            saves_unseen: false,
             questions: Vec::new(),
             saved_rubrics: Vec::new(),
             skills: Vec::new(),
@@ -1510,6 +1512,7 @@ fn read_with_a_loose_requirement() -> Event {
         site: "MyOpenMath",
         saves_on_write: false,
         manual_save: false,
+        saves_unseen: false,
         questions: Vec::new(),
         saved_rubrics: Vec::new(),
         skills: Vec::new(),
@@ -1679,6 +1682,7 @@ fn read_without_a_rubric(saved_rubrics: Vec<SavedRubric>) -> Event {
         site: "Example LMS",
         saves_on_write: false,
         manual_save: true,
+        saves_unseen: false,
         questions: Vec::new(),
         saved_rubrics,
         skills: Vec::new(),
@@ -2722,6 +2726,7 @@ fn the_consistency_check_can_be_run_again_on_the_grades_in_the_table() {
             site: "MyOpenMath",
             saves_on_write: false,
             manual_save: false,
+            saves_unseen: false,
             questions: Vec::new(),
             saved_rubrics: Vec::new(),
             skills: Vec::new(),
@@ -3640,6 +3645,93 @@ fn a_mapping_opened_in_the_form_is_the_mapping_the_form_gives_back() {
         let (mut harness, mut stand_in) = mapping_form(&saved);
         assert_eq!(mapping_tried(&mut harness, &mut stand_in), saved);
     }
+}
+
+#[test]
+fn how_a_site_saves_is_said_in_the_mapping_form() {
+    // A page that shows one student, with a button to the next and one
+    // button that keeps a grade.
+    let Event::Mapped(report) = found_mapping() else {
+        unreachable!()
+    };
+    let mut saved = report.profile;
+    saved.page.student_section = None;
+    saved.page.next_student = Some(ButtonRule::Selector {
+        selector: "#next".into(),
+    });
+    saved.page.save = Some(SaveRule {
+        button: ButtonRule::Text {
+            text: "Save & Next".into(),
+        },
+        success: None,
+    });
+    let (mut harness, mut stand_in) = mapping_form(&saved);
+    let tried = mapping_proven(&mut harness, &mut stand_in);
+    assert_eq!(tried.page.saving, Saving::Button);
+    assert!(!tried.page.confirms_saves(), "nothing can be written yet");
+
+    // The button also moves on: that is then how a save is known.
+    scroll_to_and_press(&mut harness, "The save button also shows the next student");
+    harness.get_by_label_contains("takes a grade as saved when the page has moved on");
+    shot(&mut harness, "44-mapping-save-and-next");
+    let moves_on = mapping_proven(&mut harness, &mut stand_in);
+    assert_eq!(moves_on.page.saving, Saving::ButtonMovesOn);
+    assert_eq!(moves_on.page.save, saved.page.save);
+    assert!(moves_on.page.confirms_saves());
+
+    // Or the site needs no button at all.
+    scroll_to_and_press(
+        &mut harness,
+        "The site saves a score by itself as it is typed",
+    );
+    harness.get_by_label_contains("It cannot see that the site stored a grade");
+    assert!(
+        harness
+            .query_by_label("The save button also shows the next student")
+            .is_none(),
+        "there is no save button to say that of"
+    );
+    shot(&mut harness, "45-mapping-saves-itself");
+    let by_itself = mapping_proven(&mut harness, &mut stand_in);
+    assert_eq!(by_itself.page.saving, Saving::AsTyped);
+    assert_eq!(by_itself.page.save, None);
+    assert!(by_itself.page.confirms_saves());
+
+    // Each opens in the form as it was saved.
+    for kept in [moves_on, by_itself] {
+        let (mut harness, mut stand_in) = mapping_form(&kept);
+        assert_eq!(mapping_tried(&mut harness, &mut stand_in), kept);
+    }
+}
+
+#[test]
+fn grades_typed_into_a_site_that_saves_by_itself_are_not_called_stored() {
+    let (mut harness, mut stand_in) = window(local_model());
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    let Event::Read(mut report) = read() else {
+        unreachable!()
+    };
+    report.site = "Practice LMS";
+    report.saves_on_write = true;
+    report.saves_unseen = true;
+    stand_in.events.send(Event::Read(report)).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Grade 2 students").click();
+    frames(&mut harness);
+    assert!(matches!(sent(&mut stand_in), Command::Grade(_)));
+    stand_in.events.send(graded()).unwrap();
+    frames(&mut harness);
+
+    harness
+        .get_by_label("Send 2 grades to Practice LMS")
+        .click();
+    frames(&mut harness);
+    assert!(matches!(sent(&mut stand_in), Command::Write(_)));
+    stand_in.events.send(written(None)).unwrap();
+    frames(&mut harness);
+    harness.get_by_label_contains("2 grades typed in on Practice LMS");
+    harness.get_by_label_contains("OGRE cannot see that it did");
+    assert!(harness.query_by_label_contains("stored on").is_none());
 }
 
 // ── The teacher's earlier grades ────────────────────────────────────────

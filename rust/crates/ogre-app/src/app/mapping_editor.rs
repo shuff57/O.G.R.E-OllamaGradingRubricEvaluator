@@ -5,8 +5,8 @@
 use eframe::egui;
 use ogre_core::FeedbackKind;
 use ogre_harness::sites::generic::{
-    ButtonRule, Element, FeedbackBox, MaxScoreRule, PickFor, SaveRule, SaveSuccess, Severity,
-    SiteProfile,
+    ButtonRule, Element, FeedbackBox, MaxScoreRule, PickFor, SaveRule, SaveSuccess, Saving,
+    Severity, SiteProfile,
 };
 
 use super::{Action, OgreApp};
@@ -212,6 +212,10 @@ pub(super) struct MappingEdit {
     previous: ButtonForm,
     /// What the confirmation has to say, where its being shown is not enough.
     saved_pattern: String,
+    /// The site stores a score as it is typed, with no button to press.
+    saves_itself: bool,
+    /// The save button also shows the next student.
+    save_moves_on: bool,
     /// A selector for the frame the grading page is in, where it is in one.
     frame: String,
     /// What the last check against the page found.
@@ -259,6 +263,8 @@ impl MappingEdit {
             own_pattern: String::new(),
             max_value: String::new(),
             saved_pattern: String::new(),
+            saves_itself: page.saving == Saving::AsTyped,
+            save_moves_on: page.saving == Saving::ButtonMovesOn,
             frame: page.frame.clone().unwrap_or_default(),
             checked: None,
             picking: None,
@@ -326,13 +332,25 @@ impl MappingEdit {
         page.frame = self.frame();
         page.next_student = self.next.rule(&self.selectors);
         page.previous_student = self.previous.rule(&self.selectors);
-        page.save = self.save.rule(&self.selectors).map(|button| SaveRule {
-            button,
-            success: at(Field::SaveConfirmation).map(|selector| SaveSuccess {
-                selector,
-                pattern: filled(&self.saved_pattern),
-            }),
-        });
+        page.save = self
+            .save
+            .rule(&self.selectors)
+            // A site that saves by itself has no button for OGRE to press.
+            .filter(|_| !self.saves_itself)
+            .map(|button| SaveRule {
+                button,
+                success: at(Field::SaveConfirmation).map(|selector| SaveSuccess {
+                    selector,
+                    pattern: filled(&self.saved_pattern),
+                }),
+            });
+        page.saving = if self.saves_itself {
+            Saving::AsTyped
+        } else if self.save_moves_on && page.save.is_some() && page.next_student.is_some() {
+            Saving::ButtonMovesOn
+        } else {
+            Saving::Button
+        };
         profile
     }
 
@@ -360,7 +378,7 @@ impl MappingEdit {
             }
             _ => {}
         }
-        if self.save.unfinished(&self.selectors) {
+        if !self.saves_itself && self.save.unfinished(&self.selectors) {
             return Some("Say which button saves, or choose to save in the browser.");
         }
         if self.next.unfinished(&self.selectors) || self.previous.unfinished(&self.selectors) {
@@ -631,17 +649,29 @@ impl OgreApp {
         }
         show_finding(ui, check, Field::MaxScore);
 
-        button_lines(
-            ui,
-            edit,
-            Button::Save,
-            "Saving",
-            "No button: I save in the browser",
-            "Label of the save button",
-            (on_a_page, &mut *actions),
+        ui.checkbox(
+            &mut edit.saves_itself,
+            "The site saves a score by itself as it is typed",
         );
+        if edit.saves_itself {
+            ui.label(theme::muted(
+                "OGRE then presses no save button. It cannot see that the site stored a \
+                 grade, only what the page shows afterwards, so look at a few students \
+                 after the first time.",
+            ));
+        } else {
+            button_lines(
+                ui,
+                edit,
+                Button::Save,
+                "Saving",
+                "No button: I save in the browser",
+                "Label of the save button",
+                (on_a_page, &mut *actions),
+            );
+        }
         show_finding(ui, check, Field::SaveButton);
-        if edit.save.by != ButtonBy::Unmapped {
+        if !edit.saves_itself && edit.save.by != ButtonBy::Unmapped {
             selector_line(ui, edit, Field::SaveConfirmation, on_a_page, actions);
             text_line(
                 ui,
@@ -670,6 +700,21 @@ impl OgreApp {
                 (on_a_page, &mut *actions),
             );
             show_finding(ui, check, Field::NextStudent);
+            let saves_by_button = !edit.saves_itself && edit.save.by != ButtonBy::Unmapped;
+            if edit.next.by != ButtonBy::Unmapped && saves_by_button {
+                ui.checkbox(
+                    &mut edit.save_moves_on,
+                    "The save button also shows the next student",
+                );
+                if edit.save_moves_on {
+                    ui.label(theme::muted(
+                        "As with \u{201c}Save and next\u{201d}. OGRE then takes a grade as \
+                         saved when the page has moved on to another student. After the \
+                         last student there is none to move on to: say above what shows \
+                         that a save went through, or check that student yourself.",
+                    ));
+                }
+            }
             if edit.next.by != ButtonBy::Unmapped {
                 button_lines(
                     ui,

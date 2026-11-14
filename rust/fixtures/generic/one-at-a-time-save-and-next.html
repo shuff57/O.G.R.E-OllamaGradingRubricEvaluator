@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Quiz 4 marking</title>
+</head>
+<body>
+  <!--
+    A made-up grading site that shows one student at a time at one address.
+    Written for OGRE's tests; the students are invented.
+    The buttons swap the student shown a moment after they are pressed, as a
+    site does that fetches each student. "Next" is disabled on the last
+    student and "Previous" on the first. Opening the address again starts at
+    the first student.
+    There is no plain "Save": the one button that keeps a grade is
+    "Save & Next", which keeps it and then shows the next student, with no
+    word that it did. On the last student it keeps the grade and stays.
+    Anything only typed is gone after moving on with "Next". A score with
+    no comment is refused: the page stays and says so.
+  -->
+  <div id="app">
+    <header>
+      <h2 id="who" class="student-name"></h2>
+      <div class="nav-controls">
+        <button type="button" id="prev-student">&laquo; Previous</button>
+        <button type="button" id="next-student">Next &raquo;</button>
+      </div>
+    </header>
+    <main>
+      <section id="student-response">
+        <h3>Response</h3>
+        <div class="response-text"></div>
+      </section>
+      <section id="grading-panel">
+        <fieldset>
+          <legend>Grade (out of 15)</legend>
+          <label for="score-input">Score:</label>
+          <input type="number" id="score-input" name="score" min="0" max="15" step="0.5">
+          <label for="feedback-input">Feedback:</label>
+          <textarea id="feedback-input" name="feedback" rows="4" cols="50"></textarea>
+        </fieldset>
+        <button type="button" id="save-next">Save &amp; Next</button>
+        <p id="refused" hidden>A comment is needed before this can be saved.</p>
+      </section>
+    </main>
+  </div>
+  <script>
+    const STUDENTS = [
+      { name: 'Avery, Sam', answer: 'The derivative of x^3 is 3x^2 by the power rule.' },
+      { name: 'Brook, Kai', answer: 'It is 3x^2.' },
+      { name: 'Casey, Lin', answer: 'x^3 becomes x^2.' },
+      { name: 'Drew, Pat', answer: 'By the power rule, bring down the 3 and take one off the power.' },
+    ];
+    let at = 0;
+    // Where saved grades are kept. Served by the tests' own web server, the
+    // page is given what is kept as `window.KEPT` and posts each save to it.
+    // Opened from disk, sessionStorage stands in for the server.
+    const served = !!window.KEPT;
+    const keptAt = (key) =>
+      served ? window.KEPT[key] || null : JSON.parse(sessionStorage.getItem(key) || 'null');
+    const keep = async (key, value) => {
+      if (!served) return sessionStorage.setItem(key, JSON.stringify(value));
+      await fetch('/kept/' + key, { method: 'POST', body: JSON.stringify(value) });
+      window.KEPT[key] = value;
+    };
+    const el = (id) => document.getElementById(id);
+
+    const show = () => {
+      const student = STUDENTS[at];
+      const kept = keptAt('quiz-grade-' + at) || { score: '', feedback: '' };
+      el('who').textContent = student.name;
+      document.querySelector('.response-text').textContent = student.answer;
+      el('score-input').value = kept.score;
+      el('feedback-input').value = kept.feedback;
+      el('refused').hidden = true;
+      el('prev-student').disabled = at === 0;
+      el('next-student').disabled = at === STUDENTS.length - 1;
+    };
+    const move = (by) => setTimeout(() => {
+      at = Math.min(Math.max(at + by, 0), STUDENTS.length - 1);
+      show();
+    }, 80);
+    el('prev-student').addEventListener('click', () => move(-1));
+    el('next-student').addEventListener('click', () => move(1));
+    el('save-next').addEventListener('click', () => {
+      if (!el('feedback-input').value.trim()) {
+        el('refused').hidden = false;
+        return;
+      }
+      const showing = at;
+      setTimeout(async () => {
+        await keep('quiz-grade-' + showing, {
+          score: el('score-input').value,
+          feedback: el('feedback-input').value,
+        });
+        if (at === showing && at < STUDENTS.length - 1) {
+          at += 1;
+          show();
+        }
+      }, 60);
+    });
+    show();
+  </script>
+</body>
+</html>

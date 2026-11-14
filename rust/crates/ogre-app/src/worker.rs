@@ -288,6 +288,9 @@ pub struct ReadReport {
     /// True if OGRE cannot tell whether this site saved, so the teacher has
     /// to save in the browser themselves.
     pub manual_save: bool,
+    /// True if the site is said to save a score as it is typed, which OGRE
+    /// cannot see happen.
+    pub saves_unseen: bool,
     /// The assignment's questions, where the site lists them. Empty otherwise.
     pub questions: Vec<QuestionLink>,
     /// The rubrics the teacher has saved, to use in place of the page's.
@@ -1132,6 +1135,7 @@ impl Task {
             site: adapter.name(),
             saves_on_write: adapter.saves_on_write(),
             manual_save,
+            saves_unseen: adapter.saves_unseen(),
             page: read.clone(),
             saved_rubrics: self.rubrics.all(),
             skills: agent_run::list_skills(&self.skills_dir),

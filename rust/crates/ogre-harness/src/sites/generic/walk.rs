@@ -42,6 +42,18 @@ impl Step {
     }
 }
 
+/// What the page did after a save button that also shows the next student
+/// was pressed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum AfterSave {
+    /// It no longer shows the student that was saved: the site took the
+    /// grade and went on.
+    MovedOn,
+    /// It still shows the same student, as after the last one, or where the
+    /// site refused the grade.
+    Stayed,
+}
+
 /// One student as the walk met them: enough to tell that the page has moved
 /// on, and to find the student again.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -92,6 +104,16 @@ impl Route {
             at: stops.len().checked_sub(1),
             stops,
         }
+    }
+
+    /// Forgets which student the page shows, after something moved it.
+    pub fn lose_place(&mut self) {
+        self.at = None;
+    }
+
+    /// How many students were read.
+    pub fn len(&self) -> usize {
+        self.stops.len()
     }
 
     /// Which student `shown` is. Where the page was last known to be wins; a
@@ -177,7 +199,39 @@ impl Walker<'_> {
         page: &dyn PageDriver,
         step: Step,
     ) -> Result<std::result::Result<(), String>> {
-        let script = call(STEP_SCRIPT, &self.profile.page, &json!(step.word()))?;
+        self.press_button(page, step.word()).await
+    }
+
+    /// Presses the save button of a site where that also shows the next
+    /// student, and says whether the page then left the student it showed.
+    /// `Err` with the reason if the button cannot be pressed.
+    pub async fn save_and_move_on(
+        &self,
+        page: &dyn PageDriver,
+    ) -> Result<std::result::Result<AfterSave, String>> {
+        let Some((_, before)) = self.look(page).await else {
+            return Ok(Err("the page shows no student".into()));
+        };
+        if let Err(reason) = self.press_button(page, "save").await? {
+            return Ok(Err(reason));
+        }
+        if self.settled(page, Some(&before)).await.is_some() {
+            return Ok(Ok(AfterSave::MovedOn));
+        }
+        // No other student in the time allowed. A page that shows none at
+        // all has moved on too, to a list of the class perhaps.
+        Ok(Ok(match self.look(page).await {
+            Some((_, now)) if now == before => AfterSave::Stayed,
+            _ => AfterSave::MovedOn,
+        }))
+    }
+
+    async fn press_button(
+        &self,
+        page: &dyn PageDriver,
+        which: &str,
+    ) -> Result<std::result::Result<(), String>> {
+        let script = call(STEP_SCRIPT, &self.profile.page, &json!(which))?;
         let pressed: Pressed = eval_as(page, &script).await?;
         Ok(if pressed.pressed {
             Ok(())

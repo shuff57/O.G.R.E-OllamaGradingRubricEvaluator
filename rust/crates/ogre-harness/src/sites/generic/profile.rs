@@ -256,6 +256,50 @@ pub struct PageMap {
     /// whose students do not each have an address of their own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub previous_student: Option<ButtonRule>,
+    /// How a grade gets stored on the site.
+    #[serde(default, skip_serializing_if = "Saving::is_by_button")]
+    pub saving: Saving,
+}
+
+/// How a grade that was filled in gets stored on the site.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Saving {
+    /// The save button is pressed, and the page then shows that it worked.
+    #[default]
+    Button,
+    /// The save button also shows the next student ("Save and next"), on a
+    /// site that shows one student at a time. That the page moves on is how
+    /// a save is known to have gone through.
+    ButtonMovesOn,
+    /// The site stores a score as it is typed, with no button to press.
+    /// OGRE cannot see that it did: what the page shows afterwards is all
+    /// there is to go by.
+    AsTyped,
+}
+
+impl Saving {
+    fn is_by_button(&self) -> bool {
+        *self == Self::Button
+    }
+
+    /// What a save button's label says about it: one that names the next
+    /// student, or going on, saves and moves on in one press.
+    pub fn of_button_labelled(label: &str) -> Self {
+        let label = label.to_lowercase();
+        let words: Vec<&str> = label
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|word| !word.is_empty())
+            .collect();
+        if words
+            .iter()
+            .any(|word| matches!(*word, "next" | "continue"))
+        {
+            Self::ButtonMovesOn
+        } else {
+            Self::Button
+        }
+    }
 }
 
 impl PageMap {
@@ -265,12 +309,32 @@ impl PageMap {
         self.student_section.is_none() && self.next_student.is_some()
     }
 
-    /// True if the map says how a finished save looks. Without that OGRE
-    /// never clicks the save button.
+    /// True if a grade can be stored on this site and be known to have
+    /// been: the map says how a finished save looks, or the save button
+    /// moves on to the next student, or the site saves by itself. Without
+    /// that OGRE never clicks the save button.
     pub fn confirms_saves(&self) -> bool {
-        self.save
+        let shows_success = self
+            .save
             .as_ref()
-            .is_some_and(|save| save.success.is_some())
+            .is_some_and(|save| save.success.is_some());
+        match self.saving {
+            Saving::AsTyped => true,
+            Saving::ButtonMovesOn => {
+                shows_success || (self.save.is_some() && self.steps_through_students())
+            }
+            Saving::Button => shows_success,
+        }
+    }
+
+    /// True if the site stores a score as it is typed.
+    pub fn saves_as_typed(&self) -> bool {
+        self.saving == Saving::AsTyped
+    }
+
+    /// True if pressing the save button is what shows the next student.
+    pub fn save_moves_on(&self) -> bool {
+        self.saving == Saving::ButtonMovesOn && self.save.is_some() && self.steps_through_students()
     }
 }
 
@@ -382,6 +446,7 @@ mod tests {
                 frame: None,
                 next_student: None,
                 previous_student: None,
+                saving: Saving::default(),
             },
         )
     }
@@ -424,6 +489,68 @@ mod tests {
     }
 
     #[test]
+    fn a_save_button_that_names_the_next_student_is_one_that_moves_on() {
+        for label in [
+            "Save & Next",
+            "Save and next student",
+            "SAVE AND CONTINUE",
+            "Next",
+        ] {
+            assert_eq!(
+                Saving::of_button_labelled(label),
+                Saving::ButtonMovesOn,
+                "{label}"
+            );
+        }
+        // "Context" has "next" in it and is no way on.
+        for label in ["Save", "Save grades", "Submit", "Save context", "Update"] {
+            assert_eq!(Saving::of_button_labelled(label), Saving::Button, "{label}");
+        }
+    }
+
+    #[test]
+    fn how_a_site_saves_is_kept_and_a_mapping_from_before_still_loads() {
+        let mut profile = sample();
+        assert_eq!(profile.page.saving, Saving::Button);
+        assert!(
+            !profile.to_json().contains("saving"),
+            "the usual way is not written out"
+        );
+        for saving in [Saving::ButtonMovesOn, Saving::AsTyped] {
+            profile.page.saving = saving;
+            let again = SiteProfile::from_json(&profile.to_json()).unwrap();
+            assert_eq!(again.page.saving, saving);
+        }
+    }
+
+    #[test]
+    fn a_grade_can_be_saved_where_the_mapping_says_how_that_is_known() {
+        let mut map = sample().page;
+        let button = map.save.clone().map(|save| SaveRule {
+            success: None,
+            ..save
+        });
+        assert!(map.confirms_saves(), "the page shows a finished save");
+
+        map.save.clone_from(&button);
+        assert!(!map.confirms_saves(), "a button and no sign of success");
+        // Moving on only says something where there is a next student.
+        map.saving = Saving::ButtonMovesOn;
+        assert!(!map.confirms_saves() && !map.save_moves_on());
+        map.student_section = None;
+        map.next_student = Some(ButtonRule::Text {
+            text: "Next".into(),
+        });
+        assert!(map.confirms_saves() && map.save_moves_on());
+        map.save = None;
+        assert!(!map.confirms_saves() && !map.save_moves_on());
+
+        // A site that saves by itself needs no button at all.
+        map.saving = Saving::AsTyped;
+        assert!(map.confirms_saves() && map.saves_as_typed());
+    }
+
+    #[test]
     fn a_minimal_profile_loads_with_its_optional_parts_absent() {
         let json = r##"{
             "version": 1, "id": "x", "name": "X",
@@ -436,6 +563,7 @@ mod tests {
         }"##;
         let profile = SiteProfile::from_json(json).unwrap();
         assert_eq!(profile.page.student_section, None);
+        assert_eq!(profile.page.saving, Saving::Button);
         assert!(profile.url.query.is_empty());
         assert_eq!(SiteProfile::from_json(&profile.to_json()).unwrap(), profile);
     }

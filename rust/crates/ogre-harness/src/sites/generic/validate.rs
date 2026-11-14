@@ -6,7 +6,7 @@ use ogre_core::FeedbackKind;
 
 use super::frame::Within;
 use super::inspect::{self, Inspection, StepButton, Student};
-use super::profile::{ButtonRule, MaxScoreRule, PageMap, SiteProfile};
+use super::profile::{ButtonRule, MaxScoreRule, PageMap, Saving, SiteProfile};
 use crate::{PageDriver, Result};
 
 /// How many students a report shows in full.
@@ -657,11 +657,24 @@ impl Checks {
     }
 
     fn save(&mut self, map: &PageMap, found: &Inspection) {
-        let (Some(rule), Some(seen)) = (&map.save, &found.save) else {
+        if map.saving == Saving::AsTyped {
             self.warning(
                 Element::SaveButton,
-                "no save button is mapped; the teacher saves in the browser",
+                "the site is said to save a score as it is typed, so OGRE presses no save button; it cannot see that the site stored a grade, only what the page shows afterwards",
             );
+        }
+        let (Some(rule), Some(seen)) = (&map.save, &found.save) else {
+            match map.saving {
+                Saving::AsTyped => {}
+                Saving::ButtonMovesOn => self.warning(
+                    Element::SaveButton,
+                    "saving is said to show the next student, but no save button is mapped; the teacher saves in the browser",
+                ),
+                Saving::Button => self.warning(
+                    Element::SaveButton,
+                    "no save button is mapped; the teacher saves in the browser",
+                ),
+            }
             return;
         };
         let element = Element::SaveButton;
@@ -688,7 +701,19 @@ impl Checks {
         }
 
         let element = Element::SaveConfirmation;
+        if map.saving == Saving::ButtonMovesOn && !map.steps_through_students() {
+            self.warning(
+                Element::SaveButton,
+                "saving is said to show the next student, but OGRE does not go through the students of this page one by one, so that is not used",
+            );
+        }
         match &rule.success {
+            // The site saves by itself, and the button is left alone.
+            None if map.saving == Saving::AsTyped => {}
+            None if map.save_moves_on() => self.warning(
+                element,
+                "a save is taken to have worked when the page shows the next student; after the last student there is none, so OGRE cannot tell that the last grade was saved unless the mapping also says how a finished save looks",
+            ),
             None => self.warning(
                 element,
                 "nothing says how a finished save looks, so OGRE will not click the button; the teacher saves in the browser",
@@ -808,6 +833,7 @@ mod tests {
                 frame: None,
                 next_student: None,
                 previous_student: None,
+                saving: Saving::default(),
             },
         )
     }
@@ -927,6 +953,52 @@ mod tests {
         let found = report(&listed, &decode(page));
         assert!(found.passed());
         assert!(warnings(&found, Element::NextStudent)[0].contains("is not used"));
+    }
+
+    #[test]
+    fn a_save_that_moves_on_or_happens_by_itself_lets_the_students_be_written() {
+        let mut moves_on = one_at_a_time();
+        moves_on.page.save.as_mut().unwrap().success = None;
+        moves_on.page.saving = Saving::ButtonMovesOn;
+        let found = report(&moves_on, &one_student(step(1, true)));
+        assert!(found.passed());
+        assert!(
+            warnings(&found, Element::NextStudent)
+                .iter()
+                .all(|message| !message.contains("none can be written"))
+        );
+        // What cannot be told is said before grading.
+        assert!(
+            warnings(&found, Element::SaveConfirmation)[0]
+                .contains("after the last student there is none")
+        );
+
+        let mut by_itself = one_at_a_time();
+        by_itself.page.save = None;
+        by_itself.page.saving = Saving::AsTyped;
+        let mut page = inspection(vec![student(0, "Alice Johnson")]);
+        page["next"] = step(1, true);
+        let found = report(&by_itself, &decode(page));
+        assert!(found.passed());
+        assert!(warnings(&found, Element::NextStudent).is_empty());
+        let said = warnings(&found, Element::SaveButton);
+        assert_eq!(said.len(), 1, "{said:?}");
+        assert!(said[0].contains("cannot see that the site stored a grade"));
+
+        // On a page that lists its students "moves on" means nothing.
+        let mut listed = profile();
+        listed.page.save = one_at_a_time().page.save;
+        listed.page.saving = Saving::ButtonMovesOn;
+        let mut page = inspection(three());
+        page["save"] = json!({
+            "count": 1, "invalid": false, "success_invalid": false, "pattern_invalid": false
+        });
+        let found = report(&listed, &decode(page));
+        assert!(
+            warnings(&found, Element::SaveButton)
+                .iter()
+                .any(|message| message.contains("that is not used"))
+        );
     }
 
     #[test]

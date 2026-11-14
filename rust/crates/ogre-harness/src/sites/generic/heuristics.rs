@@ -7,7 +7,9 @@
 
 use ogre_core::FeedbackKind;
 
-use super::profile::{ButtonRule, FeedbackBox, MaxScoreRule, PageMap, SaveRule, SiteProfile};
+use super::profile::{
+    ButtonRule, FeedbackBox, MaxScoreRule, PageMap, SaveRule, Saving, SiteProfile,
+};
 use super::snapshot::{Snapshot, SnapshotNode as Node};
 
 /// Below this the page does not look like a grading page at all.
@@ -47,6 +49,8 @@ pub struct Candidates {
     pub feedback: Option<FeedbackBox>,
     pub response: Option<String>,
     pub save_button: Option<ButtonRule>,
+    /// What the save button's label says about how a grade is stored.
+    pub saving: Saving,
     /// The buttons to the next and the previous student, on a page that
     /// shows one student.
     pub next_student: Option<ButtonRule>,
@@ -77,6 +81,7 @@ impl Detection {
             frame: None,
             next_student: found.next_student.clone(),
             previous_student: found.previous_student.clone(),
+            saving: found.saving,
         })
     }
 }
@@ -149,6 +154,14 @@ pub fn detect(snapshot: &Snapshot) -> Option<Detection> {
         mode,
         candidates: Candidates {
             save_button: save_button.and_then(|button| button_rule(button, &page)),
+            // Only where there is a next student does "Save and next" say
+            // more than "Save".
+            saving: match save_button {
+                Some(button) if mode == Mode::Sequential => {
+                    Saving::of_button_labelled(button_label(button))
+                }
+                _ => Saving::default(),
+            },
             next_student: step(Step::Next),
             previous_student: step(Step::Previous),
             ..found
@@ -956,6 +969,7 @@ fn in_rows(page: &Tree<'_>, rows: &Rows) -> Candidates {
         feedback,
         response: selector(&responses, true),
         save_button: None,
+        saving: Saving::default(),
         next_student: None,
         previous_student: None,
     }
@@ -983,6 +997,7 @@ fn on_page(page: &Tree<'_>) -> Candidates {
         feedback,
         response: pick_response(page, 0, name).map(|i| page_selector(page, i)),
         save_button: None,
+        saving: Saving::default(),
         next_student: None,
         previous_student: None,
     }
@@ -1152,6 +1167,31 @@ mod tests {
                 text: "Save & Next".into()
             })
         );
+        // On a page that shows one student, that label says the button
+        // moves on. A plain "Save" does not.
+        assert_eq!(with.candidates.saving, Saving::ButtonMovesOn);
+        let mut plain = sequential();
+        plain.children[0]
+            .children
+            .push(node("button").with("type", "submit").saying("Save"));
+        let plain = detect(&snapshot(plain)).expect("detected");
+        assert_eq!(plain.candidates.saving, Saving::Button);
+    }
+
+    #[test]
+    fn a_save_button_on_a_page_that_lists_its_students_never_moves_on() {
+        let mut page = simple_batch();
+        fn relabel(node: &mut Node) {
+            if node.attr("id") == "save-all" {
+                *node = std::mem::take(node).saying("Save and continue");
+            }
+            node.children.iter_mut().for_each(relabel);
+        }
+        relabel(&mut page);
+        let found = detect(&snapshot(page)).expect("detected");
+        assert_eq!(found.mode, Mode::Batch);
+        assert!(found.candidates.save_button.is_some());
+        assert_eq!(found.candidates.saving, Saving::Button);
     }
 
     // The TypeScript detector needed three rows and fell back to its other

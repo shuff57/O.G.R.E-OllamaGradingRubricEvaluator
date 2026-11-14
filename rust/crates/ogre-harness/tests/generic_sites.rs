@@ -21,9 +21,9 @@ use ogre_core::{
 use ogre_harness::cdp::{CdpPage, Chrome, LaunchOptions};
 use ogre_harness::sites::generic::{
     ButtonRule, DiscoverOptions, DiscoveryError, DiscoverySource, Element, FeedbackBox, Framed,
-    MaxScoreRule, PageMap, PickFor, ProfileAdapter, SaveRule, SaveSuccess, Severity, SiteProfile,
-    Snapshot, SnapshotNode, SnapshotOptions, ValidatedProfile, capture_snapshot, detect, discover,
-    draft_profile, main_frame, pick_element, validate_profile,
+    MaxScoreRule, PageMap, PickFor, ProfileAdapter, SaveRule, SaveSuccess, Saving, Severity,
+    SiteProfile, Snapshot, SnapshotNode, SnapshotOptions, ValidatedProfile, capture_snapshot,
+    detect, discover, draft_profile, main_frame, pick_element, validate_profile,
 };
 use ogre_harness::sites::{SiteAdapter, verify_writes};
 use ogre_harness::{Error, InputDriver, PageDriver};
@@ -270,6 +270,7 @@ async fn simple_batch_is_mapped_read_and_written() {
                 frame: None,
                 next_student: None,
                 previous_student: None,
+                saving: Saving::default(),
             },
             names: &["Alice Johnson", "Bob Smith", "Carol Davis"],
             answers: &["by expanding", "I factored", "I think it equals"],
@@ -300,6 +301,7 @@ async fn a_table_layout_is_mapped_read_and_written() {
                 frame: None,
                 next_student: None,
                 previous_student: None,
+                saving: Saving::default(),
             },
             names: &["Alice Johnson", "Bob Smith", "Carol Davis"],
             answers: &["L'Hôpital", "squeeze theorem", "maybe it's infinity"],
@@ -331,6 +333,7 @@ async fn deeply_wrapped_rows_are_mapped_read_and_written() {
                 frame: None,
                 next_student: None,
                 previous_student: None,
+                saving: Saving::default(),
             },
             names: &["Alice Johnson", "Bob Smith"],
             answers: &["Student wrote: 42", "Student wrote: 7"],
@@ -362,6 +365,7 @@ async fn an_unknown_lms_is_mapped_read_and_written() {
                 frame: None,
                 next_student: None,
                 previous_student: None,
+                saving: Saving::default(),
             },
             names: &["Emily Wilson", "Frank Martinez"],
             answers: &["abolition of feudalism", "storming of the Bastille"],
@@ -821,6 +825,7 @@ async fn rich_text_feedback_is_written_with_its_hidden_field() {
             frame: None,
             next_student: None,
             previous_student: None,
+            saving: Saving::default(),
         }
     );
     let adapter = ProfileAdapter::new(profile);
@@ -986,6 +991,7 @@ async fn a_page_showing_one_student_is_read_and_written_for_that_student() {
             previous_student: Some(ButtonRule::Selector {
                 selector: "#prev-student".into(),
             }),
+            saving: Saving::ButtonMovesOn,
         }
     );
 
@@ -1053,6 +1059,7 @@ fn by_address() -> PageMap {
             text: "Next student \u{bb}".into(),
         }),
         previous_student: None,
+        saving: Saving::default(),
     }
 }
 
@@ -1141,9 +1148,11 @@ fn kept_now(kept: &Kept) -> Value {
 
 const FOUR_STUDENTS: [&str; 4] = ["Avery, Sam", "Brook, Kai", "Casey, Lin", "Drew, Pat"];
 
-/// A profile adapter that does not wait long after the last student.
+/// A profile adapter that does not wait as long after the last student as
+/// the app does. Long enough still for a page to show another student
+/// while this computer is busy with other things.
 fn stepping(profile: ValidatedProfile) -> ProfileAdapter {
-    ProfileAdapter::new(profile).with_settle_time(Duration::from_secs(2))
+    ProfileAdapter::new(profile).with_settle_time(Duration::from_secs(5))
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1405,6 +1414,215 @@ async fn students_behind_buttons_at_one_address_are_read_and_written() {
     close(s).await;
 }
 
+/// A site whose one button that keeps a grade also shows the next student.
+/// The structure rules see that from the button's label, and a grade is
+/// taken to be saved when the page has moved on.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs Chrome installed"]
+async fn a_save_button_that_also_shows_the_next_student_saves_each_grade() {
+    let fixture = "one-at-a-time-save-and-next.html";
+    let (s, _, kept) = open_served("one-save-and-next", fixture).await;
+
+    let draft = draft_profile(&snapshot(&s.page).await).expect("heuristics propose a profile");
+    assert_eq!(
+        draft.page.save.as_ref().map(|save| &save.button),
+        Some(&ButtonRule::Selector {
+            selector: "#save-next".into()
+        })
+    );
+    assert_eq!(draft.page.saving, Saving::ButtonMovesOn);
+    assert!(draft.page.confirms_saves(), "moving on is the confirmation");
+    let report = validate_profile(&s.page, &draft).await.unwrap();
+    assert!(report.passed(), "{}", report.error_summary());
+    let said = |part: &str| report.problems().iter().any(|p| p.message.contains(part));
+    assert!(!said("none can be written"), "{:?}", report.problems());
+    assert!(
+        said("after the last student there is none"),
+        "the teacher is told what cannot be confirmed: {:?}",
+        report.problems()
+    );
+    let adapter = stepping(validated(&s.page, draft).await);
+    assert!(adapter.saves_on_write());
+
+    let read = adapter.read_page(&s.page).await.unwrap();
+    assert_eq!(names(&read), FOUR_STUDENTS);
+    assert_eq!(kept_now(&kept), json!({}), "reading pressed no save button");
+
+    // In order, then back to an earlier student: after each save the page
+    // is on the next student, wherever the next write is for.
+    let mut written = Vec::new();
+    for (index, score, feedback) in [(1, 10.0, "<p>Show the rule.</p>"), (0, 15.0, "<p>Yes.</p>")] {
+        let write = planned(&read, index, score, feedback);
+        let receipt = adapter.write_grade(&s.page, &write).await.unwrap();
+        written.push((write, receipt));
+    }
+    assert_eq!(
+        verify_writes(&adapter, &s.page, &written).await.unwrap(),
+        []
+    );
+    assert_eq!(
+        kept_now(&kept),
+        json!({
+            "quiz-grade-1": { "score": "10", "feedback": "Show the rule." },
+            "quiz-grade-0": { "score": "15", "feedback": "Yes." },
+        })
+    );
+
+    // A grade the site refuses, here for want of a comment, leaves the page
+    // where it was, and that is not taken for a save.
+    let bare = planned(&read, 2, 4.0, "");
+    let refused = adapter.write_grade(&s.page, &bare).await.unwrap_err();
+    assert!(
+        refused.to_string().contains("still shows Casey, Lin"),
+        "{refused}"
+    );
+    assert_eq!(kept_now(&kept).get("quiz-grade-2"), None);
+
+    // After the last student the page has nowhere to go. This site did
+    // keep the grade, but nothing on the page says so, and OGRE says that
+    // it cannot tell rather than that the grade was saved.
+    let last = planned(&read, 3, 12.0, "<p>Right.</p>");
+    let unsure = adapter.write_grade(&s.page, &last).await.unwrap_err();
+    assert!(
+        unsure.to_string().contains("no student after this one"),
+        "{unsure}"
+    );
+    assert_eq!(kept_now(&kept)["quiz-grade-3"]["score"], "12");
+
+    close(s).await;
+}
+
+/// A site with no save button, which keeps a score a little after its box
+/// is changed. Nothing about the page gives that away: the teacher says so
+/// in the mapping, and OGRE then gives the site a moment before it shows
+/// another student.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs Chrome installed"]
+async fn a_site_that_saves_as_a_score_is_typed_is_written_one_student_at_a_time() {
+    let fixture = "one-at-a-time-saves-itself.html";
+    let (s, url, kept) = open_served("one-saves-itself", fixture).await;
+
+    let mut draft = draft_profile(&snapshot(&s.page).await).expect("heuristics propose a profile");
+    assert_eq!(draft.page.save, None);
+    assert_eq!(draft.page.saving, Saving::Button);
+    let report = validate_profile(&s.page, &draft).await.unwrap();
+    assert!(
+        report
+            .problems()
+            .iter()
+            .any(|p| p.message.contains("none can be written")),
+        "as mapped from structure, nothing can be written: {:?}",
+        report.problems()
+    );
+
+    draft.page.saving = Saving::AsTyped;
+    let report = validate_profile(&s.page, &draft).await.unwrap();
+    assert!(report.passed(), "{}", report.error_summary());
+    let said = |part: &str| report.problems().iter().any(|p| p.message.contains(part));
+    assert!(!said("none can be written"), "{:?}", report.problems());
+    assert!(
+        said("cannot see that the site stored a grade"),
+        "{:?}",
+        report.problems()
+    );
+    let adapter = stepping(validated(&s.page, draft.clone()).await);
+    assert!(adapter.saves_on_write());
+
+    let read = adapter.read_page(&s.page).await.unwrap();
+    assert_eq!(names(&read), FOUR_STUDENTS);
+    let mut written = Vec::new();
+    for (index, score, feedback) in [
+        (2, 4.0, "<p>The 3 is missing.</p>"),
+        (0, 15.0, "<p>Yes.</p>"),
+    ] {
+        let write = planned(&read, index, score, feedback);
+        let receipt = adapter.write_grade(&s.page, &write).await.unwrap();
+        written.push((write, receipt));
+    }
+    assert_eq!(
+        verify_writes(&adapter, &s.page, &written).await.unwrap(),
+        []
+    );
+    assert_eq!(
+        kept_now(&kept),
+        json!({
+            "quiz-grade-2": { "score": "4", "feedback": "The 3 is missing." },
+            "quiz-grade-0": { "score": "15", "feedback": "Yes." },
+        })
+    );
+    // There is nothing to press afterwards.
+    adapter.save(&s.page).await.unwrap();
+
+    // Without the moment's wait the site loses what was typed, and reading
+    // the students back shows it: the check is what the page holds, not
+    // that a box was filled in. The site is slow here, so that which of
+    // the two comes first does not hang on how busy this computer is.
+    s.page.navigate(&format!("{url}?wait=3000")).await.unwrap();
+    let hasty = stepping(validated(&s.page, draft).await).with_autosave_pause(Duration::ZERO);
+    let read = hasty.read_page(&s.page).await.unwrap();
+    let mut written = Vec::new();
+    for (index, score, feedback) in [
+        (1, 10.0, "<p>Show the rule.</p>"),
+        (3, 12.0, "<p>Right.</p>"),
+    ] {
+        let write = planned(&read, index, score, feedback);
+        let receipt = hasty.write_grade(&s.page, &write).await.unwrap();
+        written.push((write, receipt));
+    }
+    // Nothing moved the page on after the second, so that one is kept.
+    tokio::time::sleep(Duration::from_millis(4000)).await;
+    let lost = verify_writes(&hasty, &s.page, &written).await.unwrap();
+    assert!(
+        !lost.is_empty() && lost.iter().all(|miss| miss.name == "Brook, Kai"),
+        "the first of the two was cut off, and only that one: {lost:?}"
+    );
+    let all = kept_now(&kept);
+    assert_eq!(all.get("quiz-grade-1"), None);
+    assert_eq!(all["quiz-grade-3"]["score"], "12");
+
+    close(s).await;
+}
+
+/// A page that lists its students and is said to save by itself: a grade is
+/// stored by being typed, the boxes are left as a person would leave them,
+/// and there is nothing to press afterwards.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs Chrome installed"]
+async fn a_page_of_students_that_saves_by_itself_has_nothing_to_press() {
+    let s = open("batch-saves-itself", "simple-batch.html").await;
+    let mut draft = draft_profile(&snapshot(&s.page).await).expect("heuristics propose a profile");
+    draft.page.save = None;
+    draft.page.saving = Saving::AsTyped;
+    let adapter = ProfileAdapter::new(validated(&s.page, draft).await);
+    assert!(adapter.saves_on_write());
+    assert!(adapter.saves_unseen(), "and OGRE cannot see that it did");
+
+    // What a site that saves on leaving a box would be listening for.
+    s.page
+        .eval(
+            "window.left = []; document.addEventListener('focusout', \
+             (e) => window.left.push(e.target.tagName))",
+        )
+        .await
+        .unwrap();
+    let read = adapter.read_page(&s.page).await.unwrap();
+    let write = planned(&read, 1, 7.0, "<p>Good start.</p>");
+    let receipt = adapter.write_grade(&s.page, &write).await.unwrap();
+    assert_eq!(
+        verify_writes(&adapter, &s.page, &[(write, receipt)])
+            .await
+            .unwrap(),
+        []
+    );
+    assert_eq!(
+        s.page.eval("window.left").await.unwrap(),
+        json!(["INPUT", "TEXTAREA"])
+    );
+    adapter.save(&s.page).await.unwrap();
+
+    close(s).await;
+}
+
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs Chrome installed"]
 async fn nothing_is_filled_in_on_a_one_at_a_time_site_that_cannot_confirm_a_save() {
@@ -1477,6 +1695,7 @@ async fn answers_shown_in_frames_from_another_site_are_read() {
             frame: None,
             next_student: None,
             previous_student: None,
+            saving: Saving::default(),
         },
     );
     let report = validate_profile(&s.page, &profile).await.unwrap();
@@ -1895,6 +2114,7 @@ async fn discovery_tells_the_ai_which_selectors_failed_and_asks_again() {
             frame: None,
             next_student: None,
             previous_student: None,
+            saving: Saving::default(),
         }
     );
     assert_eq!(found.report.students, 2);
@@ -2311,6 +2531,7 @@ async fn a_mapping_is_put_together_by_pointing_at_the_page() {
             frame: None,
             next_student: None,
             previous_student: None,
+            saving: Saving::default(),
         },
     );
     let report = validate_profile(page, &profile).await.unwrap();

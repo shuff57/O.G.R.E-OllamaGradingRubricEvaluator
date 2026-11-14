@@ -12,7 +12,9 @@ use ogre_llm::{ChatProvider, ChatRequest, LlmError, Message};
 use serde_json::Value;
 
 use super::heuristics::{self, Mode};
-use super::profile::{ButtonRule, FeedbackBox, MaxScoreRule, PageMap, SaveRule, SiteProfile};
+use super::profile::{
+    ButtonRule, FeedbackBox, MaxScoreRule, PageMap, SaveRule, Saving, SiteProfile,
+};
 use super::snapshot::{Snapshot, SnapshotOptions, capture_snapshot};
 use super::validate::{Element, ValidatedProfile, ValidationReport, validate_profile};
 use crate::PageDriver;
@@ -407,6 +409,12 @@ fn draft_from(answer: &Value) -> Result<DiscoveryDraft, DiscoveryParseError> {
             frame: None,
             next_student: step("nextButton"),
             previous_student: step("prevButton"),
+            // "Save and next" on a page that shows one student: the label
+            // is all there is to go by.
+            saving: text("save", "buttonText")
+                .filter(|_| mode == Mode::Sequential)
+                .map(|label| Saving::of_button_labelled(&label))
+                .unwrap_or_default(),
         },
         fallback_save_text: text("save", "fallbackText"),
         confidence: answer["confidence"].as_str().map(str::to_owned),
@@ -597,6 +605,9 @@ async fn settle(
         if report.has_error(Element::SaveButton) || report.has_error(Element::SaveConfirmation) {
             profile.page.save = match (profile.page.save.take(), fallback_save_text.take()) {
                 (Some(mut rule), Some(text)) => {
+                    if profile.page.saving == Saving::ButtonMovesOn {
+                        profile.page.saving = Saving::of_button_labelled(&text);
+                    }
                     rule.button = ButtonRule::Text { text };
                     Some(rule)
                 }
@@ -690,6 +701,30 @@ mod tests {
     }
 
     // ---- Ported from discover.test.ts: parseDiscoveryResponse ------------
+
+    #[test]
+    fn a_save_button_that_names_the_next_student_is_mapped_as_one_that_moves_on() {
+        let reply = |mode: &str, button: &str| {
+            json!({
+                "navigation": { "mode": mode, "nextButton": "#next", "prevButton": "#prev", "studentIndicator": "h2", "submitButton": null, "waitForSelector": null },
+                "selectors": { "studentSection": if mode == "batch" { json!(".row") } else { Value::Null }, "studentName": "h2", "scoreInput": "#score", "feedbackBox": null, "feedbackHidden": null, "questionRegion": ".work", "fullCreditLink": null },
+                "feedback": { "type": "unknown", "requiresHiddenSync": false, "htmlWrap": false },
+                "save": { "buttonText": button },
+                "confidence": "high"
+            })
+            .to_string()
+        };
+        let saving = |mode: &str, button: &str| {
+            parse_discovery_response(&reply(mode, button))
+                .unwrap()
+                .page
+                .saving
+        };
+        assert_eq!(saving("sequential", "Save & Next"), Saving::ButtonMovesOn);
+        assert_eq!(saving("sequential", "Save"), Saving::Button);
+        // A page that lists its students has no next one to move on to.
+        assert_eq!(saving("batch", "Save & Next"), Saving::Button);
+    }
 
     #[test]
     fn parses_a_plain_json_answer() {

@@ -36,6 +36,13 @@ pub trait SiteAdapter: Send + Sync {
     /// False if it only fills a form that [`Self::save`] then submits.
     fn saves_on_write(&self) -> bool;
 
+    /// True if the site is only said to store a grade as it is typed, with
+    /// nothing for OGRE to press and nothing that confirms it. What was
+    /// written is then not known to be stored.
+    fn saves_unseen(&self) -> bool {
+        false
+    }
+
     /// Stores what was written, and returns once the site has confirmed it.
     async fn save(&self, page: &dyn PageDriver) -> Result<()>;
 

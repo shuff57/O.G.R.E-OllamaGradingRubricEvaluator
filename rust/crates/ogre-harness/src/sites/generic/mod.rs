@@ -39,7 +39,7 @@ pub use heuristics::{Candidates, Detection, Mode, detect, draft_profile};
 pub use pick::{PICK_SECONDS, PickFor, pick_element};
 pub use profile::{
     ButtonRule, FeedbackBox, MaxScoreRule, PROFILE_VERSION, PageMap, ProfileError, SaveRule,
-    SaveSuccess, SiteProfile, UrlRule,
+    SaveSuccess, Saving, SiteProfile, UrlRule,
 };
 pub use snapshot::{
     Outline, Priority, Snapshot, SnapshotNode, SnapshotOptions, SnapshotStats, capture_snapshot,

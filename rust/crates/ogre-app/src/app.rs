@@ -551,7 +551,13 @@ impl OgreApp {
                         let kept = report.kept.take();
                         self.error = session.apply_write(report);
                         if self.error.is_none() {
-                            self.notice = Some(if session.saves_on_write {
+                            self.notice = Some(if session.saves_unseen {
+                                format!(
+                                    "{} typed in on {}, which is said to save them by itself. OGRE cannot see that it did: look at a few students there.",
+                                    count(written, "grade"),
+                                    session.site
+                                )
+                            } else if session.saves_on_write {
                                 format!("{} stored on {}.", count(written, "grade"), session.site)
                             } else {
                                 format!(

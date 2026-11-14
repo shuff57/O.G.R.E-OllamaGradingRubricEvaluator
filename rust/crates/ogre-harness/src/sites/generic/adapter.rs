@@ -13,9 +13,9 @@ use serde_json::json;
 
 use super::frame::Within;
 use super::inspect::{self, Inspection, Student, call};
-use super::profile::SiteProfile;
+use super::profile::{Saving, SiteProfile};
 use super::validate::{self, ValidatedProfile};
-use super::walk::{Route, Walker, field_of, place_and_field};
+use super::walk::{AfterSave, Route, Walker, field_of, place_and_field};
 use crate::driver::eval_as;
 use crate::sites::{SiteAdapter, WriteReceipt};
 use crate::{Error, PageDriver, Result, feedback};
@@ -29,6 +29,9 @@ const SAVE_TIMEOUT: Duration = Duration::from_secs(30);
 /// time. After the last student this is waited out once, where the site
 /// leaves its button to the next one in place.
 const SETTLE_TIME: Duration = Duration::from_secs(8);
+/// How long a site that saves as a score is typed is given to do so, before
+/// OGRE moves on to another student. Moving on sooner can cut the save off.
+const AUTOSAVE_PAUSE: Duration = Duration::from_millis(1500);
 /// Prompts longer than this are cut, as the grading prompts expect.
 const PROMPT_LIMIT: usize = 1500;
 
@@ -44,11 +47,16 @@ const PROMPT_LIMIT: usize = 1500;
 /// student from the one shown to the last is read, and each grade is saved
 /// as it is written, because moving on would lose it. Without that button
 /// the page is read and written for the student it shows.
+///
+/// How a grade is saved is the profile's [`Saving`]: by the save button and
+/// the page's sign that it worked, by a save button that also shows the next
+/// student, or by the site itself as the score is typed.
 pub struct ProfileAdapter {
     profile: SiteProfile,
     name: &'static str,
     save_timeout: Duration,
     settle_time: Duration,
+    autosave_pause: Duration,
     /// The students of the last read of a site that shows one at a time.
     route: Mutex<Option<Route>>,
 }
@@ -61,6 +69,7 @@ impl ProfileAdapter {
             profile,
             save_timeout: SAVE_TIMEOUT,
             settle_time: SETTLE_TIME,
+            autosave_pause: AUTOSAVE_PAUSE,
             route: Mutex::new(None),
         }
     }
@@ -68,6 +77,12 @@ impl ProfileAdapter {
     /// Changes how long another student may take to show.
     pub fn with_settle_time(mut self, time: Duration) -> Self {
         self.settle_time = time;
+        self
+    }
+
+    /// Changes how long a site that saves by itself is given to do so.
+    pub fn with_autosave_pause(mut self, pause: Duration) -> Self {
+        self.autosave_pause = pause;
         self
     }
 
@@ -165,6 +180,44 @@ impl ProfileAdapter {
                 "Saving failed: {}. Check the page and save in the browser yourself.",
                 outcome.error.unwrap_or_else(|| "no reason given".into())
             )))
+        }
+    }
+
+    /// Saves the student shown with a save button that also shows the next
+    /// student. Student number `at` of the last read is the one shown.
+    async fn save_and_move_on(&self, page: &dyn PageDriver, name: &str, at: usize) -> Result<()> {
+        let last = self.route().is_none_or(|route| at + 1 >= route.len());
+        let shows_success = self
+            .profile
+            .page
+            .save
+            .as_ref()
+            .is_some_and(|save| save.success.is_some());
+        // After the last student there is nowhere to move on to. Where the
+        // profile says how a finished save looks, that is waited for.
+        if last && shows_success {
+            return self.click_save(page).await;
+        }
+        let after = self.walker().save_and_move_on(page).await?;
+        // Wherever the page is now, it is not known to be on this student.
+        if let Some(mut route) = self.route() {
+            route.lose_place();
+            self.keep_route(Some(route));
+        }
+        match after {
+            Ok(AfterSave::MovedOn) => Ok(()),
+            Ok(AfterSave::Stayed) => Err(Error::Page(format!(
+                "the page still shows {name} after the save button was pressed{}, so OGRE \
+                 cannot tell that this grade was saved. Check this student in the browser.",
+                if last {
+                    " (there is no student after this one to move on to)"
+                } else {
+                    ""
+                }
+            ))),
+            Err(reason) => Err(Error::Page(format!(
+                "Saving failed: {reason}. Check the page and save in the browser yourself."
+            ))),
         }
     }
 
@@ -353,7 +406,20 @@ impl SiteAdapter for ProfileAdapter {
         }
         let here = self.show_student_of(page, write).await?;
         let receipt = self.fill(page, &here).await?;
-        self.click_save(page).await.map_err(|error| match error {
+        let saved = match self.profile.page.saving {
+            // The site stores what was typed. It is given a moment before
+            // anything moves the page on.
+            Saving::AsTyped => {
+                tokio::time::sleep(self.autosave_pause).await;
+                Ok(())
+            }
+            Saving::ButtonMovesOn if self.profile.page.save_moves_on() => {
+                let at = place_and_field(&write.score.field).map_or(0, |(at, _)| at);
+                self.save_and_move_on(page, &write.name, at).await
+            }
+            _ => self.click_save(page).await,
+        };
+        saved.map_err(|error| match error {
             Error::Page(reason) => Error::Page(format!("{}: {reason}", write.name)),
             other => other,
         })?;
@@ -363,7 +429,11 @@ impl SiteAdapter for ProfileAdapter {
     /// True for a site that shows one student at a time: each grade is
     /// saved before the next student is shown.
     fn saves_on_write(&self) -> bool {
-        self.profile.page.steps_through_students()
+        self.profile.page.steps_through_students() || self.profile.page.saves_as_typed()
+    }
+
+    fn saves_unseen(&self) -> bool {
+        self.profile.page.saves_as_typed()
     }
 
     /// Clicks the profile's save button and waits for the confirmation the
@@ -372,7 +442,7 @@ impl SiteAdapter for ProfileAdapter {
     async fn save(&self, page: &dyn PageDriver) -> Result<()> {
         let within = Within::of(page, self.profile.page.frame.as_deref());
         let page = within.page();
-        if self.profile.page.steps_through_students() {
+        if self.profile.page.steps_through_students() || self.profile.page.saves_as_typed() {
             // Every grade was saved as it was written.
             return Ok(());
         }

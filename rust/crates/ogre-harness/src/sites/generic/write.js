@@ -53,10 +53,18 @@
     }
   }
 
+  // A site that saves by itself does so when a box is left. A script
+  // cannot move the real focus about without a visible page, so the events
+  // of leaving are sent as well.
+  const leave = (el) => {
+    el.dispatchEvent(new Event('blur', { bubbles: true }));
+    if (map.saving === 'as_typed') el.dispatchEvent(new Event('focusout', { bubbles: true }));
+  };
+
   box.scrollIntoView({ block: 'center' });
   box.focus();
   setValue(box, args.score.value);
-  box.dispatchEvent(new Event('blur', { bubbles: true }));
+  leave(box);
 
   let via = null;
   let feedbackText = null;
@@ -65,6 +73,7 @@
       // A one-line box drops line breaks without leaving a space behind.
       const text = fb.tagName === 'INPUT' ? args.feedback.text.replace(/\s*\n+\s*/g, ' ') : args.feedback.text;
       setValue(fb, text);
+      if (map.saving === 'as_typed') leave(fb);
       via = 'textarea';
       feedbackText = fb.value;
     } else {
@@ -82,6 +91,7 @@
         fb.innerHTML = args.feedback.html;
         if (hidden) hidden.value = args.feedback.html;
         fb.dispatchEvent(new Event('input', { bubbles: true }));
+        if (map.saving === 'as_typed') leave(fb);
         via = 'dom';
       }
     }
