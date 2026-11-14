@@ -31,6 +31,22 @@ pub trait PageDriver: Send + Sync {
                 .into(),
         ))
     }
+
+    /// As [`Self::eval_in_frame`], for a frame that is itself inside other
+    /// frames. `frames` goes from the outermost to the innermost, each a
+    /// JavaScript expression that gives the frame's element in the page or
+    /// frame around it. With no frames this is [`Self::eval`].
+    async fn eval_in_frames(&self, frames: &[&str], expression: &str) -> Result<serde_json::Value> {
+        match frames {
+            [] => self.eval(expression).await,
+            [frame] => self.eval_in_frame(frame, expression).await,
+            _ => Err(crate::Error::Page(
+                "This way of showing the page cannot read a frame inside a frame. In \
+                 Settings, have the page shown in Chrome\u{2019}s own window."
+                    .into(),
+            )),
+        }
+    }
 }
 
 /// A page that can also be operated the way a person would: real mouse and

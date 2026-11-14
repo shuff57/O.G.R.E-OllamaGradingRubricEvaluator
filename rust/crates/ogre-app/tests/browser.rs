@@ -715,6 +715,59 @@ fn maps_a_tool_shown_in_a_frame_then_reads_and_fills_it() {
     let _ = std::fs::remove_dir_all(&data_dir);
 }
 
+/// A grading tool two frames down: a portal shows the school's site in a
+/// frame, and that shows the tool in a frame of its own. "Map this page"
+/// finds the tool, and the mapping says the way to it.
+#[test]
+#[ignore = "needs Chrome installed"]
+fn maps_a_tool_shown_in_a_frame_inside_a_frame_then_reads_and_fills_it() {
+    let (worker, woken, data_dir) = fresh_worker("tool-two-frames-down");
+    ask(
+        &worker,
+        &woken,
+        Command::Open(fixture("generic/tool-in-a-frame-in-a-frame.html")),
+    );
+
+    let (event, _) = ask(&worker, &woken, Command::MapPage { ai: None });
+    let Event::Mapped(found) = event else {
+        panic!("expected a mapping, got {event:?}");
+    };
+    assert_eq!(
+        found.profile.page.frame.as_deref(),
+        Some("iframe#course_frame >>> iframe#tool_content")
+    );
+    assert_eq!(found.students, 3);
+    let (event, _) = ask(
+        &worker,
+        &woken,
+        Command::SaveProfile(Box::new(found.profile)),
+    );
+    assert!(
+        matches!(&event, Event::Profiles(list) if list.len() == 1),
+        "{event:?}"
+    );
+
+    let (event, _) = ask(&worker, &woken, Command::ReadStudents);
+    let Event::Read(read) = event else {
+        panic!("expected students, got {event:?}");
+    };
+    assert_eq!(read.page.submissions.len(), 3);
+    let second = &read.page.submissions[1];
+    assert!(!second.response.is_empty());
+    let write = plan_write(second, 7.0, "<p>Good start.</p>", WritePolicy::default()).unwrap();
+    let (event, _) = ask(&worker, &woken, Command::Write(vec![write]));
+    let Event::Written(written) = event else {
+        panic!("expected a write report, got {event:?}");
+    };
+    assert_eq!(written.written, [1]);
+    assert!(written.failed.is_empty(), "{:?}", written.failed);
+    assert!(written.mismatches.is_empty(), "{:?}", written.mismatches);
+    assert_eq!(written.page.unwrap().submissions[1].score(), Some(7.0));
+
+    drop(worker);
+    let _ = std::fs::remove_dir_all(&data_dir);
+}
+
 /// A page that is mostly one frame, where the frame is only a viewer of the
 /// student's work and the marks are on the page itself. The frame is tried
 /// first and comes to nothing, and the page is then mapped as it always was,

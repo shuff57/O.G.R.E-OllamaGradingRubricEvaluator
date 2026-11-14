@@ -600,7 +600,8 @@ impl OgreApp {
             "Frame the grading page is in",
             &mut edit.frame,
             "Empty, unless the grading page is shown inside a frame of the page you have \
-             open. Then a selector for that frame; everything below is looked up inside it.",
+             open. Then a selector for that frame; everything below is looked up inside it. \
+             For a frame inside a frame, the outer one first with >>> between them.",
         );
 
         let check = edit.current_check().cloned();

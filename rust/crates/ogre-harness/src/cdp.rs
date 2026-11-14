@@ -446,56 +446,131 @@ impl PageDriver for CdpPage {
     }
 
     async fn eval_in_frame(&self, frame: &str, expression: &str) -> Result<Value> {
+        self.eval_in_frames(&[frame], expression).await
+    }
+
+    async fn eval_in_frames(&self, frames: &[&str], expression: &str) -> Result<Value> {
         let no_frame = || Error::Page("The frame was not found on the page.".into());
-        // The frame's element, kept as a handle rather than brought back.
-        let params = json!({ "expression": frame, "returnByValue": false });
-        let found = self.call("Runtime.evaluate", params).await?;
-        if found.get("exceptionDetails").is_some() {
-            return Err(no_frame());
+        // Where the innermost frame so far runs its scripts: in this tab or
+        // in a target of its own, and there in the page or in a frame of it.
+        let mut target: Option<CdpPage> = None;
+        let mut scope = Scope::Page;
+        for frame in frames {
+            let page = target.as_ref().unwrap_or(self);
+            // The frame's element, kept as a handle rather than brought back.
+            let element = page.handle_in(&scope, frame).await?;
+            let entered = match &element {
+                Some(element) => page.enter_frame(element).await,
+                None => Err(no_frame()),
+            };
+            // The handles were for that one step.
+            if let Some(element) = &element {
+                page.release(element).await;
+            }
+            if let Scope::Document(document) = &scope {
+                page.release(document).await;
+            }
+            let (inner, within) = entered?;
+            if inner.is_some() {
+                target = inner;
+            }
+            scope = within;
         }
-        let element = found["result"]["objectId"].as_str().ok_or_else(no_frame)?;
-        let described = self
-            .call("DOM.describeNode", json!({ "objectId": element }))
-            .await;
-        // The handle is only needed for that one question.
+        let page = target.as_ref().unwrap_or(self);
+        let value = page.value_in(&scope, expression).await;
+        if let Scope::Document(document) = &scope {
+            page.release(document).await;
+        }
+        value
+    }
+}
+
+/// Where in a target a script is run.
+enum Scope {
+    /// In the target's own page.
+    Page,
+    /// In a frame that Chrome runs in the page's own process, by a handle
+    /// on the frame's document: a function called on it runs in the frame.
+    Document(String),
+}
+
+impl CdpPage {
+    /// A handle on the object `expression` gives in `scope`. `None` if it
+    /// throws or gives no object.
+    async fn handle_in(&self, scope: &Scope, expression: &str) -> Result<Option<String>> {
+        let found = match scope {
+            Scope::Page => {
+                let params = json!({ "expression": expression, "returnByValue": false });
+                self.call("Runtime.evaluate", params).await?
+            }
+            Scope::Document(document) => {
+                let params = json!({
+                    "objectId": document,
+                    "functionDeclaration": format!("function() {{ return ({expression}\n); }}"),
+                    "returnByValue": false,
+                });
+                self.call("Runtime.callFunctionOn", params).await?
+            }
+        };
+        if found.get("exceptionDetails").is_some() {
+            return Ok(None);
+        }
+        Ok(found["result"]["objectId"].as_str().map(str::to_owned))
+    }
+
+    /// What `expression` gives in `scope`, as [`PageDriver::eval`] gives it
+    /// in the page.
+    async fn value_in(&self, scope: &Scope, expression: &str) -> Result<Value> {
+        let Scope::Document(document) = scope else {
+            return self.eval(expression).await;
+        };
+        let params = json!({
+            "objectId": document,
+            "functionDeclaration": format!("function() {{ return ({expression}\n); }}"),
+            "awaitPromise": true,
+            "returnByValue": true,
+        });
+        let reply = self
+            .conn
+            .call(
+                Some(&self.session),
+                "Runtime.callFunctionOn",
+                params,
+                EVAL_TIMEOUT,
+            )
+            .await?;
+        value_of(reply)
+    }
+
+    async fn release(&self, object: &str) {
         let _ = self
-            .call("Runtime.releaseObject", json!({ "objectId": element }))
+            .call("Runtime.releaseObject", json!({ "objectId": object }))
             .await;
-        let node = described?["node"].take();
+    }
+
+    /// Where the frame runs its scripts whose element `element` is a handle
+    /// on: in this target, by its document, or in a target of its own.
+    async fn enter_frame(&self, element: &str) -> Result<(Option<CdpPage>, Scope)> {
+        let no_frame = || Error::Page("The frame was not found on the page.".into());
+        let mut described = self
+            .call("DOM.describeNode", json!({ "objectId": element }))
+            .await?;
+        let node = described["node"].take();
 
         // A frame that Chrome runs in the page's own process: its document
-        // is at hand, and a function called on it runs in the frame.
+        // is at hand.
         if let Some(document) = node["contentDocument"]["backendNodeId"].as_i64() {
             let resolved = self
                 .call("DOM.resolveNode", json!({ "backendNodeId": document }))
                 .await?;
             let document = text(&resolved["object"], "objectId")?;
-            let params = json!({
-                "objectId": document,
-                "functionDeclaration": format!("function() {{ return ({expression}\n); }}"),
-                "awaitPromise": true,
-                "returnByValue": true,
-            });
-            let reply = self
-                .conn
-                .call(
-                    Some(&self.session),
-                    "Runtime.callFunctionOn",
-                    params,
-                    EVAL_TIMEOUT,
-                )
-                .await;
-            // The handle on the frame's document was for this one call.
-            let _ = self
-                .call("Runtime.releaseObject", json!({ "objectId": document }))
-                .await;
-            return value_of(reply?);
+            return Ok((None, Scope::Document(document.to_owned())));
         }
         // A frame showing another site runs in a process of its own, and is
         // a target of its own, named after the frame.
         let frame_id = node["frameId"].as_str().ok_or_else(no_frame)?;
         let started = Instant::now();
-        let inner = loop {
+        loop {
             // Chrome only has a target for such a frame once it has been
             // asked what targets there are, and just after the page loaded
             // the frame may not be among them yet.
@@ -503,14 +578,13 @@ impl PageDriver for CdpPage {
                 .call(None, "Target.getTargets", json!({}), COMMAND_TIMEOUT)
                 .await?;
             match self.conn.tab(frame_id).await {
-                Ok(inner) => break inner,
+                Ok(inner) => return Ok((Some(inner), Scope::Page)),
                 Err(_) if started.elapsed() < FRAME_WAIT && !self.conn.is_closed() => {
                     tokio::time::sleep(Duration::from_millis(100)).await;
                 }
                 Err(_) => return Err(no_frame()),
             }
-        };
-        inner.eval(expression).await
+        }
     }
 }
 

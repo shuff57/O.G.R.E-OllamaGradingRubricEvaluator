@@ -23,7 +23,7 @@ use ogre_harness::sites::generic::{
     ButtonRule, DiscoverOptions, DiscoveryError, DiscoverySource, Element, FeedbackBox, Framed,
     MaxScoreRule, PageMap, PickFor, ProfileAdapter, SaveRule, SaveSuccess, Saving, Severity,
     SiteProfile, Snapshot, SnapshotNode, SnapshotOptions, ValidatedProfile, capture_snapshot,
-    detect, discover, draft_profile, main_frame, pick_element, validate_profile,
+    detect, discover, draft_profile, frame_inside, main_frame, pick_element, validate_profile,
 };
 use ogre_harness::sites::{SiteAdapter, verify_writes};
 use ogre_harness::{Error, InputDriver, PageDriver};
@@ -1704,6 +1704,113 @@ async fn answers_shown_in_frames_from_another_site_are_read() {
         !report.has_error(Element::Response),
         "the browser reads what the page's own script cannot"
     );
+
+    let adapter = ProfileAdapter::new(report.into_validated().unwrap());
+    let read = adapter.read_page(&s.page).await.unwrap();
+    assert_eq!(names(&read), ["Avery, Sam", "Brook, Kai", "Casey, Lin"]);
+    let answers: Vec<&str> = read
+        .submissions
+        .iter()
+        .map(|s| s.response.as_str())
+        .collect();
+    assert_eq!(
+        answers,
+        [
+            "The **median** is 14, because it is the middle value.",
+            "I added them all up and divided by 5.",
+            "",
+        ]
+    );
+
+    close(s).await;
+}
+
+/// A district's portal shows a school's site in a frame, and that shows the
+/// grading tool in a frame of its own. The tool is found two frames down,
+/// and is read and written there under the address the teacher has open.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs Chrome installed"]
+async fn a_grading_page_in_a_frame_inside_a_frame_is_mapped_read_and_written() {
+    let fixture = "tool-in-a-frame-in-a-frame.html";
+    let s = open("tool-two-frames-down", fixture).await;
+    let top = fixture_url(fixture);
+
+    // Neither the portal nor the school's page has a student on it, and
+    // each is mostly one frame.
+    assert_eq!(draft_profile(&snapshot(&s.page).await), None);
+    let outer = main_frame(&s.page).await.unwrap().expect("a frame");
+    assert_eq!(outer, "iframe#course_frame");
+    let school = Framed::new(&s.page, &outer);
+    let school_page = capture_snapshot(&school, &SnapshotOptions::default())
+        .await
+        .unwrap();
+    assert_eq!(draft_profile(&school_page), None);
+    let inner = main_frame(&school).await.unwrap().expect("a frame in it");
+    assert_eq!(inner, "iframe#tool_content");
+    let frame = frame_inside(&outer, &inner);
+    assert_eq!(frame, "iframe#course_frame >>> iframe#tool_content");
+
+    let tool = Framed::new(&s.page, &frame);
+    let inside = capture_snapshot(&tool, &SnapshotOptions::default())
+        .await
+        .unwrap();
+    let mut map = draft_profile(&inside)
+        .expect("heuristics propose a profile")
+        .page;
+    map.frame = Some(frame);
+    let profile = SiteProfile::for_page(&top, map);
+    let adapter = ProfileAdapter::new(validated(&s.page, profile).await);
+
+    let read = adapter.read_page(&s.page).await.unwrap();
+    assert_eq!(read.url, top, "the address is the one the teacher sees");
+    assert_eq!(names(&read), ["Alice Johnson", "Bob Smith", "Carol Davis"]);
+    assert!(read.submissions[1].response.contains("I factored"));
+
+    let write = planned(&read, 1, 7.5, "<p>Check the last step.</p>");
+    let receipt = adapter.write_grade(&s.page, &write).await.unwrap();
+    assert_eq!(
+        verify_writes(&adapter, &s.page, &[(write, receipt)])
+            .await
+            .unwrap(),
+        []
+    );
+    // The grade is in the tool, and nowhere in the pages around it.
+    let boxes = "Array.from(document.querySelectorAll('input[type=number]'), (box) => box.value)";
+    assert_eq!(tool.eval(boxes).await.unwrap(), json!(["", "7.5", ""]));
+    assert_eq!(school.eval(boxes).await.unwrap(), json!([]));
+    assert_eq!(s.page.eval(boxes).await.unwrap(), json!([]));
+
+    close(s).await;
+}
+
+/// A tool in a frame that shows each answer in a frame of its own, from
+/// somewhere a script of the tool cannot look into: the answers are read
+/// through both frames.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs Chrome installed"]
+async fn answers_in_frames_of_a_tool_that_is_itself_in_a_frame_are_read() {
+    let fixture = "answers-in-a-framed-tool.html";
+    let s = open("answers-two-frames-down", fixture).await;
+    let profile = SiteProfile::for_page(
+        &fixture_url(fixture),
+        PageMap {
+            student_section: Some("div.submission".into()),
+            student_name: ".student-name".into(),
+            score_input: "input.score".into(),
+            max_score: Some(MaxScoreRule::usual()),
+            feedback: None,
+            response: "iframe.answer-viewer".into(),
+            prompt: None,
+            save: None,
+            frame: Some("iframe#tool_content".into()),
+            next_student: None,
+            previous_student: None,
+            saving: Saving::default(),
+        },
+    );
+    let report = validate_profile(&s.page, &profile).await.unwrap();
+    assert!(report.passed(), "{}", report.error_summary());
+    assert!(!report.has_error(Element::Response));
 
     let adapter = ProfileAdapter::new(report.into_validated().unwrap());
     let read = adapter.read_page(&s.page).await.unwrap();

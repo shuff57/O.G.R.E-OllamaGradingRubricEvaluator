@@ -12,7 +12,7 @@ use ogre_harness::cdp::{CdpPage, Chrome, LaunchOptions};
 use ogre_harness::sites::generic::{
     DiscoverOptions, DiscoverySource, ElementCheck, Framed, PickFor, Problem, ProfileAdapter,
     Severity, SiteProfile, SnapshotOptions, StudentSample, ValidationReport, capture_snapshot,
-    discover, draft_profile, main_frame, pick_element, validate_profile,
+    discover, draft_profile, frame_inside, main_frame, pick_element, validate_profile,
 };
 use ogre_harness::sites::{Mismatch, SiteAdapter, Sites, WriteReceipt, verify_writes};
 use ogre_harness::{Error, InputDriver, PageDriver, Result};
@@ -707,6 +707,10 @@ impl PageDriver for Tab {
     async fn eval_in_frame(&self, frame: &str, expression: &str) -> Result<serde_json::Value> {
         self.page().eval_in_frame(frame, expression).await
     }
+
+    async fn eval_in_frames(&self, frames: &[&str], expression: &str) -> Result<serde_json::Value> {
+        self.page().eval_in_frames(frames, expression).await
+    }
 }
 
 /// The grading page that was last read, which later writes go to.
@@ -1268,13 +1272,17 @@ impl Task {
         // was something else, a viewer of the student's work perhaps, and
         // the page itself is mapped as it always was.
         let top = page;
-        let frame = self.frame_to_map(&top).await;
-        let inside = match &frame {
-            Some(frame) => self.map_on(&Framed::new(&top, frame), &ai).await.ok(),
-            None => None,
-        };
+        // The tool may be in a frame of that frame; the innermost is tried
+        // first, since a frame that only holds another is no grading page.
+        let mut inside = None;
+        for frame in self.frames_to_map(&top).await {
+            if let Ok((report, how, notes)) = self.map_on(&Framed::new(&top, &frame), &ai).await {
+                inside = Some((report, how, notes, Some(frame)));
+                break;
+            }
+        }
         let (report, how, notes, frame) = match inside {
-            Some((report, how, notes)) => (report, how, notes, frame),
+            Some(found) => found,
             None => {
                 let (report, how, notes) = self.map_on(&top, &ai).await?;
                 (report, how, notes, None)
@@ -1349,21 +1357,33 @@ impl Task {
         Ok((found.report, how, found.notes))
     }
 
-    /// A selector for the frame to map instead of `page`: `page` is mostly
-    /// one frame, and its own structure is not that of a grading page.
-    async fn frame_to_map(&self, page: &Tab) -> Option<String> {
-        let frame = main_frame(page).await.ok().flatten()?;
-        let snapshot = capture_snapshot(page, &SnapshotOptions::default())
-            .await
-            .ok()?;
-        if let Some(draft) = draft_profile(&snapshot)
-            && validate_profile(page, &draft)
-                .await
-                .is_ok_and(|report| report.passed())
-        {
-            return None;
+    /// Selectors for the frames to map instead of `page`, the innermost
+    /// first: `page` is mostly one frame and its own structure is not that
+    /// of a grading page, and the same may go for what that frame shows.
+    async fn frames_to_map(&self, page: &Tab) -> Vec<String> {
+        // A school's page, the tool's launcher, the tool: deeper than that
+        // is not looked.
+        const DEEPEST: usize = 3;
+        let mut frames: Vec<String> = Vec::new();
+        while frames.len() < DEEPEST {
+            let framed = frames.last().map(|frame| Framed::new(page, frame));
+            let here: &dyn PageDriver = match &framed {
+                Some(framed) => framed,
+                None => page,
+            };
+            let Some(frame) = main_frame(here).await.ok().flatten() else {
+                break;
+            };
+            if maps_by_structure(here).await {
+                break;
+            }
+            frames.push(match frames.last() {
+                Some(outer) => frame_inside(outer, &frame),
+                None => frame,
+            });
         }
-        Some(frame)
+        frames.reverse();
+        frames
     }
 
     /// The page that was read, provided it is still showing the same address.
@@ -1429,6 +1449,20 @@ impl Task {
             }
         }
         Ok(Event::Written(report))
+    }
+}
+
+/// True if the structure rules alone map what `page` shows, and the
+/// mapping holds up there.
+async fn maps_by_structure(page: &dyn PageDriver) -> bool {
+    let Ok(snapshot) = capture_snapshot(page, &SnapshotOptions::default()).await else {
+        return false;
+    };
+    match draft_profile(&snapshot) {
+        Some(draft) => validate_profile(page, &draft)
+            .await
+            .is_ok_and(|report| report.passed()),
+        None => false,
     }
 }
 

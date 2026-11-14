@@ -20,26 +20,52 @@ pub async fn main_frame(page: &dyn PageDriver) -> Result<Option<String>> {
     eval_as(page, FRAME_SCRIPT).await
 }
 
+/// What stands between two frames in a selector for a frame inside a frame:
+/// `iframe#outer >>> iframe#inner`. It is no CSS, so no selector has it.
+pub const FRAME_INSIDE: &str = ">>>";
+
+/// A selector for the frame `inner` finds inside the frame `outer` finds.
+pub fn frame_inside(outer: &str, inner: &str) -> String {
+    format!("{outer} {FRAME_INSIDE} {inner}")
+}
+
 /// One frame of a page, driven as if it were the page: scripts run inside
 /// the frame. The address is still the page's own, which is what the
 /// teacher sees and what a site profile is kept under.
 pub struct Framed<'a> {
     page: &'a dyn PageDriver,
-    /// A JavaScript expression that gives the frame's element.
-    frame: String,
+    /// JavaScript expressions that give the frame's element, from the
+    /// outermost frame to the one that is driven.
+    frames: Vec<String>,
 }
 
 impl<'a> Framed<'a> {
-    /// The frame of `page` that the CSS selector `selector` finds.
+    /// The frame of `page` that the CSS selector `selector` finds. For a
+    /// frame inside a frame, the selectors from the outermost in, with
+    /// [`FRAME_INSIDE`] between them.
     pub fn new(page: &'a dyn PageDriver, selector: &str) -> Self {
-        // A string in JSON is a string in JavaScript.
-        let selector = Value::String(selector.to_owned());
-        Self {
-            page,
-            frame: format!(
-                "(() => {{ try {{ return document.querySelector({selector}); }} catch (e) {{ return null; }} }})()"
-            ),
-        }
+        let frames = selector
+            .split(FRAME_INSIDE)
+            .map(str::trim)
+            .filter(|selector| !selector.is_empty())
+            .map(|selector| {
+                // A string in JSON is a string in JavaScript.
+                let selector = Value::String(selector.to_owned());
+                format!(
+                    "(() => {{ try {{ return document.querySelector({selector}); }} catch (e) {{ return null; }} }})()"
+                )
+            })
+            .collect();
+        Self { page, frames }
+    }
+
+    /// The frames down to this one, and then `more`.
+    fn path<'p>(&'p self, more: &[&'p str]) -> Vec<&'p str> {
+        self.frames
+            .iter()
+            .map(String::as_str)
+            .chain(more.iter().copied())
+            .collect()
     }
 }
 
@@ -86,13 +112,19 @@ impl PageDriver for Framed<'_> {
     }
 
     async fn eval(&self, expression: &str) -> Result<Value> {
-        self.page.eval_in_frame(&self.frame, expression).await
+        self.page.eval_in_frames(&self.path(&[]), expression).await
     }
 
-    async fn eval_in_frame(&self, _frame: &str, _expression: &str) -> Result<Value> {
-        Err(Error::Page(
-            "OGRE does not read a frame inside a frame.".into(),
-        ))
+    async fn eval_in_frame(&self, frame: &str, expression: &str) -> Result<Value> {
+        self.page
+            .eval_in_frames(&self.path(&[frame]), expression)
+            .await
+    }
+
+    async fn eval_in_frames(&self, frames: &[&str], expression: &str) -> Result<Value> {
+        self.page
+            .eval_in_frames(&self.path(frames), expression)
+            .await
     }
 }
 

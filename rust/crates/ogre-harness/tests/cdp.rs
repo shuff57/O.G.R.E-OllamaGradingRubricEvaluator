@@ -249,6 +249,107 @@ fn framed_pages(path: &str, port: u16) -> String {
     )
 }
 
+/// A page whose two frames, one from its own site and one from another,
+/// each hold two frames of the same kinds.
+fn frames_in_frames(path: &str, port: u16) -> String {
+    if path.starts_with("/inner") {
+        return framed_pages(path, port);
+    }
+    let frames = |inside: &str| {
+        format!(
+            "<iframe id=same></iframe><iframe id=other></iframe><script>\
+             const elsewhere = location.hostname === 'localhost' ? '127.0.0.1' : 'localhost';\
+             document.getElementById('same').src = '{inside}?who=same';\
+             document.getElementById('other').src = \
+               'http://' + elsewhere + ':' + location.port + '{inside}?who=other';</script>"
+        )
+    };
+    if path.starts_with("/middle") {
+        return format!(
+            "<!doctype html><title>Middle page</title>{}",
+            frames("/inner")
+        );
+    }
+    format!(
+        "<!doctype html><title>Outer page</title>{}",
+        frames("/middle")
+    )
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs Chrome installed"]
+async fn a_script_runs_inside_a_frame_that_is_inside_a_frame() {
+    let port = serve(frames_in_frames);
+    let dir = profile("frames-in-frames");
+    let chrome = launch(&dir).await;
+    let page = chrome
+        .open(&format!("http://127.0.0.1:{port}/"))
+        .await
+        .unwrap();
+    let frame = |id: &str| format!("document.getElementById('{id}')");
+    let seen = "[location.hostname, document.title, document.getElementById('who').textContent]";
+    let other_host = |host: &str| {
+        if host == "localhost" {
+            "127.0.0.1"
+        } else {
+            "localhost"
+        }
+    };
+
+    // Every pairing of a frame Chrome runs with the page around it and one
+    // it runs apart: the script lands in the innermost frame's own page.
+    for outer in ["same", "other"] {
+        let middle_host = if outer == "same" {
+            "127.0.0.1"
+        } else {
+            "localhost"
+        };
+        for inner in ["same", "other"] {
+            let inner_host = if inner == "same" {
+                middle_host
+            } else {
+                other_host(middle_host)
+            };
+            let frames = [frame(outer), frame(inner)];
+            let frames: Vec<&str> = frames.iter().map(String::as_str).collect();
+            assert_eq!(
+                page.eval_in_frames(&frames, seen).await.unwrap(),
+                serde_json::json!([inner_host, "Inner page", format!("?who={inner}")]),
+                "{outer} / {inner}"
+            );
+        }
+    }
+    // One frame down is the page between.
+    assert_eq!(
+        page.eval_in_frames(&[&frame("other")], "document.title")
+            .await
+            .unwrap(),
+        serde_json::json!("Middle page")
+    );
+    // No frames at all is the page itself.
+    assert_eq!(
+        page.eval_in_frames(&[], "document.title").await.unwrap(),
+        serde_json::json!("Outer page")
+    );
+    // A step that is no frame is said to be none, wherever it comes.
+    for frames in [
+        vec![frame("same"), "document.body".to_owned()],
+        vec!["document.body".to_owned(), frame("same")],
+        vec![frame("other"), frame("nothing")],
+    ] {
+        let frames: Vec<&str> = frames.iter().map(String::as_str).collect();
+        let error = page.eval_in_frames(&frames, "1").await.unwrap_err();
+        assert!(matches!(error, Error::Page(_)), "{frames:?}: {error}");
+    }
+    assert_eq!(
+        page.eval("document.title").await.unwrap(),
+        serde_json::json!("Outer page")
+    );
+
+    chrome.close().await.unwrap();
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs Chrome installed"]
 async fn a_script_runs_inside_a_frame_of_the_same_site_or_another() {
