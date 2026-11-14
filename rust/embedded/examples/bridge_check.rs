@@ -39,6 +39,11 @@ impl eframe::App for Check {
             println!("the page asks: {:?} ({:?})", asked.message, asked.kind);
             self.built_in.answer(true);
         }
+        // And with a request for a file: here, give it the one made for this.
+        if let Some(wanted) = self.built_in.wants_files.clone() {
+            println!("the page asks for a file (more than one: {})", wanted.many);
+            self.built_in.give_files(&[file_to_give()]);
+        }
         egui::CentralPanel::default().show(ui, |ui| {
             let size = ui.available_size();
             self.built_in.browser().show(ui, size);
@@ -57,6 +62,14 @@ impl eframe::App for Check {
     fn output_hook(&mut self, ctx: &egui::Context, output: &mut egui::FullOutput) {
         self.built_in.browser().after_frame(ctx, output);
     }
+}
+
+/// The file the check gives a page that asks for one.
+fn file_to_give() -> String {
+    std::env::temp_dir()
+        .join(format!("ogre-bridge-check-{}.txt", std::process::id()))
+        .to_string_lossy()
+        .into_owned()
 }
 
 /// What the worker would do: go to the page, then read it with the adapter.
@@ -215,6 +228,45 @@ async fn read(page: CdpPage, address: String) -> Result<(), String> {
     if deeper != serde_json::json!(["127.0.0.1", "Inner page"]) {
         return Err(format!("the frame inside the frame was not read: {deeper}"));
     }
+
+    // A file box, clicked as a person would: the page's request comes
+    // through, and the file it is given is the file it then holds.
+    let file = file_to_give();
+    std::fs::write(&file, "made up").map_err(|error| error.to_string())?;
+    page.navigate(&format!("http://127.0.0.1:{port}/file"))
+        .await
+        .map_err(say)?;
+    let spot = page
+        .eval(
+            "(() => { const at = document.getElementById('f').getBoundingClientRect(); \
+             return [at.x + at.width / 2, at.y + at.height / 2]; })()",
+        )
+        .await
+        .map_err(say)?;
+    page.click_at(
+        spot[0].as_f64().unwrap_or(0.0),
+        spot[1].as_f64().unwrap_or(0.0),
+    )
+    .await
+    .map_err(say)?;
+    let held = "Array.from(document.getElementById('f').files, (file) => [file.name, file.size])";
+    let mut holds = serde_json::Value::Null;
+    for _ in 0..50 {
+        holds = page.eval(held).await.map_err(say)?;
+        if holds != serde_json::json!([]) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    let _ = std::fs::remove_file(&file);
+    println!("the file box holds: {holds}");
+    let name = std::path::Path::new(&file)
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    if holds != serde_json::json!([[name, 7]]) {
+        return Err(format!("the page was not given the file: {holds}"));
+    }
     Ok(())
 }
 
@@ -238,7 +290,9 @@ fn serve_frames() -> u16 {
                 let frame = |host: &str, to: &str| {
                     format!("<iframe id=other src=\"http://{host}:{port}{to}\"></iframe>")
                 };
-                let body = if path.starts_with("/inner") {
+                let body = if path.starts_with("/file") {
+                    "<!doctype html><title>File page</title><input type=file id=f>".to_owned()
+                } else if path.starts_with("/inner") {
                     "<!doctype html><title>Inner page</title><p>Innermost.</p>".to_owned()
                 } else if path.starts_with("/middle") {
                     format!(

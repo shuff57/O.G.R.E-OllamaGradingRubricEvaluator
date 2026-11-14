@@ -231,6 +231,8 @@ enum Action {
     DeleteProfile(String),
     /// The teacher's answer to what the page is asking.
     AnswerPage(bool),
+    /// Give the page in the built-in browser the files it asked for, or none.
+    GiveFiles(Vec<String>),
     StartAgent,
     /// Send the agent to find a grading page, and map the page it stops on.
     FindAndMap,
@@ -1021,6 +1023,11 @@ impl OgreApp {
                     None => self.worker.view().send(ViewInput::Answer(accept)),
                 }
             }
+            Action::GiveFiles(files) => {
+                if let Some(page) = &mut self.built_in {
+                    page.give_files(&files);
+                }
+            }
             Action::FindAndMap => {
                 self.agent.task = ogre_agent::find_grading_page_task(&self.agent.find);
                 self.agent.then_map = true;
@@ -1255,6 +1262,87 @@ impl OgreApp {
             kit::icon_line(ui, icon::CHECK, notice, pal().accent);
         }
         self.page_question(ui, actions);
+        self.page_file_request(ui, actions);
+    }
+
+    /// The file a page in the built-in browser is waiting for. That browser
+    /// has no window of its own to show a file chooser in, so the teacher
+    /// says here where the file is.
+    fn page_file_request(&self, ui: &mut egui::Ui, actions: &mut Vec<Action>) {
+        let Some(wanted) = self
+            .built_in
+            .as_ref()
+            .and_then(|page| page.wants_files.as_ref())
+        else {
+            return;
+        };
+        // What is typed is kept between frames, and gone with the request.
+        let id = egui::Id::unique("the file a page asks for");
+        let mut typed: String = ui.data(|data| data.get_temp(id)).unwrap_or_default();
+        kit::warning(
+            ui,
+            &match (wanted.many, wanted.title.trim()) {
+                (false, "") => "The page asks for a file.".to_owned(),
+                (true, "") => "The page asks for files.".to_owned(),
+                (false, title) => format!("The page asks for a file: {title}"),
+                (true, title) => format!("The page asks for files: {title}"),
+            },
+        );
+        let label = kit::section_label(
+            ui,
+            if wanted.many {
+                "Where the files are, one whole path to a line"
+            } else {
+                "Where the file is, as a whole path"
+            },
+        );
+        let hint = "/home/you/Documents/feedback.pdf";
+        let field = if wanted.many {
+            egui::TextEdit::multiline(&mut typed).desired_rows(2)
+        } else {
+            egui::TextEdit::singleline(&mut typed)
+        };
+        ui.add(field.hint_text(hint).desired_width(f32::INFINITY))
+            .labelled_by(label.id);
+        let files: Vec<String> = typed
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(str::to_owned)
+            .collect();
+        let not_a_file = files
+            .iter()
+            .find(|file| !std::path::Path::new(file).is_file());
+        let too_many = !wanted.many && files.len() > 1;
+        if let Some(file) = not_a_file {
+            ui.label(theme::muted(format!("There is no file at {file}.")));
+        } else if too_many {
+            ui.label(theme::muted("The page takes one file."));
+        }
+        let ready = !files.is_empty() && not_a_file.is_none() && !too_many;
+        let mut answer = None;
+        ui.horizontal(|ui| {
+            let give = if files.len() > 1 {
+                "Give the page these files"
+            } else {
+                "Give the page this file"
+            };
+            if kit::ghost(ui, give, ready).clicked() {
+                answer = Some(files.clone());
+            }
+            if kit::ghost(ui, "Give it none", true).clicked() {
+                answer = Some(Vec::new());
+            }
+        });
+        match answer {
+            Some(files) => {
+                ui.data_mut(|data| data.remove::<String>(id));
+                actions.push(Action::GiveFiles(files));
+            }
+            None => {
+                ui.data_mut(|data| data.insert_temp(id, typed));
+            }
+        }
     }
 
     /// What the page shown inside the window is asking, with its answers. A

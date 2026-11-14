@@ -21,8 +21,9 @@ about 400 MB in `~/.local/lib/ogre-built-in`, beside the usual OGRE and sharing 
   browser lives on the window's thread, so the window carries the messages both ways between
   frames (`BuiltIn::pump` in `../crates/ogre-app/src/built_in.rs`). The built-in page therefore
   does what a Chrome tab does: scripts, real clicks and keys, pictures of the page, frames.
-- What the page asks (`alert`, `confirm`, `prompt`, "Leave site?") comes through the browser
-  itself and is shown in OGRE's window with its answers. A "Leave site?" is agreed to without
+- What the page asks (`alert`, `confirm`, `prompt`, "Leave site?"), and a file it asks for
+  when a file box is clicked, comes through the browser itself and is shown in OGRE's window
+  with its answers. A "Leave site?" is agreed to without
   asking when OGRE itself has just sent the page somewhere.
 - `src/lib.rs` is that trait for a Chromium page. `src/main.rs` is OGRE with it.
 - `egui_webview/` is the copied crate. `egui_webview/PATCHES.md` says what was changed and why.
@@ -36,7 +37,8 @@ about 400 MB in `~/.local/lib/ogre-built-in`, beside the usual OGRE and sharing 
 opens a window for a few seconds and, through the built-in browser: reads a practice MyOpenMath
 page with OGRE's real reader, writes a grade into it and reads it back; clicks and presses a
 key as a person would; takes a picture of the page; has the page ask a question and answers it;
-and reads inside a frame, inside a frame that shows another site, and inside a frame of that.
+reads inside a frame, inside a frame that shows another site, and inside a frame of that; and
+clicks a file box and gives the page a file.
 
 It needs a screen that is drawn to. Where there is none to spare, a made-up one does:
 
@@ -50,7 +52,9 @@ that takes pictures of the screen.
 
 ## Not there yet
 
-- File pickers and drag and drop: not in the copied crate.
+- Drag and drop: not in the copied crate.
+- A file a page asks for is given by typing its path into a box in OGRE's window, not chosen in
+  a file chooser. A page that asks for a folder, or for where to save something, gets nothing.
 - Nothing here has been used on a real signed-in grading page.
 - The sign-in is the built-in browser's own, kept in `built-in-browser/` in OGRE's data
   folder, apart from the Chrome profile. Only one running OGRE can use it at a time.

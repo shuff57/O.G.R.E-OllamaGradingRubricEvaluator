@@ -26,8 +26,8 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 use cef::{
-    BrowserSettings, ImplBrowser as _, ImplBrowserHost as _, ImplFrame as _,
-    ImplJsdialogCallback as _, ImplRunContextMenuCallback as _, WindowInfo,
+    BrowserSettings, ImplBrowser as _, ImplBrowserHost as _, ImplFileDialogCallback as _,
+    ImplFrame as _, ImplJsdialogCallback as _, ImplRunContextMenuCallback as _, WindowInfo,
 };
 use egui::{
     Color32, Context, EmbeddedViewOutput, EventFilter, FocusDirection, Id, Pos2, Rect, Sense, Ui,
@@ -353,6 +353,22 @@ impl Backend for CefBackend {
         let text = text.map(cef::CefString::from);
         callback.cont(i32::from(accept), text.as_ref());
         self.shared.send(WebViewEvent::AsksNoMore);
+    }
+
+    /// OGRE: see [`Backend::answer_files`].
+    fn answer_files(&mut self, files: &[String]) {
+        let Some(callback) = self.shared.file_dialog.lock().take() else {
+            return;
+        };
+        if files.is_empty() {
+            callback.cancel();
+            return;
+        }
+        let mut chosen = cef::CefStringList::new();
+        for file in files {
+            chosen.append(file);
+        }
+        callback.cont(Some(&mut chosen));
     }
 
     fn reload(&mut self) {

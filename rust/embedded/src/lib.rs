@@ -77,6 +77,9 @@ impl Chromium {
                     self.suggested = None;
                     PageNews::AsksNoMore
                 }
+                WebViewEvent::AsksForFiles { many, title } => {
+                    PageNews::AsksForFiles { many, title }
+                }
                 // OGRE's pages are not given a way to post messages.
                 _ => continue,
             };
@@ -116,6 +119,12 @@ impl BuiltInBrowser for Chromium {
         let text = self.suggested.take();
         if let Some(page) = &mut self.page {
             page.answer_dialog(accept, text.as_deref());
+        }
+    }
+
+    fn give_files(&mut self, files: &[String]) {
+        if let Some(page) = &mut self.page {
+            page.answer_files(files);
         }
     }
 

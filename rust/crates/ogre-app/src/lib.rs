@@ -23,7 +23,8 @@ pub use agent_run::{
 };
 pub use app::OgreApp;
 pub use built_in::{
-    BuiltIn, BuiltInBrowser, PageChannel, PageLink, PageNews, PageOut, carry, page_link,
+    BuiltIn, BuiltInBrowser, FileRequest, PageChannel, PageLink, PageNews, PageOut, carry,
+    page_link,
 };
 pub use examples::{ExamplesFor, ExamplesPlace, KeepRequest};
 pub use grading::{Grade, GradeReport, GradedRow, Suggestion};

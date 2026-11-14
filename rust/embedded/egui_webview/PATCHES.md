@@ -32,6 +32,11 @@ changes again. Each is marked in the code with a comment that starts "OGRE:".
    `src/chromium/client.rs`). A windowless browser has no window of its own to ask in. The
    DevTools channel reports such a question too, but cannot answer it in CEF.
 6. `Cargo.toml` is OGRE's own: the original inherits from its workspace.
+7. A file the page asks for, CEF only: clicking a file box arrives as the new
+   `WebViewEvent::AsksForFiles`, and `WebViewInstance::answer_files` gives the page the files, or
+   none (`src/lib.rs`, `src/backend.rs`, `src/instance.rs`, `src/chromium/mod.rs`,
+   `src/chromium/client.rs`). A windowless browser has no window to show a file chooser in.
+   A request for a folder, or for a place to save to, is turned down without asking.
 
 Not changed, and missing for OGRE: file pickers and drag and drop are not supported by the
 crate yet.

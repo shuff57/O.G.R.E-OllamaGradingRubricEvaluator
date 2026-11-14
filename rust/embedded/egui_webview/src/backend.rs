@@ -83,6 +83,11 @@ pub trait Backend {
     /// to a `prompt`. Does nothing if the page is asking nothing.
     fn answer_dialog(&mut self, accept: bool, text: Option<&str>) {}
 
+    /// OGRE: gives the page the files it asked for (see [`WebViewEvent::AsksForFiles`]), as
+    /// whole paths. None is the same as closing a file chooser without choosing. Does nothing
+    /// if the page is asking for no file.
+    fn answer_files(&mut self, files: &[String]) {}
+
     /// Reloads the current page. See [`crate::WebViewInstance::reload`].
     fn reload(&mut self);
 

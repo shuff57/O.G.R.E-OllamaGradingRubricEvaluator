@@ -36,6 +36,23 @@ pub enum PageNews {
     Asks(PageDialog),
     /// What the page asked was answered, or the page went away meanwhile.
     AsksNoMore,
+    /// The page asks for a file, as when a file box is clicked, and waits
+    /// for [`BuiltInBrowser::give_files`].
+    AsksForFiles {
+        /// True if the page takes more than one file.
+        many: bool,
+        /// What the page calls the choice, if it says.
+        title: String,
+    },
+}
+
+/// A file the page is waiting for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileRequest {
+    /// True if the page takes more than one file.
+    pub many: bool,
+    /// What the page calls the choice, if it says.
+    pub title: String,
 }
 
 /// For how long after OGRE sends the page somewhere a "Leave site?" is
@@ -60,6 +77,11 @@ pub trait BuiltInBrowser {
 
     /// Answers what the page is asking. Nothing happens if it asks nothing.
     fn answer(&mut self, accept: bool);
+
+    /// Gives the page the files it asked for, as whole paths. None is what
+    /// closing a file chooser without choosing would be. A browser that
+    /// never asks for files has nothing to do here.
+    fn give_files(&mut self, _files: &[String]) {}
 
     fn back(&mut self);
     fn forward(&mut self);
@@ -128,6 +150,8 @@ pub struct BuiltIn {
     pub address: String,
     /// What the page is asking, until it is answered.
     pub asking: Option<PageDialog>,
+    /// The file the page is waiting for, until it is given one or none.
+    pub wants_files: Option<FileRequest>,
     /// When the worker last sent the page to another address.
     sent_away: Option<Instant>,
 }
@@ -138,6 +162,7 @@ impl BuiltIn {
             browser,
             address: String::new(),
             asking: None,
+            wants_files: None,
             sent_away: None,
         }
     }
@@ -146,6 +171,12 @@ impl BuiltIn {
     pub fn answer(&mut self, accept: bool) {
         self.asking = None;
         self.browser.answer(accept);
+    }
+
+    /// Gives the page the files it is waiting for, or none.
+    pub fn give_files(&mut self, files: &[String]) {
+        self.wants_files = None;
+        self.browser.give_files(files);
     }
 
     pub fn browser(&mut self) -> &mut dyn BuiltInBrowser {
@@ -158,7 +189,12 @@ impl BuiltIn {
     pub fn pump(&mut self, channel: &PageChannel) -> bool {
         for news in self.browser.news() {
             match news {
-                PageNews::Loading(address) | PageNews::Loaded(address) => self.address = address,
+                PageNews::Loading(address) => {
+                    self.address = address;
+                    // The page that asked for a file has gone.
+                    self.wants_files = None;
+                }
+                PageNews::Loaded(address) => self.address = address,
                 PageNews::DevTools(message) => channel.from_browser.message(&message),
                 PageNews::Asks(dialog) => {
                     let leaving = self.sent_away.is_some_and(|at| at.elapsed() < LEAVING_TIME);
@@ -169,6 +205,9 @@ impl BuiltIn {
                     }
                 }
                 PageNews::AsksNoMore => self.asking = None,
+                PageNews::AsksForFiles { many, title } => {
+                    self.wants_files = Some(FileRequest { many, title });
+                }
             }
         }
         let mut to_browser = channel

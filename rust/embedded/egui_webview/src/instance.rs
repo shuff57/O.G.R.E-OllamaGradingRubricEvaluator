@@ -233,6 +233,13 @@ impl WebViewInstance {
         self.backend.answer_dialog(accept, text);
     }
 
+    /// OGRE: gives the page the files it asked for (see [`WebViewEvent::AsksForFiles`]), as
+    /// whole paths. None is the same as closing a file chooser without choosing. Does nothing
+    /// if the page is asking for no file.
+    pub fn answer_files(&mut self, files: &[String]) {
+        self.backend.answer_files(files);
+    }
+
     /// Reloads the current page.
     ///
     /// A page given as [`WebViewSource::Html`] is loaded again from that HTML.

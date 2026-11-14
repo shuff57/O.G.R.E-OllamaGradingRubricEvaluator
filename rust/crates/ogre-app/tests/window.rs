@@ -1981,21 +1981,145 @@ fn window_with_a_browser(
     StandIn,
     std::sync::Arc<std::sync::Mutex<Vec<&'static str>>>,
 ) {
-    let (worker, stand_in) = Worker::detached();
     let told = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    let browser = QuietBrowser(told.clone());
-    let harness = Harness::builder()
-        .with_size([1200.0, 760.0])
-        .build_eframe(|cc| {
-            OgreApp::new(
-                &cc.egui_ctx,
-                worker,
-                settings,
-                Box::new(MemoryKeys::default()),
-            )
-            .with_built_in_browser(Box::new(browser))
-        });
+    let (harness, stand_in) = window_with(settings, Box::new(QuietBrowser(told.clone())));
     (harness, stand_in, told)
+}
+
+/// A window of a build of OGRE that has `browser` built in.
+fn window_with(
+    settings: Settings,
+    browser: Box<dyn ogre_app::BuiltInBrowser>,
+) -> (Harness<'static, OgreApp>, StandIn) {
+    let (worker, stand_in) = Worker::detached();
+    let builder = Harness::builder().with_size([1200.0, 760.0]);
+    let builder = if shots_dir().is_some() {
+        builder.wgpu()
+    } else {
+        builder
+    };
+    let harness = builder.build_eframe(|cc| {
+        OgreApp::new(
+            &cc.egui_ctx,
+            worker,
+            settings,
+            Box::new(MemoryKeys::default()),
+        )
+        .with_built_in_browser(browser)
+    });
+    (harness, stand_in)
+}
+
+/// What a test tells a [`PageThatAsks`] to say, and what the page was given.
+#[derive(Default)]
+struct Asked {
+    news: Vec<ogre_app::PageNews>,
+    given: Vec<Vec<String>>,
+}
+
+/// A built-in browser whose page asks for files when the test says so.
+struct PageThatAsks(std::sync::Arc<std::sync::Mutex<Asked>>);
+
+impl ogre_app::BuiltInBrowser for PageThatAsks {
+    fn show(&mut self, _ui: &mut egui::Ui, _size: egui::Vec2) {}
+    fn news(&mut self) -> Vec<ogre_app::PageNews> {
+        std::mem::take(&mut self.0.lock().unwrap().news)
+    }
+    fn load(&mut self, _url: &str) -> Result<(), String> {
+        Ok(())
+    }
+    fn send_devtools(&mut self, _message: &[u8]) -> Result<(), String> {
+        Ok(())
+    }
+    fn answer(&mut self, _accept: bool) {}
+    fn give_files(&mut self, files: &[String]) {
+        self.0.lock().unwrap().given.push(files.to_vec());
+    }
+    fn back(&mut self) {}
+    fn forward(&mut self) {}
+    fn reload(&mut self) {}
+    fn after_frame(&mut self, _ctx: &egui::Context, _output: &egui::FullOutput) {}
+}
+
+#[test]
+fn a_file_a_page_in_the_built_in_browser_asks_for_is_given_by_its_path() {
+    let asked = std::sync::Arc::new(std::sync::Mutex::new(Asked::default()));
+    let (mut harness, _stand_in) = window_with(
+        Settings {
+            built_in_browser: true,
+            ..local_model()
+        },
+        Box::new(PageThatAsks(asked.clone())),
+    );
+    let ask = |many: bool, title: &str| {
+        asked
+            .lock()
+            .unwrap()
+            .news
+            .push(ogre_app::PageNews::AsksForFiles {
+                many,
+                title: title.into(),
+            });
+    };
+    let dir = std::env::temp_dir().join(format!("ogre-test-file-ask-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("feedback.pdf");
+    std::fs::write(&file, b"made up").unwrap();
+    let file = file.to_string_lossy().into_owned();
+    frames(&mut harness);
+    assert!(harness.query_by_label_contains("asks for a file").is_none());
+
+    // The page asks on whatever screen the teacher is.
+    ask(false, "Attach a file");
+    frames(&mut harness);
+    harness.get_by_label("The page asks for a file: Attach a file");
+    let where_it_is = "Where the file is, as a whole path";
+    type_into(&mut harness, where_it_is, "/nowhere/at-all.pdf");
+    harness.get_by_label("There is no file at /nowhere/at-all.pdf.");
+    shot(&mut harness, "46-page-asks-for-a-file");
+    harness.get_by_label("Give the page this file").click();
+    frames(&mut harness);
+    assert!(
+        asked.lock().unwrap().given.is_empty(),
+        "nothing is given that is not a file"
+    );
+
+    harness.get_by_label(where_it_is).click();
+    frames(&mut harness);
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    harness.get_by_label(where_it_is).type_text(&file);
+    frames(&mut harness);
+    harness.get_by_label("Give the page this file").click();
+    frames(&mut harness);
+    assert_eq!(asked.lock().unwrap().given, [vec![file.clone()]]);
+    assert!(harness.query_by_label_contains("asks for a file").is_none());
+
+    // Asked again, the box is empty again, and the page can be given none:
+    // what closing a file chooser would be.
+    ask(true, "");
+    frames(&mut harness);
+    harness.get_by_label("The page asks for files.");
+    harness.get_by_label("Where the files are, one whole path to a line");
+    harness.get_by_label("Give it none").click();
+    frames(&mut harness);
+    assert_eq!(
+        asked.lock().unwrap().given,
+        [vec![file], Vec::<String>::new()]
+    );
+    assert!(harness.query_by_label_contains("asks for files").is_none());
+
+    // A page that goes somewhere else is waiting for no file any more.
+    ask(false, "");
+    frames(&mut harness);
+    harness.get_by_label("The page asks for a file.");
+    asked
+        .lock()
+        .unwrap()
+        .news
+        .push(ogre_app::PageNews::Loading("https://example.edu/".into()));
+    frames(&mut harness);
+    assert!(harness.query_by_label_contains("asks for a file").is_none());
+    let _ = std::fs::remove_dir_all(dir);
 }
 
 /// Chooses, in Settings, where the page is shown from the next start on.

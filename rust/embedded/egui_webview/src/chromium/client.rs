@@ -23,6 +23,11 @@ use cef::{
     JsdialogHandler, JsdialogType, WrapDevToolsMessageObserver, WrapJsdialogHandler,
     wrap_dev_tools_message_observer, wrap_jsdialog_handler,
 };
+// OGRE: for the page's request for a file, below.
+use cef::{
+    CefStringList, DialogHandler, FileDialogCallback, FileDialogMode, ImplDialogHandler,
+    ImplFileDialogCallback as _, WrapDialogHandler, wrap_dialog_handler,
+};
 use egui::{
     Color32, ColorImage, Context, CursorIcon, FocusDirection, Pos2, Rect, TextureHandle,
     TextureOptions, Vec2, ViewportId, pos2,
@@ -68,6 +73,8 @@ pub struct Shared {
     pub context_menu: Mutex<Option<ContextMenu>>,
     /// OGRE: where the answer to what the page is asking goes, until it is answered.
     pub dialog: Mutex<Option<JsdialogCallback>>,
+    /// OGRE: where the files the page asked for go, until it is given them.
+    pub file_dialog: Mutex<Option<FileDialogCallback>>,
     /// Which way Tab left the page, until [`crate::Backend::poll_focus_left`] picks it up.
     pub took_focus_away: Mutex<Option<FocusDirection>>,
 
@@ -105,6 +112,7 @@ impl Shared {
             text_cursor: Mutex::new(None),
             context_menu: Mutex::new(None),
             dialog: Mutex::new(None),
+            file_dialog: Mutex::new(None),
             took_focus_away: Mutex::new(None),
             inbox: Mutex::default(),
             shown_pass: Mutex::new(None),
@@ -138,6 +146,7 @@ impl Shared {
             EguiContextMenuHandler::new(Arc::clone(&shared)),
             EguiFocusHandler::new(Arc::clone(&shared)),
             EguiJsDialogHandler::new(Arc::clone(&shared)),
+            EguiDialogHandler::new(Arc::clone(&shared)),
         )
     }
 
@@ -212,6 +221,52 @@ wrap_jsdialog_handler! {
             if self.shared.dialog.lock().take().is_some() {
                 self.shared.send(WebViewEvent::AsksNoMore);
             }
+        }
+    }
+}
+
+// OGRE: a file the page asks for, as when a file box is clicked. A windowless browser has no
+// window to show a file chooser in, so the host is told and answers.
+wrap_dialog_handler! {
+    struct EguiDialogHandler {
+        shared: Arc<Shared>,
+    }
+
+    impl DialogHandler {
+        fn on_file_dialog(
+            &self,
+            _browser: Option<&mut Browser>,
+            mode: FileDialogMode,
+            title: Option<&CefString>,
+            _default_file_path: Option<&CefString>,
+            _accept_filters: Option<&mut CefStringList>,
+            _accept_extensions: Option<&mut CefStringList>,
+            _accept_descriptions: Option<&mut CefStringList>,
+            callback: Option<&mut FileDialogCallback>,
+        ) -> ::std::os::raw::c_int {
+            use sys::cef_file_dialog_mode_t as M;
+            let Some(callback) = callback else {
+                return 0;
+            };
+            let many = match *mode.as_ref() {
+                M::FILE_DIALOG_OPEN => false,
+                M::FILE_DIALOG_OPEN_MULTIPLE => true,
+                // A folder, or a place to save to: the host is not asked for those.
+                _ => {
+                    callback.cancel();
+                    return 1;
+                }
+            };
+            // A request the host never answered is over once the page asks again.
+            if let Some(unanswered) = self.shared.file_dialog.lock().replace(callback.clone()) {
+                unanswered.cancel();
+            }
+            self.shared.send(WebViewEvent::AsksForFiles {
+                many,
+                title: title.map(ToString::to_string).unwrap_or_default(),
+            });
+            // Handled: the callback is called once the host has chosen.
+            1
         }
     }
 }
@@ -690,6 +745,7 @@ wrap_client! {
         context_menu: ContextMenuHandler,
         focus: FocusHandler,
         jsdialog: JsdialogHandler,
+        dialog: DialogHandler,
     }
 
     impl Client {
@@ -719,6 +775,10 @@ wrap_client! {
 
         fn jsdialog_handler(&self) -> Option<JsdialogHandler> {
             Some(self.jsdialog.clone())
+        }
+
+        fn dialog_handler(&self) -> Option<DialogHandler> {
+            Some(self.dialog.clone())
         }
 
         /// Turns the text that the main frame passed to `window.ipc.postMessage(text)` into a

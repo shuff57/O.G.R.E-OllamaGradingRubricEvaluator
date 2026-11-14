@@ -101,6 +101,16 @@ pub enum WebViewEvent {
 
     /// OGRE: what the page asked was answered, or the page went away while it was asking.
     AsksNoMore,
+
+    /// OGRE: the page asks for a file, as when a file box is clicked. A windowless browser
+    /// has no window to show a file chooser in, so the host chooses and answers with
+    /// [`WebViewInstance::answer_files`]. Only the CEF backend sends it.
+    AsksForFiles {
+        /// True if the page takes more than one file.
+        many: bool,
+        /// What the page calls the choice, if it says.
+        title: String,
+    },
 }
 
 /// OGRE: the kind of question in a [`WebViewEvent::Asks`].
