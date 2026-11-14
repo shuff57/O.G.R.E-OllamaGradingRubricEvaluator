@@ -90,6 +90,9 @@ pub struct OgreApp {
     built_in: Option<BuiltIn>,
     /// True if the browser that is running is the built-in one.
     started_built_in: bool,
+    /// True if the Chrome that is running was started without a window, to
+    /// be shown here.
+    started_inside: bool,
     /// A page the program was asked to open as it starts: the browser is
     /// started for it, and then it is gone to.
     open_at_start: Option<String>,
@@ -311,6 +314,7 @@ impl OgreApp {
             browser: BrowserView::default(),
             built_in: None,
             started_built_in: false,
+            started_inside: false,
             open_at_start: None,
             start_asked: false,
         }
@@ -359,9 +363,16 @@ impl OgreApp {
     }
 
     /// True when the page is to be seen inside the window, one way or the
-    /// other, so that the Browser screen has something to show.
+    /// other, so that the Browser screen has something to show. While a
+    /// browser is running that goes by how it was started: a Chrome without
+    /// a window has no other place to be seen, whatever Settings says now.
     fn page_is_inside(&self) -> bool {
-        self.settings.page_inside || self.uses_built_in()
+        let chrome_inside = if self.chrome_running {
+            self.started_inside
+        } else {
+            self.settings.page_inside
+        };
+        chrome_inside || self.uses_built_in()
     }
 
     /// Offers, in Settings, to copy the AI service from the Electron app's
@@ -712,11 +723,13 @@ impl OgreApp {
         match action {
             Action::StartChrome if self.uses_built_in() => {
                 self.started_built_in = true;
+                self.started_inside = false;
                 self.send(Command::StartBuiltIn, "Starting the browser…");
             }
             Action::StartChrome => {
                 self.started_built_in = false;
                 let inside = self.settings.page_inside;
+                self.started_inside = inside;
                 self.send(Command::StartChrome { inside }, "Starting Chrome…");
             }
             Action::StopChrome => self.send(Command::StopChrome, "Stopping Chrome…"),

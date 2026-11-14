@@ -1545,4 +1545,55 @@ mod tests {
         assert!(unfinished(&dir, &all_graded).is_none());
         let _ = std::fs::remove_dir_all(dir);
     }
+
+    #[test]
+    fn a_name_two_students_share_brings_no_grade_back() {
+        let dir =
+            std::env::temp_dir().join(format!("ogre-unfinished-names-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // A site that gives no id for a student: the name is all there is.
+        // That run read two students called Jordan Lee and graded everyone.
+        let read = serde_json::json!({
+            "event": "read",
+            "url": "https://www.myopenmath.com/course/gradeallq2.php?cid=1",
+            "students": [
+                { "index": 0, "name": "Avery, Sam" },
+                { "index": 1, "name": "Lee, Jordan" },
+                { "index": 2, "name": "Lee, Jordan" },
+                { "index": 3, "name": "Diaz, Remy" },
+            ],
+        });
+        let graded = serde_json::json!({
+            "event": "graded",
+            "results": (0..4).map(|index| serde_json::json!({
+                "index": index, "score": 5.0 + f64::from(index), "feedback": "<p>ok</p>", "flag": null,
+            })).collect::<Vec<_>>(),
+        });
+        std::fs::write(dir.join("100.jsonl"), format!("{read}\n{graded}\n")).unwrap();
+        let nameless = |index: usize, name: &str| {
+            let mut student = student(index, &index.to_string(), name, "", "", "An answer.");
+            student["student_id"] = serde_json::Value::Null;
+            student
+        };
+
+        // Now: nobody has a grade yet, and a second Remy Diaz has joined.
+        let now = page(serde_json::json!([
+            nameless(0, "Avery, Sam"),
+            nameless(1, "Lee, Jordan"),
+            nameless(2, "Lee, Jordan"),
+            nameless(3, "Diaz, Remy"),
+            nameless(4, "Diaz, Remy"),
+        ]));
+        let (_, rows) = unfinished(&dir, &now).expect("Sam's grade is still unwritten");
+        // Which Jordan a grade was for cannot be told, and which Remy the
+        // one grade is for cannot either. Sam is the only one of that name,
+        // then and now.
+        let offered: Vec<(usize, f64)> = rows
+            .iter()
+            .map(|row| (row.index, row.outcome.as_ref().unwrap().score))
+            .collect();
+        assert_eq!(offered, [(0, 5.0)]);
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }

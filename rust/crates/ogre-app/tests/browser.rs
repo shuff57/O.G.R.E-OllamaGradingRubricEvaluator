@@ -715,6 +715,68 @@ fn maps_a_tool_shown_in_a_frame_then_reads_and_fills_it() {
     let _ = std::fs::remove_dir_all(&data_dir);
 }
 
+/// A page that is mostly one frame, where the frame is only a viewer of the
+/// student's work and the marks are on the page itself. The frame is tried
+/// first and comes to nothing, and the page is then mapped as it always was,
+/// by the AI where its structure does not give it away.
+#[test]
+#[ignore = "needs Chrome installed"]
+fn a_page_whose_large_frame_is_only_a_viewer_is_mapped_itself() {
+    let (worker, woken, data_dir) = fresh_worker("viewer-frame");
+    ask(
+        &worker,
+        &woken,
+        Command::Open(fixture("generic/viewer-above-the-marks.html")),
+    );
+
+    // One student and no way to another: the structure rules give up, on
+    // the frame and on the page alike.
+    let (event, _) = ask(&worker, &woken, Command::MapPage { ai: None });
+    assert!(
+        matches!(&event, Event::Failed(m) if m.contains("structure alone")),
+        "{event:?}"
+    );
+
+    // A stand-in AI that knows the page, and says the same of whatever it
+    // is shown. What it says fits nothing in the frame.
+    let reply = json!({
+        "navigation": { "mode": "batch", "nextButton": null, "prevButton": null, "studentIndicator": null, "submitButton": null, "waitForSelector": null },
+        "selectors": { "studentSection": "main.entry", "studentName": ".who", "scoreInput": "#marks", "feedbackBox": "#comments", "feedbackHidden": null, "questionRegion": "iframe#viewer", "fullCreditLink": null },
+        "feedback": { "type": "textarea", "requiresHiddenSync": false, "htmlWrap": false },
+        "save": { "buttonText": "Save" },
+        "confidence": "high"
+    })
+    .to_string();
+    let (ai_address, ai_requests) = fake_ollama(move |_| reply.clone());
+    let ai = Some((
+        ProviderSettings {
+            service: Service::Ollama,
+            base_url: ai_address,
+            model: "stand-in".into(),
+        },
+        None,
+    ));
+    let (event, _) = ask(&worker, &woken, Command::MapPage { ai });
+    let Event::Mapped(found) = event else {
+        panic!("expected a mapping, got {event:?}");
+    };
+    assert_eq!(
+        found.profile.page.frame, None,
+        "the page itself is what was mapped"
+    );
+    assert_eq!(found.profile.page.score_input, "#marks");
+    assert_eq!(found.students, 1);
+    assert_eq!(found.samples[0].name, "Avery, Sam");
+    assert!(found.how.contains("by the AI"), "{}", found.how);
+    assert!(
+        ai_requests.lock().unwrap().len() > 1,
+        "the frame was tried first, and the AI asked about it too"
+    );
+
+    drop(worker);
+    let _ = std::fs::remove_dir_all(&data_dir);
+}
+
 /// A site that shows one student at a time: mapped from its structure, told
 /// by the teacher what shows that a save went through, then read from the
 /// first student to the last and written with each grade saved as it goes.

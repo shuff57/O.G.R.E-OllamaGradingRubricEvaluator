@@ -1944,6 +1944,129 @@ fn page_inputs(stand_in: &mut StandIn) -> Vec<ViewInput> {
     std::iter::from_fn(|| stand_in.view_input.try_recv().ok()).collect()
 }
 
+/// A browser built into the window that shows nothing, and notes when the
+/// teacher sends it back a page.
+struct QuietBrowser(std::sync::Arc<std::sync::Mutex<Vec<&'static str>>>);
+
+impl ogre_app::BuiltInBrowser for QuietBrowser {
+    fn show(&mut self, _ui: &mut egui::Ui, _size: egui::Vec2) {}
+    fn news(&mut self) -> Vec<ogre_app::PageNews> {
+        Vec::new()
+    }
+    fn load(&mut self, _url: &str) -> Result<(), String> {
+        Ok(())
+    }
+    fn send_devtools(&mut self, _message: &[u8]) -> Result<(), String> {
+        Ok(())
+    }
+    fn answer(&mut self, _accept: bool) {}
+    fn back(&mut self) {
+        self.0.lock().unwrap().push("back");
+    }
+    fn forward(&mut self) {}
+    fn reload(&mut self) {}
+    fn after_frame(&mut self, _ctx: &egui::Context, _output: &egui::FullOutput) {}
+}
+
+/// A window of a build of OGRE that has a browser of its own, and what
+/// that browser was told to do.
+fn window_with_a_browser(
+    settings: Settings,
+) -> (
+    Harness<'static, OgreApp>,
+    StandIn,
+    std::sync::Arc<std::sync::Mutex<Vec<&'static str>>>,
+) {
+    let (worker, stand_in) = Worker::detached();
+    let told = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let browser = QuietBrowser(told.clone());
+    let harness = Harness::builder()
+        .with_size([1200.0, 760.0])
+        .build_eframe(|cc| {
+            OgreApp::new(
+                &cc.egui_ctx,
+                worker,
+                settings,
+                Box::new(MemoryKeys::default()),
+            )
+            .with_built_in_browser(Box::new(browser))
+        });
+    (harness, stand_in, told)
+}
+
+/// Chooses, in Settings, where the page is shown from the next start on.
+fn choose_where_the_page_is_shown(harness: &mut Harness<'_, OgreApp>, choice: &str) {
+    harness.get_by_label("Settings").click();
+    frames(harness);
+    harness.get_by_label(choice).scroll_to_me();
+    frames(harness);
+    harness.get_by_label(choice).click();
+    frames(harness);
+}
+
+#[test]
+fn the_built_in_browser_that_was_started_stays_the_one_in_use_when_settings_change() {
+    let (mut harness, mut stand_in, told) = window_with_a_browser(Settings {
+        built_in_browser: true,
+        ..local_model()
+    });
+    frames(&mut harness);
+    harness.get_by_label("Start the built-in browser").click();
+    frames(&mut harness);
+    assert!(matches!(sent(&mut stand_in), Command::StartBuiltIn));
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    frames(&mut harness);
+
+    // Chrome's own window, from the next start on. The browser that is
+    // running is still the built-in one, and its page is still to be had.
+    choose_where_the_page_is_shown(&mut harness, "In Chrome\u{2019}s own window");
+    harness.get_by_label("Browser").click();
+    frames(&mut harness);
+    harness.get_by_label("Stop the browser");
+    harness.get_by_label("Back").click();
+    frames(&mut harness);
+    assert_eq!(*told.lock().unwrap(), ["back"]);
+    assert!(page_inputs(&mut stand_in).is_empty());
+
+    // Once it is stopped, the choice counts.
+    stand_in.events.send(Event::ChromeClosed).unwrap();
+    frames(&mut harness);
+    harness.get_by_label("Start Chrome").click();
+    frames(&mut harness);
+    assert!(matches!(
+        sent(&mut stand_in),
+        Command::StartChrome { inside: false }
+    ));
+}
+
+#[test]
+fn a_chrome_that_was_started_stays_the_one_in_use_when_the_built_in_browser_is_chosen() {
+    let (mut harness, mut stand_in, told) = window_with_a_browser(page_inside());
+    frames(&mut harness);
+    harness.get_by_label("Start Chrome").click();
+    frames(&mut harness);
+    assert!(matches!(
+        sent(&mut stand_in),
+        Command::StartChrome { inside: true }
+    ));
+    stand_in.events.send(Event::ChromeStarted).unwrap();
+    frames(&mut harness);
+
+    choose_where_the_page_is_shown(
+        &mut harness,
+        "In the browser built into OGRE (an experiment)",
+    );
+    harness.get_by_label("Browser").click();
+    frames(&mut harness);
+    harness.get_by_label("Stop Chrome");
+    page_inputs(&mut stand_in);
+    harness.get_by_label("Back").click();
+    frames(&mut harness);
+    // The page that is driven is Chrome's, so that is the one sent back.
+    assert!(page_inputs(&mut stand_in).contains(&ViewInput::Back));
+    assert!(told.lock().unwrap().is_empty());
+}
+
 #[test]
 fn the_browser_screen_is_offered_only_once_the_teacher_asks_for_it() {
     let (mut harness, mut stand_in) = window(local_model());
@@ -1974,6 +2097,13 @@ fn the_browser_screen_is_offered_only_once_the_teacher_asks_for_it() {
 fn the_page_is_drawn_in_the_window_and_takes_the_mouse_and_keyboard() {
     const PAGE: &str = "The page in Chrome";
     let (mut harness, mut stand_in) = window(page_inside());
+    frames(&mut harness);
+    harness.get_by_label("Start Chrome").click();
+    frames(&mut harness);
+    assert!(matches!(
+        sent(&mut stand_in),
+        Command::StartChrome { inside: true }
+    ));
     stand_in.events.send(Event::ChromeStarted).unwrap();
     frames(&mut harness);
     // Chrome starting brings the page up, since that is where to sign in.
