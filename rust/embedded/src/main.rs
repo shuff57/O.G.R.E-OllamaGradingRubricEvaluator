@@ -89,6 +89,10 @@ impl eframe::App for Embedded {
     }
 }
 
+/// Where the built-in browser starts, when OGRE was not started to show a
+/// page of its own.
+const HOME: &str = "https://duckduckgo.com/";
+
 fn main() -> eframe::Result {
     // Chromium runs its helper processes from this same program.
     if let Some(code) = egui_webview::run_cef_subprocess() {
@@ -107,9 +111,12 @@ fn main() -> eframe::Result {
             let mut app = ogre_app::start(cc)?.with_built_in_browser(Box::new(chromium));
             // OGRE_OPEN=<address> starts straight into the built-in browser
             // at that page, to show it or to try it.
-            if let Some(address) = std::env::var("OGRE_OPEN").ok().filter(|a| !a.is_empty()) {
-                app = app.working_in_built_in_browser().opening(address);
-            }
+            // Otherwise it starts in the built-in browser at a search page,
+            // unless the teacher has chosen Chrome in Settings.
+            app = match std::env::var("OGRE_OPEN").ok().filter(|a| !a.is_empty()) {
+                Some(address) => app.working_in_built_in_browser().opening(address),
+                None => app.starting_in_built_in_browser(HOME),
+            };
             Ok(Box::new(Embedded {
                 app,
                 shot: Shot::from_env(),

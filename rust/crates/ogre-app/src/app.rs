@@ -337,6 +337,21 @@ impl OgreApp {
         self
     }
 
+    /// What the teacher has chosen, as it would be kept now.
+    pub fn settings(&self) -> &Settings {
+        &self.settings
+    }
+
+    /// For a build that brings a browser: starts it by itself at `home`,
+    /// unless the teacher has chosen in Settings to work in a Chrome.
+    pub fn starting_in_built_in_browser(self, home: impl Into<String>) -> Self {
+        let chose_chrome = self.settings.chose_where_shown && !self.settings.built_in_browser;
+        if self.built_in.is_none() || chose_chrome {
+            return self;
+        }
+        self.working_in_built_in_browser().opening(home)
+    }
+
     /// Starts the browser by itself and goes to `address`, without waiting
     /// to be asked.
     pub fn opening(mut self, address: impl Into<String>) -> Self {
@@ -2801,8 +2816,12 @@ impl OgreApp {
                                     2,
                                     "In the browser built into OGRE (an experiment)",
                                 );
+                                let before = (settings.built_in_browser, settings.page_inside);
                                 settings.built_in_browser = way == 2;
                                 settings.page_inside = way == 1;
+                                if (settings.built_in_browser, settings.page_inside) != before {
+                                    settings.chose_where_shown = true;
+                                }
                                 ui.label(theme::muted(
                                     "The built-in browser is a real one inside this window, with a \
                              sign-in of its own, apart from Chrome\u{2019}s. A choice takes \

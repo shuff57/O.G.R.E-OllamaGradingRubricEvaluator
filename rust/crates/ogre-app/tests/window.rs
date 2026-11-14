@@ -2132,6 +2132,94 @@ fn choose_where_the_page_is_shown(harness: &mut Harness<'_, OgreApp>, choice: &s
     frames(harness);
 }
 
+/// The window of the build with a browser of its own, as that program
+/// starts it: in its browser at `home` unless Chrome was chosen.
+fn window_starting_in_its_browser(
+    settings: Settings,
+    home: &str,
+) -> (Harness<'static, OgreApp>, StandIn) {
+    let (worker, stand_in) = Worker::detached();
+    let home = home.to_owned();
+    let harness = Harness::builder()
+        .with_size([1200.0, 760.0])
+        .build_eframe(move |cc| {
+            let told = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+            OgreApp::new(
+                &cc.egui_ctx,
+                worker,
+                settings,
+                Box::new(MemoryKeys::default()),
+            )
+            .with_built_in_browser(Box::new(QuietBrowser(told)))
+            .starting_in_built_in_browser(home)
+        });
+    (harness, stand_in)
+}
+
+#[test]
+fn the_build_with_a_browser_starts_it_at_its_home_page_by_itself() {
+    let home = "https://duckduckgo.com/";
+    // Never chosen, and chosen: either way it starts by itself.
+    for settings in [
+        local_model(),
+        Settings {
+            built_in_browser: true,
+            chose_where_shown: true,
+            ..local_model()
+        },
+    ] {
+        let (mut harness, mut stand_in) = window_starting_in_its_browser(settings, home);
+        frames(&mut harness);
+        assert!(matches!(sent(&mut stand_in), Command::StartBuiltIn));
+        stand_in.events.send(Event::ChromeStarted).unwrap();
+        frames(&mut harness);
+        let Command::Open(address) = sent(&mut stand_in) else {
+            panic!("the home page was not opened");
+        };
+        assert_eq!(address, home);
+        harness.get_by_label("Stop the browser");
+    }
+}
+
+#[test]
+fn the_build_with_a_browser_leaves_a_teacher_who_chose_chrome_in_chrome() {
+    for page_inside in [false, true] {
+        let (mut harness, mut stand_in) = window_starting_in_its_browser(
+            Settings {
+                page_inside,
+                chose_where_shown: true,
+                ..local_model()
+            },
+            "https://duckduckgo.com/",
+        );
+        frames(&mut harness);
+        assert!(stand_in.commands.try_recv().is_err(), "nothing is started");
+        harness.get_by_label("Start Chrome").click();
+        frames(&mut harness);
+        assert!(matches!(
+            sent(&mut stand_in),
+            Command::StartChrome { inside } if inside == page_inside
+        ));
+    }
+}
+
+#[test]
+fn picking_where_the_page_is_shown_is_remembered_as_a_choice() {
+    let (mut harness, _stand_in, _told) = window_with_a_browser(local_model());
+    frames(&mut harness);
+    choose_where_the_page_is_shown(&mut harness, "In Chrome\u{2019}s own window");
+    assert!(
+        !harness.state().settings().chose_where_shown,
+        "that was already the way"
+    );
+    harness
+        .get_by_label("As a picture of Chrome, inside OGRE")
+        .click();
+    frames(&mut harness);
+    assert!(harness.state().settings().chose_where_shown);
+    assert!(harness.state().settings().page_inside);
+}
+
 #[test]
 fn the_built_in_browser_that_was_started_stays_the_one_in_use_when_settings_change() {
     let (mut harness, mut stand_in, told) = window_with_a_browser(Settings {

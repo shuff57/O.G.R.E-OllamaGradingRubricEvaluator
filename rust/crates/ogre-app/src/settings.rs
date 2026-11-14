@@ -30,6 +30,10 @@ pub struct Settings {
     /// Work in the browser built into OGRE's window instead of a Chrome.
     /// Only means something in a build of OGRE that brings a browser.
     pub built_in_browser: bool,
+    /// Whether the teacher has picked where the page is shown, in a build
+    /// of OGRE that brings a browser. Until they have, that build works in
+    /// its own browser.
+    pub chose_where_shown: bool,
     /// AI services that were set up and are not the one in use, each as it
     /// was left, to switch back to. Their keys are in the keyring.
     pub other_services: Vec<ProviderSettings>,
@@ -49,6 +53,7 @@ impl Default for Settings {
             page_inside: false,
             zero_for_no_response: false,
             built_in_browser: false,
+            chose_where_shown: false,
             other_services: Vec::new(),
             examples: ExamplesSettings::default(),
         }
@@ -415,6 +420,7 @@ mod tests {
             page_inside: true,
             zero_for_no_response: true,
             built_in_browser: true,
+            chose_where_shown: true,
             other_services: vec![ProviderSettings {
                 service: Service::Ollama,
                 base_url: String::new(),
