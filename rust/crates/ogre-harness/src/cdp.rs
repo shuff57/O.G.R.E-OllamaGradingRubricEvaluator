@@ -570,6 +570,29 @@ impl CdpPage {
         // a target of its own, named after the frame.
         let frame_id = node["frameId"].as_str().ok_or_else(no_frame)?;
         let started = Instant::now();
+        if !self.conn.piped {
+            // The page of an embedded browser may not ask what targets
+            // there are, nor attach to one. It can have the frames below it
+            // attached by the browser, which then says so for each.
+            let attach =
+                json!({ "autoAttach": true, "waitForDebuggerOnStart": false, "flatten": true });
+            self.call("Target.setAutoAttach", attach).await?;
+            loop {
+                let known = self.conn.state().tabs.get(frame_id).cloned();
+                if let Some(session) = known {
+                    let inner = Self {
+                        conn: self.conn.clone(),
+                        target: frame_id.into(),
+                        session,
+                    };
+                    return Ok((Some(inner), Scope::Page));
+                }
+                if started.elapsed() >= FRAME_WAIT || self.conn.is_closed() {
+                    return Err(no_frame());
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+        }
         loop {
             // Chrome only has a target for such a frame once it has been
             // asked what targets there are, and just after the page loaded
@@ -890,7 +913,15 @@ impl Connection {
         let Some(method) = message.method else {
             return;
         };
-        if method == "Target.detachedFromTarget" {
+        if method == "Target.attachedToTarget" && !self.piped {
+            // An embedded browser's page cannot ask for a frame that runs
+            // apart from it. Such frames are attached as they come, once
+            // asked for, each with a session to reach it by.
+            let target = message.params["targetInfo"]["targetId"].as_str();
+            if let (Some(target), Some(session)) = (target, message.params["sessionId"].as_str()) {
+                state.tabs.insert(target.to_owned(), session.into());
+            }
+        } else if method == "Target.detachedFromTarget" {
             // Chrome does not answer what a closed tab was still asked.
             if let Some(session) = message.params["sessionId"].as_str() {
                 state.end_session(session);
@@ -1305,7 +1336,36 @@ mod tests {
                     let answer = json!({ "id": message["id"], "result": result });
                     from_browser.message(answer.to_string().as_bytes());
                 };
+                let refuse = || {
+                    let answer =
+                        json!({ "id": message["id"], "error": { "message": "Not allowed" } });
+                    from_browser.message(answer.to_string().as_bytes());
+                };
                 match message["method"].as_str().unwrap_or_default() {
+                    // Asked for a handle: the element of a frame that runs
+                    // apart from the page.
+                    "Runtime.evaluate" if message["params"]["returnByValue"] == false => {
+                        reply(json!({ "result": { "objectId": "the-frame-element" } }));
+                    }
+                    "DOM.describeNode" => reply(json!({ "node": { "frameId": "FRAME" } })),
+                    // The page of an embedded browser may not look for
+                    // targets itself. Asked to, the browser attaches the
+                    // frame and says by which session it is reached.
+                    "Target.getTargets" | "Target.attachToTarget" => refuse(),
+                    "Target.setAutoAttach" => {
+                        let attached = json!({
+                            "method": "Target.attachedToTarget",
+                            "params": {
+                                "sessionId": "FRAME-SESSION",
+                                "targetInfo": { "targetId": "FRAME", "type": "iframe" },
+                            },
+                        });
+                        from_browser.message(attached.to_string().as_bytes());
+                        reply(json!({}));
+                    }
+                    "Runtime.evaluate" if message["sessionId"] == "FRAME-SESSION" => {
+                        reply(json!({ "result": { "value": "in the frame" } }));
+                    }
                     "Runtime.evaluate" => reply(json!({ "result": { "value": 42 } })),
                     "Page.navigate" => {
                         reply(json!({ "frameId": "F", "loaderId": "L" }));
@@ -1353,6 +1413,45 @@ mod tests {
                 .all(|message| message.get("sessionId").is_none()),
             "the one page of an embedded browser has no session to name"
         );
+    }
+
+    #[tokio::test]
+    async fn a_frame_from_another_site_is_reached_in_an_embedded_browser() {
+        let mut link = CdpPage::embedded();
+        let seen = pretend_browser(&mut link);
+        let page = link.page.clone();
+
+        let frame = "document.querySelector('iframe')";
+        assert_eq!(
+            page.eval_in_frame(frame, "document.title").await.unwrap(),
+            json!("in the frame")
+        );
+        // And again: the frame is still attached, and still reached.
+        assert_eq!(
+            page.eval_in_frame(frame, "document.title").await.unwrap(),
+            json!("in the frame")
+        );
+
+        let seen = seen.lock().unwrap().clone();
+        let asked = |method: &str| seen.iter().any(|message| message["method"] == method);
+        assert!(asked("Target.setAutoAttach"));
+        assert!(
+            !asked("Target.getTargets") && !asked("Target.attachToTarget"),
+            "what a page of an embedded browser is not allowed is not asked"
+        );
+        let inside: Vec<&Value> = seen
+            .iter()
+            .filter(|message| message["params"]["expression"] == "document.title")
+            .collect();
+        assert_eq!(inside.len(), 2);
+        assert!(
+            inside
+                .iter()
+                .all(|message| message["sessionId"] == "FRAME-SESSION"),
+            "the script is sent to the frame's own session"
+        );
+        // The page itself is still asked with no session.
+        assert_eq!(page.eval("6 * 7").await.unwrap(), json!(42));
     }
 
     #[tokio::test]

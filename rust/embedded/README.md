@@ -36,7 +36,11 @@ about 400 MB in `~/.local/lib/ogre-built-in`, beside the usual OGRE and sharing 
 opens a window for a few seconds and, through the built-in browser: reads a practice MyOpenMath
 page with OGRE's real reader, writes a grade into it and reads it back; clicks and presses a
 key as a person would; takes a picture of the page; has the page ask a question and answers it;
-and reads inside a frame.
+and reads inside a frame, inside a frame that shows another site, and inside a frame of that.
+
+It needs a screen that is drawn to. Where there is none to spare, a made-up one does:
+
+    env -u WAYLAND_DISPLAY xvfb-run -a ./target/release/examples/bridge_check
 
     OGRE_OPEN=<address> OGRE_SHOT=<file.png> ./run.sh
 
@@ -47,7 +51,6 @@ that takes pictures of the screen.
 ## Not there yet
 
 - File pickers and drag and drop: not in the copied crate.
-- A frame that shows another site (the usual build reaches those through Chrome).
 - Nothing here has been used on a real signed-in grading page.
 - The sign-in is the built-in browser's own, kept in `built-in-browser/` in OGRE's data
   folder, apart from the Chrome profile. Only one running OGRE can use it at a time.

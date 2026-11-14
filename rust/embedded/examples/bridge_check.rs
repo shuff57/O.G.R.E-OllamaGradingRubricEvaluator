@@ -190,7 +190,77 @@ async fn read(page: CdpPage, address: String) -> Result<(), String> {
     if inside[1] != serde_json::json!(3) {
         return Err(format!("the frame was not read: {inside}"));
     }
+
+    // A frame that shows another site, which Chromium runs apart from the
+    // page, and a frame inside such a frame. `127.0.0.1` and `localhost`
+    // are different sites to it.
+    let port = serve_frames();
+    page.navigate(&format!("http://127.0.0.1:{port}/"))
+        .await
+        .map_err(say)?;
+    let other = "document.getElementById('other')";
+    let seen = "[location.hostname, document.title]";
+    let across = page.eval_in_frame(other, seen).await.map_err(say)?;
+    println!("inside a frame from another site: {across}");
+    if across != serde_json::json!(["localhost", "Middle page"]) {
+        return Err(format!(
+            "the frame from another site was not read: {across}"
+        ));
+    }
+    let deeper = page
+        .eval_in_frames(&[other, other], seen)
+        .await
+        .map_err(say)?;
+    println!("inside a frame of that frame, from the first site again: {deeper}");
+    if deeper != serde_json::json!(["127.0.0.1", "Inner page"]) {
+        return Err(format!("the frame inside the frame was not read: {deeper}"));
+    }
     Ok(())
+}
+
+/// Serves a page that frames a page of another site, which frames a page
+/// of the first site again. Gives the port.
+fn serve_frames() -> u16 {
+    use std::io::{BufRead, BufReader, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
+    let port = listener.local_addr().expect("an address").port();
+    // One thread to a connection: the browser opens some ahead of time and
+    // says nothing on them, and those must not hold up the others.
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            std::thread::spawn(move || {
+                let mut request = String::new();
+                if BufReader::new(&stream).read_line(&mut request).is_err() {
+                    return;
+                }
+                let path = request.split_whitespace().nth(1).unwrap_or("/");
+                let frame = |host: &str, to: &str| {
+                    format!("<iframe id=other src=\"http://{host}:{port}{to}\"></iframe>")
+                };
+                let body = if path.starts_with("/inner") {
+                    "<!doctype html><title>Inner page</title><p>Innermost.</p>".to_owned()
+                } else if path.starts_with("/middle") {
+                    format!(
+                        "<!doctype html><title>Middle page</title>{}",
+                        frame("127.0.0.1", "/inner")
+                    )
+                } else {
+                    format!(
+                        "<!doctype html><title>Outer page</title>{}",
+                        frame("localhost", "/middle")
+                    )
+                };
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\
+                     Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+            });
+        }
+    });
+    port
 }
 
 fn main() -> eframe::Result {
